@@ -16,7 +16,7 @@ export default createVuetify({
     sets: { mdi },
   },
   theme: {
-    defaultTheme: initialColor || 'lght',
+    defaultTheme: initialColor || 'dark',
     themes: {
       light: {
         colors: {
