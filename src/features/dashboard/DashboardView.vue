@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import OverviewChart from './components/overviewChart.vue'
+
 const stats = [
   {
     title: 'Projetos',
@@ -64,205 +66,213 @@ const handleProjectClick = (projectName: string) => {
 </script>
 
 <template>
-  <v-container fluid class="pa-4 bg-background">
-    <v-sheet color="transparent" class="mb-4">
-      <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">Dashboard</h1>
-      <div class="d-flex align-center" style="font-size: 11px; color: var(--v-primary-lighten)">
-        <v-icon size="11" class="mr-1">mdi-view-dashboard-outline</v-icon>
-        Visão geral do sistema
-      </div>
-    </v-sheet>
+  <div style="overflow-x: auto">
+    <v-container fluid class="pa-4 bg-background" style="min-width: 800px">
+      <v-sheet color="transparent" class="mb-4">
+        <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">Dashboard</h1>
+        <div class="d-flex align-center" style="font-size: 11px; color: var(--v-primary-lighten)">
+          <v-icon size="11" class="mr-1">mdi-view-dashboard-outline</v-icon>
+          Visão geral do sistema
+        </div>
+      </v-sheet>
 
-    <v-row class="mb-4">
-      <v-col v-for="stat in stats" :key="stat.title" cols="12" sm="6" md="3">
-        <v-card color="primary" elevation="1" rounded="lg" hover class="pa-3">
-          <div class="d-flex align-center justify-space-between mb-2">
-            <div class="d-flex align-center ga-2">
-              <v-sheet
-                :color="stat.color + '20'"
-                rounded="lg"
-                class="pa-2 d-flex"
-                width="36"
-                height="36"
-              >
-                <v-icon :color="stat.color" size="20">{{ stat.icon }}</v-icon>
-              </v-sheet>
-              <div>
-                <div style="font-size: 18px" class="font-weight-bold text-secondary">
-                  {{ stat.value }}
+      <div style="overflow-x: auto" class="mb-4">
+        <div style="display: flex; gap: 12px; min-width: min-content">
+          <div v-for="stat in stats" :key="stat.title" style="min-width: 280px; flex: 1">
+            <v-card color="primary" elevation="1" rounded="lg" hover class="pa-3">
+              <div class="d-flex align-center justify-space-between mb-2">
+                <div class="d-flex align-center ga-2">
+                  <v-sheet
+                    :color="stat.color + '20'"
+                    rounded="lg"
+                    class="pa-2 d-flex"
+                    width="36"
+                    height="36"
+                  >
+                    <v-icon :color="stat.color" size="20">{{ stat.icon }}</v-icon>
+                  </v-sheet>
+                  <div>
+                    <div style="font-size: 18px" class="font-weight-bold text-secondary">
+                      {{ stat.value }}
+                    </div>
+                    <div style="font-size: 11px" class="text-primary-lighten font-weight-medium">
+                      {{ stat.title }}
+                    </div>
+                  </div>
                 </div>
-                <div style="font-size: 11px" class="text-primary-lighten font-weight-medium">
-                  {{ stat.title }}
+                <div class="">
+                  <v-chip
+                    class="d-flex align-center px-4"
+                    style="font-size: 12px; font-weight: 600"
+                    :style="{ color: stat.color }"
+                    prepend-icon="mdi-trending-up"
+                  >
+                    {{ stat.trend }}
+                  </v-chip>
                 </div>
               </div>
-            </div>
-            <div class="">
-              <v-chip
-                class="d-flex align-center px-4"
-                style="font-size: 12px; font-weight: 600"
-                :style="{ color: stat.color }"
-                prepend-icon="mdi-trending-up"
-              >
-                {{ stat.trend }}
-              </v-chip>
-            </div>
+            </v-card>
           </div>
-        </v-card>
-      </v-col>
-    </v-row>
+        </div>
+      </div>
 
-    <v-row>
-      <v-col cols="12" md="8">
-        <v-card color="primary" elevation="1" rounded="lg">
-          <v-card-title class="pa-3 bg-surface d-flex align-center ga-2">
-            <v-icon size="15">mdi-clock-outline</v-icon>
-            <span style="font-size: 12px" class="font-weight-bold text-secondary"
-              >Atividades Recentes</span
-            >
-          </v-card-title>
-          <v-card-text class="pa-2">
+      <v-row class="ma-0">
+        <v-col cols="12" lg="7" class="pa-2">
+          <v-card color="primary" elevation="1" rounded="lg">
+            <v-card-title class="pa-3 bg-surface d-flex align-center ga-2">
+              <v-icon size="15">mdi-clock-outline</v-icon>
+              <span style="font-size: 12px" class="font-weight-bold text-secondary"
+                >Atividades Recentes</span
+              >
+            </v-card-title>
+            <v-card-text class="pa-2">
+              <v-card
+                v-for="(activity, idx) in recentActivities"
+                :key="idx"
+                color="surface"
+                elevation="0"
+                rounded="lg"
+                hover
+                class="mb-2 pa-3"
+              >
+                <div class="d-flex align-center ga-3">
+                  <v-sheet
+                    :color="statusConfig[activity.status]?.color"
+                    rounded="sm"
+                    width="3"
+                    height="28"
+                  />
+                  <div class="flex-grow-1">
+                    <div style="font-size: 12px" class="font-weight-semibold text-secondary mb-1">
+                      {{ activity.title }}
+                    </div>
+                    <div class="d-flex align-center ga-2 flex-wrap">
+                      <v-chip
+                        size="x-small"
+                        variant="flat"
+                        color="surface"
+                        class="text-primary-lighten"
+                      >
+                        <v-icon size="9" start>mdi-domain</v-icon>
+                        {{ activity.company }}
+                      </v-chip>
+                      <span
+                        style="font-size: 11px"
+                        class="text-primary-lighten font-weight-medium"
+                        >{{ activity.time }}</span
+                      >
+                    </div>
+                  </div>
+                  <v-chip
+                    v-if="statusConfig[activity.status]"
+                    size="x-small"
+                    variant="flat"
+                    :style="{
+                      backgroundColor: (statusConfig[activity.status]?.color || '#000') + '20',
+                      color: statusConfig[activity.status]?.color || '#000',
+                    }"
+                  >
+                    {{ statusConfig[activity.status]?.label }}
+                  </v-chip>
+                </div>
+              </v-card>
+            </v-card-text>
+          </v-card>
+        </v-col>
+
+        <v-col cols="12" lg="5" class="pa-2">
+          <v-card color="primary" elevation="1" rounded="lg">
+            <v-card-title class="pa-3 bg-surface d-flex align-center ga-2">
+              <v-icon size="15">mdi-chart-box-outline</v-icon>
+              <span style="font-size: 12px" class="font-weight-bold text-secondary"
+                >Visão Geral</span
+              >
+            </v-card-title>
+            <v-card-text class="pa-4">
+              <OverviewChart />
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <v-sheet color="transparent" class="mb-2 mt-4">
+        <div class="d-flex align-center ga-2">
+          <v-icon size="15">mdi-folder-outline</v-icon>
+          <span style="font-size: 12px" class="font-weight-bold text-secondary">Projetos</span>
+        </div>
+      </v-sheet>
+
+      <div style="overflow-x: auto">
+        <div style="display: flex; gap: 12px; min-width: min-content">
+          <div v-for="project in projects" :key="project.name" style="min-width: 250px; flex: 1">
             <v-card
-              v-for="(activity, idx) in recentActivities"
-              :key="idx"
-              color="surface"
-              elevation="0"
+              color="primary"
+              elevation="1"
               rounded="lg"
               hover
-              class="mb-2 pa-3"
+              class="pa-4 project-card"
+              @click="handleProjectClick(project.name)"
             >
-              <div class="d-flex align-center ga-3">
+              <div class="d-flex align-center justify-space-between mb-3">
                 <v-sheet
-                  :color="statusConfig[activity.status]?.color"
-                  rounded="sm"
-                  width="3"
-                  height="28"
-                />
-                <div class="flex-grow-1">
-                  <div style="font-size: 12px" class="font-weight-semibold text-secondary mb-1">
-                    {{ activity.title }}
-                  </div>
-                  <div class="d-flex align-center ga-2">
-                    <v-chip
-                      size="x-small"
-                      variant="flat"
-                      color="surface"
-                      class="text-primary-lighten"
-                    >
-                      <v-icon size="9" start>mdi-domain</v-icon>
-                      {{ activity.company }}
-                    </v-chip>
-                    <span style="font-size: 11px" class="text-primary-lighten font-weight-medium">{{
-                      activity.time
-                    }}</span>
-                  </div>
-                </div>
+                  :color="statusConfig[project.status]?.color + '20'"
+                  rounded="lg"
+                  class="pa-2"
+                >
+                  <v-icon :color="statusConfig[project.status]?.color" size="18"
+                    >mdi-folder-open-outline</v-icon
+                  >
+                </v-sheet>
                 <v-chip
-                  v-if="statusConfig[activity.status]"
                   size="x-small"
                   variant="flat"
                   :style="{
-                    backgroundColor: (statusConfig[activity.status]?.color || '#000') + '20',
-                    color: statusConfig[activity.status]?.color || '#000',
+                    backgroundColor: (statusConfig[project.status]?.color || '#000') + '20',
+                    color: statusConfig[project.status]?.color || '#000',
                   }"
                 >
-                  {{ statusConfig[activity.status]?.label }}
+                  {{ statusConfig[project.status]?.label }}
                 </v-chip>
               </div>
+
+              <div style="font-size: 13px" class="font-weight-bold text-secondary mb-3">
+                {{ project.name }}
+              </div>
+
+              <div class="mb-2">
+                <div class="d-flex align-center justify-space-between mb-1">
+                  <span style="font-size: 10px" class="text-primary-lighten font-weight-medium"
+                    >Progresso</span
+                  >
+                  <span
+                    style="font-size: 11px"
+                    class="font-weight-bold"
+                    :style="{ color: statusConfig[project.status]?.color }"
+                    >{{ project.progress }}%</span
+                  >
+                </div>
+                <v-progress-linear
+                  :model-value="project.progress"
+                  :color="statusConfig[project.status]?.color"
+                  height="6"
+                  rounded
+                />
+              </div>
+
+              <v-divider class="my-3" />
+
+              <div class="d-flex align-center ga-1">
+                <v-icon size="12" color="primary-lighten">mdi-account-group</v-icon>
+                <span style="font-size: 11px" class="text-primary-lighten font-weight-medium"
+                  >{{ project.team }} membros</span
+                >
+              </div>
             </v-card>
-          </v-card-text>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" md="4">
-        <v-card color="primary" elevation="1" rounded="lg" height="100%">
-          <v-card-title class="pa-3 bg-surface d-flex align-center ga-2">
-            <v-icon size="15">mdi-chart-box-outline</v-icon>
-            <span style="font-size: 12px" class="font-weight-bold text-secondary">Visão Geral</span>
-          </v-card-title>
-          <v-card-text
-            class="pa-4 d-flex flex-column align-center justify-center"
-            style="min-height: 250px"
-          >
-            <v-icon size="38" color="primary-lighten">mdi-chart-line</v-icon>
-            <div style="font-size: 11px" class="text-primary-lighten font-weight-medium mt-3">
-              Gráficos e métricas em desenvolvimento
-            </div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <v-sheet color="transparent" class="mb-2 mt-4">
-      <div class="d-flex align-center ga-2">
-        <v-icon size="15">mdi-folder-outline</v-icon>
-        <span style="font-size: 12px" class="font-weight-bold text-secondary">Projetos</span>
+          </div>
+        </div>
       </div>
-    </v-sheet>
-
-    <v-row>
-      <v-col v-for="project in projects" :key="project.name" cols="12" sm="6" md="3">
-        <v-card
-          color="primary"
-          elevation="1"
-          rounded="lg"
-          hover
-          class="pa-4 project-card"
-          @click="handleProjectClick(project.name)"
-        >
-          <div class="d-flex align-center justify-space-between mb-3">
-            <v-sheet :color="statusConfig[project.status]?.color + '20'" rounded="lg" class="pa-2">
-              <v-icon :color="statusConfig[project.status]?.color" size="18"
-                >mdi-folder-open-outline</v-icon
-              >
-            </v-sheet>
-            <v-chip
-              size="x-small"
-              variant="flat"
-              :style="{
-                backgroundColor: (statusConfig[project.status]?.color || '#000') + '20',
-                color: statusConfig[project.status]?.color || '#000',
-              }"
-            >
-              {{ statusConfig[project.status]?.label }}
-            </v-chip>
-          </div>
-
-          <div style="font-size: 13px" class="font-weight-bold text-secondary mb-3">
-            {{ project.name }}
-          </div>
-
-          <div class="mb-2">
-            <div class="d-flex align-center justify-space-between mb-1">
-              <span style="font-size: 10px" class="text-primary-lighten font-weight-medium"
-                >Progresso</span
-              >
-              <span
-                style="font-size: 11px"
-                class="font-weight-bold"
-                :style="{ color: statusConfig[project.status]?.color }"
-                >{{ project.progress }}%</span
-              >
-            </div>
-            <v-progress-linear
-              :model-value="project.progress"
-              :color="statusConfig[project.status]?.color"
-              height="6"
-              rounded
-            />
-          </div>
-
-          <v-divider class="my-3" />
-
-          <div class="d-flex align-center ga-1">
-            <v-icon size="12" color="primary-lighten">mdi-account-group</v-icon>
-            <span style="font-size: 11px" class="text-primary-lighten font-weight-medium"
-              >{{ project.team }} membros</span
-            >
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+    </v-container>
+  </div>
 </template>
 
 <style scoped>
