@@ -4,7 +4,7 @@ import type { Activity, Company, StatusHistory } from '@/core/types'
 const companies = ref<Company[]>([
   { id: '1', name: 'Empresa A' },
   { id: '2', name: 'Empresa B' },
-  { id: '3', name: 'Empresa C' }
+  { id: '3', name: 'Empresa C' },
 ])
 
 const statusHistory = ref<StatusHistory[]>([
@@ -16,7 +16,7 @@ const statusHistory = ref<StatusHistory[]>([
     fromStatus: null,
     toStatus: 'todo',
     changedBy: 'Sistema',
-    changedAt: '2024-01-20T10:00:00Z'
+    changedAt: '2024-01-20T10:00:00Z',
   },
   {
     id: '2',
@@ -26,7 +26,7 @@ const statusHistory = ref<StatusHistory[]>([
     fromStatus: 'todo',
     toStatus: 'in-progress',
     changedBy: 'Pedro Costa',
-    changedAt: '2024-01-22T08:30:00Z'
+    changedAt: '2024-01-22T08:30:00Z',
   },
   {
     id: '3',
@@ -36,8 +36,8 @@ const statusHistory = ref<StatusHistory[]>([
     fromStatus: 'testing',
     toStatus: 'done',
     changedBy: 'Roberto Alves',
-    changedAt: '2024-01-30T15:20:00Z'
-  }
+    changedAt: '2024-01-30T15:20:00Z',
+  },
 ])
 
 const activities = ref<Activity[]>([
@@ -59,7 +59,7 @@ const activities = ref<Activity[]>([
         assignees: ['João Silva'],
         dueDate: '2024-02-10',
         attachments: [],
-        completed: false
+        completed: false,
       },
       {
         id: '1-2',
@@ -68,10 +68,10 @@ const activities = ref<Activity[]>([
         assignees: ['Maria Santos'],
         dueDate: '2024-02-12',
         attachments: [],
-        completed: false
-      }
+        completed: false,
+      },
     ],
-    createdAt: '2024-01-20T10:00:00Z'
+    createdAt: '2024-01-20T10:00:00Z',
   },
   {
     id: '2',
@@ -84,7 +84,7 @@ const activities = ref<Activity[]>([
     companyId: '2',
     month: 'janeiro',
     tasks: [],
-    createdAt: '2024-01-21T14:30:00Z'
+    createdAt: '2024-01-21T14:30:00Z',
   },
   {
     id: '3',
@@ -104,10 +104,10 @@ const activities = ref<Activity[]>([
         assignees: ['Ana Lima'],
         dueDate: '2024-02-18',
         attachments: [],
-        completed: true
-      }
+        completed: true,
+      },
     ],
-    createdAt: '2024-01-22T09:15:00Z'
+    createdAt: '2024-01-22T09:15:00Z',
   },
   {
     id: '4',
@@ -120,8 +120,8 @@ const activities = ref<Activity[]>([
     companyId: '3',
     month: 'janeiro',
     tasks: [],
-    createdAt: '2024-01-15T16:45:00Z'
-  }
+    createdAt: '2024-01-15T16:45:00Z',
+  },
 ])
 
 export function useTasks() {
@@ -129,17 +129,17 @@ export function useTasks() {
     const newActivity: Activity = {
       ...activity,
       id: (Date.now() + Math.random()).toString(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     }
     activities.value.push(newActivity)
   }
 
   const updateActivityStatus = (id: string, status: Activity['status']) => {
-    const activity = activities.value.find(a => a.id === id)
+    const activity = activities.value.find((a) => a.id === id)
     if (activity) {
       const oldStatus = activity.status
       activity.status = status
-      
+
       statusHistory.value.push({
         id: Date.now().toString(),
         activityId: activity.id,
@@ -148,15 +148,15 @@ export function useTasks() {
         fromStatus: oldStatus,
         toStatus: status,
         changedBy: activity.assignees[0] || 'Sistema',
-        changedAt: new Date().toISOString()
+        changedAt: new Date().toISOString(),
       })
     }
   }
 
   const toggleSubTaskCompleted = (activityId: string, taskId: string) => {
-    const activity = activities.value.find(a => a.id === activityId)
+    const activity = activities.value.find((a) => a.id === activityId)
     if (activity) {
-      const task = activity.tasks.find(t => t.id === taskId)
+      const task = activity.tasks.find((t) => t.id === taskId)
       if (task) task.completed = !task.completed
     }
   }
@@ -167,6 +167,6 @@ export function useTasks() {
     statusHistory,
     addActivity,
     updateActivityStatus,
-    toggleSubTaskCompleted
+    toggleSubTaskCompleted,
   }
 }

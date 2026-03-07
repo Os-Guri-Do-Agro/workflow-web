@@ -18,6 +18,7 @@ const userMenu = ref(false)
 
 const toggleTheme = () => {
   theme.global.name.value = theme.global.name.value === 'light' ? 'dark' : 'light'
+  localStorage.setItem('theme', theme.global.name.value)
 }
 
 const handleLogout = () => {
@@ -115,18 +116,12 @@ const breadcrumbs = computed(() => {
           <v-list-item
             prepend-icon="mdi-account"
             title="Perfil"
-            @click="
-              router.push('/profile');
-              userMenu = false
-            "
+            @click="router.push('/profile'); userMenu = false"
           />
           <v-list-item
             prepend-icon="mdi-cog"
             title="Configurações"
-            @click="
-              router.push('/settings');
-              userMenu = false
-            "
+            @click="router.push('/settings'); userMenu = false"
           />
           <v-divider />
           <v-list-item prepend-icon="mdi-logout" title="Sair" @click="handleLogout" />
@@ -135,7 +130,3 @@ const breadcrumbs = computed(() => {
     </v-menu>
   </v-app-bar>
 </template>
-
-<style scoped>
-/* Minimal CSS apenas para ajustes finos */
-</style>

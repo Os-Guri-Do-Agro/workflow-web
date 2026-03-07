@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTasks } from '@/features/tasks/useTasks'
 
@@ -11,6 +11,14 @@ const taskId = computed(() => route.params.taskId as string)
 const month = computed(() => route.params.month as string)
 
 const activity = computed(() => activities.value.find((a) => a.id === taskId.value))
+
+const showSubtaskModal = ref(false)
+const selectedSubtask = ref<any>(null)
+
+const openSubtaskModal = (task: any) => {
+  selectedSubtask.value = task
+  showSubtaskModal.value = true
+}
 
 const getCompanyName = (id: string) => companies.value.find((c) => c.id === id)?.name || '-'
 
@@ -137,8 +145,9 @@ const statusConfig = computed(() => {
                   density="compact"
                   class="flex-shrink-0"
                   @update:model-value="toggleSubTaskCompleted(activity.id, task.id)"
+                  @click.stop
                 />
-                <div class="flex-grow-1">
+                <div class="flex-grow-1 clickable" @click="openSubtaskModal(task)">
                   <div
                     style="font-size: 11px; line-height: 1.4"
                     class="font-weight-medium text-secondary"
@@ -291,6 +300,133 @@ const statusConfig = computed(() => {
       </v-btn>
     </v-card>
   </v-container>
+
+  <v-dialog v-model="showSubtaskModal" max-width="900px">
+    <v-card v-if="selectedSubtask && activity" rounded="lg">
+      <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
+        <div class="d-flex align-center ga-3">
+          <v-icon color="Secundary" size="24">mdi-checkbox-marked-circle-outline</v-icon>
+          <span class="text-h6 text-secondary">Detalhes da Subtarefa</span>
+        </div>
+        <v-btn icon="mdi-close" variant="text" size="small" @click="showSubtaskModal = false" />
+      </v-card-title>
+
+      <v-divider />
+
+      <v-card-text class="pa-6">
+        <div class="mb-5">
+          <div class="d-flex align-center ga-2 mb-3">
+            <v-checkbox
+              :model-value="selectedSubtask.completed"
+              color="secondary"
+              hide-details
+              @update:model-value="toggleSubTaskCompleted(activity.id, selectedSubtask.id)"
+            />
+            <h2
+              class="text-h5 text-secondary"
+              :class="{ 'text-decoration-line-through text-primary-lighten': selectedSubtask.completed }"
+            >
+              {{ selectedSubtask.title }}
+            </h2>
+          </div>
+
+          <v-chip
+            size="small"
+            :color="selectedSubtask.completed ? 'success' : 'warning'"
+            variant="tonal"
+            class="mb-4"
+          >
+            <v-icon size="16" start>{{ selectedSubtask.completed ? 'mdi-check-circle' : 'mdi-clock-outline' }}</v-icon>
+            {{ selectedSubtask.completed ? 'Concluída' : 'Pendente' }}
+          </v-chip>
+        </div>
+
+        <v-divider class="mb-5" />
+
+        <div v-if="selectedSubtask.description" class="mb-5">
+          <div class="d-flex align-center ga-2 mb-3">
+            <v-icon color="Secundary" size="20">mdi-text-box-outline</v-icon>
+            <span class="text-subtitle-1 font-weight-bold text-secondary">Descrição</span>
+          </div>
+          <p class="text-body-1 text-secondary" style="line-height: 1.6">
+            {{ selectedSubtask.description }}
+          </p>
+        </div>
+
+        <v-row>
+          <v-col v-if="selectedSubtask.assignees.length" cols="12" md="6">
+            <div class="d-flex align-center ga-2 mb-3">
+              <v-icon color="Secundary" size="20">mdi-account-multiple-outline</v-icon>
+              <span class="text-subtitle-1 font-weight-bold text-secondary">Responsáveis</span>
+            </div>
+            <div class="d-flex flex-column ga-2">
+              <v-chip
+                v-for="assignee in selectedSubtask.assignees"
+                :key="assignee"
+                size="default"
+                variant="flat"
+                :color="getUserColor(assignee)"
+                class="justify-start"
+              >
+                <v-avatar start size="28">
+                  <span style="font-size: 12px">{{ getUserInitials(assignee) }}</span>
+                </v-avatar>
+                <span class="text-body-1">{{ assignee }}</span>
+              </v-chip>
+            </div>
+          </v-col>
+
+          <v-col v-if="selectedSubtask.dueDate" cols="12" md="6">
+            <div class="d-flex align-center ga-2 mb-3">
+              <v-icon color="Secundary" size="20">mdi-calendar-clock</v-icon>
+              <span class="text-subtitle-1 font-weight-bold text-secondary">Data de Entrega</span>
+            </div>
+            <v-chip size="default" variant="tonal" color="secondary" class="text-primary">
+              <v-icon size="18" start>mdi-calendar-outline</v-icon>
+              {{ selectedSubtask.dueDate }}
+            </v-chip>
+          </v-col>
+        </v-row>
+
+        <div v-if="selectedSubtask.attachments.length" class="mt-5">
+          <div class="d-flex align-center ga-2 mb-3">
+            <v-icon color="Secundary" size="20">mdi-paperclip</v-icon>
+            <span class="text-subtitle-1 font-weight-bold text-secondary">Anexos</span>
+            <v-chip size="x-small" color="primary" variant="tonal">
+              {{ selectedSubtask.attachments.length }}
+            </v-chip>
+          </div>
+          <div class="d-flex flex-column ga-2">
+            <v-chip
+              v-for="attachment in selectedSubtask.attachments"
+              :key="attachment"
+              size="default"
+              variant="tonal"
+              color="secondary"
+              prepend-icon="mdi-file-outline"
+              class="justify-start"
+            >
+              {{ attachment }}
+            </v-chip>
+          </div>
+        </div>
+      </v-card-text>
+
+      <v-divider />
+
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn
+          variant="tonal"
+          color="secondary"
+          class="text-none"
+          @click="showSubtaskModal = false"
+        >
+          Fechar
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style scoped>
@@ -308,6 +444,10 @@ const statusConfig = computed(() => {
 .subtask-item:hover {
   background: rgba(var(--v-theme-secondary), 0.05);
   border-color: rgba(var(--v-theme-secondary), 0.3);
+}
+
+.clickable {
+  cursor: pointer;
 }
 
 .subtask-item.completed {

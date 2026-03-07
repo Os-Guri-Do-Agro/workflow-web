@@ -11,6 +11,7 @@ const isDarkMode = ref(theme.global.name.value === 'dark')
 
 const toggleTheme = () => {
   theme.global.name.value = isDarkMode.value ? 'dark' : 'light'
+  sessionStorage.setItem('theme', isDarkMode.value ? 'dark' : 'light')
 }
 
 const saveSettings = () => {
@@ -53,7 +54,9 @@ const saveSettings = () => {
           </v-card-text>
         </v-card>
 
-        <v-btn color="primary" size="small" class="mt-3" @click="saveSettings"> Salvar Configurações </v-btn>
+        <v-btn color="primary" size="small" class="mt-3" @click="saveSettings">
+          Salvar Configurações
+        </v-btn>
       </v-col>
     </v-row>
   </v-container>
