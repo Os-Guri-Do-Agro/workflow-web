@@ -46,6 +46,18 @@ class companieService {
       'Erro ao buscar empresas',
     )
   }
+
+  getCompanyMembers(id: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get(`/company/${id}/members`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao buscar membros da empresa',
+    )
+  }
 }
 
 export default new companieService()

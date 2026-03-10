@@ -65,6 +65,7 @@ const findQuaters = async () => {
 }
 
 onMounted(async () => {
+  if (!localStorage.getItem('token')) return
   await findCompanies()
   await findQuaters()
 })
@@ -77,6 +78,7 @@ const switchCompany = (company: Company) => {
   companies.value.forEach((c) => (c.active = c.id === company.id))
   localStorage.setItem('activeCompany', company.id)
   showCompanyModal.value = false
+  router.push('/dashboard')
   findQuaters()
 }
 

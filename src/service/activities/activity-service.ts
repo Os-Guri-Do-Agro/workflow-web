@@ -15,13 +15,31 @@ class activityService {
     const token = localStorage.getItem('token')
     const companyId = localStorage.getItem('activeCompany')
     return this.handleRequest(
-      api.patch(`/activity/${id}/status`, { status }, {
+      api.patch(
+        `/activity/${id}/status`,
+        { status },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'x-company-id': companyId,
+          },
+        },
+      ),
+      'Erro ao atualizar atividade',
+    )
+  }
+
+  postActivity(data: any): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    return this.handleRequest(
+      api.post(`/activity`, data, {
         headers: {
           Authorization: `Bearer ${token}`,
           'x-company-id': companyId,
         },
       }),
-      'Erro ao atualizar atividade',
+      'Erro ao criar atividade',
     )
   }
 }
