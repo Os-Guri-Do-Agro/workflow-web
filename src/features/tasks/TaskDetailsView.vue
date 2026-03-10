@@ -22,9 +22,11 @@ const formSubtask = ref({
   priorityNumber: 1,
   dueDate: '',
   responsibleUserIds: [] as string[],
+  attachment: null as File | null,
 })
 
 const activityInfo = ref<any>(null)
+const loading = ref(true)
 
 const InfoActivity = async () => {
   try {
@@ -47,8 +49,9 @@ const findMembers = async () => {
 
 const createSubtask = async () => {
   if (!formSubtask.value.title) return
+  saving.value = true
   try {
-    await activityService.postActivity({
+    const created = await activityService.postActivity({
       title: formSubtask.value.title,
       description: formSubtask.value.description || '',
       priorityNumber: Number(formSubtask.value.priorityNumber) || 1,
@@ -59,6 +62,11 @@ const createSubtask = async () => {
       parentId: taskId.value,
       responsibleUserIds: formSubtask.value.responsibleUserIds,
     })
+    if (formSubtask.value.attachment) {
+      const fd = new FormData()
+      fd.append('file', formSubtask.value.attachment)
+      await activityService.postActivityAttachment(created.id, fd)
+    }
     await InfoActivity()
     formSubtask.value = {
       title: '',
@@ -66,19 +74,87 @@ const createSubtask = async () => {
       priorityNumber: 1,
       dueDate: '',
       responsibleUserIds: [],
+      attachment: null,
     }
     showCreateSubtaskModal.value = false
   } catch (error) {
     console.error('Erro ao criar subtarefa:', error)
+  } finally {
+    saving.value = false
   }
 }
 
-onMounted(() => {
-  InfoActivity()
-  findMembers()
+onMounted(async () => {
+  await Promise.all([InfoActivity(), findMembers()])
+  loading.value = false
 })
 
 const editingSubtask = ref(false)
+const saving = ref(false)
+const deleting = ref<string | null>(null)
+
+const showEditActivityModal = ref(false)
+const formActivity = ref({
+  title: '',
+  description: '',
+  priorityNumber: 1,
+  dueDate: '',
+  responsibleUserIds: [] as string[],
+  attachment: null as File | null,
+})
+
+const openEditActivityModal = () => {
+  formActivity.value = {
+    title: activityInfo.value.title,
+    description: activityInfo.value.description || '',
+    priorityNumber: activityInfo.value.priorityNumber ?? 1,
+    dueDate: activityInfo.value.dueDate ? activityInfo.value.dueDate.split('T')[0] : '',
+    responsibleUserIds: activityInfo.value.responsibles?.map((r: any) => r.userId) ?? [],
+    attachment: null,
+  }
+  showEditActivityModal.value = true
+}
+
+const updateActivity = async () => {
+  if (!formActivity.value.title) return
+  saving.value = true
+  try {
+    await activityService.patchActivity(taskId.value, {
+      title: formActivity.value.title,
+      description: formActivity.value.description || '',
+      priorityNumber: Number(formActivity.value.priorityNumber) || 1,
+      dueDate: formActivity.value.dueDate
+        ? new Date(formActivity.value.dueDate).toISOString()
+        : undefined,
+      monthId: month.value,
+      responsibleUserIds: formActivity.value.responsibleUserIds,
+    })
+    if (formActivity.value.attachment) {
+      const fd = new FormData()
+      fd.append('file', formActivity.value.attachment)
+      await activityService.postActivityAttachment(taskId.value, fd)
+    }
+    await InfoActivity()
+    showEditActivityModal.value = false
+  } catch (error) {
+    console.error('Erro ao atualizar atividade:', error)
+  } finally {
+    saving.value = false
+  }
+}
+
+const deleteSubtask = async (task: any) => {
+  deleting.value = task.id
+  try {
+    await activityService.deleteActivity(task.id)
+    await InfoActivity()
+    showSubtaskModal.value = false
+  } catch (error) {
+    console.error('Erro ao deletar subtarefa:', error)
+  } finally {
+    deleting.value = null
+  }
+}
 
 const openSubtaskModal = (task: any) => {
   selectedSubtask.value = task
@@ -89,26 +165,37 @@ const openSubtaskModal = (task: any) => {
     priorityNumber: task.priorityNumber ?? 1,
     dueDate: task.dueDate ? task.dueDate.split('T')[0] : '',
     responsibleUserIds: task.responsibles?.map((r: any) => r.userId) ?? [],
+    attachment: null,
   }
   showSubtaskModal.value = true
 }
 
 const updateSubtask = async () => {
   if (!selectedSubtask.value || !formSubtask.value.title) return
+  saving.value = true
   try {
     await activityService.patchActivity(selectedSubtask.value.id, {
       title: formSubtask.value.title,
       description: formSubtask.value.description || '',
       priorityNumber: Number(formSubtask.value.priorityNumber) || 1,
-      dueDate: formSubtask.value.dueDate ? new Date(formSubtask.value.dueDate).toISOString() : undefined,
+      dueDate: formSubtask.value.dueDate
+        ? new Date(formSubtask.value.dueDate).toISOString()
+        : undefined,
       monthId: month.value,
       parentId: taskId.value,
       responsibleUserIds: formSubtask.value.responsibleUserIds,
     })
+    if (formSubtask.value.attachment) {
+      const fd = new FormData()
+      fd.append('file', formSubtask.value.attachment)
+      await activityService.postActivityAttachment(selectedSubtask.value.id, fd)
+    }
     await InfoActivity()
     showSubtaskModal.value = false
   } catch (error) {
     console.error('Erro ao atualizar subtarefa:', error)
+  } finally {
+    saving.value = false
   }
 }
 
@@ -127,11 +214,11 @@ const getUserColor = (name: string) => {
   const colors = [
     '#1976D2',
     '#388E3C',
-    '#D32F2F',
+    '#6D4C9F',
     '#7B1FA2',
     '#F57C00',
     '#0097A7',
-    '#C2185B',
+    '#546E7A',
     '#5D4037',
   ]
   const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
@@ -167,9 +254,57 @@ const toggleSubtaskStatus = async (task: any) => {
   }
 }
 
+const getPriorityColor = (priority: number) => {
+  const colors: Record<number, string> = {
+    0: '#10B981',
+    1: '#3B82F6',
+    2: '#F59E0B',
+    3: '#EF4444',
+    4: '#DC2626',
+    5: '#991B1B',
+  }
+  return colors[priority] || '#6B7280'
+}
+
 const formatDate = (date: string | null) => {
   if (!date) return null
   return new Date(date).toLocaleDateString('pt-BR')
+}
+
+const isImage = (filename: string) => /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(filename)
+
+const onActivityFileChange = (f: File | File[]) => {
+  const file = Array.isArray(f) ? f[0] : f
+  if (file && file.size > 10 * 1024 * 1024) return
+  formActivity.value.attachment = file ?? null
+}
+
+const onSubtaskFileChange = (f: File | File[]) => {
+  const file = Array.isArray(f) ? f[0] : f
+  if (file && file.size > 10 * 1024 * 1024) return
+  formSubtask.value.attachment = file ?? null
+}
+
+const deletingAttachment = ref<string | null>(null)
+
+const deleteAttachment = async (attachmentId: string) => {
+  deletingAttachment.value = attachmentId
+  try {
+    await activityService.deleteAttachment(attachmentId)
+    await InfoActivity()
+    if (selectedSubtask.value) {
+      const updatedSubtask = activityInfo.value?.subtasks?.find(
+        (s: any) => s.id === selectedSubtask.value.id
+      )
+      if (updatedSubtask) {
+        selectedSubtask.value = updatedSubtask
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao deletar anexo:', error)
+  } finally {
+    deletingAttachment.value = null
+  }
 }
 </script>
 
@@ -194,14 +329,29 @@ const formatDate = (date: string | null) => {
           <v-card-text class="pa-4">
             <div class="d-flex align-center ga-2 mb-3">
               <v-icon color="Secundary" size="20">mdi-text-box-outline</v-icon>
-              <h1 style="font-size: 16px" class="font-weight-bold text-secondary">
+              <h1 style="font-size: 16px" class="font-weight-bold text-secondary flex-grow-1">
                 {{ activityInfo.title }}
               </h1>
+              <v-btn
+                icon="mdi-pencil-outline"
+                variant="text"
+                size="x-small"
+                color="Secundary"
+                @click="openEditActivityModal"
+              />
             </div>
 
             <v-divider class="mb-3" />
 
-            <div style="font-size: 12px" class="text-secondary" v-html="activityInfo.description" />
+            <div
+              v-if="activityInfo.description"
+              style="font-size: 12px"
+              class="text-secondary"
+              v-html="activityInfo.description"
+            ></div>
+            <div v-else style="font-size: 12px" class="text-primary-lighten font-italic">
+              Sem descrição
+            </div>
           </v-card-text>
         </v-card>
 
@@ -244,12 +394,27 @@ const formatDate = (date: string | null) => {
                   @click.stop
                 />
                 <div class="flex-grow-1 clickable" @click="openSubtaskModal(task)">
-                  <div
-                    style="font-size: 11px; line-height: 1.4"
-                    class="font-weight-medium text-secondary"
-                    :class="{ 'text-decoration-line-through text-primary-lighten': task.completed }"
-                  >
-                    {{ task.title }}
+                  <div class="d-flex align-center justify-space-between ga-2">
+                    <div
+                      style="font-size: 11px; line-height: 1.4"
+                      class="font-weight-medium text-secondary"
+                      :class="{
+                        'text-decoration-line-through text-primary-lighten': task.completed,
+                      }"
+                    >
+                      {{ task.title }}
+                    </div>
+                    <v-chip
+                      size="x-small"
+                      class="px-2 flex-shrink-0"
+                      style="height: 18px; font-size: 9px"
+                      :style="{
+                        backgroundColor: getPriorityColor(task.priorityNumber) + '20',
+                        color: getPriorityColor(task.priorityNumber),
+                      }"
+                    >
+                      P{{ task.priorityNumber }}
+                    </v-chip>
                   </div>
                   <div
                     v-if="task.description"
@@ -284,6 +449,15 @@ const formatDate = (date: string | null) => {
                     </v-chip>
                   </div>
                 </div>
+                <v-btn
+                  icon="mdi-delete-outline"
+                  variant="text"
+                  size="x-small"
+                  color="error"
+                  class="flex-shrink-0"
+                  :loading="deleting === task.id"
+                  @click.stop="deleteSubtask(task)"
+                />
               </div>
             </div>
           </v-card-text>
@@ -298,7 +472,7 @@ const formatDate = (date: string | null) => {
           </div>
           <v-btn
             size="x-small"
-            color="primary"
+            color="Secundary"
             variant="tonal"
             prepend-icon="mdi-plus"
             class="text-none"
@@ -324,6 +498,22 @@ const formatDate = (date: string | null) => {
               <v-chip size="small" variant="tonal" :color="statusConfig.color">
                 <v-icon size="12" start>{{ statusConfig.icon }}</v-icon>
                 {{ statusConfig.label }}
+              </v-chip>
+            </div>
+
+            <div class="mb-3">
+              <div style="font-size: 10px" class="text-primary-lighten mb-1">Prioridade</div>
+              <v-chip size="small" variant="tonal" color="secondary">
+                <v-icon size="12" start>mdi-flag-outline</v-icon>
+                {{ activityInfo.priorityNumber }}
+              </v-chip>
+            </div>
+
+            <div class="mb-3">
+              <div style="font-size: 10px" class="text-primary-lighten mb-1">Criado em</div>
+              <v-chip size="small" variant="tonal" color="secondary">
+                <v-icon size="12" start>mdi-clock-outline</v-icon>
+                {{ formatDate(activityInfo.createdAt) }}
               </v-chip>
             </div>
 
@@ -362,22 +552,63 @@ const formatDate = (date: string | null) => {
               <v-icon color="Secundary" size="16">mdi-paperclip</v-icon>
               <span style="font-size: 12px" class="font-weight-bold text-secondary">Anexos</span>
             </div>
-            <div class="d-flex flex-column ga-1">
-              <v-chip
-                v-for="attachment in activityInfo.attachments"
-                :key="attachment"
-                size="small"
-                variant="tonal"
-                prepend-icon="mdi-file-outline"
-                class="justify-start"
+            <div class="d-flex flex-wrap ga-2">
+              <a
+                v-for="att in activityInfo.attachments"
+                :key="att.id"
+                :href="att.url"
+                target="_blank"
+                style="text-decoration: none"
               >
-                {{ attachment }}
-              </v-chip>
+                <v-img
+                  v-if="isImage(att.filename)"
+                  :src="att.url"
+                  width="80"
+                  height="80"
+                  cover
+                  rounded="lg"
+                  style="cursor: pointer"
+                />
+                <div
+                  v-else
+                  class="d-flex flex-column align-center justify-center rounded-lg"
+                  style="
+                    width: 80px;
+                    height: 80px;
+                    background: rgba(var(--v-theme-secondary), 0.08);
+                    cursor: pointer;
+                  "
+                >
+                  <v-icon size="28" color="secondary">mdi-file-outline</v-icon>
+                  <span
+                    style="
+                      font-size: 9px;
+                      color: var(--v-theme-secondary);
+                      text-align: center;
+                      padding: 0 4px;
+                      overflow: hidden;
+                      text-overflow: ellipsis;
+                      white-space: nowrap;
+                      max-width: 76px;
+                    "
+                    >{{ att.filename }}</span
+                  >
+                </div>
+              </a>
             </div>
           </v-card-text>
         </v-card>
       </v-col>
     </v-row>
+  </v-container>
+
+  <v-container
+    v-else-if="loading"
+    fluid
+    class="pa-4 bg-background d-flex align-center justify-center"
+    style="min-height: 60vh"
+  >
+    <v-progress-circular indeterminate color="secondary" size="48" />
   </v-container>
 
   <v-container v-else fluid class="pa-4 bg-background">
@@ -389,6 +620,172 @@ const formatDate = (date: string | null) => {
       </v-btn>
     </v-card>
   </v-container>
+
+  <v-dialog v-model="showEditActivityModal" max-width="900px">
+    <v-card rounded="lg">
+      <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
+        <div class="d-flex align-center ga-2">
+          <v-icon color="Secundary" size="20">mdi-pencil-outline</v-icon>
+          <span class="text-subtitle-1 font-weight-bold text-secondary">Editar Atividade</span>
+        </div>
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          size="small"
+          @click="showEditActivityModal = false"
+        />
+      </v-card-title>
+
+      <v-divider />
+
+      <v-card-text class="pa-4">
+        <v-text-field
+          v-model="formActivity.title"
+          label="Título *"
+          density="compact"
+          variant="outlined"
+          color="secondary"
+          class="mb-3"
+          hide-details
+        />
+        <v-textarea
+          v-model="formActivity.description"
+          label="Descrição"
+          density="compact"
+          variant="outlined"
+          color="secondary"
+          rows="4"
+          class="mb-3"
+          hide-details
+        />
+        <v-row>
+          <v-col cols="6">
+            <v-text-field
+              v-model="formActivity.priorityNumber"
+              label="Prioridade"
+              type="number"
+              density="compact"
+              variant="outlined"
+              color="secondary"
+              hide-details
+            />
+          </v-col>
+          <v-col cols="6">
+            <v-text-field
+              v-model="formActivity.dueDate"
+              label="Data de Entrega"
+              type="date"
+              density="compact"
+              variant="outlined"
+              color="secondary"
+              hide-details
+            />
+          </v-col>
+        </v-row>
+        <v-select
+          v-model="formActivity.responsibleUserIds"
+          :items="members"
+          :item-title="(m) => m.user?.name ?? m.name"
+          :item-value="(m) => m.user?.id ?? m.id"
+          label="Responsáveis"
+          density="compact"
+          variant="outlined"
+          color="secondary"
+          multiple
+          chips
+          closable-chips
+          class="mt-3"
+          hide-details
+        />
+        <div v-if="activityInfo.attachments?.length" class="mt-3 mb-1">
+          <div style="font-size: 10px" class="text-primary-lighten mb-2">Anexos atuais</div>
+          <div class="d-flex flex-wrap ga-2">
+            <div v-for="att in activityInfo.attachments" :key="att.id" class="position-relative">
+              <a :href="att.url" target="_blank" style="text-decoration: none">
+                <v-img
+                  v-if="isImage(att.filename)"
+                  :src="att.url"
+                  width="100"
+                  height="100"
+                  cover
+                  rounded="lg"
+                  style="cursor: pointer"
+                />
+                <div
+                  v-else
+                  class="d-flex flex-column align-center justify-center rounded-lg"
+                  style="
+                    width: 100px;
+                    height: 100px;
+                    background: rgba(var(--v-theme-secondary), 0.08);
+                    cursor: pointer;
+                  "
+                >
+                  <v-icon size="32" color="secondary">mdi-file-outline</v-icon>
+                  <span
+                    style="
+                      font-size: 9px;
+                      color: var(--v-theme-secondary);
+                      text-align: center;
+                      padding: 0 4px;
+                      overflow: hidden;
+                      text-overflow: ellipsis;
+                      white-space: nowrap;
+                      max-width: 96px;
+                    "
+                    >{{ att.filename }}</span
+                  >
+                </div>
+              </a>
+              <v-btn
+                icon="mdi-close"
+                size="x-small"
+                color="error"
+                variant="flat"
+                style="position: absolute; top: -8px; right: -8px"
+                :loading="deletingAttachment === att.id"
+                @click.stop="deleteAttachment(att.id)"
+              />
+            </div>
+          </div>
+        </div>
+        <v-file-input
+          label="Adicionar anexo"
+          density="compact"
+          variant="outlined"
+          color="secondary"
+          prepend-icon=""
+          prepend-inner-icon="mdi-paperclip"
+          accept="*/*"
+          hide-details
+          class="mt-3"
+          @update:model-value="onActivityFileChange"
+        />
+      </v-card-text>
+
+      <v-divider />
+
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn
+          variant="text"
+          color="secondary"
+          class="text-none"
+          @click="showEditActivityModal = false"
+          >Cancelar</v-btn
+        >
+        <v-btn
+          variant="tonal"
+          color="Secundary"
+          class="text-none"
+          :disabled="!formActivity.title"
+          :loading="saving"
+          @click="updateActivity"
+          >Salvar</v-btn
+        >
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 
   <v-dialog v-model="showCreateSubtaskModal" max-width="500px">
     <v-card rounded="lg">
@@ -466,6 +863,18 @@ const formatDate = (date: string | null) => {
           class="mt-3"
           hide-details
         />
+        <v-file-input
+          label="Anexo"
+          density="compact"
+          variant="outlined"
+          color="secondary"
+          prepend-icon=""
+          prepend-inner-icon="mdi-paperclip"
+          accept="*/*"
+          hide-details
+          class="mt-3"
+          @update:model-value="onSubtaskFileChange"
+        />
       </v-card-text>
 
       <v-divider />
@@ -481,10 +890,11 @@ const formatDate = (date: string | null) => {
         >
         <v-btn
           variant="tonal"
-          color="primary"
+          color="Secundary"
           class="text-none"
           :disabled="!formSubtask.title"
           @click="createSubtask"
+          :loading="saving"
           >Criar</v-btn
         >
       </v-card-actions>
@@ -496,7 +906,9 @@ const formatDate = (date: string | null) => {
       <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
         <div class="d-flex align-center ga-3">
           <v-icon color="Secundary" size="20">mdi-checkbox-marked-circle-outline</v-icon>
-          <span class="text-subtitle-1 font-weight-bold text-secondary">{{ selectedSubtask.title }}</span>
+          <span class="text-subtitle-1 font-weight-bold text-secondary">{{
+            selectedSubtask.title
+          }}</span>
         </div>
         <div class="d-flex align-center ga-1">
           <v-btn
@@ -504,6 +916,14 @@ const formatDate = (date: string | null) => {
             variant="text"
             size="small"
             @click="editingSubtask = !editingSubtask"
+          />
+          <v-btn
+            icon="mdi-delete-outline"
+            variant="text"
+            size="small"
+            color="error"
+            :loading="deleting === selectedSubtask?.id"
+            @click="deleteSubtask(selectedSubtask)"
           />
           <v-btn icon="mdi-close" variant="text" size="small" @click="showSubtaskModal = false" />
         </div>
@@ -513,16 +933,64 @@ const formatDate = (date: string | null) => {
 
       <v-card-text class="pa-4">
         <template v-if="!editingSubtask">
-          <div class="mb-3">
-            <v-chip size="small" :color="getStatusConfig(selectedSubtask.status).color" variant="tonal">
+          <div class="d-flex ga-2 mb-3">
+            <v-chip
+              size="small"
+              :color="getStatusConfig(selectedSubtask.status).color"
+              variant="tonal"
+            >
               <v-icon size="14" start>{{ getStatusConfig(selectedSubtask.status).icon }}</v-icon>
               {{ getStatusConfig(selectedSubtask.status).label }}
+            </v-chip>
+            <v-chip size="small" variant="tonal" color="secondary">
+              <v-icon size="12" start>mdi-flag-outline</v-icon>
+              {{ selectedSubtask.priorityNumber }}
             </v-chip>
           </div>
 
           <div v-if="selectedSubtask.description" class="mb-4">
             <div style="font-size: 10px" class="text-primary-lighten mb-1">Descrição</div>
-            <div style="font-size: 12px" class="text-secondary" v-html="selectedSubtask.description" />
+            <div
+              style="font-size: 12px"
+              class="text-secondary"
+              v-html="selectedSubtask.description"
+            />
+          </div>
+
+          <div v-if="selectedSubtask.attachments?.length" class="mb-4">
+            <div style="font-size: 10px" class="text-primary-lighten mb-2">Anexos</div>
+            <div class="d-flex flex-wrap ga-2">
+              <div v-for="att in selectedSubtask.attachments" :key="att.id" class="position-relative">
+                <a :href="att.url" target="_blank" style="text-decoration: none">
+                  <v-img
+                    v-if="isImage(att.filename)"
+                    :src="att.url"
+                    width="100"
+                    height="100"
+                    cover
+                    rounded="lg"
+                    style="cursor: pointer"
+                  />
+                  <div
+                    v-else
+                    class="d-flex flex-column align-center justify-center rounded-lg"
+                    style="width: 100px; height: 100px; background: rgba(var(--v-theme-secondary), 0.08); cursor: pointer"
+                  >
+                    <v-icon size="32" color="secondary">mdi-file-outline</v-icon>
+                    <span style="font-size: 9px; color: var(--v-theme-secondary); text-align: center; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 96px">{{ att.filename }}</span>
+                  </div>
+                </a>
+                <v-btn
+                  icon="mdi-close"
+                  size="x-small"
+                  color="error"
+                  variant="flat"
+                  style="position: absolute; top: -8px; right: -8px"
+                  :loading="deletingAttachment === att.id"
+                  @click.stop="deleteAttachment(att.id)"
+                />
+              </div>
+            </div>
           </div>
 
           <v-row>
@@ -613,6 +1081,70 @@ const formatDate = (date: string | null) => {
             class="mt-3"
             hide-details
           />
+          <div v-if="selectedSubtask.attachments?.length" class="mt-3 mb-1">
+            <div style="font-size: 10px" class="text-primary-lighten mb-2">Anexos atuais</div>
+            <div class="d-flex flex-wrap ga-2">
+              <div v-for="att in selectedSubtask.attachments" :key="att.id" class="position-relative">
+                <a :href="att.url" target="_blank" style="text-decoration: none">
+                  <v-img
+                    v-if="isImage(att.filename)"
+                    :src="att.url"
+                    width="100"
+                    height="100"
+                    cover
+                    rounded="lg"
+                    style="cursor: pointer"
+                  />
+                  <div
+                    v-else
+                    class="d-flex flex-column align-center justify-center rounded-lg"
+                    style="
+                      width: 100px;
+                      height: 100px;
+                      background: rgba(var(--v-theme-secondary), 0.08);
+                      cursor: pointer;
+                    "
+                  >
+                    <v-icon size="32" color="secondary">mdi-file-outline</v-icon>
+                    <span
+                      style="
+                        font-size: 9px;
+                        color: var(--v-theme-secondary);
+                        text-align: center;
+                        padding: 0 4px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                        max-width: 96px;
+                      "
+                      >{{ att.filename }}</span
+                    >
+                  </div>
+                </a>
+                <v-btn
+                  icon="mdi-close"
+                  size="x-small"
+                  color="error"
+                  variant="flat"
+                  style="position: absolute; top: -8px; right: -8px"
+                  :loading="deletingAttachment === att.id"
+                  @click.stop="deleteAttachment(att.id)"
+                />
+              </div>
+            </div>
+          </div>
+          <v-file-input
+            label="Adicionar anexo"
+            density="compact"
+            variant="outlined"
+            color="secondary"
+            prepend-icon=""
+            prepend-inner-icon="mdi-paperclip"
+            accept="*/*"
+            hide-details
+            class="mt-3"
+            @update:model-value="onSubtaskFileChange"
+          />
         </template>
       </v-card-text>
 
@@ -621,10 +1153,27 @@ const formatDate = (date: string | null) => {
       <v-card-actions class="pa-4">
         <v-spacer />
         <template v-if="editingSubtask">
-          <v-btn variant="text" color="secondary" class="text-none" @click="editingSubtask = false">Cancelar</v-btn>
-          <v-btn variant="tonal" color="primary" class="text-none" :disabled="!formSubtask.title" @click="updateSubtask">Salvar</v-btn>
+          <v-btn variant="text" color="secondary" class="text-none" @click="editingSubtask = false"
+            >Cancelar</v-btn
+          >
+          <v-btn
+            variant="tonal"
+            color="Secundary"
+            class="text-none"
+            :disabled="!formSubtask.title"
+            :loading="saving"
+            @click="updateSubtask"
+            >Salvar</v-btn
+          >
         </template>
-        <v-btn v-else variant="tonal" color="secondary" class="text-none" @click="showSubtaskModal = false">Fechar</v-btn>
+        <v-btn
+          v-else
+          variant="tonal"
+          color="secondary"
+          class="text-none"
+          @click="showSubtaskModal = false"
+          >Fechar</v-btn
+        >
       </v-card-actions>
     </v-card>
   </v-dialog>

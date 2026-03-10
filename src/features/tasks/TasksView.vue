@@ -13,6 +13,7 @@ import backlogService from '@/service/backlog/backlog-service'
 const route = useRoute()
 const router = useRouter()
 const { activities, companies, statusHistory, updateActivityStatus } = useTasks()
+const loading = ref(true)
 const dialog = ref(false)
 const selectedUser = ref<string>('')
 const currentTab = ref('kanban')
@@ -24,6 +25,7 @@ const formActivity = ref<any>({
   priorityNumber: 0,
   dueDate: '',
   assignees: [],
+  attachment: null,
 })
 const tasks = ref<any>({
   TODO: [],
@@ -71,7 +73,14 @@ const createActivity = async () => {
       responsibleUserIds: formActivity.value.assignees || [],
     }
 
-    await activityService.postActivity(payload)
+    const created = await activityService.postActivity(payload)
+
+    if (formActivity.value.attachment) {
+      const fd = new FormData()
+      fd.append('file', formActivity.value.attachment)
+      await activityService.postActivityAttachment(created.id, fd)
+    }
+
     await findTaskas()
 
     formActivity.value = {
@@ -80,6 +89,7 @@ const createActivity = async () => {
       priorityNumber: 0,
       dueDate: '',
       assignees: [],
+      attachment: null,
     }
     dialog.value = false
   } catch (error) {
@@ -120,10 +130,8 @@ const findMonthData = async () => {
 }
 
 onMounted(async () => {
-  await findMonthData()
-  await findTaskas()
-  await findMembers()
-  findBackLog()
+  await Promise.all([findMonthData(), findTaskas(), findMembers(), findBackLog()])
+  loading.value = false
 })
 
 watch(
@@ -187,6 +195,30 @@ const handleUpdateStatus = async (taskId: string, apiStatus: string) => {
   }
 }
 
+const deleting = ref<string | null>(null)
+const confirmDelete = ref(false)
+const taskToDelete = ref<any>(null)
+
+const openDeleteConfirm = (task: any) => {
+  taskToDelete.value = task
+  confirmDelete.value = true
+}
+
+const deleteTask = async () => {
+  if (!taskToDelete.value) return
+  deleting.value = taskToDelete.value.id
+  try {
+    await activityService.deleteActivity(taskToDelete.value.id)
+    await findTaskas()
+    confirmDelete.value = false
+  } catch (error) {
+    console.error('Erro ao deletar atividade:', error)
+  } finally {
+    deleting.value = null
+    taskToDelete.value = null
+  }
+}
+
 const openDetails = (activity: Activity) => {
   router.push(`/tasks/${currentMonthId.value}/${activity.id}`)
 }
@@ -225,7 +257,11 @@ const formatDate = (date: string) => {
 </script>
 
 <template>
-  <v-container fluid class="pa-4 bg-background">
+  <v-container v-if="loading" fluid class="pa-4 bg-background d-flex align-center justify-center" style="min-height: 60vh">
+    <v-progress-circular indeterminate color="secondary" size="48" />
+  </v-container>
+
+  <v-container v-else fluid class="pa-4 bg-background">
     <v-sheet color="transparent" class="mb-4">
       <div class="d-flex justify-space-between align-center mb-4">
         <div>
@@ -305,7 +341,22 @@ const formatDate = (date: string) => {
       :selected-user="selectedUser"
       @update-status="handleUpdateStatus"
       @open-details="openDetails"
+      @delete-task="openDeleteConfirm"
     />
+
+    <v-dialog v-model="confirmDelete" max-width="360">
+      <v-card color="primary" rounded="lg">
+        <v-card-title class="pa-4 text-secondary" style="font-size: 14px">Excluir atividade</v-card-title>
+        <v-card-text class="text-secondary" style="font-size: 13px">
+          Tem certeza que deseja excluir <strong>{{ taskToDelete?.title }}</strong>?
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn size="small" variant="text" @click="confirmDelete = false">Cancelar</v-btn>
+          <v-btn size="small" color="error" variant="tonal" :loading="!!deleting" @click="deleteTask">Excluir</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <v-card
       v-show="currentTab === 'backlog'"

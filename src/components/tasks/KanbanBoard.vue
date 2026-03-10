@@ -12,6 +12,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   'update-status': [taskId: string, status: string]
   'open-details': [task: Activity]
+  'delete-task': [task: any]
 }>()
 
 const columns = [
@@ -117,11 +118,18 @@ const onAdd = (evt: any, apiStatus: string) => {
   if (taskId) emit('update-status', taskId, apiStatus)
 }
 
+const getImageAttachment = (task: any) =>
+  task.attachments?.find((a: any) => /\.(jpg|jpeg|png|gif|webp)$/i.test(a.filename))?.url ?? null
+
 const onStart = () => {
   isDragging.value = true
 }
 const onEnd = () => {
   isDragging.value = false
+}
+
+const openDeleteConfirm = (task: any) => {
+  emit('delete-task', task)
 }
 </script>
 
@@ -161,9 +169,17 @@ const onEnd = () => {
             color="primary"
             elevation="1"
             rounded="lg"
-            class="mb-2 pa-3 activity-card"
+            class="mb-2 activity-card"
             @click="emit('open-details', task)"
           >
+            <v-img
+              v-if="getImageAttachment(task)"
+              :src="getImageAttachment(task)"
+              height="120"
+              cover
+              rounded="t-lg"
+            />
+            <div class="pa-3">
             <div class="mb-3">
               <div class="d-flex justify-space-between align-center mb-1">
                 <div
@@ -172,6 +188,16 @@ const onEnd = () => {
                 >
                   {{ task.title }}
                 </div>
+                <div class="d-flex align-center ga-1">
+                <v-btn
+                  icon
+                  size="x-small"
+                  variant="text"
+                  color="error"
+                  @click.stop="openDeleteConfirm(task)"
+                >
+                  <v-icon size="14">mdi-delete-outline</v-icon>
+                </v-btn>
                 <v-chip
                   v-if="task.priorityNumber !== undefined"
                   size="x-small"
@@ -179,18 +205,12 @@ const onEnd = () => {
                     backgroundColor: getPriorityColor(task.priorityNumber) + '20',
                     color: getPriorityColor(task.priorityNumber),
                   }"
-                  class="font-weight-bold ml-2"
+                  class="font-weight-bold"
                   style="flex-shrink: 0"
                 >
                   P{{ task.priorityNumber }}
                 </v-chip>
-              </div>
-              <div
-                v-if="task.description"
-                style="font-size: 11px"
-                class="text-primary-lighten mb-2 text-limit"
-              >
-                {{ task.description }}
+                </div>
               </div>
             </div>
 
@@ -245,6 +265,7 @@ const onEnd = () => {
                   >
                 </v-avatar>
               </div>
+            </div>
             </div>
           </v-card>
         </VueDraggable>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useTasks } from '@/features/tasks/useTasks'
 import type { SubTask } from '@/core/types'
 
@@ -11,6 +11,18 @@ const form = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value)
 })
+
+const attachmentError = ref('')
+
+const onFileChange = (file: File | null) => {
+  attachmentError.value = ''
+  if (file && file.size > 10 * 1024 * 1024) {
+    attachmentError.value = 'O arquivo deve ter menos de 10MB'
+    emit('update:modelValue', { ...props.modelValue, attachment: null })
+    return
+  }
+  emit('update:modelValue', { ...props.modelValue, attachment: file ?? null })
+}
 
 const valid = computed(() => !!form.value?.title?.trim())
 
@@ -71,6 +83,22 @@ const submit = () => {
           chips
           closable-chips
           class="mt-3"
+        />
+
+        <v-file-input
+          label="Anexos"
+          variant="outlined"
+          rounded="lg"
+          color="secondary"
+          bg-color="primary"
+          density="compact"
+          prepend-inner-icon="mdi-paperclip"
+          prepend-icon=""
+          accept="*/*"
+          hide-details
+          :error-messages="attachmentError"
+          class="mt-3"
+          @update:model-value="onFileChange"
         />
 
         <div class="d-flex ga-3 mt-3">

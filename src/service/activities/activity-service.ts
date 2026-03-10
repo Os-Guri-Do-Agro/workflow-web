@@ -70,6 +70,49 @@ class activityService {
       'Erro ao atualizar atividade',
     )
   }
+
+  deleteActivity(id: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    return this.handleRequest(
+      api.delete(`/activity/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-company-id': companyId,
+        },
+      }),
+      'Erro ao deletar atividade',
+    )
+  }
+
+  postActivityAttachment(id: string, data: FormData): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    return this.handleRequest(
+      api.post(`/activity/${id}/attachment`, data, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-company-id': companyId,
+          'Content-Type': 'multipart/form-data',
+        },
+      }),
+      'Erro ao fazer upload do anexo',
+    )
+  }
+
+  deleteAttachment(attachmentId: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    return this.handleRequest(
+      api.delete(`/activity/attachment/${attachmentId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-company-id': companyId,
+        },
+      }),
+      'Erro ao deletar anexo',
+    )
+  }
 }
 
 export default new activityService()
