@@ -1,48 +1,170 @@
 <script setup lang="ts">
 import OverviewChart from '@/components/dashboard/OverviewChart.vue'
-import { getUserToken } from '@/utils/authContent'
+import dashboardService from '@/service/dashboard/dashboard-service'
+import companiesServices from '@/service/companies/companies-services'
+import { ref, onMounted, computed } from 'vue'
+import backlogService from '@/service/backlog/backlog-service'
 
-const stats = [
-  {
-    title: 'Projetos',
-    value: '12',
-    icon: 'mdi-folder-outline',
-    color: '#3B82F6',
-    trend: '+12%',
-    progress: 75,
-  },
-  {
-    title: 'Concluídas',
-    value: '48',
-    icon: 'mdi-check-circle-outline',
-    color: '#10B981',
-    trend: '+8%',
-    progress: 85,
-  },
-  {
-    title: 'Em Progresso',
-    value: '23',
-    icon: 'mdi-progress-clock',
-    color: '#F59E0B',
-    trend: '+5%',
-    progress: 60,
-  },
-  {
-    title: 'Equipe',
-    value: '8',
-    icon: 'mdi-account-group-outline',
-    color: '#8B5CF6',
-    trend: '+2',
-    progress: 90,
-  },
+const metrics = ref<any>(null)
+const backlog = ref<any[]>([])
+const showCompanyModal = ref(false)
+const showUserModal = ref(false)
+const loadingCompany = ref(false)
+const loadingUser = ref(false)
+const successCompany = ref(false)
+const successUser = ref(false)
+
+const companyForm = ref({
+  name: '',
+  cnpj: '',
+})
+
+const userForm = ref({
+  name: '',
+  email: '',
+  password: '',
+  companyId: '',
+  role: 'CLIENT',
+})
+
+const roles = [
+  { title: 'Cliente', value: 'CLIENT' },
+  { title: 'Colaborador', value: 'WORKER' },
 ]
 
-const recentActivities = [
-  { title: 'Reunião com cliente', company: 'Tech Corp', time: 'Há 2 horas', status: 'done' },
-  { title: 'Revisão de código', company: 'StartupXYZ', time: 'Há 4 horas', status: 'in-progress' },
-  { title: 'Deploy em produção', company: 'Enterprise Ltd', time: 'Há 6 horas', status: 'testing' },
-  { title: 'Planejamento Sprint', company: 'Tech Corp', time: 'Há 1 dia', status: 'todo' },
+const mockCompanies = [
+  { title: 'Empresa A', value: '1' },
+  { title: 'Empresa B', value: '2' },
+  { title: 'Empresa C', value: '3' },
 ]
+
+const findMetrics = async () => {
+  const companyId = localStorage.getItem('activeCompany')
+  if (!companyId) return
+  try {
+    const res = await dashboardService.getCompanyMetrics(companyId)
+    metrics.value = res
+  } catch (e) {
+    console.error('Erro ao buscar métricas:', e)
+  }
+}
+
+const findBacklog = async () => {
+  const companyId = localStorage.getItem('activeCompany')
+  if (!companyId) return
+  try {
+    const response = await backlogService.getBacklogByCompany(companyId)
+    backlog.value = response
+  } catch (e) {
+    console.error('Erro ao buscar backlog:', e)
+  }
+}
+
+const createCompany = async () => {
+  loadingCompany.value = true
+  try {
+    await companiesServices.postCompany(companyForm.value)
+    successCompany.value = true
+    setTimeout(() => {
+      companyForm.value = { name: '', cnpj: '' }
+      successCompany.value = false
+      showCompanyModal.value = false
+    }, 2000)
+  } catch (error) {
+    console.error('Erro ao criar empresa:', error)
+  } finally {
+    loadingCompany.value = false
+  }
+}
+
+const createUser = async () => {
+  loadingUser.value = true
+  try {
+    await companiesServices.postUserCompany(userForm.value.companyId, {
+      name: userForm.value.name,
+      email: userForm.value.email,
+      password: userForm.value.password,
+      role: userForm.value.role,
+    })
+    successUser.value = true
+    setTimeout(() => {
+      userForm.value = { name: '', email: '', password: '', companyId: '', role: 'CLIENT' }
+      successUser.value = false
+      showUserModal.value = false
+    }, 2000)
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error)
+  } finally {
+    loadingUser.value = false
+  }
+}
+
+const ensureActiveCompany = async () => {
+  if (!localStorage.getItem('activeCompany')) {
+    try {
+      const response = await companiesServices.getCompany()
+      const companies = Array.isArray(response) ? response : response?.data || []
+      if (companies.length > 0) {
+        const firstCompanyId = companies[0]?.company?.id || companies[0]?.id
+        if (firstCompanyId) {
+          localStorage.setItem('activeCompany', firstCompanyId)
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao buscar empresas:', e)
+    }
+  }
+}
+
+onMounted(async () => {
+  await ensureActiveCompany()
+  await findMetrics()
+  await findBacklog()
+})
+
+const stats = computed(() => {
+  if (!metrics.value?.metrics) return []
+  const m = metrics.value.metrics
+  return [
+    {
+      title: 'Total',
+      value: m.total?.toString() || '0',
+      icon: 'mdi-folder-outline',
+      color: '#3B82F6',
+      trend: `${m.progress || 0}%`,
+    },
+    {
+      title: 'Concluídas',
+      value: m.status?.completed?.toString() || '0',
+      icon: 'mdi-check-circle-outline',
+      color: '#10B981',
+      trend: `${Math.round((m.status?.completed / m.total) * 100) || 0}%`,
+    },
+    {
+      title: 'Em Progresso',
+      value: m.status?.inProgress?.toString() || '0',
+      icon: 'mdi-progress-clock',
+      color: '#F59E0B',
+      trend: `${Math.round((m.status?.inProgress / m.total) * 100) || 0}%`,
+    },
+    {
+      title: 'Atrasadas',
+      value: m.time?.overdue?.toString() || '0',
+      icon: 'mdi-alert-circle-outline',
+      color: '#EF4444',
+      trend: `${m.time?.dueThisWeek || 0} esta semana`,
+    },
+  ]
+})
+
+const recentActivities = computed(() => {
+  return backlog.value.slice(0, 10).map((item) => ({
+    title: item.activityTitle,
+    company: item.changedBy?.name || 'Sem responsável',
+    time: new Date(item.changedAt).toLocaleString('pt-BR'),
+    status: item.newStatus?.toLowerCase().replace('_', '-') || 'todo',
+  }))
+})
 
 const projects = [
   { name: 'Website Corporate', progress: 75, team: 4, status: 'in-progress' },
@@ -56,6 +178,7 @@ const statusConfig: Record<string, { color: string; label: string }> = {
   'in-progress': { color: '#F59E0B', label: 'Em Andamento' },
   testing: { color: '#8B5CF6', label: 'Em Teste' },
   done: { color: '#10B981', label: 'Concluído' },
+  completed: { color: '#10B981', label: 'Concluído' },
   planning: { color: '#3B82F6', label: 'Planejamento' },
   review: { color: '#8B5CF6', label: 'Em Revisão' },
 }
@@ -70,10 +193,22 @@ const handleProjectClick = (projectName: string) => {
   <div style="overflow-x: auto">
     <v-container fluid class="pa-4 bg-background" style="min-width: 800px">
       <v-sheet color="transparent" class="mb-4">
-        <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">Dashboard</h1>
-        <div class="d-flex align-center" style="font-size: 11px; color: var(--v-primary-lighten)">
-          <v-icon size="11" class="mr-1">mdi-view-dashboard-outline</v-icon>
-          Visão geral do sistema
+        <div class="d-flex align-center justify-space-between">
+          <div>
+            <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">Dashboard</h1>
+            <div class="d-flex align-center" style="font-size: 11px; color: var(--v-primary-lighten)">
+              <v-icon size="11" class="mr-1">mdi-view-dashboard-outline</v-icon>
+              Visão geral do sistema
+            </div>
+          </div>
+          <div class="d-flex ga-2">
+            <v-btn color="secondary" size="small" prepend-icon="mdi-office-building" @click="showCompanyModal = true">
+              Nova Empresa
+            </v-btn>
+            <v-btn color="secondary" size="small" prepend-icon="mdi-account-plus" @click="showUserModal = true">
+              Novo Usuário
+            </v-btn>
+          </div>
         </div>
       </v-sheet>
 
@@ -126,8 +261,13 @@ const handleProjectClick = (projectName: string) => {
                 >Atividades Recentes</span
               >
             </v-card-title>
-            <v-card-text class="pa-2">
+            <v-card-text class="pa-2" style="max-height: 400px; overflow-y: auto">
+              <div v-if="recentActivities.length === 0" class="d-flex flex-column align-center justify-center pa-8">
+                <v-icon size="48" color="primary-lighten" class="mb-3">mdi-inbox-outline</v-icon>
+                <span style="font-size: 12px" class="text-primary-lighten font-weight-medium">Nenhuma atividade recente</span>
+              </div>
               <v-card
+                v-else
                 v-for="(activity, idx) in recentActivities"
                 :key="idx"
                 color="surface"
@@ -190,7 +330,7 @@ const handleProjectClick = (projectName: string) => {
               >
             </v-card-title>
             <v-card-text class="pa-4">
-              <OverviewChart />
+              <OverviewChart :metrics="metrics?.metrics" />
             </v-card-text>
           </v-card>
         </v-col>
@@ -273,6 +413,106 @@ const handleProjectClick = (projectName: string) => {
         </div>
       </div>
     </v-container>
+
+    <v-dialog v-model="showCompanyModal" max-width="700">
+      <v-card rounded="lg">
+        <v-card-title class="bg-primary text-secondary pa-4">
+          <v-icon start>mdi-office-building</v-icon>
+          Cadastrar Empresa
+        </v-card-title>
+        <v-card-text class="pa-6">
+          <v-form @submit.prevent="createCompany">
+            <v-text-field
+              v-model="companyForm.name"
+              label="Nome da Empresa"
+              prepend-inner-icon="mdi-domain"
+              variant="outlined"
+              required
+              class="mb-4"
+            />
+            <v-text-field
+              v-model="companyForm.cnpj"
+              label="CNPJ"
+              prepend-inner-icon="mdi-card-account-details"
+              variant="outlined"
+              required
+            />
+          </v-form>
+          <v-alert v-if="successCompany" type="success" class="mt-4">
+            Empresa cadastrada com sucesso!
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="showCompanyModal = false">Cancelar</v-btn>
+          <v-btn color="secondary" :loading="loadingCompany" @click="createCompany">Cadastrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showUserModal" max-width="700">
+      <v-card rounded="lg">
+        <v-card-title class="bg-primary text-secondary pa-4">
+          <v-icon start>mdi-account-plus</v-icon>
+          Cadastrar Usuário
+        </v-card-title>
+        <v-card-text class="pa-6">
+          <v-form @submit.prevent="createUser">
+            <v-text-field
+              v-model="userForm.name"
+              label="Nome"
+              prepend-inner-icon="mdi-account"
+              variant="outlined"
+              required
+              class="mb-4"
+            />
+            <v-text-field
+              v-model="userForm.email"
+              label="Email"
+              type="email"
+              prepend-inner-icon="mdi-email"
+              variant="outlined"
+              required
+              class="mb-4"
+            />
+            <v-text-field
+              v-model="userForm.password"
+              label="Senha"
+              type="password"
+              prepend-inner-icon="mdi-lock"
+              variant="outlined"
+              required
+              class="mb-4"
+            />
+            <v-select
+              v-model="userForm.companyId"
+              :items="mockCompanies"
+              label="Empresa"
+              prepend-inner-icon="mdi-office-building"
+              variant="outlined"
+              required
+              class="mb-4"
+            />
+            <v-select
+              v-model="userForm.role"
+              :items="roles"
+              label="Função"
+              prepend-inner-icon="mdi-shield-account"
+              variant="outlined"
+              required
+            />
+          </v-form>
+          <v-alert v-if="successUser" type="success" class="mt-4">
+            Usuário cadastrado com sucesso!
+          </v-alert>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="showUserModal = false">Cancelar</v-btn>
+          <v-btn color="secondary" :loading="loadingUser" @click="createUser">Cadastrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 

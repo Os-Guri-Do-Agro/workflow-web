@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
 
-const option = ref({
+const props = defineProps<{
+  metrics?: any
+}>()
+
+const option = computed(() => ({
   tooltip: {
     trigger: 'item',
   },
@@ -13,11 +17,11 @@ const option = ref({
   },
   series: [
     {
-      name: 'Access From',
+      name: 'Status',
       type: 'pie',
       radius: ['40%', '70%'],
       avoidLabelOverlap: false,
-      padAngle: 5,
+      padAngle: 1,
       itemStyle: {
         borderRadius: 5,
       },
@@ -36,14 +40,14 @@ const option = ref({
         show: false,
       },
       data: [
-        { value: 12, name: 'Gustavo' },
-        { value: 12, name: 'Nicolas' },
-        { value: 10, name: 'Marcel' },
-        { value: 9, name: 'Letícia' },
+        { value: props.metrics?.status?.todo || 0, name: 'A Fazer' },
+        { value: props.metrics?.status?.inProgress || 0, name: 'Em Andamento' },
+        { value: props.metrics?.status?.inTesting || 0, name: 'Em Teste' },
+        { value: props.metrics?.status?.completed || 0, name: 'Concluída' },
       ],
     },
   ],
-})
+}))
 </script>
 
 <template>

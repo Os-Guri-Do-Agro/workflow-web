@@ -79,11 +79,18 @@ const switchCompany = (company: Company) => {
   localStorage.setItem('activeCompany', company.id)
   showCompanyModal.value = false
   router.push('/dashboard')
+
+  setTimeout(() => {
+    window.location.reload()
+  }, 200)
   findQuaters()
 }
 
 const menuItems = computed(() => {
-  const items: MenuItem[] = [{ title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/' }]
+  const items: MenuItem[] = [
+    { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/' },
+    { title: 'Variáveis', icon: 'mdi-note-text', to: '/variables' },
+  ]
 
   if (quaters.value?.length > 0) {
     const quarterIcons = [

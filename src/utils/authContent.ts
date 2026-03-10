@@ -1,5 +1,13 @@
 import { jwtDecode } from 'jwt-decode'
 
+interface DecodedToken {
+  sub: string
+  name: string
+  email: string
+  iat: number
+  exp: number
+}
+
 export function getUserToken() {
   const token = localStorage.getItem('token')
 
@@ -8,9 +16,7 @@ export function getUserToken() {
     return null
   }
 
-  const tokenDecoded = jwtDecode(token)
-
-  console.log('token decodificado: ', tokenDecoded)
+  const tokenDecoded = jwtDecode<DecodedToken>(token)
 
   return tokenDecoded
 }

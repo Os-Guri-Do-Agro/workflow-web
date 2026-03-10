@@ -2,6 +2,7 @@
 import { useTheme } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, ref } from 'vue'
+import { getUserToken } from '@/utils/authContent'
 
 defineProps<{
   drawer: boolean
@@ -16,6 +17,19 @@ const route = useRoute()
 const router = useRouter()
 const userMenu = ref(false)
 const temaSalvo = localStorage.getItem('theme')
+const user = getUserToken()
+
+const userInitials = computed(() => {
+  const name = user?.name || ''
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+})
+
+const firstName = computed(() => user?.name?.split(' ')[0] || '')
 
 const toggleTheme = () => {
   theme.global.name.value = theme.global.name.value === 'light' ? 'dark' : 'light'
@@ -34,7 +48,7 @@ const pageTitle = computed(() => {
     '/tasks': 'Tarefas',
     '/settings': 'Configurações',
   }
-  return titles[route.path] || 'WorkFlow'
+  return titles[route.path] || 'Stack Roads'
 })
 
 const breadcrumbs = computed(() => {
@@ -106,16 +120,18 @@ const breadcrumbs = computed(() => {
 
     <v-menu v-model="userMenu" :close-on-content-click="false" location="bottom end">
       <template v-slot:activator="{ props }">
-        <v-btn icon variant="text" v-bind="props">
+        <v-btn variant="text" v-bind="props" class="d-flex align-center ga-2">
           <v-avatar size="30" color="secondary">
-            <span style="font-size: 11px" class="font-weight-bold text-primary">JD</span>
+            <span style="font-size: 11px" class="font-weight-bold text-primary">{{
+              userInitials
+            }}</span>
           </v-avatar>
+          <span class="text-secondary ml-1">{{ firstName }}</span>
         </v-btn>
       </template>
 
       <v-card min-width="200">
         <v-list>
-          <!-- <v-list-item prepend-icon="mdi-account" title="Perfil" @click="router.push('/profile')" /> -->
           <v-list-item
             prepend-icon="mdi-cog"
             title="Configurações"

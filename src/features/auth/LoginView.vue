@@ -8,6 +8,8 @@ const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
+const snackbar = ref(false)
+const errorMessage = ref('')
 
 const login = async () => {
   loading.value = true
@@ -21,8 +23,9 @@ const login = async () => {
       localStorage.setItem('token', response.accessToken)
     }
     router.push('/dashboard')
-  } catch (error) {
-    console.error('Login failed:', error)
+  } catch (error: any) {
+    errorMessage.value = error.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.'
+    snackbar.value = true
   } finally {
     loading.value = false
   }
@@ -115,7 +118,7 @@ onMounted(() => {
         <div class="icon-wrapper mb-8">
           <v-icon size="85" color="white" class="floating-icon">mdi-clipboard-check-outline</v-icon>
         </div>
-        <h2 style="font-size: 34px" class="font-weight-bold mb-6 text-white">Work Flow</h2>
+        <h2 style="font-size: 34px" class="font-weight-bold mb-6 text-white">Stack Roads</h2>
         <p
           class="font-weight-regular mb-8 text-grey-lighten-1"
           style="font-size: 19px; max-width: 500px; margin: 0 auto"
@@ -141,6 +144,10 @@ onMounted(() => {
       <div class="gradient-overlay"></div>
     </v-col>
   </v-row>
+
+  <v-snackbar v-model="snackbar" color="error" :timeout="3000">
+    {{ errorMessage }}
+  </v-snackbar>
 </template>
 
 <style scoped>
