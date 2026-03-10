@@ -42,6 +42,34 @@ class activityService {
       'Erro ao criar atividade',
     )
   }
+
+  getActivityById(id: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    return this.handleRequest(
+      api.get(`/activity/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-company-id': companyId,
+        },
+      }),
+      'Erro ao buscar atividade',
+    )
+  }
+
+  patchActivity(id: string, data: any): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    return this.handleRequest(
+      api.patch(`/activity/${id}`, data, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-company-id': companyId,
+        },
+      }),
+      'Erro ao atualizar atividade',
+    )
+  }
 }
 
 export default new activityService()

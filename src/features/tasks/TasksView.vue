@@ -8,6 +8,7 @@ import type { Activity } from '@/core/types'
 import quartersService from '@/service/quarters/quarters-service'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
+import backlogService from '@/service/backlog/backlog-service'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,6 +17,7 @@ const dialog = ref(false)
 const selectedUser = ref<string>('')
 const currentTab = ref('kanban')
 const members = ref<any[]>([])
+const backLog = ref<any[]>([])
 const formActivity = ref<any>({
   title: '',
   description: '',
@@ -29,6 +31,17 @@ const tasks = ref<any>({
   IN_TESTING: [],
   DONE: [],
 })
+
+const findBackLog = async () => {
+  const companyId = localStorage.getItem('activeCompany')
+  if (!companyId) return
+  try {
+    const response = await backlogService.getBacklogByCompany(companyId)
+    backLog.value = response
+  } catch (error) {
+    console.error('Erro ao buscar backlog:', error)
+  }
+}
 
 const findMembers = async () => {
   const id = localStorage.getItem('activeCompany')
@@ -51,9 +64,11 @@ const createActivity = async () => {
       title: formActivity.value.title,
       description: formActivity.value.description || '',
       priorityNumber: Number(formActivity.value.priorityNumber) || 0,
-      dueDate: formActivity.value.dueDate ? new Date(formActivity.value.dueDate).toISOString() : new Date().toISOString(),
+      dueDate: formActivity.value.dueDate
+        ? new Date(formActivity.value.dueDate).toISOString()
+        : new Date().toISOString(),
       monthId,
-      responsibleUserIds: formActivity.value.assignees || []
+      responsibleUserIds: formActivity.value.assignees || [],
     }
 
     await activityService.postActivity(payload)
@@ -108,6 +123,7 @@ onMounted(async () => {
   await findMonthData()
   await findTaskas()
   await findMembers()
+  findBackLog()
 })
 
 watch(
@@ -178,14 +194,21 @@ const openDetails = (activity: Activity) => {
 const monthName = computed(() => currentMonthData.value?.name || 'Carregando...')
 
 const statusLabels: Record<string, string> = {
-  todo: 'A Fazer',
-  'in-progress': 'Em Progresso',
-  testing: 'Em Teste',
-  done: 'Concluído',
+  TODO: 'A Fazer',
+  IN_PROGRESS: 'Em Progresso',
+  IN_TESTING: 'Em Teste',
+  DONE: 'Concluído',
+}
+
+const statusColors: Record<string, string> = {
+  TODO: '#3B82F6',
+  IN_PROGRESS: '#F59E0B',
+  IN_TESTING: '#8B5CF6',
+  DONE: '#10B981',
 }
 
 const sortedHistory = computed(() => {
-  return [...statusHistory.value].sort(
+  return [...backLog.value].sort(
     (a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime(),
   )
 })
@@ -308,13 +331,21 @@ const formatDate = (date: string) => {
               {{ entry.activityTitle }}
             </div>
             <div style="font-size: 11px" class="text-primary-lighten">
-              <span class="font-weight-medium">{{ entry.changedBy }}</span>
+              <span class="font-weight-medium">{{ entry.changedBy?.name }}</span>
               alterou de
-              <v-chip size="x-small" class="mx-1">{{
-                entry.fromStatus ? statusLabels[entry.fromStatus] : 'Novo'
-              }}</v-chip>
+              <v-chip
+                v-if="entry.previousStatus"
+                size="x-small"
+                class="mx-1"
+                :style="{ backgroundColor: statusColors[entry.previousStatus] + '20', color: statusColors[entry.previousStatus] }"
+              >{{ statusLabels[entry.previousStatus] }}</v-chip>
+              <span v-else class="mx-1">Novo</span>
               para
-              <v-chip size="x-small" class="mx-1">{{ statusLabels[entry.toStatus] }}</v-chip>
+              <v-chip
+                size="x-small"
+                class="mx-1"
+                :style="{ backgroundColor: statusColors[entry.newStatus] + '20', color: statusColors[entry.newStatus] }"
+              >{{ statusLabels[entry.newStatus] }}</v-chip>
             </div>
           </v-card>
         </v-timeline-item>

@@ -52,6 +52,18 @@ class quarterService {
       'Erro ao atualizar atividade',
     )
   }
+
+  getCompanyRoadMap(companyId: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get(`/company/${companyId}/roadmap`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao buscar roadmap',
+    )
+  }
 }
 
 export default new quarterService()
