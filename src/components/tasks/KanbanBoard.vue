@@ -15,10 +15,34 @@ const emit = defineEmits<{
 }>()
 
 const columns = [
-  { status: 'todo', apiStatus: 'TODO', title: 'A Fazer', color: '#3B82F6', icon: 'mdi-clipboard-text-outline' },
-  { status: 'in-progress', apiStatus: 'IN_PROGRESS', title: 'Em Andamento', color: '#F59E0B', icon: 'mdi-progress-clock' },
-  { status: 'testing', apiStatus: 'IN_TESTING', title: 'Em Teste', color: '#8B5CF6', icon: 'mdi-flask-outline' },
-  { status: 'done', apiStatus: 'DONE', title: 'Concluído', color: '#10B981', icon: 'mdi-check-circle-outline' },
+  {
+    status: 'todo',
+    apiStatus: 'TODO',
+    title: 'A Fazer',
+    color: '#3B82F6',
+    icon: 'mdi-clipboard-text-outline',
+  },
+  {
+    status: 'in-progress',
+    apiStatus: 'IN_PROGRESS',
+    title: 'Em Andamento',
+    color: '#F59E0B',
+    icon: 'mdi-progress-clock',
+  },
+  {
+    status: 'testing',
+    apiStatus: 'IN_TESTING',
+    title: 'Em Teste',
+    color: '#8B5CF6',
+    icon: 'mdi-flask-outline',
+  },
+  {
+    status: 'done',
+    apiStatus: 'DONE',
+    title: 'Concluído',
+    color: '#10B981',
+    icon: 'mdi-check-circle-outline',
+  },
 ]
 
 const isDragging = ref(false)
@@ -32,7 +56,7 @@ const filteredTasks = computed(() => {
     let filtered = taskList || []
     if (props.selectedUser) {
       filtered = filtered.filter((task: any) =>
-        task.responsibles?.some((r: any) => r.user.name === props.selectedUser)
+        task.responsibles?.some((r: any) => r.user.name === props.selectedUser),
       )
     }
     result[key] = filtered
@@ -40,27 +64,50 @@ const filteredTasks = computed(() => {
   return result
 })
 
-watch([filteredTasks], () => {
-  if (!isDragging.value) {
-    columns.forEach((col) => {
-      columnActivities.value[col.status] = filteredTasks.value[col.apiStatus] || []
-    })
-  }
-}, { immediate: true, deep: true })
+watch(
+  [filteredTasks],
+  () => {
+    if (!isDragging.value) {
+      columns.forEach((col) => {
+        columnActivities.value[col.status] = filteredTasks.value[col.apiStatus] || []
+      })
+    }
+  },
+  { immediate: true, deep: true },
+)
 
 const getUserInitials = (name: string) => {
-  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
 }
 
 const getUserColor = (name: string) => {
-  const colors = ['#1976D2', '#388E3C', '#D32F2F', '#7B1FA2', '#F57C00', '#0097A7', '#C2185B', '#5D4037']
+  const colors = [
+    '#1976D2',
+    '#388E3C',
+    '#D32F2F',
+    '#7B1FA2',
+    '#F57C00',
+    '#0097A7',
+    '#C2185B',
+    '#5D4037',
+  ]
   const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
   return colors[index]
 }
 
 const getPriorityColor = (priority: number) => {
   const colors: Record<number, string> = {
-    0: '#10B981', 1: '#3B82F6', 2: '#F59E0B', 3: '#EF4444', 4: '#DC2626', 5: '#991B1B'
+    0: '#10B981',
+    1: '#3B82F6',
+    2: '#F59E0B',
+    3: '#EF4444',
+    4: '#DC2626',
+    5: '#991B1B',
   }
   return colors[priority] || '#6B7280'
 }
@@ -70,8 +117,12 @@ const onAdd = (evt: any, apiStatus: string) => {
   if (taskId) emit('update-status', taskId, apiStatus)
 }
 
-const onStart = () => { isDragging.value = true }
-const onEnd = () => { isDragging.value = false }
+const onStart = () => {
+  isDragging.value = true
+}
+const onEnd = () => {
+  isDragging.value = false
+}
 </script>
 
 <template>
@@ -81,9 +132,15 @@ const onEnd = () => { isDragging.value = false }
         <v-card-title class="d-flex justify-space-between align-center pa-3 bg-surface">
           <div class="d-flex align-center ga-2">
             <v-icon :color="column.color" size="15">{{ column.icon }}</v-icon>
-            <span style="font-size: 12px" class="font-weight-bold text-secondary">{{ column.title }}</span>
+            <span style="font-size: 12px" class="font-weight-bold text-secondary">{{
+              column.title
+            }}</span>
           </div>
-          <v-chip size="x-small" :style="{ backgroundColor: column.color + '20', color: column.color }" class="font-weight-bold">
+          <v-chip
+            size="x-small"
+            :style="{ backgroundColor: column.color + '20', color: column.color }"
+            class="font-weight-bold"
+          >
             {{ columnActivities[column.status].length }}
           </v-chip>
         </v-card-title>
@@ -109,19 +166,30 @@ const onEnd = () => { isDragging.value = false }
           >
             <div class="mb-3">
               <div class="d-flex justify-space-between align-center mb-1">
-                <div style="font-size: 12px" class="font-weight-semibold text-secondary activity-title flex-grow-1">
+                <div
+                  style="font-size: 12px; min-width: 0"
+                  class="font-weight-semibold text-secondary activity-title flex-grow-1"
+                >
                   {{ task.title }}
                 </div>
                 <v-chip
                   v-if="task.priorityNumber !== undefined"
                   size="x-small"
-                  :style="{ backgroundColor: getPriorityColor(task.priorityNumber) + '20', color: getPriorityColor(task.priorityNumber) }"
+                  :style="{
+                    backgroundColor: getPriorityColor(task.priorityNumber) + '20',
+                    color: getPriorityColor(task.priorityNumber),
+                  }"
                   class="font-weight-bold ml-2"
+                  style="flex-shrink: 0"
                 >
                   P{{ task.priorityNumber }}
                 </v-chip>
               </div>
-              <div v-if="task.description" style="font-size: 11px" class="text-primary-lighten mb-2">
+              <div
+                v-if="task.description"
+                style="font-size: 11px"
+                class="text-primary-lighten mb-2 text-limit"
+              >
                 {{ task.description }}
               </div>
             </div>
@@ -130,11 +198,19 @@ const onEnd = () => { isDragging.value = false }
 
             <div class="d-flex justify-space-between align-center">
               <div class="d-flex ga-2 align-center">
-                <div v-if="task.dueDate" class="d-flex align-center ga-1 text-primary-lighten" style="font-size: 11px">
+                <div
+                  v-if="task.dueDate"
+                  class="d-flex align-center ga-1 text-primary-lighten"
+                  style="font-size: 11px"
+                >
                   <v-icon size="11">mdi-calendar-clock</v-icon>
                   {{ new Date(task.dueDate).toLocaleDateString('pt-BR') }}
                 </div>
-                <div v-if="task.subtasks?.length" class="d-flex align-center ga-1 text-primary-lighten" style="font-size: 11px">
+                <div
+                  v-if="task.subtasks?.length"
+                  class="d-flex align-center ga-1 text-primary-lighten"
+                  style="font-size: 11px"
+                >
                   <v-icon size="11">mdi-format-list-checks</v-icon>
                   {{ task.subtasks.length }}
                 </div>
@@ -146,9 +222,14 @@ const onEnd = () => { isDragging.value = false }
                   :key="responsible.userId"
                   :color="getUserColor(responsible.user.name)"
                   size="24"
-                  :style="{ marginLeft: i > 0 ? '-6px' : '0', zIndex: 3 - i }"
+                  :style="{
+                    marginLeft: (i as number) > 0 ? '-6px' : '0',
+                    zIndex: 3 - (i as number),
+                  }"
                 >
-                  <v-tooltip activator="parent" location="top">{{ responsible.user.name }}</v-tooltip>
+                  <v-tooltip activator="parent" location="top">{{
+                    responsible.user.name
+                  }}</v-tooltip>
                   <span style="font-size: 10px; font-weight: 600; color: white">
                     {{ getUserInitials(responsible.user.name) }}
                   </span>
@@ -159,7 +240,9 @@ const onEnd = () => { isDragging.value = false }
                   size="24"
                   style="margin-left: -6px"
                 >
-                  <span style="font-size: 9px; font-weight: 600">+{{ task.responsibles.length - 3 }}</span>
+                  <span style="font-size: 9px; font-weight: 600"
+                    >+{{ task.responsibles.length - 3 }}</span
+                  >
                 </v-avatar>
               </div>
             </div>
@@ -209,6 +292,14 @@ const onEnd = () => { isDragging.value = false }
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.text-limit {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
