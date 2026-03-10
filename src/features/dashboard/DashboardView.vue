@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import OverviewChart from './components/overviewChart.vue'
+import OverviewChart from '@/components/dashboard/OverviewChart.vue'
+import { getUserToken } from '@/utils/authContent'
 
 const stats = [
   {
@@ -76,7 +77,7 @@ const handleProjectClick = (projectName: string) => {
         </div>
       </v-sheet>
 
-      <div style="overflow-x: auto" class="mb-4">
+      <div style="overflow-x: auto" class="mb-4 pa-2">
         <div style="display: flex; gap: 12px; min-width: min-content">
           <div v-for="stat in stats" :key="stat.title" style="min-width: 280px; flex: 1">
             <v-card color="primary" elevation="1" rounded="lg" hover class="pa-3">
@@ -202,7 +203,7 @@ const handleProjectClick = (projectName: string) => {
         </div>
       </v-sheet>
 
-      <div style="overflow-x: auto">
+      <div class="pa-2" style="overflow-x: auto">
         <div style="display: flex; gap: 12px; min-width: min-content">
           <div v-for="project in projects" :key="project.name" style="min-width: 250px; flex: 1">
             <v-card

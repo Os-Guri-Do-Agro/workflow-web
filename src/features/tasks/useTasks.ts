@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import type { Activity, Company, StatusHistory } from '@/core/types'
+import quartersService from '@/service/quarters/quarters-service'
 
 const companies = ref<Company[]>([
   { id: '1', name: 'Empresa A' },
@@ -134,22 +135,29 @@ export function useTasks() {
     activities.value.push(newActivity)
   }
 
-  const updateActivityStatus = (id: string, status: Activity['status']) => {
-    const activity = activities.value.find((a) => a.id === id)
-    if (activity) {
-      const oldStatus = activity.status
-      activity.status = status
+  const updateActivityStatus = async (id: string, status: Activity['status']) => {
+    try {
+      await quartersService.patchActivityStatus(id, status.toUpperCase())
+      
+      const activity = activities.value.find((a) => a.id === id)
+      if (activity) {
+        const oldStatus = activity.status
+        activity.status = status
 
-      statusHistory.value.push({
-        id: Date.now().toString(),
-        activityId: activity.id,
-        activityTitle: activity.title,
-        companyId: activity.companyId,
-        fromStatus: oldStatus,
-        toStatus: status,
-        changedBy: activity.assignees[0] || 'Sistema',
-        changedAt: new Date().toISOString(),
-      })
+        statusHistory.value.push({
+          id: Date.now().toString(),
+          activityId: activity.id,
+          activityTitle: activity.title,
+          companyId: activity.companyId,
+          fromStatus: oldStatus,
+          toStatus: status,
+          changedBy: activity.assignees[0] || 'Sistema',
+          changedAt: new Date().toISOString(),
+        })
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar status:', error)
+      throw error
     }
   }
 

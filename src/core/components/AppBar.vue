@@ -16,7 +16,6 @@ const route = useRoute()
 const router = useRouter()
 const userMenu = ref(false)
 const temaSalvo = localStorage.getItem('theme')
-console.log(temaSalvo)
 
 const toggleTheme = () => {
   theme.global.name.value = theme.global.name.value === 'light' ? 'dark' : 'light'
@@ -116,7 +115,7 @@ const breadcrumbs = computed(() => {
 
       <v-card min-width="200">
         <v-list>
-          <v-list-item prepend-icon="mdi-account" title="Perfil" @click="router.push('/profile')" />
+          <!-- <v-list-item prepend-icon="mdi-account" title="Perfil" @click="router.push('/profile')" /> -->
           <v-list-item
             prepend-icon="mdi-cog"
             title="Configurações"

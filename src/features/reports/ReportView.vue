@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useReports } from '@/features/reports/useReports'
-import TiptapEditor from '@/features/reports/components/TiptapEditor.vue'
+import TiptapEditor from '@/components/reports/TiptapEditor.vue'
 
 const route = useRoute()
 const router = useRouter()

@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import router from '@/router'
+import { ref, computed, onMounted } from 'vue'
+import companiesServices from '@/service/companies/companies-services'
+import quartersService from '@/service/quarters/quarters-service'
 
 type MenuItem = {
   title: string
@@ -9,79 +12,118 @@ type MenuItem = {
 }
 
 type Company = {
-  id: number
+  id: string
   name: string
   cnpj: string
-  active: boolean
+  active?: boolean
 }
 
+type CompanyResponse = {
+  role: string
+  joinedAt: string
+  company: Company
+}
+
+const companies = ref<any[]>([])
+const quaters = ref<any[]>([])
+
+const findCompanies = async () => {
+  try {
+    const response = await companiesServices.getCompany()
+    const savedCompanyId = localStorage.getItem('activeCompany')
+
+    if (Array.isArray(response)) {
+      companies.value = response.map((item: CompanyResponse, index: number) => ({
+        ...item.company,
+        active: savedCompanyId ? item.company.id === savedCompanyId : index === 0,
+      }))
+    } else if (response?.data && Array.isArray(response.data)) {
+      companies.value = response.data.map((item: CompanyResponse, index: number) => ({
+        ...item.company,
+        active: savedCompanyId ? item.company.id === savedCompanyId : index === 0,
+      }))
+    }
+
+    if (!savedCompanyId && companies.value.length > 0) {
+      localStorage.setItem('activeCompany', companies.value[0].id)
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const findQuaters = async () => {
+  const companyId = localStorage.getItem('activeCompany')
+  if (!companyId) return
+
+  try {
+    const response = await quartersService.getCompanyQuarters(companyId)
+    quaters.value = response.data || response
+  } catch (e) {
+    console.error('Error fetching quarters:', e)
+  }
+}
+
+onMounted(async () => {
+  await findCompanies()
+  await findQuaters()
+})
+
 const showCompanyModal = ref(false)
-const companies = ref<Company[]>([
-  { id: 1, name: 'Empresa A', cnpj: '12.345.678/0001-90', active: true },
-  { id: 2, name: 'Empresa B', cnpj: '98.765.432/0001-10', active: false },
-  { id: 3, name: 'Empresa C', cnpj: '11.222.333/0001-44', active: false },
-])
+
+const activeCompany = computed(() => companies.value.find((c) => c.active))
 
 const switchCompany = (company: Company) => {
   companies.value.forEach((c) => (c.active = c.id === company.id))
+  localStorage.setItem('activeCompany', company.id)
   showCompanyModal.value = false
+  findQuaters()
 }
 
-const activeCompany = computed(() => companies.value.find(c => c.active))
+const menuItems = computed(() => {
+  const items: MenuItem[] = [{ title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/' }]
 
-const menuItems: MenuItem[] = [
-  { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/' },
-  {
-    title: 'Tarefas',
-    icon: 'mdi-calendar-month',
-    children: [
-      {
-        title: 'Q1 • Jan-Mar',
-        icon: 'mdi-numeric-1-box',
+  if (quaters.value?.length > 0) {
+    const quarterIcons = [
+      'mdi-numeric-1-box',
+      'mdi-numeric-2-box',
+      'mdi-numeric-3-box',
+      'mdi-numeric-4-box',
+    ]
+
+    items.push({
+      title: 'Tarefas',
+      icon: 'mdi-calendar-month',
+      children: quaters.value.map((quarter, index) => ({
+        title: `${quarter.label} • ${quarter.months?.map((m: any) => m.name.slice(0, 3)).join('-') || ''}`,
+        icon: quarterIcons[index] || 'mdi-numeric',
         children: [
-          { title: 'Relatório Q1', icon: 'mdi-chart-box', to: '/relatorio/q1' },
-          { title: 'Janeiro', icon: 'mdi-calendar', to: '/tasks/janeiro' },
-          { title: 'Fevereiro', icon: 'mdi-calendar', to: '/tasks/fevereiro' },
-          { title: 'Março', icon: 'mdi-calendar', to: '/tasks/marco' },
+          {
+            title: `Relatório ${quarter.label}`,
+            icon: 'mdi-chart-box',
+            to: `/relatorio/${quarter.label.toLowerCase()}`,
+          },
+          ...(quarter.months?.map((month: any) => ({
+            title: month.name,
+            icon: 'mdi-calendar',
+            to: `/tasks/${month.id}`,
+          })) || []),
         ],
-      },
-      {
-        title: 'Q2 • Abr-Jun',
-        icon: 'mdi-numeric-2-box',
-        children: [
-          { title: 'Relatório Q2', icon: 'mdi-chart-box', to: '/relatorio/q2' },
-          { title: 'Abril', icon: 'mdi-calendar', to: '/tasks/abril' },
-          { title: 'Maio', icon: 'mdi-calendar', to: '/tasks/maio' },
-          { title: 'Junho', icon: 'mdi-calendar', to: '/tasks/junho' },
-        ],
-      },
-      {
-        title: 'Q3 • Jul-Set',
-        icon: 'mdi-numeric-3-box',
-        children: [
-          { title: 'Relatório Q3', icon: 'mdi-chart-box', to: '/relatorio/q3' },
-          { title: 'Julho', icon: 'mdi-calendar', to: '/tasks/julho' },
-          { title: 'Agosto', icon: 'mdi-calendar', to: '/tasks/agosto' },
-          { title: 'Setembro', icon: 'mdi-calendar', to: '/tasks/setembro' },
-        ],
-      },
-      {
-        title: 'Q4 • Out-Dez',
-        icon: 'mdi-numeric-4-box',
-        children: [
-          { title: 'Relatório Q4', icon: 'mdi-chart-box', to: '/relatorio/q4' },
-          { title: 'Outubro', icon: 'mdi-calendar', to: '/tasks/outubro' },
-          { title: 'Novembro', icon: 'mdi-calendar', to: '/tasks/novembro' },
-          { title: 'Dezembro', icon: 'mdi-calendar', to: '/tasks/dezembro' },
-        ],
-      },
-    ],
-  },
-]
+      })),
+    })
+  }
+
+  return items
+})
+
+const logout = () => {
+  localStorage.clear()
+  router.push('/')
+}
 
 const footerItems = [
   { title: 'Configurações', icon: 'mdi-cog-outline', to: '/settings' },
-  { title: 'Sair', icon: 'mdi-logout', to: '/login' },
+  { title: 'Sair', icon: 'mdi-logout', action: logout },
 ]
 
 defineProps<{
@@ -204,6 +246,7 @@ defineEmits<{
           rounded="lg"
           class="mb-1"
           color="primary-lighten"
+          @click="item.action?.()"
         >
           <template #prepend>
             <v-icon size="18">{{ item.icon }}</v-icon>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import authService from '@/service/auth/auth-service'
 
 const router = useRouter()
 const email = ref('')
@@ -10,11 +11,29 @@ const loading = ref(false)
 
 const login = async () => {
   loading.value = true
-  setTimeout(() => {
+  try {
+    const response = await authService.postLogin({
+      email: email.value,
+      password: password.value,
+    })
+
+    if (response.accessToken) {
+      localStorage.setItem('token', response.accessToken)
+    }
+    router.push('/dashboard')
+  } catch (error) {
+    console.error('Login failed:', error)
+  } finally {
     loading.value = false
-    router.push('/')
-  }, 1000)
+  }
 }
+
+onMounted(() => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    router.push('/dashboard')
+  }
+})
 </script>
 
 <template>
@@ -23,15 +42,23 @@ const login = async () => {
       <div class="login-form">
         <div class="mb-10">
           <div class="logo-badge mb-6">
-            <v-icon size="32" color="primary">mdi-clipboard-check</v-icon>
+            <v-icon size="32" color="secundary">mdi-clipboard-check</v-icon>
           </div>
-          <h1 style="font-size: 30px" class="font-weight-bold mb-3 text-black">Bem-vindo de volta</h1>
-          <p style="font-size: 14px" class="text-grey-darken-1">Entre com suas credenciais para acessar sua conta</p>
+          <h1 style="font-size: 30px" class="font-weight-bold mb-3 text-black">
+            Bem-vindo de volta
+          </h1>
+          <p style="font-size: 14px" class="text-grey-darken-1">
+            Entre com suas credenciais para acessar sua conta
+          </p>
         </div>
 
         <v-form @submit.prevent="login">
           <div class="mb-4">
-            <label style="font-size: 12px" class="font-weight-medium text-grey-darken-2 mb-2 d-block">E-mail</label>
+            <label
+              style="font-size: 12px"
+              class="font-weight-medium text-grey-darken-2 mb-2 d-block"
+              >E-mail</label
+            >
             <v-text-field
               v-model="email"
               type="email"
@@ -45,7 +72,11 @@ const login = async () => {
           </div>
 
           <div class="mb-2">
-            <label style="font-size: 12px" class="font-weight-medium text-grey-darken-2 mb-2 d-block">Senha</label>
+            <label
+              style="font-size: 12px"
+              class="font-weight-medium text-grey-darken-2 mb-2 d-block"
+              >Senha</label
+            >
             <v-text-field
               v-model="password"
               :type="showPassword ? 'text' : 'password'"
@@ -60,10 +91,6 @@ const login = async () => {
             />
           </div>
 
-          <div class="text-right mb-6">
-            <a href="#" style="font-size: 12px" class="text-primary text-decoration-none">Esqueceu a senha?</a>
-          </div>
-
           <v-btn
             type="submit"
             color="primary"
@@ -71,7 +98,7 @@ const login = async () => {
             size="x-large"
             :loading="loading"
             elevation="0"
-            class="text-none font-weight-medium"
+            class="text-none font-weight-medium mt-5"
           >
             Entrar
           </v-btn>
@@ -79,26 +106,34 @@ const login = async () => {
       </div>
     </v-col>
 
-    <v-col cols="12" md="7" class="bg-black d-none d-md-flex align-center justify-center position-relative">
+    <v-col
+      cols="12"
+      md="7"
+      class="bg-black d-none d-md-flex align-center justify-center position-relative"
+    >
       <div class="hero-content text-center pa-12">
         <div class="icon-wrapper mb-8">
           <v-icon size="85" color="white" class="floating-icon">mdi-clipboard-check-outline</v-icon>
         </div>
         <h2 style="font-size: 34px" class="font-weight-bold mb-6 text-white">Work Flow</h2>
-        <p class="font-weight-regular mb-8 text-grey-lighten-1" style="font-size: 19px; max-width: 500px; margin: 0 auto">
-          Gerencie suas tarefas de forma inteligente. Organize, priorize e acompanhe seu trabalho com eficiência.
+        <p
+          class="font-weight-regular mb-8 text-grey-lighten-1"
+          style="font-size: 19px; max-width: 500px; margin: 0 auto"
+        >
+          Gerencie suas tarefas de forma inteligente. Organize, priorize e acompanhe seu trabalho
+          com eficiência.
         </p>
         <div class="features-grid">
           <div class="feature-item">
-            <v-icon color="primary" size="20" class="mb-2">mdi-check-circle</v-icon>
+            <v-icon color="secundary" size="20" class="mb-2">mdi-check-circle</v-icon>
             <p style="font-size: 11px" class="text-grey-lighten-1">Organização simples</p>
           </div>
           <div class="feature-item">
-            <v-icon color="primary" size="20" class="mb-2">mdi-chart-line</v-icon>
+            <v-icon color="secundary" size="20" class="mb-2">mdi-chart-line</v-icon>
             <p style="font-size: 11px" class="text-grey-lighten-1">Acompanhamento em tempo real</p>
           </div>
           <div class="feature-item">
-            <v-icon color="primary" size="20" class="mb-2">mdi-account-group</v-icon>
+            <v-icon color="secundary" size="20" class="mb-2">mdi-account-group</v-icon>
             <p style="font-size: 11px" class="text-grey-lighten-1">Colaboração eficiente</p>
           </div>
         </div>
@@ -142,7 +177,8 @@ const login = async () => {
 }
 
 @keyframes float {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0px);
   }
   50% {
@@ -167,7 +203,11 @@ const login = async () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: radial-gradient(circle at 30% 50%, rgba(var(--v-theme-primary), 0.15) 0%, transparent 50%);
+  background: radial-gradient(
+    circle at 30% 50%,
+    rgba(var(--v-theme-primary), 0.15) 0%,
+    transparent 50%
+  );
   pointer-events: none;
 }
 

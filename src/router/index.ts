@@ -10,36 +10,36 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
-      path: '/login',
+      path: '/',
       name: 'login',
-      component: LoginView
+      component: LoginView,
     },
     {
-      path: '/',
+      path: '/dashboard',
       name: 'dashboard',
-      component: DashboardView
+      component: DashboardView,
     },
     {
       path: '/tasks/:month',
       name: 'tasks',
-      component: TasksView
+      component: TasksView,
     },
     {
       path: '/tasks/:month/:taskId',
       name: 'task-details',
-      component: TaskDetailsView
+      component: TaskDetailsView,
     },
     {
       path: '/relatorio/:quarter',
       name: 'report',
-      component: ReportView
+      component: ReportView,
     },
     {
       path: '/settings',
       name: 'settings',
-      component: SettingsView
-    }
-  ]
+      component: SettingsView,
+    },
+  ],
 })
 
 export default router
