@@ -6,6 +6,8 @@ import ReportView from '@/features/reports/ReportView.vue'
 import SettingsView from '@/features/settings/SettingsView.vue'
 import LoginView from '@/features/auth/LoginView.vue'
 import CompanyVariablesView from '@/features/companies/CompanyVariablesView.vue'
+import CompanyUsersView from '@/features/companies/CompanyUsersView.vue'
+import TicketsView from '@/features/tickets/TicketsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -31,7 +33,7 @@ const router = createRouter({
       component: TaskDetailsView,
     },
     {
-      path: '/relatorio/:quarter',
+      path: '/relatorio/:quarterId',
       name: 'report',
       component: ReportView,
     },
@@ -44,6 +46,16 @@ const router = createRouter({
       path: '/variables',
       name: 'variables',
       component: CompanyVariablesView,
+    },
+    {
+      path: '/company-users',
+      name: 'company-users',
+      component: CompanyUsersView,
+    },
+    {
+      path: '/tickets',
+      name: 'tickets',
+      component: TicketsView,
     },
   ],
 })

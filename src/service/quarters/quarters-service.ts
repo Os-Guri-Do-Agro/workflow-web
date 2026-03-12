@@ -67,15 +67,37 @@ class quarterService {
 
   postReport(id: string, data: any): Promise<any> {
     const token = localStorage.getItem('token')
-    const companyId = localStorage.getItem('activeCompany')
     return this.handleRequest(
       api.post(`/quarter/${id}/report`, data, {
         headers: {
           Authorization: `Bearer ${token}`,
-          'x-company-id': companyId,
         },
       }),
       'Erro ao gerar relatório',
+    )
+  }
+
+  postImproveReport(id: string, data: any): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.post(`/quarter/${id}/report/improve`, data, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao sugerir relatório',
+    )
+  }
+
+  getReport(id: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get(`/quarter/${id}/report`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao buscar relatório',
     )
   }
 }

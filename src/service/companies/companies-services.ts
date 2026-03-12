@@ -58,6 +58,54 @@ class companieService {
       'Erro ao buscar membros da empresa',
     )
   }
+
+  getCompanyAll(): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get('/company/all', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao buscar todas as empresas',
+    )
+  }
+
+  postCompanyMemberLote(id: string, data: any): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.post(`/company/${id}/member/lote`, data, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao adicionar membros à empresa em lote',
+    )
+  }
+
+  postCompanyAdmin(id: string, data: any): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.post(`/company/${id}/admin`, data, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao adicionar administrador à empresa',
+    )
+  }
+
+  companyWithMetrics(): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get('/company/with-metrics', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao buscar empresas com métricas',
+    )
+  }
 }
 
 export default new companieService()

@@ -120,13 +120,13 @@ const breadcrumbs = computed(() => {
 
     <v-menu v-model="userMenu" :close-on-content-click="false" location="bottom end">
       <template v-slot:activator="{ props }">
-        <v-btn variant="text" v-bind="props" class="d-flex align-center ga-4">
+        <v-btn variant="text" v-bind="props" class="d-flex align-center">
           <v-avatar size="30" color="secondary">
             <span style="font-size: 11px" class="font-weight-bold text-primary">{{
               userInitials
             }}</span>
           </v-avatar>
-          <span class="text-secondary ml-1">{{ firstName }}</span>
+          <span class="text-secondary ml-2">{{ firstName }}</span>
         </v-btn>
       </template>
 

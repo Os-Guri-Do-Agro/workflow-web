@@ -90,6 +90,8 @@ const menuItems = computed(() => {
   const items: MenuItem[] = [
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/' },
     { title: 'Variáveis', icon: 'mdi-note-text', to: '/variables' },
+    { title: 'Usuários/Empresas', icon: 'mdi-account-group', to: '/company-users' },
+    { title: 'Tickets', icon: 'mdi-ticket', to: '/tickets' },
   ]
 
   if (quaters.value?.length > 0) {
@@ -110,7 +112,7 @@ const menuItems = computed(() => {
           {
             title: `Relatório ${quarter.label}`,
             icon: 'mdi-chart-box',
-            to: `/relatorio/${quarter.label.toLowerCase()}`,
+            to: `/relatorio/${quarter.id}`,
           },
           ...(quarter.months?.map((month: any) => ({
             title: month.name,
@@ -148,50 +150,63 @@ defineEmits<{
   <v-navigation-drawer
     :model-value="modelValue"
     @update:model-value="$emit('update:modelValue', $event)"
-    width="250"
+    width="280"
     permanent
     color="primary"
-    border="secondary-lighten-4"
+    border="none"
+    class="drawer-custom"
   >
-    <v-sheet color="transparent" class="pa-2 d-flex justify-space-between align-center">
-      <div class="d-flex align-center ga-2 pa-1">
-        <v-icon size="24" color="secondary">mdi-alpha-w-box</v-icon>
-        <span class="text-body-2 font-weight-bold text-secondary">{{ activeCompany?.name }}</span>
+    <v-sheet color="surface" class="pa-4 ma-3 mb-4" rounded="xl" elevation="1">
+      <div class="d-flex align-center justify-space-between mb-2">
+        <div class="d-flex align-center ga-2">
+          <v-sheet color="secondary" rounded="lg" class="pa-2" width="40" height="40">
+            <v-icon color="primary" size="24">mdi-alpha-w-box</v-icon>
+          </v-sheet>
+          <div>
+            <div class="text-caption text-primary-lighten font-weight-medium">Empresa Ativa</div>
+            <div class="text-body-2 font-weight-bold text-secondary">{{ activeCompany?.name || 'Selecione' }}</div>
+          </div>
+        </div>
       </div>
       <v-btn
-        icon="mdi-swap-horizontal"
+        block
+        variant="tonal"
+        color="secondary"
         size="small"
-        variant="text"
-        icon-size="32"
+        prepend-icon="mdi-swap-horizontal"
+        rounded="lg"
+        class="mt-2"
         @click="showCompanyModal = true"
-      ></v-btn>
+      >
+        Trocar Empresa
+      </v-btn>
     </v-sheet>
 
-    <v-list nav density="compact" class="px-1">
+    <v-list nav density="comfortable" class="px-3">
       <template v-for="item in menuItems" :key="item.title">
         <v-list-item
           v-if="!item.children"
           :to="item.to"
           :value="item.title"
-          rounded="lg"
-          class="mb-1"
+          rounded="xl"
+          class="mb-2 menu-item"
           color="secondary"
         >
           <template #prepend>
-            <v-icon size="18">{{ item.icon }}</v-icon>
+            <v-icon size="20">{{ item.icon }}</v-icon>
           </template>
-          <v-list-item-title class="text-caption font-weight-medium">{{
+          <v-list-item-title class="text-body-2 font-weight-medium">{{
             item.title
           }}</v-list-item-title>
         </v-list-item>
 
         <v-list-group v-else :value="item.title">
           <template #activator="{ props }">
-            <v-list-item v-bind="props" rounded="lg" class="mb-1" color="secondary">
+            <v-list-item v-bind="props" rounded="xl" class="mb-2 menu-item" color="secondary">
               <template #prepend>
-                <v-icon size="18">{{ item.icon }}</v-icon>
+                <v-icon size="20">{{ item.icon }}</v-icon>
               </template>
-              <v-list-item-title class="text-caption font-weight-medium">{{
+              <v-list-item-title class="text-body-2 font-weight-medium">{{
                 item.title
               }}</v-list-item-title>
             </v-list-item>
@@ -202,19 +217,19 @@ defineEmits<{
               v-if="!subItem.children"
               :to="subItem.to"
               :value="subItem.title"
-              class="pl-8 mb-1"
-              rounded="lg"
+              class="pl-8 mb-1 submenu-item"
+              rounded="xl"
               color="secondary"
             >
               <template #prepend>
-                <v-icon size="16">{{ subItem.icon }}</v-icon>
+                <v-icon size="18">{{ subItem.icon }}</v-icon>
               </template>
-              <v-list-item-title class="text-caption">{{ subItem.title }}</v-list-item-title>
+              <v-list-item-title class="text-caption font-weight-medium">{{ subItem.title }}</v-list-item-title>
             </v-list-item>
 
             <v-list-group v-else :value="subItem.title" no-action>
               <template #activator="{ props }">
-                <v-list-item v-bind="props" class="pl-6 mb-1" rounded="lg">
+                <v-list-item v-bind="props" class="pl-6 mb-1 submenu-item" rounded="xl">
                   <template #prepend>
                     <v-icon size="18">{{ subItem.icon }}</v-icon>
                   </template>
@@ -229,12 +244,12 @@ defineEmits<{
                 :key="child.title"
                 :to="child.to"
                 :value="child.title"
-                class="pl-14 mb-1"
-                rounded="lg"
+                class="pl-14 mb-1 submenu-item"
+                rounded="xl"
                 color="secondary"
               >
                 <template #prepend>
-                  <v-icon size="14">{{ child.icon }}</v-icon>
+                  <v-icon size="16">{{ child.icon }}</v-icon>
                 </template>
                 <v-list-item-title class="text-caption">{{ child.title }}</v-list-item-title>
               </v-list-item>
@@ -245,22 +260,21 @@ defineEmits<{
     </v-list>
 
     <template #append>
-      <v-divider class="mb-2" />
-      <v-list nav density="compact" class="px-1">
+      <v-divider class="mx-3 mb-3" />
+      <v-list nav density="comfortable" class="px-3 pb-3">
         <v-list-item
           v-for="item in footerItems"
           :key="item.title"
           :to="item.to"
           :value="item.title"
-          rounded="lg"
-          class="mb-1"
-          color="primary-lighten"
+          rounded="xl"
+          class="mb-2 footer-item"
           @click="item.action?.()"
         >
           <template #prepend>
-            <v-icon size="18">{{ item.icon }}</v-icon>
+            <v-icon size="20">{{ item.icon }}</v-icon>
           </template>
-          <v-list-item-title class="text-caption font-weight-medium">{{
+          <v-list-item-title class="text-body-2 font-weight-medium">{{
             item.title
           }}</v-list-item-title>
         </v-list-item>
@@ -319,9 +333,41 @@ defineEmits<{
 </template>
 
 <style scoped>
+.drawer-custom {
+  border-right: 1px solid rgba(var(--v-theme-secondary), 0.08) !important;
+}
+
+.menu-item {
+  transition: all 0.2s ease;
+  margin-bottom: 4px;
+}
+
+.menu-item:hover {
+  transform: translateX(4px);
+}
+
+.submenu-item {
+  transition: all 0.2s ease;
+}
+
+.submenu-item:hover {
+  transform: translateX(2px);
+}
+
+.footer-item {
+  transition: all 0.2s ease;
+  color: rgb(var(--v-theme-primary-lighten));
+}
+
+.footer-item:hover {
+  color: rgb(var(--v-theme-secondary));
+  background-color: rgba(var(--v-theme-secondary), 0.08);
+}
+
 .v-list-item--active {
   background: rgb(var(--v-theme-secondary)) !important;
   color: rgb(var(--v-theme-primary)) !important;
+  box-shadow: 0 2px 8px rgba(var(--v-theme-secondary), 0.3);
 }
 
 .v-list-item--active :deep(.v-icon) {
@@ -330,17 +376,20 @@ defineEmits<{
 
 .company-item {
   border: 2px solid transparent;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   cursor: pointer;
 }
 
 .company-item:hover {
   border-color: rgb(var(--v-theme-secondary));
-  background-color: rgba(var(--v-theme-secondary), 0.05);
+  background-color: rgba(var(--v-theme-secondary), 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .active-company {
   border-color: rgb(var(--v-theme-secondary));
-  background-color: rgba(var(--v-theme-secondary), 0.1);
+  background-color: rgba(var(--v-theme-secondary), 0.12);
+  box-shadow: 0 2px 8px rgba(var(--v-theme-secondary), 0.2);
 }
 </style>
