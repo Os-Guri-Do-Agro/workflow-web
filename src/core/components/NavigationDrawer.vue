@@ -159,12 +159,14 @@ defineEmits<{
     <v-sheet color="surface" class="pa-4 ma-3 mb-4" rounded="xl" elevation="1">
       <div class="d-flex align-center justify-space-between mb-2">
         <div class="d-flex align-center ga-2">
-          <v-sheet color="secondary" rounded="lg" class="pa-2" width="40" height="40">
-            <v-icon color="primary" size="24">mdi-alpha-w-box</v-icon>
-          </v-sheet>
+          <v-avatar width="40" height="40">
+            <v-img src="/icone.png"></v-img>
+          </v-avatar>
           <div>
             <div class="text-caption text-primary-lighten font-weight-medium">Empresa Ativa</div>
-            <div class="text-body-2 font-weight-bold text-secondary">{{ activeCompany?.name || 'Selecione' }}</div>
+            <div class="text-body-2 font-weight-bold text-secondary">
+              {{ activeCompany?.name || 'Selecione' }}
+            </div>
           </div>
         </div>
       </div>
@@ -224,7 +226,9 @@ defineEmits<{
               <template #prepend>
                 <v-icon size="18">{{ subItem.icon }}</v-icon>
               </template>
-              <v-list-item-title class="text-caption font-weight-medium">{{ subItem.title }}</v-list-item-title>
+              <v-list-item-title class="text-caption font-weight-medium">{{
+                subItem.title
+              }}</v-list-item-title>
             </v-list-item>
 
             <v-list-group v-else :value="subItem.title" no-action>

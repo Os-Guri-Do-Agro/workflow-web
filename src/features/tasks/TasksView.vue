@@ -9,6 +9,7 @@ import quartersService from '@/service/quarters/quarters-service'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import backlogService from '@/service/backlog/backlog-service'
+import { isWorker } from '@/utils/authContent'
 
 const route = useRoute()
 const router = useRouter()
@@ -296,6 +297,7 @@ const formatDate = (date: string) => {
             </v-btn>
           </v-btn-toggle>
           <v-btn
+            v-if="isWorker()"
             color="primary"
             prepend-icon="mdi-plus"
             elevation="2"
@@ -324,6 +326,7 @@ const formatDate = (date: string) => {
         color="primary"
         bg-color="primary"
         style="max-width: 280px"
+        :disabled="!isWorker()"
       >
         <template #item="{ props, item }">
           <v-list-item v-bind="props" density="compact">
@@ -343,6 +346,7 @@ const formatDate = (date: string) => {
       v-show="currentTab === 'kanban'"
       :tasks="tasks"
       :selected-user="selectedUser"
+      :readonly="!isWorker()"
       @update-status="handleUpdateStatus"
       @open-details="openDetails"
       @delete-task="openDeleteConfirm"
@@ -369,7 +373,16 @@ const formatDate = (date: string) => {
       rounded="lg"
       class="pa-4"
     >
-      <v-timeline side="end" density="compact">
+      <div v-if="sortedHistory.length === 0" class="d-flex flex-column align-center justify-center py-12">
+        <v-icon size="64" color="primary-lighten" class="mb-4">mdi-history</v-icon>
+        <div style="font-size: 14px" class="font-weight-medium text-secondary mb-1">
+          Nenhum histórico encontrado
+        </div>
+        <div style="font-size: 12px" class="text-primary-lighten">
+          As alterações de status das atividades aparecerão aqui
+        </div>
+      </div>
+      <v-timeline v-else side="end" density="compact">
         <v-timeline-item
           v-for="entry in sortedHistory"
           :key="entry.id"

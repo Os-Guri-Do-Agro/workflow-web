@@ -6,6 +6,7 @@ import type { Activity } from '@/core/types'
 interface Props {
   tasks: any
   selectedUser?: string
+  readonly?: boolean
 }
 
 const props = defineProps<Props>()
@@ -158,6 +159,7 @@ const openDeleteConfirm = (task: any) => {
           class="pa-2 bg-surface column-content"
           group="activities"
           :animation="200"
+          :disabled="props.readonly"
           @start="onStart"
           @end="onEnd"
           @add="(evt) => onAdd(evt, column.apiStatus)"
@@ -190,6 +192,7 @@ const openDeleteConfirm = (task: any) => {
                 </div>
                 <div class="d-flex align-center ga-1">
                 <v-btn
+                  v-if="!props.readonly"
                   icon
                   size="x-small"
                   variant="text"
@@ -279,7 +282,6 @@ const openDeleteConfirm = (task: any) => {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  height: calc(100vh - 220px);
 }
 
 .kanban-col {
@@ -289,19 +291,23 @@ const openDeleteConfirm = (task: any) => {
 .kanban-column {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
 }
 
 .column-content {
-  flex: 1;
-  overflow-y: auto;
   min-height: 100px;
 }
 
 .activity-card {
   cursor: pointer;
   transition: all 0.2s;
+}
+
+.activity-card:not([draggable="false"]) {
+  cursor: grab;
+}
+
+.activity-card:not([draggable="false"]):active {
+  cursor: grabbing;
 }
 
 .activity-card:hover {

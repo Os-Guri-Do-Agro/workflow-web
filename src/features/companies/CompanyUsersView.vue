@@ -5,6 +5,7 @@ import AddUserModal from './components/AddUserModal.vue'
 import BulkAddUsersModal from './components/BulkAddUsersModal.vue'
 import CreateCompanyModal from './components/CreateCompanyModal.vue'
 import CreateUserModal from '@/components/CreateUserModal.vue'
+import { isWorker } from '@/utils/authContent'
 
 type Company = {
   id: string
@@ -83,8 +84,8 @@ onMounted(() => {
         <p class="text-body-2 text-medium-emphasis">Gerencie usuários das empresas do projeto</p>
       </div>
       <div class="d-flex ga-2">
-        <CreateUserModal />
-        <CreateCompanyModal @created="fetchSystemCompanies" />
+        <CreateUserModal v-if="isWorker()" />
+        <CreateCompanyModal v-if="isWorker()" @created="fetchSystemCompanies" />
       </div>
     </div>
 
@@ -94,7 +95,7 @@ onMounted(() => {
     </v-tabs>
 
     <v-window v-model="tab">
-      <v-window-item value="system" class="py-4">
+      <v-window-item value="system" class="py-4 px-1">
         <v-row>
           <v-col v-for="company in systemCompanies" :key="company.id" cols="12" md="6" lg="4">
             <v-card rounded="lg" elevation="2" hover>
@@ -115,6 +116,7 @@ onMounted(() => {
                     variant="flat"
                     prepend-icon="mdi-account-plus"
                     block
+                    :disabled="!isWorker()"
                     @click="openAddUser(company)"
                   >
                     Adicionar Usuário
@@ -125,6 +127,7 @@ onMounted(() => {
                     variant="outlined"
                     prepend-icon="mdi-account-multiple-plus"
                     block
+                    :disabled="!isWorker()"
                     @click="openBulkAdd(company)"
                   >
                     Adicionar em Lote
@@ -136,7 +139,7 @@ onMounted(() => {
         </v-row>
       </v-window-item>
 
-      <v-window-item value="user" class="py-4">
+      <v-window-item value="user" class="py-4 px-1">
         <v-row>
           <v-col v-for="item in userCompanies" :key="item.company.id" cols="12" md="6" lg="4">
             <v-card rounded="lg" elevation="2" hover>
@@ -156,6 +159,7 @@ onMounted(() => {
                   variant="flat"
                   prepend-icon="mdi-account-plus"
                   block
+                  :disabled="!isWorker()"
                   @click="openUserAdd(item)"
                 >
                   Adicionar Usuário
