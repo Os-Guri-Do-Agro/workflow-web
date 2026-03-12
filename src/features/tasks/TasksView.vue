@@ -15,6 +15,7 @@ const router = useRouter()
 const { activities, companies, statusHistory, updateActivityStatus } = useTasks()
 const loading = ref(true)
 const dialog = ref(false)
+const creating = ref(false)
 const selectedUser = ref<string>('')
 const currentTab = ref('kanban')
 const members = ref<any[]>([])
@@ -61,6 +62,7 @@ const createActivity = async () => {
 
   if (!formActivity.value.title) return
 
+  creating.value = true
   try {
     const payload = {
       title: formActivity.value.title,
@@ -94,6 +96,8 @@ const createActivity = async () => {
     dialog.value = false
   } catch (error) {
     console.error('Erro ao criar atividade:', error)
+  } finally {
+    creating.value = false
   }
 }
 
@@ -408,6 +412,7 @@ const formatDate = (date: string) => {
         v-if="dialog"
         v-model="formActivity"
         :members="members"
+        :loading="creating"
         @close="dialog = false"
         @submit="createActivity"
       />

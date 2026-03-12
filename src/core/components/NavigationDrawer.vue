@@ -78,7 +78,7 @@ const switchCompany = (company: Company) => {
   companies.value.forEach((c) => (c.active = c.id === company.id))
   localStorage.setItem('activeCompany', company.id)
   showCompanyModal.value = false
-  router.push('/dashboard')
+  router.push('/')
 
   setTimeout(() => {
     window.location.reload()
@@ -127,7 +127,7 @@ const menuItems = computed(() => {
 
 const logout = () => {
   localStorage.clear()
-  router.push('/')
+  router.push('/login')
 }
 
 const footerItems = [

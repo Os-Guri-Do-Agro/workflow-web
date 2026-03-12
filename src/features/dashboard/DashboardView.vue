@@ -11,8 +11,20 @@ const showCompanyModal = ref(false)
 const showUserModal = ref(false)
 const loadingCompany = ref(false)
 const loadingUser = ref(false)
-const successCompany = ref(false)
-const successUser = ref(false)
+const showPassword = ref(false)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
+const companies = ref<any[]>([])
+
+const findCompanies = async () => {
+  try {
+    const response = await companiesServices.getCompany()
+    companies.value = Array.isArray(response) ? response : response?.data || []
+  } catch (error) {
+    console.error('Erro ao buscar empresas:', error)
+  }
+}
 
 const companyForm = ref({
   name: '',
@@ -32,11 +44,12 @@ const roles = [
   { title: 'Colaborador', value: 'WORKER' },
 ]
 
-const mockCompanies = [
-  { title: 'Empresa A', value: '1' },
-  { title: 'Empresa B', value: '2' },
-  { title: 'Empresa C', value: '3' },
-]
+const companiesOptions = computed(() => {
+  return companies.value.map((item) => ({
+    title: item.company.name,
+    value: item.company.id,
+  }))
+})
 
 const findMetrics = async () => {
   const companyId = localStorage.getItem('activeCompany')
@@ -64,14 +77,16 @@ const createCompany = async () => {
   loadingCompany.value = true
   try {
     await companiesServices.postCompany(companyForm.value)
-    successCompany.value = true
-    setTimeout(() => {
-      companyForm.value = { name: '', cnpj: '' }
-      successCompany.value = false
-      showCompanyModal.value = false
-    }, 2000)
+    snackbarMessage.value = 'Empresa cadastrada com sucesso!'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+    companyForm.value = { name: '', cnpj: '' }
+    showCompanyModal.value = false
   } catch (error) {
     console.error('Erro ao criar empresa:', error)
+    snackbarMessage.value = 'Erro ao cadastrar empresa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loadingCompany.value = false
   }
@@ -86,14 +101,16 @@ const createUser = async () => {
       password: userForm.value.password,
       role: userForm.value.role,
     })
-    successUser.value = true
-    setTimeout(() => {
-      userForm.value = { name: '', email: '', password: '', companyId: '', role: 'CLIENT' }
-      successUser.value = false
-      showUserModal.value = false
-    }, 2000)
+    snackbarMessage.value = 'Usuário cadastrado com sucesso!'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+    userForm.value = { name: '', email: '', password: '', companyId: '', role: 'CLIENT' }
+    showUserModal.value = false
   } catch (error) {
     console.error('Erro ao criar usuário:', error)
+    snackbarMessage.value = 'Erro ao cadastrar usuário'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loadingUser.value = false
   }
@@ -120,6 +137,7 @@ onMounted(async () => {
   await ensureActiveCompany()
   await findMetrics()
   await findBacklog()
+  await findCompanies()
 })
 
 const stats = computed(() => {
@@ -187,6 +205,29 @@ const handleProjectClick = (projectName: string) => {
   console.log('Projeto clicado:', projectName)
   // Implementação futura: navegação para detalhes do projeto
 }
+
+const formatCNPJ = (value: string) => {
+  const numbers = value.replace(/\D/g, '').slice(0, 14)
+  if (numbers.length <= 2) return numbers
+  if (numbers.length <= 5) return `${numbers.slice(0, 2)}.${numbers.slice(2)}`
+  if (numbers.length <= 8)
+    return `${numbers.slice(0, 2)}.${numbers.slice(2, 5)}.${numbers.slice(5)}`
+  if (numbers.length <= 12)
+    return `${numbers.slice(0, 2)}.${numbers.slice(2, 5)}.${numbers.slice(5, 8)}/${numbers.slice(8)}`
+  return `${numbers.slice(0, 2)}.${numbers.slice(2, 5)}.${numbers.slice(5, 8)}/${numbers.slice(8, 12)}-${numbers.slice(12)}`
+}
+
+const emailRules = [
+  (v: string) => !!v || 'Email é obrigatório',
+  (v: string) => /.+@.+\..+/.test(v) || 'Email deve ser válido',
+]
+
+const passwordRules = [
+  (v: string) => !!v || 'Senha é obrigatória',
+  (v: string) => v.length >= 6 || 'Senha deve ter no mínimo 6 caracteres',
+  (v: string) =>
+    /[!@#$%^&*(),.?":{}|<>]/.test(v) || 'Senha deve conter pelo menos um caractere especial',
+]
 </script>
 
 <template>
@@ -196,16 +237,29 @@ const handleProjectClick = (projectName: string) => {
         <div class="d-flex align-center justify-space-between">
           <div>
             <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">Dashboard</h1>
-            <div class="d-flex align-center" style="font-size: 11px; color: var(--v-primary-lighten)">
+            <div
+              class="d-flex align-center"
+              style="font-size: 11px; color: var(--v-primary-lighten)"
+            >
               <v-icon size="11" class="mr-1">mdi-view-dashboard-outline</v-icon>
               Visão geral do sistema
             </div>
           </div>
           <div class="d-flex ga-2">
-            <v-btn color="secondary" size="small" prepend-icon="mdi-office-building" @click="showCompanyModal = true">
+            <v-btn
+              color="secondary"
+              size="small"
+              prepend-icon="mdi-office-building"
+              @click="showCompanyModal = true"
+            >
               Nova Empresa
             </v-btn>
-            <v-btn color="secondary" size="small" prepend-icon="mdi-account-plus" @click="showUserModal = true">
+            <v-btn
+              color="secondary"
+              size="small"
+              prepend-icon="mdi-account-plus"
+              @click="showUserModal = true"
+            >
               Novo Usuário
             </v-btn>
           </div>
@@ -262,9 +316,14 @@ const handleProjectClick = (projectName: string) => {
               >
             </v-card-title>
             <v-card-text class="pa-2" style="max-height: 400px; overflow-y: auto">
-              <div v-if="recentActivities.length === 0" class="d-flex flex-column align-center justify-center pa-8">
+              <div
+                v-if="recentActivities.length === 0"
+                class="d-flex flex-column align-center justify-center pa-8"
+              >
                 <v-icon size="48" color="primary-lighten" class="mb-3">mdi-inbox-outline</v-icon>
-                <span style="font-size: 12px" class="text-primary-lighten font-weight-medium">Nenhuma atividade recente</span>
+                <span style="font-size: 12px" class="text-primary-lighten font-weight-medium"
+                  >Nenhuma atividade recente</span
+                >
               </div>
               <v-card
                 v-else
@@ -436,16 +495,18 @@ const handleProjectClick = (projectName: string) => {
               prepend-inner-icon="mdi-card-account-details"
               variant="outlined"
               required
+              @input="companyForm.cnpj = formatCNPJ(companyForm.cnpj)"
+              placeholder="00.000.000/0000-00"
+              maxlength="18"
             />
           </v-form>
-          <v-alert v-if="successCompany" type="success" class="mt-4">
-            Empresa cadastrada com sucesso!
-          </v-alert>
         </v-card-text>
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="showCompanyModal = false">Cancelar</v-btn>
-          <v-btn color="secondary" :loading="loadingCompany" @click="createCompany">Cadastrar</v-btn>
+          <v-btn color="secondary" :loading="loadingCompany" @click="createCompany"
+            >Cadastrar</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -473,20 +534,24 @@ const handleProjectClick = (projectName: string) => {
               prepend-inner-icon="mdi-email"
               variant="outlined"
               required
+              :rules="emailRules"
               class="mb-4"
             />
             <v-text-field
               v-model="userForm.password"
               label="Senha"
-              type="password"
+              :type="showPassword ? 'text' : 'password'"
               prepend-inner-icon="mdi-lock"
+              :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+              @click:append-inner="showPassword = !showPassword"
               variant="outlined"
               required
+              :rules="passwordRules"
               class="mb-4"
             />
             <v-select
               v-model="userForm.companyId"
-              :items="mockCompanies"
+              :items="companiesOptions"
               label="Empresa"
               prepend-inner-icon="mdi-office-building"
               variant="outlined"
@@ -502,9 +567,6 @@ const handleProjectClick = (projectName: string) => {
               required
             />
           </v-form>
-          <v-alert v-if="successUser" type="success" class="mt-4">
-            Usuário cadastrado com sucesso!
-          </v-alert>
         </v-card-text>
         <v-card-actions class="pa-4">
           <v-spacer />
@@ -513,6 +575,10 @@ const handleProjectClick = (projectName: string) => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
+      {{ snackbarMessage }}
+    </v-snackbar>
   </div>
 </template>
 

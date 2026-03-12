@@ -64,6 +64,20 @@ class quarterService {
       'Erro ao buscar roadmap',
     )
   }
+
+  postReport(id: string, data: any): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    return this.handleRequest(
+      api.post(`/quarter/${id}/report`, data, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-company-id': companyId,
+        },
+      }),
+      'Erro ao gerar relatório',
+    )
+  }
 }
 
 export default new quarterService()

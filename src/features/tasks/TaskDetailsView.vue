@@ -25,6 +25,70 @@ const formSubtask = ref({
   attachment: null as File | null,
 })
 
+const suggest = ref<any>(null)
+const loadingSuggest = ref(false)
+
+const improveWithAI = async () => {
+  loadingSuggest.value = true
+  try {
+    const response = await activityService.postSuggest(taskId.value)
+    suggest.value = response
+  } catch (error) {
+    console.error('Erro ao aprimorar texto:', error)
+  } finally {
+    loadingSuggest.value = false
+  }
+}
+
+const applySuggestion = () => {
+  if (!suggest.value) return
+  formActivity.value.description =
+    suggest.value.improvedDescription || formActivity.value.description
+  formActivity.value.priorityNumber =
+    suggest.value.suggestedPriority ?? formActivity.value.priorityNumber
+}
+
+const dismissSuggestion = () => {
+  suggest.value = null
+}
+
+const showQuickSubtaskModal = ref(false)
+const quickSubtaskTitle = ref('')
+
+const openQuickSubtask = (title: string) => {
+  quickSubtaskTitle.value = title
+  showQuickSubtaskModal.value = true
+}
+
+const createQuickSubtask = async () => {
+  if (!quickSubtaskTitle.value) return
+  saving.value = true
+  try {
+    await activityService.postActivity({
+      title: quickSubtaskTitle.value,
+      description: '',
+      priorityNumber: 1,
+      dueDate: new Date().toISOString(),
+      monthId: month.value,
+      parentId: taskId.value,
+      responsibleUserIds: [],
+    })
+    await InfoActivity()
+    showQuickSubtaskModal.value = false
+  } catch (error) {
+    console.error('Erro ao criar subtarefa:', error)
+  } finally {
+    quickSubtaskTitle.value = ''
+    saving.value = false
+  }
+}
+
+const isSubtaskCreated = (suggestedTitle: string) => {
+  return subtasks.value.some((st: any) => 
+    st.title.toLowerCase().trim() === suggestedTitle.toLowerCase().trim()
+  )
+}
+
 const activityInfo = ref<any>(null)
 const loading = ref(true)
 
@@ -112,6 +176,7 @@ const openEditActivityModal = () => {
     responsibleUserIds: activityInfo.value.responsibles?.map((r: any) => r.userId) ?? [],
     attachment: null,
   }
+  suggest.value = null
   showEditActivityModal.value = true
 }
 
@@ -294,7 +359,7 @@ const deleteAttachment = async (attachmentId: string) => {
     await InfoActivity()
     if (selectedSubtask.value) {
       const updatedSubtask = activityInfo.value?.subtasks?.find(
-        (s: any) => s.id === selectedSubtask.value.id
+        (s: any) => s.id === selectedSubtask.value.id,
       )
       if (updatedSubtask) {
         selectedSubtask.value = updatedSubtask
@@ -639,15 +704,130 @@ const deleteAttachment = async (attachmentId: string) => {
       <v-divider />
 
       <v-card-text class="pa-4">
-        <v-text-field
-          v-model="formActivity.title"
-          label="Título *"
-          density="compact"
-          variant="outlined"
-          color="secondary"
-          class="mb-3"
-          hide-details
-        />
+        <div class="d-flex ga-2 align-center">
+          <v-text-field
+            v-model="formActivity.title"
+            label="Título *"
+            density="compact"
+            variant="outlined"
+            color="secondary"
+            hide-details
+          />
+          <v-btn
+            color="secondary"
+            prepend-icon="mdi-lightbulb-variant-outline"
+            class="text-none"
+            :loading="loadingSuggest"
+            @click="improveWithAI"
+          >
+            Aprimorar com IA
+          </v-btn>
+        </div>
+
+        <v-card
+          v-if="suggest"
+          elevation="0"
+          class="mt-3 mb-3 pa-3"
+          style="
+            border: 2px solid rgba(var(--v-theme-secondary), 0.3);
+            background: rgba(var(--v-theme-secondary), 0.05);
+          "
+        >
+          <div class="d-flex align-center ga-2 mb-2">
+            <v-icon color="secondary" size="18">mdi-sparkles</v-icon>
+            <span style="font-size: 12px" class="font-weight-bold text-secondary"
+              >Sugestões de IA</span
+            >
+          </div>
+
+          <div v-if="suggest.improvedDescription" class="mb-2">
+            <div style="font-size: 10px" class="text-primary-lighten mb-1">
+              Descrição Aprimorada:
+            </div>
+            <div style="font-size: 11px" class="text-secondary">
+              {{ suggest.improvedDescription }}
+            </div>
+          </div>
+
+          <div v-if="suggest.suggestedSubtasks?.length" class="mb-2">
+            <div style="font-size: 10px" class="text-primary-lighten mb-1">
+              Subtarefas Sugeridas:
+            </div>
+            <div class="d-flex flex-column ga-1">
+              <div
+                v-for="(task, i) in suggest.suggestedSubtasks"
+                :key="i"
+                class="d-flex align-center justify-space-between pa-2 rounded"
+                :style="{
+                  background: isSubtaskCreated(task) ? 'rgba(var(--v-theme-success), 0.1)' : 'rgba(var(--v-theme-surface), 0.5)',
+                  border: isSubtaskCreated(task) ? '1px solid rgba(var(--v-theme-success), 0.3)' : '1px solid rgba(var(--v-theme-secondary), 0.2)',
+                  opacity: isSubtaskCreated(task) ? 0.7 : 1
+                }"
+              >
+                <div class="d-flex align-center ga-2 flex-grow-1">
+                  <v-icon 
+                    v-if="isSubtaskCreated(task)" 
+                    size="16" 
+                    color="success"
+                  >
+                    mdi-check-circle
+                  </v-icon>
+                  <span 
+                    style="font-size: 11px" 
+                    class="text-secondary"
+                    :class="{ 'text-decoration-line-through': isSubtaskCreated(task) }"
+                  >
+                    {{ task }}
+                  </span>
+                </div>
+                <v-btn
+                  size="x-small"
+                  color="secondary"
+                  variant="tonal"
+                  icon="mdi-plus"
+                  :disabled="isSubtaskCreated(task)"
+                  @click="openQuickSubtask(task)"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div v-if="suggest.suggestedPriority" class="mb-3">
+            <div style="font-size: 10px" class="text-primary-lighten mb-1">
+              Prioridade Sugerida:
+            </div>
+            <v-chip
+              size="x-small"
+              :color="getPriorityColor(suggest.suggestedPriority)"
+              variant="tonal"
+            >
+              P{{ suggest.suggestedPriority }}
+            </v-chip>
+          </div>
+
+          <div class="d-flex ga-2">
+            <v-btn
+              v-if="suggest.improvedDescription || suggest.suggestedPriority"
+              size="small"
+              color="success"
+              prepend-icon="mdi-check"
+              class="text-none"
+              @click="applySuggestion"
+            >
+              Aplicar Sugestão
+            </v-btn>
+            <v-btn
+              size="small"
+              variant="tonal"
+              color="error"
+              class="text-none"
+              @click="dismissSuggestion"
+            >
+              Descartar Tudo
+            </v-btn>
+          </div>
+        </v-card>
+
         <v-textarea
           v-model="formActivity.description"
           label="Descrição"
@@ -655,7 +835,7 @@ const deleteAttachment = async (attachmentId: string) => {
           variant="outlined"
           color="secondary"
           rows="4"
-          class="mb-3"
+          class="mb-3 mt-3"
           hide-details
         />
         <v-row>
@@ -904,13 +1084,11 @@ const deleteAttachment = async (attachmentId: string) => {
   <v-dialog v-model="showSubtaskModal" max-width="900px">
     <v-card v-if="selectedSubtask" rounded="lg">
       <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
-        <div class="d-flex align-center ga-3">
+        <div class="d-flex align-center ga-2">
           <v-icon color="Secundary" size="20">mdi-checkbox-marked-circle-outline</v-icon>
-          <span class="text-subtitle-1 font-weight-bold text-secondary">{{
-            selectedSubtask.title
-          }}</span>
+          <span class="text-subtitle-1 font-weight-bold text-secondary">Detalhes da Subtarefa</span>
         </div>
-        <div class="d-flex align-center ga-1">
+        <div class="d-flex align-center ga-1 flex-shrink-0">
           <v-btn
             :icon="editingSubtask ? 'mdi-close' : 'mdi-pencil-outline'"
             variant="text"
@@ -933,6 +1111,13 @@ const deleteAttachment = async (attachmentId: string) => {
 
       <v-card-text class="pa-4">
         <template v-if="!editingSubtask">
+          <div class="mb-3">
+            <div style="font-size: 10px" class="text-primary-lighten mb-1">Título</div>
+            <div style="font-size: 14px" class="font-weight-bold text-secondary">
+              {{ selectedSubtask.title }}
+            </div>
+          </div>
+
           <div class="d-flex ga-2 mb-3">
             <v-chip
               size="small"
@@ -960,7 +1145,11 @@ const deleteAttachment = async (attachmentId: string) => {
           <div v-if="selectedSubtask.attachments?.length" class="mb-4">
             <div style="font-size: 10px" class="text-primary-lighten mb-2">Anexos</div>
             <div class="d-flex flex-wrap ga-2">
-              <div v-for="att in selectedSubtask.attachments" :key="att.id" class="position-relative">
+              <div
+                v-for="att in selectedSubtask.attachments"
+                :key="att.id"
+                class="position-relative"
+              >
                 <a :href="att.url" target="_blank" style="text-decoration: none">
                   <v-img
                     v-if="isImage(att.filename)"
@@ -974,10 +1163,27 @@ const deleteAttachment = async (attachmentId: string) => {
                   <div
                     v-else
                     class="d-flex flex-column align-center justify-center rounded-lg"
-                    style="width: 100px; height: 100px; background: rgba(var(--v-theme-secondary), 0.08); cursor: pointer"
+                    style="
+                      width: 100px;
+                      height: 100px;
+                      background: rgba(var(--v-theme-secondary), 0.08);
+                      cursor: pointer;
+                    "
                   >
                     <v-icon size="32" color="secondary">mdi-file-outline</v-icon>
-                    <span style="font-size: 9px; color: var(--v-theme-secondary); text-align: center; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 96px">{{ att.filename }}</span>
+                    <span
+                      style="
+                        font-size: 9px;
+                        color: var(--v-theme-secondary);
+                        text-align: center;
+                        padding: 0 4px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                        max-width: 96px;
+                      "
+                      >{{ att.filename }}</span
+                    >
                   </div>
                 </a>
                 <v-btn
@@ -1084,7 +1290,11 @@ const deleteAttachment = async (attachmentId: string) => {
           <div v-if="selectedSubtask.attachments?.length" class="mt-3 mb-1">
             <div style="font-size: 10px" class="text-primary-lighten mb-2">Anexos atuais</div>
             <div class="d-flex flex-wrap ga-2">
-              <div v-for="att in selectedSubtask.attachments" :key="att.id" class="position-relative">
+              <div
+                v-for="att in selectedSubtask.attachments"
+                :key="att.id"
+                class="position-relative"
+              >
                 <a :href="att.url" target="_blank" style="text-decoration: none">
                   <v-img
                     v-if="isImage(att.filename)"
@@ -1174,6 +1384,67 @@ const deleteAttachment = async (attachmentId: string) => {
           @click="showSubtaskModal = false"
           >Fechar</v-btn
         >
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog v-model="showQuickSubtaskModal" max-width="400px">
+    <v-card rounded="lg">
+      <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
+        <div class="d-flex align-center ga-2">
+          <v-icon color="secondary" size="18">mdi-sparkles</v-icon>
+          <span style="font-size: 13px" class="font-weight-bold text-secondary"
+            >Criar Subtarefa</span
+          >
+        </div>
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          size="small"
+          @click="showQuickSubtaskModal = false"
+        />
+      </v-card-title>
+
+      <v-divider />
+
+      <v-card-text class="pa-4">
+        <v-text-field
+          v-model="quickSubtaskTitle"
+          label="Título da Subtarefa"
+          density="compact"
+          variant="outlined"
+          color="secondary"
+          hide-details
+          autofocus
+        />
+        <div style="font-size: 10px" class="text-primary-lighten mt-2">
+          Você poderá editar mais detalhes após criar
+        </div>
+      </v-card-text>
+
+      <v-divider />
+
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn
+          variant="text"
+          color="secondary"
+          class="text-none"
+          @click="showQuickSubtaskModal = false"
+        >
+          Cancelar
+        </v-btn>
+        <v-btn
+          variant="tonal"
+          color="secondary"
+          class="text-none"
+          prepend-icon="mdi-plus"
+          :disabled="!quickSubtaskTitle"
+          :loading="saving"
+          @click="createQuickSubtask"
+        >
+          Criar
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

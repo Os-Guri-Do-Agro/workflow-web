@@ -22,9 +22,10 @@ const login = async () => {
     if (response.accessToken) {
       localStorage.setItem('token', response.accessToken)
     }
-    router.push('/dashboard')
+    router.push('/')
   } catch (error: any) {
-    errorMessage.value = error.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.'
+    errorMessage.value =
+      error.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.'
     snackbar.value = true
   } finally {
     loading.value = false
@@ -34,7 +35,7 @@ const login = async () => {
 onMounted(() => {
   const token = localStorage.getItem('token')
   if (token) {
-    router.push('/dashboard')
+    router.push('/')
   }
 })
 </script>

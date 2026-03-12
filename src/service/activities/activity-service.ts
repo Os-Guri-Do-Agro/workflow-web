@@ -113,6 +113,24 @@ class activityService {
       'Erro ao deletar anexo',
     )
   }
+
+  postSuggest(id: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    return this.handleRequest(
+      api.post(
+        `/activity/${id}/suggest`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'x-company-id': companyId,
+          },
+        },
+      ),
+      'Erro ao sugerir atividade',
+    )
+  }
 }
 
 export default new activityService()

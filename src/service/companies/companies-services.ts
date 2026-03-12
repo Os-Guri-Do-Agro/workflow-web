@@ -14,7 +14,7 @@ class companieService {
   postCompany(data: any): Promise<any> {
     const token = localStorage.getItem('token')
     return this.handleRequest(
-      api.post('/companies', data, {
+      api.post('/company', data, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
