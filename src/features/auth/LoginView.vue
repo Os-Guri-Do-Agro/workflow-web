@@ -116,8 +116,8 @@ onMounted(() => {
       class="bg-black d-none d-md-flex align-center justify-center position-relative"
     >
       <div class="hero-content text-center pa-12">
-        <div class="icon-wrapper mb-8">
-          <v-icon size="85" color="white" class="floating-icon">mdi-clipboard-check-outline</v-icon>
+        <div class="icon-wrapper mb-8 d-flex align-center justify-center">
+          <v-img width="100" height="100" contain src="/icone.png"></v-img>
         </div>
         <h2 style="font-size: 34px" class="font-weight-bold mb-6 text-white">Stack Roads</h2>
         <p
