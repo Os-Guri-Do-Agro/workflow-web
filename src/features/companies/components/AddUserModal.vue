@@ -61,7 +61,6 @@ const save = async () => {
     }
 
     await companieService.postCompanyAdmin(props.company.id, payload)
-    console.log('Usuário adicionado com sucesso')
     close()
   } catch (error) {
     console.error('Erro ao adicionar usuário:', error)
@@ -147,9 +146,9 @@ onMounted(() => {
       <v-card-actions class="pa-5 pt-0">
         <v-spacer />
         <v-btn variant="text" @click="close">Cancelar</v-btn>
-        <v-btn 
-          color="primary" 
-          variant="flat" 
+        <v-btn
+          color="primary"
+          variant="flat"
           @click="save"
           :disabled="selectedUsers.length === 0"
         >

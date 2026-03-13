@@ -9,7 +9,7 @@ import quartersService from '@/service/quarters/quarters-service'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import backlogService from '@/service/backlog/backlog-service'
-import { isWorker } from '@/utils/authContent'
+import { getInfoAuth } from '@/utils/authContent'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,6 +21,7 @@ const selectedUser = ref<string>('')
 const currentTab = ref('kanban')
 const members = ref<any[]>([])
 const backLog = ref<any[]>([])
+const isWorkerRole = ref(false)
 const formActivity = ref<any>({
   title: '',
   description: '',
@@ -135,6 +136,7 @@ const findMonthData = async () => {
 }
 
 onMounted(async () => {
+  isWorkerRole.value = (await getInfoAuth()) || false
   await Promise.all([findMonthData(), findTaskas(), findMembers(), findBackLog()])
   loading.value = false
 })
@@ -297,7 +299,7 @@ const formatDate = (date: string) => {
             </v-btn>
           </v-btn-toggle>
           <v-btn
-            v-if="isWorker()"
+            v-if="isWorkerRole"
             color="primary"
             prepend-icon="mdi-plus"
             elevation="2"
@@ -326,7 +328,7 @@ const formatDate = (date: string) => {
         color="primary"
         bg-color="primary"
         style="max-width: 280px"
-        :disabled="!isWorker()"
+        :disabled="!isWorkerRole"
       >
         <template #item="{ props, item }">
           <v-list-item v-bind="props" density="compact">
@@ -346,7 +348,7 @@ const formatDate = (date: string) => {
       v-show="currentTab === 'kanban'"
       :tasks="tasks"
       :selected-user="selectedUser"
-      :readonly="!isWorker()"
+      :readonly="!isWorkerRole"
       @update-status="handleUpdateStatus"
       @open-details="openDetails"
       @delete-task="openDeleteConfirm"

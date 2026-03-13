@@ -4,7 +4,7 @@ import dashboardService from '@/service/dashboard/dashboard-service'
 import companiesServices from '@/service/companies/companies-services'
 import { ref, onMounted, computed } from 'vue'
 import backlogService from '@/service/backlog/backlog-service'
-import { getUserToken, isWorker } from '@/utils/authContent'
+import { getUserToken} from '@/utils/authContent'
 
 const metrics = ref<any>(null)
 const backlog = ref<any[]>([])

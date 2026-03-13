@@ -3,12 +3,14 @@ import router from '@/router'
 import { ref, computed, onMounted } from 'vue'
 import companiesServices from '@/service/companies/companies-services'
 import quartersService from '@/service/quarters/quarters-service'
+import { getInfoAuth } from '@/utils/authContent'
 
 type MenuItem = {
   title: string
   icon?: string
   to?: string
   children?: MenuItem[]
+  role?: string
 }
 
 type Company = {
@@ -70,6 +72,9 @@ onMounted(async () => {
   await findQuaters()
 })
 
+const a = ref(sessionStorage.getItem('activeCompany'))
+
+
 const showCompanyModal = ref(false)
 
 const activeCompany = computed(() => companies.value.find((c) => c.active))
@@ -77,6 +82,7 @@ const activeCompany = computed(() => companies.value.find((c) => c.active))
 const switchCompany = (company: Company) => {
   companies.value.forEach((c) => (c.active = c.id === company.id))
   localStorage.setItem('activeCompany', company.id)
+  getInfoAuth()
   showCompanyModal.value = false
   router.push('/')
 
@@ -90,7 +96,7 @@ const menuItems = computed(() => {
   const items: MenuItem[] = [
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/' },
     { title: 'Variáveis', icon: 'mdi-note-text', to: '/variables' },
-    { title: 'Usuários/Empresas', icon: 'mdi-account-group', to: '/company-users' },
+    { title: 'Usuários/Empresas', icon: 'mdi-account-group', to: '/company-users', role: 'WORKER' },
     { title: 'Tickets', icon: 'mdi-ticket', to: '/tickets' },
   ]
 

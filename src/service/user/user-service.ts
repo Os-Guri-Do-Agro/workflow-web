@@ -26,6 +26,17 @@ class userService {
       'Erro ao buscar usuários',
     )
   }
+  getInfoAuth(): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get('/user/me', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao buscar minhas informações',
+    )
+  }
 }
 
 export default new userService()

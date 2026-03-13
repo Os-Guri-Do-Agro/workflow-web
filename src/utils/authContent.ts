@@ -1,3 +1,4 @@
+import userService from '@/service/user/user-service'
 import { jwtDecode } from 'jwt-decode'
 
 interface DecodedToken {
@@ -20,7 +21,6 @@ export function getUserToken() {
   const token = localStorage.getItem('token')
 
   if (!token) {
-    console.log('token não encontrado!')
     return null
   }
 
@@ -29,12 +29,11 @@ export function getUserToken() {
   return tokenDecoded
 }
 
-export function isWorker(): boolean {
+
+export async function getInfoAuth() {
   if (!newToken) return false
-  
   const activeCompanyId = localStorage.getItem('activeCompany')
-  if (!activeCompanyId) return false
-  
-  const company = newToken.companies.find(c => c.companyId === activeCompanyId)
-  return company?.role === 'WORKER'
+  const response = await userService.getInfoAuth()
+  const compareRole = response.companies.find((company: any) => company.companyId === activeCompanyId)
+  return compareRole.role === 'WORKER'
 }

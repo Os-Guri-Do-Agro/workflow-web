@@ -62,7 +62,6 @@ const save = async () => {
     }
 
     await companieService.postCompanyMemberLote(props.company.id, payload)
-    console.log('Usuários adicionados com sucesso')
     close()
   } catch (error) {
     console.error('Erro ao adicionar usuários em lote:', error)
@@ -147,9 +146,9 @@ onMounted(() => {
       <v-card-actions class="pa-5 pt-0">
         <v-spacer />
         <v-btn variant="text" @click="close">Cancelar</v-btn>
-        <v-btn 
-          color="primary" 
-          variant="flat" 
+        <v-btn
+          color="primary"
+          variant="flat"
           @click="save"
           :disabled="selectedUsers.length === 0"
         >

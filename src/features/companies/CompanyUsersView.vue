@@ -5,7 +5,7 @@ import AddUserModal from './components/AddUserModal.vue'
 import BulkAddUsersModal from './components/BulkAddUsersModal.vue'
 import CreateCompanyModal from './components/CreateCompanyModal.vue'
 import CreateUserModal from '@/components/CreateUserModal.vue'
-import { isWorker } from '@/utils/authContent'
+import { getInfoAuth } from '@/utils/authContent'
 
 type Company = {
   id: string
@@ -31,6 +31,7 @@ const showAddUserModal = ref(false)
 const showBulkAddModal = ref(false)
 const showUserAddModal = ref(false)
 const selectedCompany = ref<any>(null)
+const isWorkerRole = ref(false)
 
 const fetchSystemCompanies = async () => {
   try {
@@ -70,7 +71,8 @@ const openUserAdd = (userCompany: UserCompany) => {
   showUserAddModal.value = true
 }
 
-onMounted(() => {
+onMounted(async () => {
+  isWorkerRole.value = (await getInfoAuth()) || false
   fetchSystemCompanies()
   fetchUserCompanies()
 })
@@ -84,14 +86,14 @@ onMounted(() => {
         <p class="text-body-2 text-medium-emphasis">Gerencie usuários das empresas do projeto</p>
       </div>
       <div class="d-flex ga-2">
-        <CreateUserModal v-if="isWorker()" />
-        <CreateCompanyModal v-if="isWorker()" @created="fetchSystemCompanies" />
+        <CreateUserModal v-if="isWorkerRole" />
+        <CreateCompanyModal v-if="isWorkerRole" @created="fetchSystemCompanies" />
       </div>
     </div>
 
     <v-tabs v-model="tab" bg-color="primary" class="mb-6">
       <v-tab value="user">Minhas Empresas</v-tab>
-      <v-tab value="system">Empresas do Sistema</v-tab>
+      <v-tab v-if="isWorkerRole" value="system">Empresas do Sistema</v-tab>
     </v-tabs>
 
     <v-window v-model="tab">
@@ -116,7 +118,7 @@ onMounted(() => {
                     variant="flat"
                     prepend-icon="mdi-account-plus"
                     block
-                    :disabled="!isWorker()"
+                    :disabled="!isWorkerRole"
                     @click="openAddUser(company)"
                   >
                     Adicionar Usuário
@@ -127,7 +129,7 @@ onMounted(() => {
                     variant="outlined"
                     prepend-icon="mdi-account-multiple-plus"
                     block
-                    :disabled="!isWorker()"
+                    :disabled="!isWorkerRole"
                     @click="openBulkAdd(company)"
                   >
                     Adicionar em Lote
@@ -159,7 +161,7 @@ onMounted(() => {
                   variant="flat"
                   prepend-icon="mdi-account-plus"
                   block
-                  :disabled="!isWorker()"
+                  :disabled="!isWorkerRole"
                   @click="openUserAdd(item)"
                 >
                   Adicionar Usuário
