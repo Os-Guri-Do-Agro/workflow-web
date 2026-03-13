@@ -72,7 +72,6 @@ onMounted(async () => {
   await findQuaters()
 })
 
-const a = ref(sessionStorage.getItem('activeCompany'))
 
 
 const showCompanyModal = ref(false)
@@ -139,7 +138,7 @@ const logout = () => {
 }
 
 const footerItems = [
-  { title: 'Configurações', icon: 'mdi-cog-outline', to: '/settings' },
+  // { title: 'Configurações', icon: 'mdi-cog-outline', to: '/settings' },
   { title: 'Sair', icon: 'mdi-logout', action: logout },
 ]
 
@@ -275,7 +274,6 @@ defineEmits<{
         <v-list-item
           v-for="item in footerItems"
           :key="item.title"
-          :to="item.to"
           :value="item.title"
           rounded="xl"
           class="mb-2 footer-item"
