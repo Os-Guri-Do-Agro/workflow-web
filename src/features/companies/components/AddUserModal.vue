@@ -29,6 +29,8 @@ const search = ref('')
 const users = ref<User[]>([])
 const selectedRole = ref<'CLIENT' | 'WORKER'>('WORKER')
 const selectedUsers = ref<User[]>([])
+const loading = ref(false)
+const saving = ref(false)
 
 const headers = [
   { title: 'Nome', key: 'name' },
@@ -36,10 +38,13 @@ const headers = [
 ]
 
 const fetchUsers = async () => {
+  loading.value = true
   try {
     users.value = await userService.getAllUsers()
   } catch (error) {
     console.error('Erro ao carregar usuários:', error)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -49,14 +54,20 @@ const close = () => {
 }
 
 const save = async () => {
+  saving.value = true
   try {
     if (!props.company?.id) {
       console.error('ID da empresa não encontrado')
       return
     }
 
+    if (selectedUsers.value.length === 0) {
+      return
+    }
+
+    const firstUser = selectedUsers.value[0]
     const payload = {
-      userId: typeof selectedUsers.value[0] === 'string' ? selectedUsers.value[0] : selectedUsers.value[0].id,
+      userId: typeof firstUser === 'string' ? firstUser : firstUser?.id || '',
       role: selectedRole.value
     }
 
@@ -64,6 +75,8 @@ const save = async () => {
     close()
   } catch (error) {
     console.error('Erro ao adicionar usuário:', error)
+  } finally {
+    saving.value = false
   }
 }
 
@@ -120,6 +133,7 @@ onMounted(() => {
           :headers="headers"
           :items="users"
           :search="search"
+          :loading="loading"
           item-value="id"
           show-select
           select-strategy="single"
@@ -149,6 +163,7 @@ onMounted(() => {
         <v-btn
           color="primary"
           variant="flat"
+          :loading="saving"
           @click="save"
           :disabled="selectedUsers.length === 0"
         >
