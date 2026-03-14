@@ -18,6 +18,9 @@ const showModal = ref(false)
 const showDeleteDialog = ref(false)
 const variableToDelete = ref<string | null>(null)
 const editingVariable = ref<Variable | null>(null)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 
 const formData = ref<Variable>({
   key: '',
@@ -36,8 +39,10 @@ const loadVariables = async () => {
   loading.value = true
   try {
     variables.value = await companyVariableService.getCompanyVariables()
-  } catch (error) {
-    console.error('Erro ao carregar variáveis', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar variáveis'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loading.value = false
   }
@@ -65,13 +70,19 @@ const saveVariable = async () => {
   try {
     if (editingVariable.value?.id) {
       await companyVariableService.patchCompanyVariable(editingVariable.value.id, formData.value)
+      snackbarMessage.value = 'Variável atualizada com sucesso'
     } else {
       await companyVariableService.postCompanyVariable(formData.value)
+      snackbarMessage.value = 'Variável criada com sucesso'
     }
+    snackbarColor.value = 'success'
+    snackbar.value = true
     await loadVariables()
     closeModal()
-  } catch (error) {
-    console.error('Erro ao salvar variável', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao salvar variável'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     saving.value = false
   }
@@ -90,8 +101,13 @@ const deleteVariable = async () => {
     await loadVariables()
     showDeleteDialog.value = false
     variableToDelete.value = null
-  } catch (error) {
-    console.error('Erro ao deletar variável', error)
+    snackbarMessage.value = 'Variável excluída com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao deletar variável'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     deleting.value = false
   }
@@ -250,5 +266,14 @@ onMounted(loadVariables)
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
+      {{ snackbarMessage }}
+      <template #actions>
+        <v-btn color="white" variant="text" @click="snackbar = false">
+          Fechar
+        </v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>

@@ -68,7 +68,7 @@ const save = async () => {
     const firstUser = selectedUsers.value[0]
     const payload = {
       userId: typeof firstUser === 'string' ? firstUser : firstUser?.id || '',
-      role: selectedRole.value
+      role: selectedRole.value,
     }
 
     await companieService.postCompanyAdmin(props.company.id, payload)
@@ -80,11 +80,14 @@ const save = async () => {
   }
 }
 
-watch(() => props.modelValue, (val) => {
-  if (!val) {
-    selectedUsers.value = []
-  }
-})
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (!val) {
+      selectedUsers.value = []
+    }
+  },
+)
 
 onMounted(() => {
   fetchUsers()
@@ -92,7 +95,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)" max-width="800">
+  <v-dialog
+    :model-value="modelValue"
+    @update:model-value="emit('update:modelValue', $event)"
+    max-width="800"
+  >
     <v-card rounded="lg">
       <v-card-title class="d-flex align-center justify-space-between pa-5 bg-primary">
         <div class="d-flex align-center ga-3">
@@ -104,14 +111,17 @@ onMounted(() => {
 
       <v-card-text class="pa-6">
         <div v-if="company" class="mb-4 pa-3 bg-grey-lighten-4 rounded">
-          <div class="text-caption text-medium-emphasis">Empresa</div>
+          <div class="text-caption text-medium-emphasis text-black">Empresa</div>
           <div class="text-body-2 font-weight-bold">{{ company.name }}</div>
         </div>
 
         <v-select
           v-model="selectedRole"
           label="Função"
-          :items="[{ title: 'Cliente', value: 'CLIENT' }, { title: 'Trabalhador', value: 'WORKER' }]"
+          :items="[
+            { title: 'Cliente', value: 'CLIENT' },
+            { title: 'Trabalhador', value: 'WORKER' },
+          ]"
           variant="outlined"
           density="comfortable"
           prepend-inner-icon="mdi-shield-account"

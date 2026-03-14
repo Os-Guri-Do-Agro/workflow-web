@@ -27,14 +27,22 @@ const formSubtask = ref({
 
 const suggest = ref<any>(null)
 const loadingSuggest = ref(false)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 
 const improveWithAI = async () => {
   loadingSuggest.value = true
   try {
     const response = await activityService.postSuggest(taskId.value)
     suggest.value = response
-  } catch (error) {
-    console.error('Erro ao aprimorar texto:', error)
+    snackbarMessage.value = 'Sugestões geradas com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao aprimorar texto'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loadingSuggest.value = false
   }
@@ -75,8 +83,13 @@ const createQuickSubtask = async () => {
     })
     await InfoActivity()
     showQuickSubtaskModal.value = false
-  } catch (error) {
-    console.error('Erro ao criar subtarefa:', error)
+    snackbarMessage.value = 'Subtarefa criada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao criar subtarefa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     quickSubtaskTitle.value = ''
     saving.value = false
@@ -95,8 +108,10 @@ const loading = ref(true)
 const InfoActivity = async () => {
   try {
     activityInfo.value = await activityService.getActivityById(taskId.value)
-  } catch (error) {
-    console.error('Erro ao buscar atividade:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar atividade'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -106,8 +121,10 @@ const findMembers = async () => {
   try {
     const response = await companiesServices.getCompanyMembers(id)
     members.value = response.data || response
-  } catch (error) {
-    console.error('Erro ao buscar membros:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar membros'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -141,8 +158,13 @@ const createSubtask = async () => {
       attachment: null,
     }
     showCreateSubtaskModal.value = false
-  } catch (error) {
-    console.error('Erro ao criar subtarefa:', error)
+    snackbarMessage.value = 'Subtarefa criada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao criar subtarefa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     saving.value = false
   }
@@ -201,8 +223,13 @@ const updateActivity = async () => {
     }
     await InfoActivity()
     showEditActivityModal.value = false
-  } catch (error) {
-    console.error('Erro ao atualizar atividade:', error)
+    snackbarMessage.value = 'Atividade atualizada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao atualizar atividade'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     saving.value = false
   }
@@ -214,8 +241,13 @@ const deleteSubtask = async (task: any) => {
     await activityService.deleteActivity(task.id)
     await InfoActivity()
     showSubtaskModal.value = false
-  } catch (error) {
-    console.error('Erro ao deletar subtarefa:', error)
+    snackbarMessage.value = 'Subtarefa deletada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao deletar subtarefa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     deleting.value = null
   }
@@ -257,8 +289,13 @@ const updateSubtask = async () => {
     }
     await InfoActivity()
     showSubtaskModal.value = false
-  } catch (error) {
-    console.error('Erro ao atualizar subtarefa:', error)
+    snackbarMessage.value = 'Subtarefa atualizada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao atualizar subtarefa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     saving.value = false
   }
@@ -314,8 +351,13 @@ const toggleSubtaskStatus = async (task: any) => {
   try {
     await activityService.patchActivityStatus(task.id, newStatus)
     task.status = newStatus
-  } catch (error) {
-    console.error('Erro ao atualizar status:', error)
+    snackbarMessage.value = 'Status atualizado com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao atualizar status'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -365,8 +407,13 @@ const deleteAttachment = async (attachmentId: string) => {
         selectedSubtask.value = updatedSubtask
       }
     }
-  } catch (error) {
-    console.error('Erro ao deletar anexo:', error)
+    snackbarMessage.value = 'Anexo deletado com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao deletar anexo'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     deletingAttachment.value = null
   }
@@ -512,6 +559,25 @@ const deleteAttachment = async (attachmentId: string) => {
                       <v-icon size="9" start>mdi-calendar-outline</v-icon>
                       {{ formatDate(task.dueDate) }}
                     </v-chip>
+                  </div>
+                  <div v-if="task.responsibles?.length" class="d-flex ga-1 mt-1">
+                    <v-tooltip
+                      v-for="r in task.responsibles"
+                      :key="r.userId"
+                      location="top"
+                    >
+                      <template #activator="{ props }">
+                        <v-avatar
+                          v-bind="props"
+                          :color="getUserColor(r.user.name)"
+                          size="20"
+                          style="cursor: pointer"
+                        >
+                          <span style="font-size: 8px; font-weight: 600; color: white">{{ getUserInitials(r.user.name) }}</span>
+                        </v-avatar>
+                      </template>
+                      <span style="font-size: 11px">{{ r.user.name }}</span>
+                    </v-tooltip>
                   </div>
                 </div>
                 <v-btn
@@ -1448,6 +1514,15 @@ const deleteAttachment = async (attachmentId: string) => {
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
+    {{ snackbarMessage }}
+    <template #actions>
+      <v-btn color="white" variant="text" @click="snackbar = false">
+        Fechar
+      </v-btn>
+    </template>
+  </v-snackbar>
 </template>
 
 <style scoped>

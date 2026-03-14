@@ -22,6 +22,9 @@ const currentTab = ref('kanban')
 const members = ref<any[]>([])
 const backLog = ref<any[]>([])
 const isWorkerRole = ref(false)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 const formActivity = ref<any>({
   title: '',
   description: '',
@@ -43,8 +46,10 @@ const findBackLog = async () => {
   try {
     const response = await backlogService.getBacklogByCompany(companyId)
     backLog.value = response
-  } catch (error) {
-    console.error('Erro ao buscar backlog:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar backlog'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -54,8 +59,10 @@ const findMembers = async () => {
   try {
     const response = await companiesServices.getCompanyMembers(id)
     members.value = response.data || response
-  } catch (error) {
-    console.error('Erro ao buscar membros:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar membros'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -96,8 +103,13 @@ const createActivity = async () => {
       attachment: null,
     }
     dialog.value = false
-  } catch (error) {
-    console.error('Erro ao criar atividade:', error)
+    snackbarMessage.value = 'Atividade criada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao criar atividade'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     creating.value = false
   }
@@ -109,9 +121,28 @@ const findTaskas = async () => {
 
   try {
     const data = await quartersService.getCompanyBoards(monthId)
-    tasks.value = data
-  } catch (error) {
-    console.error('Erro ao buscar tarefas:', error)
+    if (selectedUser.value === '') {
+      tasks.value = data
+    } else {
+      tasks.value = {
+        TODO: data.TODO?.filter((t: any) => 
+          t.responsibles?.some((r: any) => r.user.name === selectedUser.value)
+        ) || [],
+        IN_PROGRESS: data.IN_PROGRESS?.filter((t: any) => 
+          t.responsibles?.some((r: any) => r.user.name === selectedUser.value)
+        ) || [],
+        IN_TESTING: data.IN_TESTING?.filter((t: any) => 
+          t.responsibles?.some((r: any) => r.user.name === selectedUser.value)
+        ) || [],
+        DONE: data.DONE?.filter((t: any) => 
+          t.responsibles?.some((r: any) => r.user.name === selectedUser.value)
+        ) || [],
+      }
+    }
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar tarefas'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -130,8 +161,10 @@ const findMonthData = async () => {
         break
       }
     }
-  } catch (error) {
-    console.error('Erro ao buscar dados do mês:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar dados do mês'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -148,6 +181,10 @@ watch(
     await findTaskas()
   },
 )
+
+watch(selectedUser, () => {
+  findTaskas()
+})
 
 const currentMonthId = computed(() => route.params.month as string)
 const currentMonthData = ref<any>(null)
@@ -196,8 +233,13 @@ const handleUpdateStatus = async (taskId: string, apiStatus: string) => {
   try {
     await quartersService.patchActivityStatus(taskId, apiStatus)
     await findTaskas()
-  } catch (error) {
-    console.error('Erro ao atualizar status:', error)
+    snackbarMessage.value = 'Status atualizado com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao atualizar status'
+    snackbarColor.value = 'error'
+    snackbar.value = true
     await findTaskas()
   }
 }
@@ -218,8 +260,13 @@ const deleteTask = async () => {
     await activityService.deleteActivity(taskToDelete.value.id)
     await findTaskas()
     confirmDelete.value = false
-  } catch (error) {
-    console.error('Erro ao deletar atividade:', error)
+    snackbarMessage.value = 'Atividade deletada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao deletar atividade'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     deleting.value = null
     taskToDelete.value = null
@@ -264,7 +311,12 @@ const formatDate = (date: string) => {
 </script>
 
 <template>
-  <v-container v-if="loading" fluid class="pa-4 bg-background d-flex align-center justify-center" style="min-height: 60vh">
+  <v-container
+    v-if="loading"
+    fluid
+    class="pa-4 bg-background d-flex align-center justify-center"
+    style="min-height: 60vh"
+  >
     <v-progress-circular indeterminate color="secondary" size="48" />
   </v-container>
 
@@ -356,14 +408,24 @@ const formatDate = (date: string) => {
 
     <v-dialog v-model="confirmDelete" max-width="360">
       <v-card color="primary" rounded="lg">
-        <v-card-title class="pa-4 text-secondary" style="font-size: 14px">Excluir atividade</v-card-title>
+        <v-card-title class="pa-4 text-secondary" style="font-size: 14px"
+          >Excluir atividade</v-card-title
+        >
         <v-card-text class="text-secondary" style="font-size: 13px">
-          Tem certeza que deseja excluir <strong>{{ taskToDelete?.title }}</strong>?
+          Tem certeza que deseja excluir <strong>{{ taskToDelete?.title }}</strong
+          >?
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
           <v-btn size="small" variant="text" @click="confirmDelete = false">Cancelar</v-btn>
-          <v-btn size="small" color="error" variant="tonal" :loading="!!deleting" @click="deleteTask">Excluir</v-btn>
+          <v-btn
+            size="small"
+            color="error"
+            variant="tonal"
+            :loading="!!deleting"
+            @click="deleteTask"
+            >Excluir</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -375,7 +437,10 @@ const formatDate = (date: string) => {
       rounded="lg"
       class="pa-4"
     >
-      <div v-if="sortedHistory.length === 0" class="d-flex flex-column align-center justify-center py-12">
+      <div
+        v-if="sortedHistory.length === 0"
+        class="d-flex flex-column align-center justify-center py-12"
+      >
         <v-icon size="64" color="primary-lighten" class="mb-4">mdi-history</v-icon>
         <div style="font-size: 14px" class="font-weight-medium text-secondary mb-1">
           Nenhum histórico encontrado
@@ -407,15 +472,23 @@ const formatDate = (date: string) => {
                 v-if="entry.previousStatus"
                 size="x-small"
                 class="mx-1"
-                :style="{ backgroundColor: statusColors[entry.previousStatus] + '20', color: statusColors[entry.previousStatus] }"
-              >{{ statusLabels[entry.previousStatus] }}</v-chip>
+                :style="{
+                  backgroundColor: statusColors[entry.previousStatus] + '20',
+                  color: statusColors[entry.previousStatus],
+                }"
+                >{{ statusLabels[entry.previousStatus] }}</v-chip
+              >
               <span v-else class="mx-1">Novo</span>
               para
               <v-chip
                 size="x-small"
                 class="mx-1"
-                :style="{ backgroundColor: statusColors[entry.newStatus] + '20', color: statusColors[entry.newStatus] }"
-              >{{ statusLabels[entry.newStatus] }}</v-chip>
+                :style="{
+                  backgroundColor: statusColors[entry.newStatus] + '20',
+                  color: statusColors[entry.newStatus],
+                }"
+                >{{ statusLabels[entry.newStatus] }}</v-chip
+              >
             </div>
           </v-card>
         </v-timeline-item>
@@ -432,5 +505,9 @@ const formatDate = (date: string) => {
         @submit="createActivity"
       />
     </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarMessage }}
+    </v-snackbar>
   </v-container>
 </template>

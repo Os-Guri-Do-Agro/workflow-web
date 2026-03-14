@@ -32,6 +32,9 @@ const showBulkAddModal = ref(false)
 const showUserAddModal = ref(false)
 const selectedCompany = ref<any>(null)
 const isWorkerRole = ref(false)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 
 const fetchSystemCompanies = async () => {
   try {
@@ -42,8 +45,10 @@ const fetchSystemCompanies = async () => {
       cnpj: company.cnpj,
       usersCount: 0,
     }))
-  } catch (error) {
-    console.error('Erro ao carregar empresas do sistema:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar empresas do sistema'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -51,8 +56,10 @@ const fetchUserCompanies = async () => {
   try {
     const data = await companieService.getCompany()
     userCompanies.value = data
-  } catch (error) {
-    console.error('Erro ao carregar empresas do usuário:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar empresas do usuário'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -176,5 +183,9 @@ onMounted(async () => {
     <AddUserModal v-model="showAddUserModal" :company="selectedCompany" />
     <AddUserModal v-model="showUserAddModal" :company="selectedCompany" />
     <BulkAddUsersModal v-model="showBulkAddModal" :company="selectedCompany" />
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarMessage }}
+    </v-snackbar>
   </v-container>
 </template>

@@ -4,6 +4,7 @@ import { ref, computed, onMounted } from 'vue'
 import companiesServices from '@/service/companies/companies-services'
 import quartersService from '@/service/quarters/quarters-service'
 import { getInfoAuth } from '@/utils/authContent'
+import { useActiveCompanyId } from '@/stores/authStores'
 
 type MenuItem = {
   title: string
@@ -28,6 +29,7 @@ type CompanyResponse = {
 
 const companies = ref<any[]>([])
 const quaters = ref<any[]>([])
+const newCompanyId = useActiveCompanyId()
 
 const findCompanies = async () => {
   try {
@@ -47,6 +49,7 @@ const findCompanies = async () => {
     }
 
     if (!savedCompanyId && companies.value.length > 0) {
+      newCompanyId.setCompanyId(companies.value[0].id)
       localStorage.setItem('activeCompany', companies.value[0].id)
     }
   } catch (e) {
@@ -70,9 +73,8 @@ onMounted(async () => {
   if (!localStorage.getItem('token')) return
   await findCompanies()
   await findQuaters()
+  console.log('Novo id da empresa: ', newCompanyId.companyId)
 })
-
-
 
 const showCompanyModal = ref(false)
 
@@ -80,14 +82,14 @@ const activeCompany = computed(() => companies.value.find((c) => c.active))
 
 const switchCompany = (company: Company) => {
   companies.value.forEach((c) => (c.active = c.id === company.id))
+  newCompanyId.setCompanyId(company.id)
   localStorage.setItem('activeCompany', company.id)
   getInfoAuth()
   showCompanyModal.value = false
-  router.push('/')
 
   setTimeout(() => {
     window.location.reload()
-  }, 200)
+  })
   findQuaters()
 }
 
