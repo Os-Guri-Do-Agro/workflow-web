@@ -324,11 +324,11 @@ const formatDate = (date: string) => {
     <v-sheet color="transparent" class="mb-4">
       <div class="d-flex justify-space-between align-center mb-4">
         <div>
-          <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">
+          <h1 style="font-size: 24px" class="font-weight-bold text-secondary mb-1">
             Tarefas - {{ monthName }}
           </h1>
-          <div class="d-flex align-center" style="font-size: 11px; color: var(--v-primary-lighten)">
-            <v-icon size="11" class="mr-1">mdi-view-dashboard-outline</v-icon>
+          <div class="d-flex align-center" style="font-size: 14px; color: var(--v-primary-lighten)">
+            <v-icon size="16" class="mr-1">mdi-view-dashboard-outline</v-icon>
             {{ totalTasks }} atividades no total
           </div>
         </div>
@@ -341,12 +341,12 @@ const formatDate = (date: string) => {
             rounded="lg"
             class="elevation-1"
           >
-            <v-btn value="kanban" size="small" style="font-size: 12px">
-              <v-icon start size="16">mdi-view-column</v-icon>
+            <v-btn value="kanban" size="default" style="font-size: 14px">
+              <v-icon start size="20">mdi-view-column</v-icon>
               Kanban
             </v-btn>
-            <v-btn value="backlog" size="small" style="font-size: 12px">
-              <v-icon start size="16">mdi-history</v-icon>
+            <v-btn value="backlog" size="default" style="font-size: 14px">
+              <v-icon start size="20">mdi-history</v-icon>
               Backlog
             </v-btn>
           </v-btn-toggle>
@@ -355,9 +355,9 @@ const formatDate = (date: string) => {
             color="primary"
             prepend-icon="mdi-plus"
             elevation="2"
-            size="small"
+            size="default"
             class="text-none font-weight-medium"
-            style="font-size: 12px"
+            style="font-size: 14px"
             rounded="lg"
             @click="dialog = true"
           >
@@ -385,8 +385,8 @@ const formatDate = (date: string) => {
         <template #item="{ props, item }">
           <v-list-item v-bind="props" density="compact">
             <template #prepend>
-              <v-avatar :color="getUserColor(item as any)" size="28" class="mr-2">
-                <span style="font-size: 11px; font-weight: 600; color: white">{{
+              <v-avatar :color="getUserColor(item as any)" size="32" class="mr-2">
+                <span style="font-size: 13px; font-weight: 600; color: white">{{
                   getUserInitials(item as any)
                 }}</span>
               </v-avatar>
@@ -408,18 +408,18 @@ const formatDate = (date: string) => {
 
     <v-dialog v-model="confirmDelete" max-width="360">
       <v-card color="primary" rounded="lg">
-        <v-card-title class="pa-4 text-secondary" style="font-size: 14px"
+        <v-card-title class="pa-4 text-secondary" style="font-size: 16px"
           >Excluir atividade</v-card-title
         >
-        <v-card-text class="text-secondary" style="font-size: 13px">
+        <v-card-text class="text-secondary" style="font-size: 15px">
           Tem certeza que deseja excluir <strong>{{ taskToDelete?.title }}</strong
           >?
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
-          <v-btn size="small" variant="text" @click="confirmDelete = false">Cancelar</v-btn>
+          <v-btn size="default" variant="text" @click="confirmDelete = false">Cancelar</v-btn>
           <v-btn
-            size="small"
+            size="default"
             color="error"
             variant="tonal"
             :loading="!!deleting"
@@ -442,10 +442,10 @@ const formatDate = (date: string) => {
         class="d-flex flex-column align-center justify-center py-12"
       >
         <v-icon size="64" color="primary-lighten" class="mb-4">mdi-history</v-icon>
-        <div style="font-size: 14px" class="font-weight-medium text-secondary mb-1">
+        <div style="font-size: 16px" class="font-weight-medium text-secondary mb-1">
           Nenhum histórico encontrado
         </div>
-        <div style="font-size: 12px" class="text-primary-lighten">
+        <div style="font-size: 14px" class="text-primary-lighten">
           As alterações de status das atividades aparecerão aqui
         </div>
       </div>
@@ -457,20 +457,20 @@ const formatDate = (date: string) => {
           size="small"
         >
           <template #opposite>
-            <div style="font-size: 11px" class="text-primary-lighten">
+            <div style="font-size: 13px" class="text-primary-lighten">
               {{ formatDate(entry.changedAt) }}
             </div>
           </template>
           <v-card color="surface" elevation="0" rounded="lg" class="pa-3">
-            <div style="font-size: 12px" class="font-weight-medium text-secondary mb-1">
+            <div style="font-size: 14px" class="font-weight-medium text-secondary mb-1">
               {{ entry.activityTitle }}
             </div>
-            <div style="font-size: 11px" class="text-primary-lighten">
+            <div style="font-size: 13px" class="text-primary-lighten">
               <span class="font-weight-medium">{{ entry.changedBy?.name }}</span>
               alterou de
               <v-chip
                 v-if="entry.previousStatus"
-                size="x-small"
+                size="small"
                 class="mx-1"
                 :style="{
                   backgroundColor: statusColors[entry.previousStatus] + '20',
@@ -481,7 +481,7 @@ const formatDate = (date: string) => {
               <span v-else class="mx-1">Novo</span>
               para
               <v-chip
-                size="x-small"
+                size="small"
                 class="mx-1"
                 :style="{
                   backgroundColor: statusColors[entry.newStatus] + '20',

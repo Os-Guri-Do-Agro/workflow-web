@@ -170,8 +170,8 @@ defineEmits<{
             <v-img src="/icone.png"></v-img>
           </v-avatar>
           <div>
-            <div class="text-caption text-primary-lighten font-weight-medium">Empresa Ativa</div>
-            <div class="text-body-2 font-weight-bold text-secondary">
+            <div class="text-body-2 text-primary-lighten font-weight-medium">Empresa Ativa</div>
+            <div class="text-body-1 font-weight-bold text-secondary">
               {{ activeCompany?.name || 'Selecione' }}
             </div>
           </div>
@@ -204,7 +204,7 @@ defineEmits<{
           <template #prepend>
             <v-icon size="20">{{ item.icon }}</v-icon>
           </template>
-          <v-list-item-title class="text-body-2 font-weight-medium">{{
+          <v-list-item-title class="text-body-1 font-weight-medium">{{
             item.title
           }}</v-list-item-title>
         </v-list-item>
@@ -215,7 +215,7 @@ defineEmits<{
               <template #prepend>
                 <v-icon size="20">{{ item.icon }}</v-icon>
               </template>
-              <v-list-item-title class="text-body-2 font-weight-medium">{{
+              <v-list-item-title class="text-body-1 font-weight-medium">{{
                 item.title
               }}</v-list-item-title>
             </v-list-item>
@@ -233,7 +233,7 @@ defineEmits<{
               <template #prepend>
                 <v-icon size="18">{{ subItem.icon }}</v-icon>
               </template>
-              <v-list-item-title class="text-caption font-weight-medium">{{
+              <v-list-item-title class="text-body-2 font-weight-medium">{{
                 subItem.title
               }}</v-list-item-title>
             </v-list-item>
@@ -244,7 +244,7 @@ defineEmits<{
                   <template #prepend>
                     <v-icon size="18">{{ subItem.icon }}</v-icon>
                   </template>
-                  <v-list-item-title class="text-caption font-weight-medium">{{
+                  <v-list-item-title class="text-body-2 font-weight-medium">{{
                     subItem.title
                   }}</v-list-item-title>
                 </v-list-item>
@@ -262,7 +262,7 @@ defineEmits<{
                 <template #prepend>
                   <v-icon size="16">{{ child.icon }}</v-icon>
                 </template>
-                <v-list-item-title class="text-caption">{{ child.title }}</v-list-item-title>
+                <v-list-item-title class="text-body-2">{{ child.title }}</v-list-item-title>
               </v-list-item>
             </v-list-group>
           </template>
@@ -284,7 +284,7 @@ defineEmits<{
           <template #prepend>
             <v-icon size="20">{{ item.icon }}</v-icon>
           </template>
-          <v-list-item-title class="text-body-2 font-weight-medium">{{
+          <v-list-item-title class="text-body-1 font-weight-medium">{{
             item.title
           }}</v-list-item-title>
         </v-list-item>
@@ -297,7 +297,7 @@ defineEmits<{
       <v-card-title class="d-flex align-center justify-space-between pa-5 bg-primary">
         <div class="d-flex align-center ga-3">
           <v-icon color="secondary" size="28">mdi-office-building</v-icon>
-          <span class="text-h6 font-weight-bold text-secondary">Trocar Empresa</span>
+          <span class="text-h5 font-weight-bold text-secondary">Trocar Empresa</span>
         </div>
         <v-btn
           icon="mdi-close"
@@ -325,10 +325,10 @@ defineEmits<{
               </v-avatar>
             </template>
 
-            <v-list-item-title class="font-weight-medium mb-1">{{
+            <v-list-item-title class="text-body-1 font-weight-medium mb-1">{{
               company.name
             }}</v-list-item-title>
-            <v-list-item-subtitle class="text-caption"
+            <v-list-item-subtitle class="text-body-2"
               >CNPJ: {{ company.cnpj }}</v-list-item-subtitle
             >
 

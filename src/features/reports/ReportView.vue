@@ -123,15 +123,16 @@ watch(quarterId, () => {
           variant="text"
           prepend-icon="mdi-arrow-left"
           color="secondary"
-          size="small"
+          size="default"
           class="text-none"
+          style="font-size: 14px"
           @click="goBack"
         >
           Voltar
         </v-btn>
         <v-divider vertical class="mx-2" />
         <div>
-          <h1 style="font-size: 16px" class="font-weight-bold text-secondary">
+          <h1 style="font-size: 24px" class="font-weight-bold text-secondary">
             {{ quarterName }}
           </h1>
         </div>
@@ -140,8 +141,9 @@ watch(quarterId, () => {
         <v-btn
           color="secondary"
           prepend-icon="mdi-content-save"
-          size="small"
+          size="default"
           class="text-none"
+          style="font-size: 14px"
           :loading="isSaving"
           @click="saveReport"
         >
@@ -150,8 +152,9 @@ watch(quarterId, () => {
         <v-btn
           color="primary"
           prepend-icon="mdi-lightbulb-variant-outline"
-          size="small"
+          size="default"
           class="text-none"
+          style="font-size: 14px"
           :loading="isImproving"
           @click="improveReport"
         >
@@ -170,8 +173,8 @@ watch(quarterId, () => {
   <v-container v-else fluid class="pa-4 bg-background">
     <v-card elevation="2" rounded="lg" class="pa-8 text-center">
       <v-icon size="48" color="primary-lighten" class="mb-2">mdi-alert-circle-outline</v-icon>
-      <div style="font-size: 13px" class="text-primary-lighten">Relatório não encontrado</div>
-      <v-btn variant="tonal" color="secondary" size="small" class="mt-4 text-none" @click="goBack">
+      <div style="font-size: 16px" class="text-primary-lighten">Relatório não encontrado</div>
+      <v-btn variant="tonal" color="secondary" size="default" class="mt-4 text-none" style="font-size: 14px" @click="goBack">
         Voltar
       </v-btn>
     </v-card>
@@ -182,18 +185,18 @@ watch(quarterId, () => {
       <v-card-title class="pa-6 bg-gradient-primary">
         <div class="d-flex align-center justify-space-between">
           <div class="d-flex align-center ga-3">
-            <v-avatar color="secondary" size="40">
-              <v-icon color="primary" size="24">mdi-sparkles</v-icon>
+            <v-avatar color="secondary" size="48">
+              <v-icon color="primary" size="28">mdi-sparkles</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h6 font-weight-bold text-secondary">Sugestão de Melhoria</div>
-              <div class="text-caption text-secondary" style="opacity: 0.8">Revisado por IA</div>
+              <div class="text-h5 font-weight-bold text-secondary">Sugestão de Melhoria</div>
+              <div class="text-body-2 text-secondary" style="opacity: 0.8">Revisado por IA</div>
             </div>
           </div>
           <v-btn
             icon="mdi-close"
             variant="text"
-            size="small"
+            size="default"
             @click="showSuggestionDialog = false"
             color="secondary"
           ></v-btn>

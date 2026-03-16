@@ -441,7 +441,7 @@ const deleteAttachment = async (attachmentId: string) => {
           <v-card-text class="pa-4">
             <div class="d-flex align-center ga-2 mb-3">
               <v-icon color="Secundary" size="20">mdi-text-box-outline</v-icon>
-              <h1 style="font-size: 16px" class="font-weight-bold text-secondary flex-grow-1">
+              <h1 style="font-size: 20px" class="font-weight-bold text-secondary flex-grow-1">
                 {{ activityInfo.title }}
               </h1>
               <v-btn
@@ -457,11 +457,11 @@ const deleteAttachment = async (attachmentId: string) => {
 
             <div
               v-if="activityInfo.description"
-              style="font-size: 12px"
+              style="font-size: 15px"
               class="text-secondary"
               v-html="activityInfo.description"
             ></div>
-            <div v-else style="font-size: 12px" class="text-primary-lighten font-italic">
+            <div v-else style="font-size: 15px" class="text-primary-lighten font-italic">
               Sem descrição
             </div>
           </v-card-text>
@@ -474,7 +474,7 @@ const deleteAttachment = async (attachmentId: string) => {
           >
             <div class="d-flex align-center ga-2">
               <v-icon color="Secundary" size="18">mdi-format-list-checks</v-icon>
-              <span style="font-size: 13px" class="font-weight-bold text-secondary">
+              <span style="font-size: 16px" class="font-weight-bold text-secondary">
                 Subtarefas
               </span>
               <v-chip size="x-small" color="primary" variant="tonal">
@@ -508,7 +508,7 @@ const deleteAttachment = async (attachmentId: string) => {
                 <div class="flex-grow-1 clickable" @click="openSubtaskModal(task)">
                   <div class="d-flex align-center justify-space-between ga-2">
                     <div
-                      style="font-size: 11px; line-height: 1.4"
+                      style="font-size: 14px; line-height: 1.4"
                       class="font-weight-medium text-secondary"
                       :class="{
                         'text-decoration-line-through text-primary-lighten': task.completed,
@@ -519,7 +519,7 @@ const deleteAttachment = async (attachmentId: string) => {
                     <v-chip
                       size="x-small"
                       class="px-2 flex-shrink-0"
-                      style="height: 18px; font-size: 9px"
+                      style="height: 20px; font-size: 11px"
                       :style="{
                         backgroundColor: getPriorityColor(task.priorityNumber) + '20',
                         color: getPriorityColor(task.priorityNumber),
@@ -530,7 +530,7 @@ const deleteAttachment = async (attachmentId: string) => {
                   </div>
                   <div
                     v-if="task.description"
-                    style="font-size: 10px; line-height: 1.3"
+                    style="font-size: 13px; line-height: 1.3"
                     class="text-primary-lighten mt-1"
                     :class="{ 'text-decoration-line-through': task.completed }"
                   >
@@ -543,7 +543,7 @@ const deleteAttachment = async (attachmentId: string) => {
                       variant="tonal"
                       :color="getStatusConfig(task.status).color"
                       class="px-2"
-                      style="height: 18px; font-size: 9px"
+                      style="height: 20px; font-size: 11px"
                     >
                       <v-icon size="9" start>{{ getStatusConfig(task.status).icon }}</v-icon>
                       {{ getStatusConfig(task.status).label }}
@@ -554,7 +554,7 @@ const deleteAttachment = async (attachmentId: string) => {
                       variant="tonal"
                       color="Secundary"
                       class="px-2"
-                      style="height: 18px; font-size: 9px"
+                      style="height: 20px; font-size: 11px"
                     >
                       <v-icon size="9" start>mdi-calendar-outline</v-icon>
                       {{ formatDate(task.dueDate) }}
@@ -573,10 +573,10 @@ const deleteAttachment = async (attachmentId: string) => {
                           size="20"
                           style="cursor: pointer"
                         >
-                          <span style="font-size: 8px; font-weight: 600; color: white">{{ getUserInitials(r.user.name) }}</span>
+                          <span style="font-size: 10px; font-weight: 600; color: white">{{ getUserInitials(r.user.name) }}</span>
                         </v-avatar>
                       </template>
-                      <span style="font-size: 11px">{{ r.user.name }}</span>
+                      <span style="font-size: 13px">{{ r.user.name }}</span>
                     </v-tooltip>
                   </div>
                 </div>
@@ -598,7 +598,7 @@ const deleteAttachment = async (attachmentId: string) => {
           <v-icon size="40" color="primary-lighten" class="mb-2"
             >mdi-clipboard-text-off-outline</v-icon
           >
-          <div style="font-size: 12px" class="text-primary-lighten mb-3">
+          <div style="font-size: 15px" class="text-primary-lighten mb-3">
             Nenhuma subtarefa cadastrada
           </div>
           <v-btn
@@ -619,13 +619,13 @@ const deleteAttachment = async (attachmentId: string) => {
           <v-card-text class="pa-3">
             <div class="d-flex align-center ga-2 mb-3">
               <v-icon color="Secundary" size="16">mdi-information-outline</v-icon>
-              <span style="font-size: 12px" class="font-weight-bold text-secondary"
+              <span style="font-size: 15px" class="font-weight-bold text-secondary"
                 >Informações</span
               >
             </div>
 
             <div class="mb-3">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Status</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-1">Status</div>
               <v-chip size="small" variant="tonal" :color="statusConfig.color">
                 <v-icon size="12" start>{{ statusConfig.icon }}</v-icon>
                 {{ statusConfig.label }}
@@ -633,7 +633,7 @@ const deleteAttachment = async (attachmentId: string) => {
             </div>
 
             <div class="mb-3">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Prioridade</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-1">Prioridade</div>
               <v-chip size="small" variant="tonal" color="secondary">
                 <v-icon size="12" start>mdi-flag-outline</v-icon>
                 {{ activityInfo.priorityNumber }}
@@ -641,7 +641,7 @@ const deleteAttachment = async (attachmentId: string) => {
             </div>
 
             <div class="mb-3">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Criado em</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-1">Criado em</div>
               <v-chip size="small" variant="tonal" color="secondary">
                 <v-icon size="12" start>mdi-clock-outline</v-icon>
                 {{ formatDate(activityInfo.createdAt) }}
@@ -649,7 +649,7 @@ const deleteAttachment = async (attachmentId: string) => {
             </div>
 
             <div v-if="activityInfo.dueDate" class="mb-3">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Data de Entrega</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-1">Data de Entrega</div>
               <v-chip size="small" variant="tonal" color="secondary" class="text-primary">
                 <v-icon size="12" start>mdi-calendar-clock</v-icon>
                 {{ formatDate(activityInfo.dueDate) }}
@@ -657,7 +657,7 @@ const deleteAttachment = async (attachmentId: string) => {
             </div>
 
             <div v-if="responsibles.length">
-              <div style="font-size: 10px" class="text-primary-lighten mb-2">Responsáveis</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-2">Responsáveis</div>
               <div class="d-flex flex-column ga-1">
                 <v-chip
                   v-for="r in responsibles"
@@ -670,7 +670,7 @@ const deleteAttachment = async (attachmentId: string) => {
                   <v-avatar start size="20">
                     <span style="font-size: 9px">{{ getUserInitials(r.user.name) }}</span>
                   </v-avatar>
-                  <span style="font-size: 11px">{{ r.user.name }}</span>
+                  <span style="font-size: 13px">{{ r.user.name }}</span>
                 </v-chip>
               </div>
             </div>
@@ -681,7 +681,7 @@ const deleteAttachment = async (attachmentId: string) => {
           <v-card-text class="pa-3">
             <div class="d-flex align-center ga-2 mb-2">
               <v-icon color="Secundary" size="16">mdi-paperclip</v-icon>
-              <span style="font-size: 12px" class="font-weight-bold text-secondary">Anexos</span>
+              <span style="font-size: 15px" class="font-weight-bold text-secondary">Anexos</span>
             </div>
             <div class="d-flex flex-wrap ga-2">
               <a
@@ -745,7 +745,7 @@ const deleteAttachment = async (attachmentId: string) => {
   <v-container v-else fluid class="pa-4 bg-background">
     <v-card elevation="2" rounded="lg" class="pa-8 text-center">
       <v-icon size="48" color="primary-lighten" class="mb-2">mdi-alert-circle-outline</v-icon>
-      <div style="font-size: 13px" class="text-primary-lighten">Tarefa não encontrada</div>
+      <div style="font-size: 16px" class="text-primary-lighten">Tarefa não encontrada</div>
       <v-btn variant="tonal" color="primary" size="small" class="mt-4 text-none" @click="goBack">
         Voltar
       </v-btn>

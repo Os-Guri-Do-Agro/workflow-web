@@ -47,45 +47,48 @@ watch(() => props.modelValue, (value) => {
     <div v-if="editor" class="toolbar">
       <v-btn-group density="compact" variant="outlined" divided>
         <v-btn
-          size="small"
+          size="default"
           :class="{ 'is-active': editor.isActive('bold') }"
           @click="editor.chain().focus().toggleBold().run()"
         >
-          <v-icon size="18">mdi-format-bold</v-icon>
+          <v-icon size="22">mdi-format-bold</v-icon>
         </v-btn>
         <v-btn
-          size="small"
+          size="default"
           :class="{ 'is-active': editor.isActive('italic') }"
           @click="editor.chain().focus().toggleItalic().run()"
         >
-          <v-icon size="18">mdi-format-italic</v-icon>
+          <v-icon size="22">mdi-format-italic</v-icon>
         </v-btn>
         <v-btn
-          size="small"
+          size="default"
           :class="{ 'is-active': editor.isActive('underline') }"
           @click="editor.chain().focus().toggleUnderline().run()"
         >
-          <v-icon size="18">mdi-format-underline</v-icon>
+          <v-icon size="22">mdi-format-underline</v-icon>
         </v-btn>
       </v-btn-group>
 
       <v-btn-group density="compact" variant="outlined" divided class="ml-2">
         <v-btn
-          size="small"
+          size="default"
+          style="font-size: 14px"
           :class="{ 'is-active': editor.isActive('heading', { level: 1 }) }"
           @click="editor.chain().focus().toggleHeading({ level: 1 }).run()"
         >
           H1
         </v-btn>
         <v-btn
-          size="small"
+          size="default"
+          style="font-size: 14px"
           :class="{ 'is-active': editor.isActive('heading', { level: 2 }) }"
           @click="editor.chain().focus().toggleHeading({ level: 2 }).run()"
         >
           H2
         </v-btn>
         <v-btn
-          size="small"
+          size="default"
+          style="font-size: 14px"
           :class="{ 'is-active': editor.isActive('heading', { level: 3 }) }"
           @click="editor.chain().focus().toggleHeading({ level: 3 }).run()"
         >
@@ -95,42 +98,42 @@ watch(() => props.modelValue, (value) => {
 
       <v-btn-group density="compact" variant="outlined" divided class="ml-2">
         <v-btn
-          size="small"
+          size="default"
           :class="{ 'is-active': editor.isActive('bulletList') }"
           @click="editor.chain().focus().toggleBulletList().run()"
         >
-          <v-icon size="18">mdi-format-list-bulleted</v-icon>
+          <v-icon size="22">mdi-format-list-bulleted</v-icon>
         </v-btn>
         <v-btn
-          size="small"
+          size="default"
           :class="{ 'is-active': editor.isActive('orderedList') }"
           @click="editor.chain().focus().toggleOrderedList().run()"
         >
-          <v-icon size="18">mdi-format-list-numbered</v-icon>
+          <v-icon size="22">mdi-format-list-numbered</v-icon>
         </v-btn>
       </v-btn-group>
 
       <v-btn-group density="compact" variant="outlined" divided class="ml-2">
         <v-btn
-          size="small"
+          size="default"
           :class="{ 'is-active': editor.isActive({ textAlign: 'left' }) }"
           @click="editor.chain().focus().setTextAlign('left').run()"
         >
-          <v-icon size="18">mdi-format-align-left</v-icon>
+          <v-icon size="22">mdi-format-align-left</v-icon>
         </v-btn>
         <v-btn
-          size="small"
+          size="default"
           :class="{ 'is-active': editor.isActive({ textAlign: 'center' }) }"
           @click="editor.chain().focus().setTextAlign('center').run()"
         >
-          <v-icon size="18">mdi-format-align-center</v-icon>
+          <v-icon size="22">mdi-format-align-center</v-icon>
         </v-btn>
         <v-btn
-          size="small"
+          size="default"
           :class="{ 'is-active': editor.isActive({ textAlign: 'right' }) }"
           @click="editor.chain().focus().setTextAlign('right').run()"
         >
-          <v-icon size="18">mdi-format-align-right</v-icon>
+          <v-icon size="22">mdi-format-align-right</v-icon>
         </v-btn>
       </v-btn-group>
     </div>
@@ -169,6 +172,7 @@ watch(() => props.modelValue, (value) => {
   padding: 16px;
   outline: none;
   min-height: calc(100vh - 250px);
+  font-size: 16px;
 }
 
 :deep(.ProseMirror p.is-editor-empty:first-child::before) {
@@ -180,19 +184,19 @@ watch(() => props.modelValue, (value) => {
 }
 
 :deep(.ProseMirror h1) {
-  font-size: 2em;
+  font-size: 2.5em;
   font-weight: bold;
   margin: 0.5em 0;
 }
 
 :deep(.ProseMirror h2) {
-  font-size: 1.5em;
+  font-size: 2em;
   font-weight: bold;
   margin: 0.5em 0;
 }
 
 :deep(.ProseMirror h3) {
-  font-size: 1.25em;
+  font-size: 1.5em;
   font-weight: bold;
   margin: 0.5em 0;
 }
