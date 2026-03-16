@@ -97,8 +97,8 @@ const createQuickSubtask = async () => {
 }
 
 const isSubtaskCreated = (suggestedTitle: string) => {
-  return subtasks.value.some((st: any) => 
-    st.title.toLowerCase().trim() === suggestedTitle.toLowerCase().trim()
+  return subtasks.value.some(
+    (st: any) => st.title.toLowerCase().trim() === suggestedTitle.toLowerCase().trim(),
   )
 }
 
@@ -561,11 +561,7 @@ const deleteAttachment = async (attachmentId: string) => {
                     </v-chip>
                   </div>
                   <div v-if="task.responsibles?.length" class="d-flex ga-1 mt-1">
-                    <v-tooltip
-                      v-for="r in task.responsibles"
-                      :key="r.userId"
-                      location="top"
-                    >
+                    <v-tooltip v-for="r in task.responsibles" :key="r.userId" location="top">
                       <template #activator="{ props }">
                         <v-avatar
                           v-bind="props"
@@ -573,7 +569,9 @@ const deleteAttachment = async (attachmentId: string) => {
                           size="20"
                           style="cursor: pointer"
                         >
-                          <span style="font-size: 10px; font-weight: 600; color: white">{{ getUserInitials(r.user.name) }}</span>
+                          <span style="font-size: 10px; font-weight: 600; color: white">{{
+                            getUserInitials(r.user.name)
+                          }}</span>
                         </v-avatar>
                       </template>
                       <span style="font-size: 13px">{{ r.user.name }}</span>
@@ -602,11 +600,9 @@ const deleteAttachment = async (attachmentId: string) => {
             Nenhuma subtarefa cadastrada
           </div>
           <v-btn
-            size="x-small"
             color="Secundary"
             variant="tonal"
             prepend-icon="mdi-plus"
-            class="text-none"
             @click="showCreateSubtaskModal = true"
           >
             Nova Subtarefa
@@ -825,21 +821,21 @@ const deleteAttachment = async (attachmentId: string) => {
                 :key="i"
                 class="d-flex align-center justify-space-between pa-2 rounded"
                 :style="{
-                  background: isSubtaskCreated(task) ? 'rgba(var(--v-theme-success), 0.1)' : 'rgba(var(--v-theme-surface), 0.5)',
-                  border: isSubtaskCreated(task) ? '1px solid rgba(var(--v-theme-success), 0.3)' : '1px solid rgba(var(--v-theme-secondary), 0.2)',
-                  opacity: isSubtaskCreated(task) ? 0.7 : 1
+                  background: isSubtaskCreated(task)
+                    ? 'rgba(var(--v-theme-success), 0.1)'
+                    : 'rgba(var(--v-theme-surface), 0.5)',
+                  border: isSubtaskCreated(task)
+                    ? '1px solid rgba(var(--v-theme-success), 0.3)'
+                    : '1px solid rgba(var(--v-theme-secondary), 0.2)',
+                  opacity: isSubtaskCreated(task) ? 0.7 : 1,
                 }"
               >
                 <div class="d-flex align-center ga-2 flex-grow-1">
-                  <v-icon 
-                    v-if="isSubtaskCreated(task)" 
-                    size="16" 
-                    color="success"
-                  >
+                  <v-icon v-if="isSubtaskCreated(task)" size="16" color="success">
                     mdi-check-circle
                   </v-icon>
-                  <span 
-                    style="font-size: 11px" 
+                  <span
+                    style="font-size: 11px"
                     class="text-secondary"
                     :class="{ 'text-decoration-line-through': isSubtaskCreated(task) }"
                   >
@@ -1518,9 +1514,7 @@ const deleteAttachment = async (attachmentId: string) => {
   <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
     {{ snackbarMessage }}
     <template #actions>
-      <v-btn color="white" variant="text" @click="snackbar = false">
-        Fechar
-      </v-btn>
+      <v-btn color="white" variant="text" @click="snackbar = false"> Fechar </v-btn>
     </template>
   </v-snackbar>
 </template>
