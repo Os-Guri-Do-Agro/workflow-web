@@ -23,11 +23,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  success: [message: string, color: string]
 }>()
 
 const search = ref('')
 const users = ref<User[]>([])
 const selectedRole = ref<'CLIENT' | 'WORKER'>('WORKER')
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
 
 const headers = [
   { title: 'Nome', key: 'name' },
@@ -45,8 +49,10 @@ const fetchUsers = async () => {
 }
 
 const close = () => {
-  emit('update:modelValue', false)
-  selectedUsers.value = []
+  setTimeout(() => {
+    emit('update:modelValue', false)
+    selectedUsers.value = []
+  }, 100)
 }
 
 const save = async () => {
@@ -57,22 +63,30 @@ const save = async () => {
     }
 
     const payload = {
-      userIds: selectedUsers.value.map((u: any) => typeof u === 'string' ? u : u.id),
-      role: selectedRole.value
+      userIds: selectedUsers.value.map((u: any) => (typeof u === 'string' ? u : u.id)),
+      role: selectedRole.value,
     }
 
-    await companieService.postCompanyMemberLote(props.company.id, payload)
-    close()
-  } catch (error) {
+    const res = await companieService.postCompanyMemberLote(props.company.id, payload)
+    const message = res?.message || res?.data?.message || 'Usuários adicionados com sucesso!'
+    emit('success', message, 'success')
+    setTimeout(() => {
+      close()
+    }, 100)
+  } catch (error: any) {
+    emit('success', error.response?.data?.message || 'Erro ao adicionar usuários.', 'error')
     console.error('Erro ao adicionar usuários em lote:', error)
   }
 }
 
-watch(() => props.modelValue, (val) => {
-  if (!val) {
-    selectedUsers.value = []
-  }
-})
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (!val) {
+      selectedUsers.value = []
+    }
+  },
+)
 
 onMounted(() => {
   fetchUsers()
@@ -80,7 +94,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <v-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)" max-width="800">
+  <v-dialog
+    :model-value="modelValue"
+    @update:model-value="emit('update:modelValue', $event)"
+    max-width="800"
+  >
     <v-card rounded="lg">
       <v-card-title class="d-flex align-center justify-space-between pa-5 bg-primary">
         <div class="d-flex align-center ga-3">
@@ -92,14 +110,17 @@ onMounted(() => {
 
       <v-card-text class="pa-6">
         <div v-if="company" class="mb-4 pa-3 bg-grey-lighten-4 rounded">
-          <div class="text-caption text-medium-emphasis">Empresa</div>
+          <div class="text-caption text-medium-emphasis text-black">Empresa</div>
           <div class="text-body-2 font-weight-bold">{{ company.name }}</div>
         </div>
 
         <v-select
           v-model="selectedRole"
           label="Função"
-          :items="[{ title: 'Cliente', value: 'CLIENT' }, { title: 'Trabalhador', value: 'WORKER' }]"
+          :items="[
+            { title: 'Cliente', value: 'CLIENT' },
+            { title: 'Trabalhador', value: 'WORKER' },
+          ]"
           variant="outlined"
           density="comfortable"
           prepend-inner-icon="mdi-shield-account"
@@ -146,12 +167,7 @@ onMounted(() => {
       <v-card-actions class="pa-5 pt-0">
         <v-spacer />
         <v-btn variant="text" @click="close">Cancelar</v-btn>
-        <v-btn
-          color="primary"
-          variant="flat"
-          @click="save"
-          :disabled="selectedUsers.length === 0"
-        >
+        <v-btn color="primary" variant="flat" @click="save" :disabled="selectedUsers.length === 0">
           Adicionar ({{ selectedUsers.length }})
         </v-btn>
       </v-card-actions>

@@ -140,13 +140,13 @@ const openDeleteConfirm = (task: any) => {
       <v-card color="primary" elevation="1" rounded="lg" class="kanban-column">
         <v-card-title class="d-flex justify-space-between align-center pa-3 bg-surface">
           <div class="d-flex align-center ga-2">
-            <v-icon :color="column.color" size="15">{{ column.icon }}</v-icon>
-            <span style="font-size: 12px" class="font-weight-bold text-secondary">{{
+            <v-icon :color="column.color" size="20">{{ column.icon }}</v-icon>
+            <span style="font-size: 16px" class="font-weight-bold text-secondary">{{
               column.title
             }}</span>
           </div>
           <v-chip
-            size="x-small"
+            size="small"
             :style="{ backgroundColor: column.color + '20', color: column.color }"
             class="font-weight-bold"
           >
@@ -185,7 +185,7 @@ const openDeleteConfirm = (task: any) => {
             <div class="mb-3">
               <div class="d-flex justify-space-between align-center mb-1">
                 <div
-                  style="font-size: 12px; min-width: 0"
+                  style="font-size: 15px; min-width: 0"
                   class="font-weight-semibold text-secondary activity-title flex-grow-1"
                 >
                   {{ task.title }}
@@ -194,16 +194,16 @@ const openDeleteConfirm = (task: any) => {
                 <v-btn
                   v-if="!props.readonly"
                   icon
-                  size="x-small"
+                  size="small"
                   variant="text"
                   color="error"
                   @click.stop="openDeleteConfirm(task)"
                 >
-                  <v-icon size="14">mdi-delete-outline</v-icon>
+                  <v-icon size="18">mdi-delete-outline</v-icon>
                 </v-btn>
                 <v-chip
                   v-if="task.priorityNumber !== undefined"
-                  size="x-small"
+                  size="small"
                   :style="{
                     backgroundColor: getPriorityColor(task.priorityNumber) + '20',
                     color: getPriorityColor(task.priorityNumber),
@@ -224,17 +224,17 @@ const openDeleteConfirm = (task: any) => {
                 <div
                   v-if="task.dueDate"
                   class="d-flex align-center ga-1 text-primary-lighten"
-                  style="font-size: 11px"
+                  style="font-size: 13px"
                 >
-                  <v-icon size="11">mdi-calendar-clock</v-icon>
+                  <v-icon size="14">mdi-calendar-clock</v-icon>
                   {{ new Date(task.dueDate).toLocaleDateString('pt-BR') }}
                 </div>
                 <div
                   v-if="task.subtasks?.length"
                   class="d-flex align-center ga-1 text-primary-lighten"
-                  style="font-size: 11px"
+                  style="font-size: 13px"
                 >
-                  <v-icon size="11">mdi-format-list-checks</v-icon>
+                  <v-icon size="14">mdi-format-list-checks</v-icon>
                   {{ task.subtasks.length }}
                 </div>
               </div>
@@ -244,7 +244,7 @@ const openDeleteConfirm = (task: any) => {
                   v-for="(responsible, i) in task.responsibles.slice(0, 3)"
                   :key="responsible.userId"
                   :color="getUserColor(responsible.user.name)"
-                  size="24"
+                  size="28"
                   :style="{
                     marginLeft: (i as number) > 0 ? '-6px' : '0',
                     zIndex: 3 - (i as number),
@@ -253,17 +253,17 @@ const openDeleteConfirm = (task: any) => {
                   <v-tooltip activator="parent" location="top">{{
                     responsible.user.name
                   }}</v-tooltip>
-                  <span style="font-size: 10px; font-weight: 600; color: white">
+                  <span style="font-size: 12px; font-weight: 600; color: white">
                     {{ getUserInitials(responsible.user.name) }}
                   </span>
                 </v-avatar>
                 <v-avatar
                   v-if="task.responsibles.length > 3"
                   color="grey-lighten-1"
-                  size="24"
+                  size="28"
                   style="margin-left: -6px"
                 >
-                  <span style="font-size: 9px; font-weight: 600"
+                  <span style="font-size: 11px; font-weight: 600"
                     >+{{ task.responsibles.length - 3 }}</span
                   >
                 </v-avatar>

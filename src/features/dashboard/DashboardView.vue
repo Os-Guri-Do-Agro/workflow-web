@@ -170,12 +170,12 @@ const handleProjectClick = (projectName: string) => {
       <v-sheet color="transparent" class="mb-4">
         <div class="d-flex align-center justify-space-between">
           <div>
-            <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">Dashboard</h1>
+            <h1 style="font-size: 24px" class="font-weight-bold text-secondary mb-1">Dashboard</h1>
             <div
               class="d-flex align-center"
-              style="font-size: 11px; color: var(--v-primary-lighten)"
+              style="font-size: 14px; color: var(--v-primary-lighten)"
             >
-              <v-icon size="11" class="mr-1">mdi-view-dashboard-outline</v-icon>
+              <v-icon size="16" class="mr-1">mdi-view-dashboard-outline</v-icon>
               Visão geral do sistema
             </div>
           </div>
@@ -200,10 +200,10 @@ const handleProjectClick = (projectName: string) => {
                       <v-icon :color="stat.color" size="20">{{ stat.icon }}</v-icon>
                     </v-sheet>
                     <div>
-                      <div style="font-size: 18px" class="font-weight-bold text-secondary">
+                      <div style="font-size: 28px" class="font-weight-bold text-secondary">
                         {{ stat.value }}
                       </div>
-                      <div style="font-size: 11px" class="text-primary-lighten font-weight-medium">
+                      <div style="font-size: 14px" class="text-primary-lighten font-weight-medium">
                         {{ stat.title }}
                       </div>
                     </div>
@@ -211,7 +211,7 @@ const handleProjectClick = (projectName: string) => {
                   <div class="">
                     <v-chip
                       class="d-flex align-center px-4"
-                      style="font-size: 12px; font-weight: 600"
+                      style="font-size: 14px; font-weight: 600"
                       :style="{ color: stat.color }"
                       prepend-icon="mdi-trending-up"
                     >
@@ -229,8 +229,8 @@ const handleProjectClick = (projectName: string) => {
         <v-col cols="12" lg="7" class="pa-2">
           <v-card color="primary" elevation="1" rounded="lg">
             <v-card-title class="pa-3 bg-surface d-flex align-center ga-2">
-              <v-icon size="15">mdi-clock-outline</v-icon>
-              <span style="font-size: 12px" class="font-weight-bold text-secondary"
+              <v-icon size="20">mdi-clock-outline</v-icon>
+              <span style="font-size: 16px" class="font-weight-bold text-secondary"
                 >Atividades Recentes</span
               >
             </v-card-title>
@@ -241,7 +241,7 @@ const handleProjectClick = (projectName: string) => {
                 class="d-flex flex-column align-center justify-center pa-8"
               >
                 <v-icon size="48" color="primary-lighten" class="mb-3">mdi-inbox-outline</v-icon>
-                <span style="font-size: 12px" class="text-primary-lighten font-weight-medium"
+                <span style="font-size: 16px" class="text-primary-lighten font-weight-medium"
                   >Nenhuma atividade recente</span
                 >
               </div>
@@ -263,21 +263,21 @@ const handleProjectClick = (projectName: string) => {
                     height="28"
                   />
                   <div class="flex-grow-1">
-                    <div style="font-size: 12px" class="font-weight-semibold text-secondary mb-1">
+                    <div style="font-size: 15px" class="font-weight-semibold text-secondary mb-1">
                       {{ activity.title }}
                     </div>
                     <div class="d-flex align-center ga-2 flex-wrap">
                       <v-chip
-                        size="x-small"
+                        size="small"
                         variant="flat"
                         color="surface"
                         class="text-primary-lighten"
                       >
-                        <v-icon size="9" start>mdi-domain</v-icon>
+                        <v-icon size="14" start>mdi-domain</v-icon>
                         {{ activity.company }}
                       </v-chip>
                       <span
-                        style="font-size: 11px"
+                        style="font-size: 13px"
                         class="text-primary-lighten font-weight-medium"
                         >{{ activity.time }}</span
                       >
@@ -285,7 +285,7 @@ const handleProjectClick = (projectName: string) => {
                   </div>
                   <v-chip
                     v-if="statusConfig[activity.status]"
-                    size="x-small"
+                    size="small"
                     variant="flat"
                     :style="{
                       backgroundColor: (statusConfig[activity.status]?.color || '#000') + '20',
@@ -303,8 +303,8 @@ const handleProjectClick = (projectName: string) => {
         <v-col cols="12" lg="5" class="pa-2">
           <v-card color="primary" elevation="1" rounded="lg">
             <v-card-title class="pa-3 bg-surface d-flex align-center ga-2">
-              <v-icon size="15">mdi-chart-box-outline</v-icon>
-              <span style="font-size: 12px" class="font-weight-bold text-secondary"
+              <v-icon size="20">mdi-chart-box-outline</v-icon>
+              <span style="font-size: 16px" class="font-weight-bold text-secondary"
                 >Visão Geral</span
               >
             </v-card-title>
@@ -318,8 +318,8 @@ const handleProjectClick = (projectName: string) => {
 
       <v-sheet color="transparent" class="mb-2 mt-4">
         <div class="d-flex align-center ga-2">
-          <v-icon size="15">mdi-folder-outline</v-icon>
-          <span style="font-size: 12px" class="font-weight-bold text-secondary">Projetos</span>
+          <v-icon size="20">mdi-folder-outline</v-icon>
+          <span style="font-size: 16px" class="font-weight-bold text-secondary">Projetos</span>
         </div>
       </v-sheet>
 
@@ -357,7 +357,7 @@ const handleProjectClick = (projectName: string) => {
                   >
                 </v-sheet>
                 <v-chip
-                  size="x-small"
+                  size="small"
                   variant="flat"
                   :style="{
                     backgroundColor: (statusConfig[project.status]?.color || '#000') + '20',
@@ -368,20 +368,20 @@ const handleProjectClick = (projectName: string) => {
                 </v-chip>
               </div>
 
-              <div style="font-size: 13px" class="font-weight-bold text-secondary mb-1">
+              <div style="font-size: 16px" class="font-weight-bold text-secondary mb-1">
                 {{ project.name }}
               </div>
-              <div style="font-size: 10px" class="text-primary-lighten font-weight-medium mb-3">
+              <div style="font-size: 13px" class="text-primary-lighten font-weight-medium mb-3">
                 {{ project.cnpj }}
               </div>
 
               <div class="mb-2">
                 <div class="d-flex align-center justify-space-between mb-1">
-                  <span style="font-size: 10px" class="text-primary-lighten font-weight-medium"
+                  <span style="font-size: 13px" class="text-primary-lighten font-weight-medium"
                     >Progresso</span
                   >
                   <span
-                    style="font-size: 11px"
+                    style="font-size: 14px"
                     class="font-weight-bold"
                     :style="{ color: statusConfig[project.status]?.color }"
                     >{{ project.progress }}%</span
@@ -399,14 +399,14 @@ const handleProjectClick = (projectName: string) => {
 
               <div class="d-flex align-center justify-space-between">
                 <div class="d-flex align-center ga-1">
-                  <v-icon size="12" color="primary-lighten">mdi-check-circle</v-icon>
-                  <span style="font-size: 11px" class="text-primary-lighten font-weight-medium"
+                  <v-icon size="16" color="primary-lighten">mdi-check-circle</v-icon>
+                  <span style="font-size: 14px" class="text-primary-lighten font-weight-medium"
                     >{{ project.completed }}/{{ project.total }}</span
                   >
                 </div>
                 <div class="d-flex align-center ga-1">
-                  <v-icon size="12" color="primary-lighten">mdi-progress-clock</v-icon>
-                  <span style="font-size: 11px" class="text-primary-lighten font-weight-medium">{{
+                  <v-icon size="16" color="primary-lighten">mdi-progress-clock</v-icon>
+                  <span style="font-size: 14px" class="text-primary-lighten font-weight-medium">{{
                     project.inProgress
                   }}</span>
                 </div>

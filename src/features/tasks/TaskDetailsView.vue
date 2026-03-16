@@ -27,14 +27,22 @@ const formSubtask = ref({
 
 const suggest = ref<any>(null)
 const loadingSuggest = ref(false)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 
 const improveWithAI = async () => {
   loadingSuggest.value = true
   try {
     const response = await activityService.postSuggest(taskId.value)
     suggest.value = response
-  } catch (error) {
-    console.error('Erro ao aprimorar texto:', error)
+    snackbarMessage.value = 'Sugestões geradas com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao aprimorar texto'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loadingSuggest.value = false
   }
@@ -75,8 +83,13 @@ const createQuickSubtask = async () => {
     })
     await InfoActivity()
     showQuickSubtaskModal.value = false
-  } catch (error) {
-    console.error('Erro ao criar subtarefa:', error)
+    snackbarMessage.value = 'Subtarefa criada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao criar subtarefa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     quickSubtaskTitle.value = ''
     saving.value = false
@@ -84,8 +97,8 @@ const createQuickSubtask = async () => {
 }
 
 const isSubtaskCreated = (suggestedTitle: string) => {
-  return subtasks.value.some((st: any) => 
-    st.title.toLowerCase().trim() === suggestedTitle.toLowerCase().trim()
+  return subtasks.value.some(
+    (st: any) => st.title.toLowerCase().trim() === suggestedTitle.toLowerCase().trim(),
   )
 }
 
@@ -95,8 +108,10 @@ const loading = ref(true)
 const InfoActivity = async () => {
   try {
     activityInfo.value = await activityService.getActivityById(taskId.value)
-  } catch (error) {
-    console.error('Erro ao buscar atividade:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar atividade'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -106,8 +121,10 @@ const findMembers = async () => {
   try {
     const response = await companiesServices.getCompanyMembers(id)
     members.value = response.data || response
-  } catch (error) {
-    console.error('Erro ao buscar membros:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar membros'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -141,8 +158,13 @@ const createSubtask = async () => {
       attachment: null,
     }
     showCreateSubtaskModal.value = false
-  } catch (error) {
-    console.error('Erro ao criar subtarefa:', error)
+    snackbarMessage.value = 'Subtarefa criada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao criar subtarefa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     saving.value = false
   }
@@ -201,8 +223,13 @@ const updateActivity = async () => {
     }
     await InfoActivity()
     showEditActivityModal.value = false
-  } catch (error) {
-    console.error('Erro ao atualizar atividade:', error)
+    snackbarMessage.value = 'Atividade atualizada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao atualizar atividade'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     saving.value = false
   }
@@ -214,8 +241,13 @@ const deleteSubtask = async (task: any) => {
     await activityService.deleteActivity(task.id)
     await InfoActivity()
     showSubtaskModal.value = false
-  } catch (error) {
-    console.error('Erro ao deletar subtarefa:', error)
+    snackbarMessage.value = 'Subtarefa deletada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao deletar subtarefa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     deleting.value = null
   }
@@ -257,8 +289,13 @@ const updateSubtask = async () => {
     }
     await InfoActivity()
     showSubtaskModal.value = false
-  } catch (error) {
-    console.error('Erro ao atualizar subtarefa:', error)
+    snackbarMessage.value = 'Subtarefa atualizada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao atualizar subtarefa'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     saving.value = false
   }
@@ -314,8 +351,13 @@ const toggleSubtaskStatus = async (task: any) => {
   try {
     await activityService.patchActivityStatus(task.id, newStatus)
     task.status = newStatus
-  } catch (error) {
-    console.error('Erro ao atualizar status:', error)
+    snackbarMessage.value = 'Status atualizado com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao atualizar status'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -365,8 +407,13 @@ const deleteAttachment = async (attachmentId: string) => {
         selectedSubtask.value = updatedSubtask
       }
     }
-  } catch (error) {
-    console.error('Erro ao deletar anexo:', error)
+    snackbarMessage.value = 'Anexo deletado com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao deletar anexo'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     deletingAttachment.value = null
   }
@@ -394,7 +441,7 @@ const deleteAttachment = async (attachmentId: string) => {
           <v-card-text class="pa-4">
             <div class="d-flex align-center ga-2 mb-3">
               <v-icon color="Secundary" size="20">mdi-text-box-outline</v-icon>
-              <h1 style="font-size: 16px" class="font-weight-bold text-secondary flex-grow-1">
+              <h1 style="font-size: 20px" class="font-weight-bold text-secondary flex-grow-1">
                 {{ activityInfo.title }}
               </h1>
               <v-btn
@@ -410,11 +457,11 @@ const deleteAttachment = async (attachmentId: string) => {
 
             <div
               v-if="activityInfo.description"
-              style="font-size: 12px"
+              style="font-size: 15px"
               class="text-secondary"
               v-html="activityInfo.description"
             ></div>
-            <div v-else style="font-size: 12px" class="text-primary-lighten font-italic">
+            <div v-else style="font-size: 15px" class="text-primary-lighten font-italic">
               Sem descrição
             </div>
           </v-card-text>
@@ -427,7 +474,7 @@ const deleteAttachment = async (attachmentId: string) => {
           >
             <div class="d-flex align-center ga-2">
               <v-icon color="Secundary" size="18">mdi-format-list-checks</v-icon>
-              <span style="font-size: 13px" class="font-weight-bold text-secondary">
+              <span style="font-size: 16px" class="font-weight-bold text-secondary">
                 Subtarefas
               </span>
               <v-chip size="x-small" color="primary" variant="tonal">
@@ -461,7 +508,7 @@ const deleteAttachment = async (attachmentId: string) => {
                 <div class="flex-grow-1 clickable" @click="openSubtaskModal(task)">
                   <div class="d-flex align-center justify-space-between ga-2">
                     <div
-                      style="font-size: 11px; line-height: 1.4"
+                      style="font-size: 14px; line-height: 1.4"
                       class="font-weight-medium text-secondary"
                       :class="{
                         'text-decoration-line-through text-primary-lighten': task.completed,
@@ -472,7 +519,7 @@ const deleteAttachment = async (attachmentId: string) => {
                     <v-chip
                       size="x-small"
                       class="px-2 flex-shrink-0"
-                      style="height: 18px; font-size: 9px"
+                      style="height: 20px; font-size: 11px"
                       :style="{
                         backgroundColor: getPriorityColor(task.priorityNumber) + '20',
                         color: getPriorityColor(task.priorityNumber),
@@ -483,7 +530,7 @@ const deleteAttachment = async (attachmentId: string) => {
                   </div>
                   <div
                     v-if="task.description"
-                    style="font-size: 10px; line-height: 1.3"
+                    style="font-size: 13px; line-height: 1.3"
                     class="text-primary-lighten mt-1"
                     :class="{ 'text-decoration-line-through': task.completed }"
                   >
@@ -496,7 +543,7 @@ const deleteAttachment = async (attachmentId: string) => {
                       variant="tonal"
                       :color="getStatusConfig(task.status).color"
                       class="px-2"
-                      style="height: 18px; font-size: 9px"
+                      style="height: 20px; font-size: 11px"
                     >
                       <v-icon size="9" start>{{ getStatusConfig(task.status).icon }}</v-icon>
                       {{ getStatusConfig(task.status).label }}
@@ -507,11 +554,28 @@ const deleteAttachment = async (attachmentId: string) => {
                       variant="tonal"
                       color="Secundary"
                       class="px-2"
-                      style="height: 18px; font-size: 9px"
+                      style="height: 20px; font-size: 11px"
                     >
                       <v-icon size="9" start>mdi-calendar-outline</v-icon>
                       {{ formatDate(task.dueDate) }}
                     </v-chip>
+                  </div>
+                  <div v-if="task.responsibles?.length" class="d-flex ga-1 mt-1">
+                    <v-tooltip v-for="r in task.responsibles" :key="r.userId" location="top">
+                      <template #activator="{ props }">
+                        <v-avatar
+                          v-bind="props"
+                          :color="getUserColor(r.user.name)"
+                          size="20"
+                          style="cursor: pointer"
+                        >
+                          <span style="font-size: 10px; font-weight: 600; color: white">{{
+                            getUserInitials(r.user.name)
+                          }}</span>
+                        </v-avatar>
+                      </template>
+                      <span style="font-size: 13px">{{ r.user.name }}</span>
+                    </v-tooltip>
                   </div>
                 </div>
                 <v-btn
@@ -532,15 +596,13 @@ const deleteAttachment = async (attachmentId: string) => {
           <v-icon size="40" color="primary-lighten" class="mb-2"
             >mdi-clipboard-text-off-outline</v-icon
           >
-          <div style="font-size: 12px" class="text-primary-lighten mb-3">
+          <div style="font-size: 15px" class="text-primary-lighten mb-3">
             Nenhuma subtarefa cadastrada
           </div>
           <v-btn
-            size="x-small"
             color="Secundary"
             variant="tonal"
             prepend-icon="mdi-plus"
-            class="text-none"
             @click="showCreateSubtaskModal = true"
           >
             Nova Subtarefa
@@ -553,13 +615,13 @@ const deleteAttachment = async (attachmentId: string) => {
           <v-card-text class="pa-3">
             <div class="d-flex align-center ga-2 mb-3">
               <v-icon color="Secundary" size="16">mdi-information-outline</v-icon>
-              <span style="font-size: 12px" class="font-weight-bold text-secondary"
+              <span style="font-size: 15px" class="font-weight-bold text-secondary"
                 >Informações</span
               >
             </div>
 
             <div class="mb-3">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Status</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-1">Status</div>
               <v-chip size="small" variant="tonal" :color="statusConfig.color">
                 <v-icon size="12" start>{{ statusConfig.icon }}</v-icon>
                 {{ statusConfig.label }}
@@ -567,7 +629,7 @@ const deleteAttachment = async (attachmentId: string) => {
             </div>
 
             <div class="mb-3">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Prioridade</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-1">Prioridade</div>
               <v-chip size="small" variant="tonal" color="secondary">
                 <v-icon size="12" start>mdi-flag-outline</v-icon>
                 {{ activityInfo.priorityNumber }}
@@ -575,7 +637,7 @@ const deleteAttachment = async (attachmentId: string) => {
             </div>
 
             <div class="mb-3">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Criado em</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-1">Criado em</div>
               <v-chip size="small" variant="tonal" color="secondary">
                 <v-icon size="12" start>mdi-clock-outline</v-icon>
                 {{ formatDate(activityInfo.createdAt) }}
@@ -583,7 +645,7 @@ const deleteAttachment = async (attachmentId: string) => {
             </div>
 
             <div v-if="activityInfo.dueDate" class="mb-3">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Data de Entrega</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-1">Data de Entrega</div>
               <v-chip size="small" variant="tonal" color="secondary" class="text-primary">
                 <v-icon size="12" start>mdi-calendar-clock</v-icon>
                 {{ formatDate(activityInfo.dueDate) }}
@@ -591,7 +653,7 @@ const deleteAttachment = async (attachmentId: string) => {
             </div>
 
             <div v-if="responsibles.length">
-              <div style="font-size: 10px" class="text-primary-lighten mb-2">Responsáveis</div>
+              <div style="font-size: 13px" class="text-primary-lighten mb-2">Responsáveis</div>
               <div class="d-flex flex-column ga-1">
                 <v-chip
                   v-for="r in responsibles"
@@ -604,7 +666,7 @@ const deleteAttachment = async (attachmentId: string) => {
                   <v-avatar start size="20">
                     <span style="font-size: 9px">{{ getUserInitials(r.user.name) }}</span>
                   </v-avatar>
-                  <span style="font-size: 11px">{{ r.user.name }}</span>
+                  <span style="font-size: 13px">{{ r.user.name }}</span>
                 </v-chip>
               </div>
             </div>
@@ -615,7 +677,7 @@ const deleteAttachment = async (attachmentId: string) => {
           <v-card-text class="pa-3">
             <div class="d-flex align-center ga-2 mb-2">
               <v-icon color="Secundary" size="16">mdi-paperclip</v-icon>
-              <span style="font-size: 12px" class="font-weight-bold text-secondary">Anexos</span>
+              <span style="font-size: 15px" class="font-weight-bold text-secondary">Anexos</span>
             </div>
             <div class="d-flex flex-wrap ga-2">
               <a
@@ -679,7 +741,7 @@ const deleteAttachment = async (attachmentId: string) => {
   <v-container v-else fluid class="pa-4 bg-background">
     <v-card elevation="2" rounded="lg" class="pa-8 text-center">
       <v-icon size="48" color="primary-lighten" class="mb-2">mdi-alert-circle-outline</v-icon>
-      <div style="font-size: 13px" class="text-primary-lighten">Tarefa não encontrada</div>
+      <div style="font-size: 16px" class="text-primary-lighten">Tarefa não encontrada</div>
       <v-btn variant="tonal" color="primary" size="small" class="mt-4 text-none" @click="goBack">
         Voltar
       </v-btn>
@@ -759,21 +821,21 @@ const deleteAttachment = async (attachmentId: string) => {
                 :key="i"
                 class="d-flex align-center justify-space-between pa-2 rounded"
                 :style="{
-                  background: isSubtaskCreated(task) ? 'rgba(var(--v-theme-success), 0.1)' : 'rgba(var(--v-theme-surface), 0.5)',
-                  border: isSubtaskCreated(task) ? '1px solid rgba(var(--v-theme-success), 0.3)' : '1px solid rgba(var(--v-theme-secondary), 0.2)',
-                  opacity: isSubtaskCreated(task) ? 0.7 : 1
+                  background: isSubtaskCreated(task)
+                    ? 'rgba(var(--v-theme-success), 0.1)'
+                    : 'rgba(var(--v-theme-surface), 0.5)',
+                  border: isSubtaskCreated(task)
+                    ? '1px solid rgba(var(--v-theme-success), 0.3)'
+                    : '1px solid rgba(var(--v-theme-secondary), 0.2)',
+                  opacity: isSubtaskCreated(task) ? 0.7 : 1,
                 }"
               >
                 <div class="d-flex align-center ga-2 flex-grow-1">
-                  <v-icon 
-                    v-if="isSubtaskCreated(task)" 
-                    size="16" 
-                    color="success"
-                  >
+                  <v-icon v-if="isSubtaskCreated(task)" size="16" color="success">
                     mdi-check-circle
                   </v-icon>
-                  <span 
-                    style="font-size: 11px" 
+                  <span
+                    style="font-size: 11px"
                     class="text-secondary"
                     :class="{ 'text-decoration-line-through': isSubtaskCreated(task) }"
                   >
@@ -1448,6 +1510,13 @@ const deleteAttachment = async (attachmentId: string) => {
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
+    {{ snackbarMessage }}
+    <template #actions>
+      <v-btn color="white" variant="text" @click="snackbar = false"> Fechar </v-btn>
+    </template>
+  </v-snackbar>
 </template>
 
 <style scoped>

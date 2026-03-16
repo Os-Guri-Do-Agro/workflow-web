@@ -38,8 +38,8 @@ const toggleTheme = () => {
 }
 
 const handleLogout = () => {
-  window.location.href = '/login'
-  userMenu.value = false
+  localStorage.clear()
+  router.push('/login')
 }
 
 const pageTitle = computed(() => {
@@ -130,7 +130,7 @@ const breadcrumbs = computed(() => {
         </v-btn>
       </template>
 
-      <v-card min-width="200">
+      <v-card class="mr-3" min-width="200">
         <v-list>
           <v-list-item
             prepend-icon="mdi-cog"

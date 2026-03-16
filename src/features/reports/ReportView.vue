@@ -15,8 +15,9 @@ const isLoading = ref(true)
 const isImproving = ref(false)
 const showSuggestionDialog = ref(false)
 const suggestedContent = ref('')
-const showToast = ref(false)
-const toastMessage = ref('')
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 
 const quarterName = computed(() => {
   if (!quarter.value) return ''
@@ -33,8 +34,10 @@ const loadQuarter = async () => {
     const response = await quartersService.getCompanyQuarters(companyId)
     const quarters = response
     quarter.value = quarters.find((q: any) => q.id === quarterId.value)
-  } catch (error) {
-    console.error('Error loading quarter:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar trimestre'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     isLoading.value = false
   }
@@ -44,8 +47,10 @@ const loadReport = async () => {
   try {
     const response = await quartersService.getReport(quarterId.value)
     content.value = response?.report || `Relatório do trimestre ${response.label}`
-  } catch (error) {
-    console.error('Error loading report:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar relatório'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -55,12 +60,13 @@ const saveReport = async () => {
     await quartersService.postReport(quarterId.value, {
       report: content.value,
     })
-    toastMessage.value = 'Relatório salvo com sucesso!'
-    showToast.value = true
-  } catch (error) {
-    console.error('Error saving report:', error)
-    toastMessage.value = 'Erro ao salvar relatório'
-    showToast.value = true
+    snackbarMessage.value = 'Relatório salvo com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao salvar relatório'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     isSaving.value = false
   }
@@ -74,8 +80,10 @@ const improveReport = async () => {
     })
     suggestedContent.value = response.improvedReport
     showSuggestionDialog.value = true
-  } catch (error) {
-    console.error('Error improving report:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao melhorar relatório'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     isImproving.value = false
   }
@@ -115,15 +123,16 @@ watch(quarterId, () => {
           variant="text"
           prepend-icon="mdi-arrow-left"
           color="secondary"
-          size="small"
+          size="default"
           class="text-none"
+          style="font-size: 14px"
           @click="goBack"
         >
           Voltar
         </v-btn>
         <v-divider vertical class="mx-2" />
         <div>
-          <h1 style="font-size: 16px" class="font-weight-bold text-secondary">
+          <h1 style="font-size: 24px" class="font-weight-bold text-secondary">
             {{ quarterName }}
           </h1>
         </div>
@@ -132,8 +141,9 @@ watch(quarterId, () => {
         <v-btn
           color="secondary"
           prepend-icon="mdi-content-save"
-          size="small"
+          size="default"
           class="text-none"
+          style="font-size: 14px"
           :loading="isSaving"
           @click="saveReport"
         >
@@ -142,8 +152,9 @@ watch(quarterId, () => {
         <v-btn
           color="primary"
           prepend-icon="mdi-lightbulb-variant-outline"
-          size="small"
+          size="default"
           class="text-none"
+          style="font-size: 14px"
           :loading="isImproving"
           @click="improveReport"
         >
@@ -162,8 +173,8 @@ watch(quarterId, () => {
   <v-container v-else fluid class="pa-4 bg-background">
     <v-card elevation="2" rounded="lg" class="pa-8 text-center">
       <v-icon size="48" color="primary-lighten" class="mb-2">mdi-alert-circle-outline</v-icon>
-      <div style="font-size: 13px" class="text-primary-lighten">Relatório não encontrado</div>
-      <v-btn variant="tonal" color="secondary" size="small" class="mt-4 text-none" @click="goBack">
+      <div style="font-size: 16px" class="text-primary-lighten">Relatório não encontrado</div>
+      <v-btn variant="tonal" color="secondary" size="default" class="mt-4 text-none" style="font-size: 14px" @click="goBack">
         Voltar
       </v-btn>
     </v-card>
@@ -174,18 +185,18 @@ watch(quarterId, () => {
       <v-card-title class="pa-6 bg-gradient-primary">
         <div class="d-flex align-center justify-space-between">
           <div class="d-flex align-center ga-3">
-            <v-avatar color="secondary" size="40">
-              <v-icon color="primary" size="24">mdi-sparkles</v-icon>
+            <v-avatar color="secondary" size="48">
+              <v-icon color="primary" size="28">mdi-sparkles</v-icon>
             </v-avatar>
             <div>
-              <div class="text-h6 font-weight-bold text-secondary">Sugestão de Melhoria</div>
-              <div class="text-caption text-secondary" style="opacity: 0.8">Revisado por IA</div>
+              <div class="text-h5 font-weight-bold text-secondary">Sugestão de Melhoria</div>
+              <div class="text-body-2 text-secondary" style="opacity: 0.8">Revisado por IA</div>
             </div>
           </div>
           <v-btn
             icon="mdi-close"
             variant="text"
-            size="small"
+            size="default"
             @click="showSuggestionDialog = false"
             color="secondary"
           ></v-btn>
@@ -223,7 +234,12 @@ watch(quarterId, () => {
     </v-card>
   </v-dialog>
 
-  <v-snackbar v-model="showToast" :timeout="3000" color="secondary" location="top">
-    {{ toastMessage }}
+  <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
+    {{ snackbarMessage }}
+    <template #actions>
+      <v-btn color="white" variant="text" @click="snackbar = false">
+        Fechar
+      </v-btn>
+    </template>
   </v-snackbar>
 </template>

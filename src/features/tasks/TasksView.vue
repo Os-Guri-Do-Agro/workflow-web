@@ -22,6 +22,9 @@ const currentTab = ref('kanban')
 const members = ref<any[]>([])
 const backLog = ref<any[]>([])
 const isWorkerRole = ref(false)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 const formActivity = ref<any>({
   title: '',
   description: '',
@@ -43,8 +46,10 @@ const findBackLog = async () => {
   try {
     const response = await backlogService.getBacklogByCompany(companyId)
     backLog.value = response
-  } catch (error) {
-    console.error('Erro ao buscar backlog:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar backlog'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -54,8 +59,10 @@ const findMembers = async () => {
   try {
     const response = await companiesServices.getCompanyMembers(id)
     members.value = response.data || response
-  } catch (error) {
-    console.error('Erro ao buscar membros:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar membros'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -96,8 +103,13 @@ const createActivity = async () => {
       attachment: null,
     }
     dialog.value = false
-  } catch (error) {
-    console.error('Erro ao criar atividade:', error)
+    snackbarMessage.value = 'Atividade criada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao criar atividade'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     creating.value = false
   }
@@ -109,9 +121,28 @@ const findTaskas = async () => {
 
   try {
     const data = await quartersService.getCompanyBoards(monthId)
-    tasks.value = data
-  } catch (error) {
-    console.error('Erro ao buscar tarefas:', error)
+    if (selectedUser.value === '') {
+      tasks.value = data
+    } else {
+      tasks.value = {
+        TODO: data.TODO?.filter((t: any) => 
+          t.responsibles?.some((r: any) => r.user.name === selectedUser.value)
+        ) || [],
+        IN_PROGRESS: data.IN_PROGRESS?.filter((t: any) => 
+          t.responsibles?.some((r: any) => r.user.name === selectedUser.value)
+        ) || [],
+        IN_TESTING: data.IN_TESTING?.filter((t: any) => 
+          t.responsibles?.some((r: any) => r.user.name === selectedUser.value)
+        ) || [],
+        DONE: data.DONE?.filter((t: any) => 
+          t.responsibles?.some((r: any) => r.user.name === selectedUser.value)
+        ) || [],
+      }
+    }
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar tarefas'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -130,8 +161,10 @@ const findMonthData = async () => {
         break
       }
     }
-  } catch (error) {
-    console.error('Erro ao buscar dados do mês:', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao buscar dados do mês'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   }
 }
 
@@ -148,6 +181,10 @@ watch(
     await findTaskas()
   },
 )
+
+watch(selectedUser, () => {
+  findTaskas()
+})
 
 const currentMonthId = computed(() => route.params.month as string)
 const currentMonthData = ref<any>(null)
@@ -196,8 +233,13 @@ const handleUpdateStatus = async (taskId: string, apiStatus: string) => {
   try {
     await quartersService.patchActivityStatus(taskId, apiStatus)
     await findTaskas()
-  } catch (error) {
-    console.error('Erro ao atualizar status:', error)
+    snackbarMessage.value = 'Status atualizado com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao atualizar status'
+    snackbarColor.value = 'error'
+    snackbar.value = true
     await findTaskas()
   }
 }
@@ -218,8 +260,13 @@ const deleteTask = async () => {
     await activityService.deleteActivity(taskToDelete.value.id)
     await findTaskas()
     confirmDelete.value = false
-  } catch (error) {
-    console.error('Erro ao deletar atividade:', error)
+    snackbarMessage.value = 'Atividade deletada com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao deletar atividade'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     deleting.value = null
     taskToDelete.value = null
@@ -264,7 +311,12 @@ const formatDate = (date: string) => {
 </script>
 
 <template>
-  <v-container v-if="loading" fluid class="pa-4 bg-background d-flex align-center justify-center" style="min-height: 60vh">
+  <v-container
+    v-if="loading"
+    fluid
+    class="pa-4 bg-background d-flex align-center justify-center"
+    style="min-height: 60vh"
+  >
     <v-progress-circular indeterminate color="secondary" size="48" />
   </v-container>
 
@@ -272,11 +324,11 @@ const formatDate = (date: string) => {
     <v-sheet color="transparent" class="mb-4">
       <div class="d-flex justify-space-between align-center mb-4">
         <div>
-          <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">
+          <h1 style="font-size: 24px" class="font-weight-bold text-secondary mb-1">
             Tarefas - {{ monthName }}
           </h1>
-          <div class="d-flex align-center" style="font-size: 11px; color: var(--v-primary-lighten)">
-            <v-icon size="11" class="mr-1">mdi-view-dashboard-outline</v-icon>
+          <div class="d-flex align-center" style="font-size: 14px; color: var(--v-primary-lighten)">
+            <v-icon size="16" class="mr-1">mdi-view-dashboard-outline</v-icon>
             {{ totalTasks }} atividades no total
           </div>
         </div>
@@ -289,12 +341,12 @@ const formatDate = (date: string) => {
             rounded="lg"
             class="elevation-1"
           >
-            <v-btn value="kanban" size="small" style="font-size: 12px">
-              <v-icon start size="16">mdi-view-column</v-icon>
+            <v-btn value="kanban" size="default" style="font-size: 14px">
+              <v-icon start size="20">mdi-view-column</v-icon>
               Kanban
             </v-btn>
-            <v-btn value="backlog" size="small" style="font-size: 12px">
-              <v-icon start size="16">mdi-history</v-icon>
+            <v-btn value="backlog" size="default" style="font-size: 14px">
+              <v-icon start size="20">mdi-history</v-icon>
               Backlog
             </v-btn>
           </v-btn-toggle>
@@ -303,9 +355,9 @@ const formatDate = (date: string) => {
             color="primary"
             prepend-icon="mdi-plus"
             elevation="2"
-            size="small"
+            size="default"
             class="text-none font-weight-medium"
-            style="font-size: 12px"
+            style="font-size: 14px"
             rounded="lg"
             @click="dialog = true"
           >
@@ -333,8 +385,8 @@ const formatDate = (date: string) => {
         <template #item="{ props, item }">
           <v-list-item v-bind="props" density="compact">
             <template #prepend>
-              <v-avatar :color="getUserColor(item as any)" size="28" class="mr-2">
-                <span style="font-size: 11px; font-weight: 600; color: white">{{
+              <v-avatar :color="getUserColor(item as any)" size="32" class="mr-2">
+                <span style="font-size: 13px; font-weight: 600; color: white">{{
                   getUserInitials(item as any)
                 }}</span>
               </v-avatar>
@@ -356,14 +408,24 @@ const formatDate = (date: string) => {
 
     <v-dialog v-model="confirmDelete" max-width="360">
       <v-card color="primary" rounded="lg">
-        <v-card-title class="pa-4 text-secondary" style="font-size: 14px">Excluir atividade</v-card-title>
-        <v-card-text class="text-secondary" style="font-size: 13px">
-          Tem certeza que deseja excluir <strong>{{ taskToDelete?.title }}</strong>?
+        <v-card-title class="pa-4 text-secondary" style="font-size: 16px"
+          >Excluir atividade</v-card-title
+        >
+        <v-card-text class="text-secondary" style="font-size: 15px">
+          Tem certeza que deseja excluir <strong>{{ taskToDelete?.title }}</strong
+          >?
         </v-card-text>
         <v-card-actions class="pa-4 pt-0">
           <v-spacer />
-          <v-btn size="small" variant="text" @click="confirmDelete = false">Cancelar</v-btn>
-          <v-btn size="small" color="error" variant="tonal" :loading="!!deleting" @click="deleteTask">Excluir</v-btn>
+          <v-btn size="default" variant="text" @click="confirmDelete = false">Cancelar</v-btn>
+          <v-btn
+            size="default"
+            color="error"
+            variant="tonal"
+            :loading="!!deleting"
+            @click="deleteTask"
+            >Excluir</v-btn
+          >
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -375,12 +437,15 @@ const formatDate = (date: string) => {
       rounded="lg"
       class="pa-4"
     >
-      <div v-if="sortedHistory.length === 0" class="d-flex flex-column align-center justify-center py-12">
+      <div
+        v-if="sortedHistory.length === 0"
+        class="d-flex flex-column align-center justify-center py-12"
+      >
         <v-icon size="64" color="primary-lighten" class="mb-4">mdi-history</v-icon>
-        <div style="font-size: 14px" class="font-weight-medium text-secondary mb-1">
+        <div style="font-size: 16px" class="font-weight-medium text-secondary mb-1">
           Nenhum histórico encontrado
         </div>
-        <div style="font-size: 12px" class="text-primary-lighten">
+        <div style="font-size: 14px" class="text-primary-lighten">
           As alterações de status das atividades aparecerão aqui
         </div>
       </div>
@@ -392,30 +457,38 @@ const formatDate = (date: string) => {
           size="small"
         >
           <template #opposite>
-            <div style="font-size: 11px" class="text-primary-lighten">
+            <div style="font-size: 13px" class="text-primary-lighten">
               {{ formatDate(entry.changedAt) }}
             </div>
           </template>
           <v-card color="surface" elevation="0" rounded="lg" class="pa-3">
-            <div style="font-size: 12px" class="font-weight-medium text-secondary mb-1">
+            <div style="font-size: 14px" class="font-weight-medium text-secondary mb-1">
               {{ entry.activityTitle }}
             </div>
-            <div style="font-size: 11px" class="text-primary-lighten">
+            <div style="font-size: 13px" class="text-primary-lighten">
               <span class="font-weight-medium">{{ entry.changedBy?.name }}</span>
               alterou de
               <v-chip
                 v-if="entry.previousStatus"
-                size="x-small"
+                size="small"
                 class="mx-1"
-                :style="{ backgroundColor: statusColors[entry.previousStatus] + '20', color: statusColors[entry.previousStatus] }"
-              >{{ statusLabels[entry.previousStatus] }}</v-chip>
+                :style="{
+                  backgroundColor: statusColors[entry.previousStatus] + '20',
+                  color: statusColors[entry.previousStatus],
+                }"
+                >{{ statusLabels[entry.previousStatus] }}</v-chip
+              >
               <span v-else class="mx-1">Novo</span>
               para
               <v-chip
-                size="x-small"
+                size="small"
                 class="mx-1"
-                :style="{ backgroundColor: statusColors[entry.newStatus] + '20', color: statusColors[entry.newStatus] }"
-              >{{ statusLabels[entry.newStatus] }}</v-chip>
+                :style="{
+                  backgroundColor: statusColors[entry.newStatus] + '20',
+                  color: statusColors[entry.newStatus],
+                }"
+                >{{ statusLabels[entry.newStatus] }}</v-chip
+              >
             </div>
           </v-card>
         </v-timeline-item>
@@ -432,5 +505,9 @@ const formatDate = (date: string) => {
         @submit="createActivity"
       />
     </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarMessage }}
+    </v-snackbar>
   </v-container>
 </template>

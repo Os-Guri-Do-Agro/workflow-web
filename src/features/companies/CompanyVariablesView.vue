@@ -18,6 +18,9 @@ const showModal = ref(false)
 const showDeleteDialog = ref(false)
 const variableToDelete = ref<string | null>(null)
 const editingVariable = ref<Variable | null>(null)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 
 const formData = ref<Variable>({
   key: '',
@@ -36,8 +39,10 @@ const loadVariables = async () => {
   loading.value = true
   try {
     variables.value = await companyVariableService.getCompanyVariables()
-  } catch (error) {
-    console.error('Erro ao carregar variáveis', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar variáveis'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loading.value = false
   }
@@ -65,13 +70,19 @@ const saveVariable = async () => {
   try {
     if (editingVariable.value?.id) {
       await companyVariableService.patchCompanyVariable(editingVariable.value.id, formData.value)
+      snackbarMessage.value = 'Variável atualizada com sucesso'
     } else {
       await companyVariableService.postCompanyVariable(formData.value)
+      snackbarMessage.value = 'Variável criada com sucesso'
     }
+    snackbarColor.value = 'success'
+    snackbar.value = true
     await loadVariables()
     closeModal()
-  } catch (error) {
-    console.error('Erro ao salvar variável', error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao salvar variável'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     saving.value = false
   }
@@ -90,8 +101,13 @@ const deleteVariable = async () => {
     await loadVariables()
     showDeleteDialog.value = false
     variableToDelete.value = null
-  } catch (error) {
-    console.error('Erro ao deletar variável', error)
+    snackbarMessage.value = 'Variável excluída com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao deletar variável'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     deleting.value = false
   }
@@ -109,15 +125,15 @@ onMounted(loadVariables)
     <v-sheet color="transparent" class="mb-4">
       <div class="d-flex align-center justify-space-between">
         <div>
-          <h1 style="font-size: 16px" class="font-weight-bold text-secondary mb-1">
+          <h1 style="font-size: 24px" class="font-weight-bold text-secondary mb-1">
             Variáveis da Empresa
           </h1>
-          <div class="d-flex align-center" style="font-size: 11px; color: var(--v-primary-lighten)">
-            <v-icon size="11" class="mr-1">mdi-note-text</v-icon>
+          <div class="d-flex align-center" style="font-size: 14px; color: var(--v-primary-lighten)">
+            <v-icon size="16" class="mr-1">mdi-note-text</v-icon>
             Gerencie as variáveis e anotações
           </div>
         </div>
-        <v-btn color="secondary" size="small" prepend-icon="mdi-plus" @click="openModal()">
+        <v-btn color="secondary" size="default" prepend-icon="mdi-plus" @click="openModal()">
           Nova Variável
         </v-btn>
       </div>
@@ -130,7 +146,7 @@ onMounted(loadVariables)
       class="d-flex flex-column align-center justify-center pa-8"
     >
       <v-icon size="64" color="primary-lighten" class="mb-3">mdi-note-text-outline</v-icon>
-      <span style="font-size: 14px" class="text-primary-lighten font-weight-medium"
+      <span style="font-size: 16px" class="text-primary-lighten font-weight-medium"
         >Nenhuma variável cadastrada</span
       >
     </div>
@@ -147,33 +163,33 @@ onMounted(loadVariables)
         >
           <v-card-text class="pa-4">
             <div class="d-flex align-center justify-space-between mb-3">
-              <v-chip size="small" variant="flat" color="secondary">
+              <v-chip size="default" variant="flat" color="secondary">
                 {{ variable.type }}
               </v-chip>
               <div class="d-flex ga-1">
                 <v-btn
                   icon="mdi-pencil"
-                  size="x-small"
+                  size="small"
                   variant="text"
                   @click.stop="openModal(variable)"
                 />
                 <v-btn
                   icon="mdi-delete"
-                  size="x-small"
+                  size="small"
                   variant="text"
                   color="error"
                   @click.stop="confirmDelete(variable.id!)"
                 />
               </div>
             </div>
-            <div style="font-size: 14px" class="font-weight-bold text-secondary mb-2">
+            <div style="font-size: 16px" class="font-weight-bold text-secondary mb-2">
               {{ variable.key }}
             </div>
-            <div style="font-size: 11px" class="text-primary-lighten mb-3">
+            <div style="font-size: 14px" class="text-primary-lighten mb-3">
               {{ variable.description }}
             </div>
             <v-sheet color="surface" rounded="lg" class="pa-2">
-              <div style="font-size: 12px; font-family: monospace" class="text-secondary">
+              <div style="font-size: 14px; font-family: monospace" class="text-secondary">
                 {{ variable.value }}
               </div>
             </v-sheet>
@@ -250,5 +266,14 @@ onMounted(loadVariables)
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
+      {{ snackbarMessage }}
+      <template #actions>
+        <v-btn color="white" variant="text" @click="snackbar = false">
+          Fechar
+        </v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>

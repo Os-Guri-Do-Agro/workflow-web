@@ -21,6 +21,9 @@ const deleteDialog = ref(false)
 const detailsDialog = ref(false)
 const editMode = ref(false)
 const selectedTicket = ref<Ticket | null>(null)
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('error')
 
 const form = ref({
   title: '',
@@ -68,8 +71,10 @@ const loadTickets = async () => {
   try {
     const response = await ticketService.getTickets()
     tickets.value = response.data || response
-  } catch (error) {
-    console.error(error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar tickets'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loading.value = false
   }
@@ -105,13 +110,19 @@ const saveTicket = async () => {
   try {
     if (editMode.value && selectedTicket.value) {
       await ticketService.patchTicket(selectedTicket.value.id, form.value)
+      snackbarMessage.value = 'Ticket atualizado com sucesso'
     } else {
       await ticketService.postTicket(form.value)
+      snackbarMessage.value = 'Ticket criado com sucesso'
     }
+    snackbarColor.value = 'success'
+    snackbar.value = true
     dialog.value = false
     await loadTickets()
-  } catch (error) {
-    console.error(error)
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao salvar ticket'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loading.value = false
   }
@@ -124,8 +135,13 @@ const deleteTicket = async () => {
     await ticketService.deletTicket(selectedTicket.value.id)
     deleteDialog.value = false
     await loadTickets()
-  } catch (error) {
-    console.error(error)
+    snackbarMessage.value = 'Ticket excluído com sucesso'
+    snackbarColor.value = 'success'
+    snackbar.value = true
+  } catch (error: any) {
+    snackbarMessage.value = error.response?.data?.message || 'Erro ao excluir ticket'
+    snackbarColor.value = 'error'
+    snackbar.value = true
   } finally {
     loading.value = false
   }
@@ -327,6 +343,10 @@ onMounted(() => {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarMessage }}
+    </v-snackbar>
   </v-container>
 </template>
 
