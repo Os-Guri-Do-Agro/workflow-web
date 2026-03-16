@@ -348,9 +348,9 @@ const statusConfig = computed(() => getStatusConfig(activityInfo.value?.status ?
 
 const toggleSubtaskStatus = async (task: any) => {
   const newStatus = task.status === 'DONE' ? 'TODO' : 'DONE'
+  task.status = newStatus
   try {
     await activityService.patchActivityStatus(task.id, newStatus)
-    task.status = newStatus
     snackbarMessage.value = 'Status atualizado com sucesso'
     snackbarColor.value = 'success'
     snackbar.value = true

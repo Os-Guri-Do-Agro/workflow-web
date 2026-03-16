@@ -23,6 +23,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  'success': [message: string, color: string]
 }>()
 
 const search = ref('')
@@ -31,9 +32,6 @@ const selectedRole = ref<'CLIENT' | 'WORKER'>('WORKER')
 const selectedUsers = ref<User[]>([])
 const loading = ref(false)
 const saving = ref(false)
-const addUserMenssage = ref('')
-const snackbar = ref(false)
-const snackbarColor = ref('success')
 
 const headers = [
   { title: 'Nome', key: 'name' },
@@ -77,16 +75,12 @@ const save = async () => {
     }
 
     const res = await companieService.postCompanyAdmin(props.company.id, payload)
-    addUserMenssage.value = res?.message || 'Usuário adicionado com sucesso!'
-    snackbarColor.value = 'success'
-    snackbar.value = true
+    emit('success', res?.message || 'Usuário adicionado com sucesso!', 'success')
     setTimeout(() => {
       close()
     }, 1500)
   } catch (error: any) {
-    addUserMenssage.value = error.response?.data?.message || 'Erro ao adicionar usuário.'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    emit('success', error.response?.data?.message || 'Erro ao adicionar usuário.', 'error')
     console.error('Erro ao adicionar usuário:', error)
   } finally {
     saving.value = false
@@ -196,8 +190,4 @@ onMounted(() => {
       </v-card-actions>
     </v-card>
   </v-dialog>
-
-  <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
-    {{ addUserMenssage }}
-  </v-snackbar>
 </template>
