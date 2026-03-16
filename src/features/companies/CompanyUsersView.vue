@@ -184,8 +184,8 @@ onMounted(async () => {
       </v-window-item>
     </v-window>
 
-    <AddUserModal v-model="showAddUserModal" :company="selectedCompany" />
-    <AddUserModal v-model="showUserAddModal" :company="selectedCompany" />
+    <AddUserModal v-model="showAddUserModal" :company="selectedCompany" @success="(msg, color) => { snackbarMessage = msg; snackbarColor = color; snackbar = true }" />
+    <AddUserModal v-model="showUserAddModal" :company="selectedCompany" @success="(msg, color) => { snackbarMessage = msg; snackbarColor = color; snackbar = true }" />
     <BulkAddUsersModal v-model="showBulkAddModal" :company="selectedCompany" @success="(msg, color) => { snackbarMessage = msg; snackbarColor = color; snackbar = true }" />
 
     <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
