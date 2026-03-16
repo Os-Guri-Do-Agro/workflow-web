@@ -46,7 +46,7 @@ const fetchSystemCompanies = async () => {
       usersCount: 0,
     }))
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar empresas do sistema'
+    snackbarMessage.value = error.response?.message || 'Erro ao carregar empresas do sistema'
     snackbarColor.value = 'error'
     snackbar.value = true
   }
@@ -57,7 +57,7 @@ const fetchUserCompanies = async () => {
     const data = await companieService.getCompany()
     userCompanies.value = data
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar empresas do usuário'
+    snackbarMessage.value = error.response?.message || 'Erro ao carregar empresas do usuário'
     snackbarColor.value = 'error'
     snackbar.value = true
   }
@@ -111,7 +111,9 @@ onMounted(async () => {
               <v-card-title class="d-flex align-center ga-3 bg-primary pa-4">
                 <v-icon color="secondary" size="32">mdi-office-building</v-icon>
                 <div class="flex-grow-1">
-                  <div class="text-subtitle-1 font-weight-bold text-secondary">{{ company.name }}</div>
+                  <div class="text-subtitle-1 font-weight-bold text-secondary">
+                    {{ company.name }}
+                  </div>
                   <div class="text-caption text-secondary-lighten-2">{{ company.cnpj }}</div>
                 </div>
               </v-card-title>
@@ -155,7 +157,9 @@ onMounted(async () => {
               <v-card-title class="d-flex align-center ga-3 bg-primary pa-4">
                 <v-icon color="secondary" size="32">mdi-office-building</v-icon>
                 <div class="flex-grow-1">
-                  <div class="text-subtitle-1 font-weight-bold text-secondary">{{ item.company.name }}</div>
+                  <div class="text-subtitle-1 font-weight-bold text-secondary">
+                    {{ item.company.name }}
+                  </div>
                   <div class="text-caption text-secondary-lighten-2">{{ item.company.cnpj }}</div>
                 </div>
               </v-card-title>
@@ -182,7 +186,7 @@ onMounted(async () => {
 
     <AddUserModal v-model="showAddUserModal" :company="selectedCompany" />
     <AddUserModal v-model="showUserAddModal" :company="selectedCompany" />
-    <BulkAddUsersModal v-model="showBulkAddModal" :company="selectedCompany" />
+    <BulkAddUsersModal v-model="showBulkAddModal" :company="selectedCompany" @success="(msg, color) => { snackbarMessage = msg; snackbarColor = color; snackbar = true }" />
 
     <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
       {{ snackbarMessage }}

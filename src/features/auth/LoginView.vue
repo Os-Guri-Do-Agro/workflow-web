@@ -25,7 +25,7 @@ const login = async () => {
     router.push('/')
   } catch (error: any) {
     errorMessage.value =
-      error.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.'
+      error?.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.'
     snackbar.value = true
   } finally {
     loading.value = false

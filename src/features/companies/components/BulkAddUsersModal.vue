@@ -23,11 +23,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  success: [message: string, color: string]
 }>()
 
 const search = ref('')
 const users = ref<User[]>([])
 const selectedRole = ref<'CLIENT' | 'WORKER'>('WORKER')
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref('success')
 
 const headers = [
   { title: 'Nome', key: 'name' },
@@ -45,8 +49,10 @@ const fetchUsers = async () => {
 }
 
 const close = () => {
-  emit('update:modelValue', false)
-  selectedUsers.value = []
+  setTimeout(() => {
+    emit('update:modelValue', false)
+    selectedUsers.value = []
+  }, 100)
 }
 
 const save = async () => {
@@ -61,9 +67,14 @@ const save = async () => {
       role: selectedRole.value,
     }
 
-    await companieService.postCompanyMemberLote(props.company.id, payload)
-    close()
-  } catch (error) {
+    const res = await companieService.postCompanyMemberLote(props.company.id, payload)
+    const message = res?.message || res?.data?.message || 'Usuários adicionados com sucesso!'
+    emit('success', message, 'success')
+    setTimeout(() => {
+      close()
+    }, 100)
+  } catch (error: any) {
+    emit('success', error.response?.data?.message || 'Erro ao adicionar usuários.', 'error')
     console.error('Erro ao adicionar usuários em lote:', error)
   }
 }
