@@ -88,7 +88,7 @@ const switchCompany = (company: Company) => {
   showCompanyModal.value = false
 
   setTimeout(() => {
-    window.location.reload()
+    router.push('/')
   })
   findQuaters()
 }
