@@ -100,7 +100,7 @@ onMounted(async () => {
 
     <v-tabs v-model="tab" bg-color="primary" class="mb-6">
       <v-tab value="user">Minhas Empresas</v-tab>
-      <v-tab v-if="isWorkerRole" value="system">Empresas do Sistema</v-tab>
+      <!-- <v-tab v-if="isWorkerRole" value="system">Empresas do Sistema</v-tab> -->
     </v-tabs>
 
     <v-window v-model="tab">
