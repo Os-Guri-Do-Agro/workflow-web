@@ -140,7 +140,6 @@ const logout = () => {
 }
 
 const footerItems = [
-  // { title: 'Configurações', icon: 'mdi-cog-outline', to: '/settings' },
   { title: 'Sair', icon: 'mdi-logout', action: logout },
 ]
 
@@ -157,67 +156,52 @@ defineEmits<{
   <v-navigation-drawer
     :model-value="modelValue"
     @update:model-value="$emit('update:modelValue', $event)"
-    width="280"
+    width="260"
     permanent
     color="primary"
     border="none"
     class="drawer-custom"
   >
-    <v-sheet color="surface" class="pa-4 ma-3 mb-4" rounded="xl" elevation="1">
-      <div class="d-flex align-center justify-space-between mb-2">
-        <div class="d-flex align-center ga-2">
-          <v-avatar width="40" height="40">
-            <v-img src="/icone.png"></v-img>
-          </v-avatar>
-          <div>
-            <div class="text-body-2 text-primary-lighten font-weight-medium">Empresa Ativa</div>
-            <div class="text-body-1 font-weight-bold text-secondary">
-              {{ activeCompany?.name || 'Selecione' }}
-            </div>
-          </div>
+    <!-- Company selector -->
+    <div class="px-3 pt-3 pb-2">
+      <button class="company-btn" @click="showCompanyModal = true">
+        <v-sheet width="28" height="28" rounded="md" class="bg-transparent">
+          <v-img src="/icone.png" />
+        </v-sheet>
+        <div class="company-info">
+          <span class="company-label">Empresa</span>
+          <span class="company-name">{{ activeCompany?.name || 'Selecione' }}</span>
         </div>
-      </div>
-      <v-btn
-        block
-        variant="tonal"
-        color="secondary"
-        size="small"
-        prepend-icon="mdi-swap-horizontal"
-        rounded="lg"
-        class="mt-2"
-        @click="showCompanyModal = true"
-      >
-        Trocar Empresa
-      </v-btn>
-    </v-sheet>
+        <v-icon size="14" class="company-chevron">mdi-chevron-up-down</v-icon>
+      </button>
+    </div>
 
-    <v-list nav density="comfortable" class="px-3">
+    <div class="divider mx-3 mb-2" />
+
+    <!-- Navigation -->
+    <v-list nav density="compact" class="px-2">
       <template v-for="item in menuItems" :key="item.title">
         <v-list-item
           v-if="!item.children"
           :to="item.to"
           :value="item.title"
-          rounded="xl"
-          class="mb-2 menu-item"
+          rounded="lg"
+          class="nav-item mb-0"
           color="secondary"
         >
           <template #prepend>
-            <v-icon size="20">{{ item.icon }}</v-icon>
+            <v-icon size="16" class="nav-icon">{{ item.icon }}</v-icon>
           </template>
-          <v-list-item-title class="text-body-1 font-weight-medium">{{
-            item.title
-          }}</v-list-item-title>
+          <v-list-item-title class="nav-label">{{ item.title }}</v-list-item-title>
         </v-list-item>
 
         <v-list-group v-else :value="item.title">
           <template #activator="{ props }">
-            <v-list-item v-bind="props" rounded="xl" class="mb-2 menu-item" color="secondary">
+            <v-list-item v-bind="props" rounded="lg" class="nav-item mb-0" color="secondary">
               <template #prepend>
-                <v-icon size="20">{{ item.icon }}</v-icon>
+                <v-icon size="16" class="nav-icon">{{ item.icon }}</v-icon>
               </template>
-              <v-list-item-title class="text-body-1 font-weight-medium">{{
-                item.title
-              }}</v-list-item-title>
+              <v-list-item-title class="nav-label">{{ item.title }}</v-list-item-title>
             </v-list-item>
           </template>
 
@@ -226,27 +210,23 @@ defineEmits<{
               v-if="!subItem.children"
               :to="subItem.to"
               :value="subItem.title"
-              class="pl-8 mb-1 submenu-item"
-              rounded="xl"
+              class="nav-item nav-item--sub mb-0"
+              rounded="lg"
               color="secondary"
             >
               <template #prepend>
-                <v-icon size="18">{{ subItem.icon }}</v-icon>
+                <v-icon size="14" class="nav-icon">{{ subItem.icon }}</v-icon>
               </template>
-              <v-list-item-title class="text-body-2 font-weight-medium">{{
-                subItem.title
-              }}</v-list-item-title>
+              <v-list-item-title class="nav-label">{{ subItem.title }}</v-list-item-title>
             </v-list-item>
 
             <v-list-group v-else :value="subItem.title" no-action>
               <template #activator="{ props }">
-                <v-list-item v-bind="props" class="pl-6 mb-1 submenu-item" rounded="xl">
+                <v-list-item v-bind="props" class="nav-item nav-item--sub mb-0" rounded="lg">
                   <template #prepend>
-                    <v-icon size="18">{{ subItem.icon }}</v-icon>
+                    <v-icon size="14" class="nav-icon">{{ subItem.icon }}</v-icon>
                   </template>
-                  <v-list-item-title class="text-body-2 font-weight-medium">{{
-                    subItem.title
-                  }}</v-list-item-title>
+                  <v-list-item-title class="nav-label">{{ subItem.title }}</v-list-item-title>
                 </v-list-item>
               </template>
 
@@ -255,14 +235,14 @@ defineEmits<{
                 :key="child.title"
                 :to="child.to"
                 :value="child.title"
-                class="pl-14 mb-1 submenu-item"
-                rounded="xl"
+                class="nav-item nav-item--deep mb-0"
+                rounded="lg"
                 color="secondary"
               >
                 <template #prepend>
-                  <v-icon size="16">{{ child.icon }}</v-icon>
+                  <v-icon size="13" class="nav-icon">{{ child.icon }}</v-icon>
                 </template>
-                <v-list-item-title class="text-body-2">{{ child.title }}</v-list-item-title>
+                <v-list-item-title class="nav-label">{{ child.title }}</v-list-item-title>
               </v-list-item>
             </v-list-group>
           </template>
@@ -270,74 +250,53 @@ defineEmits<{
       </template>
     </v-list>
 
+    <!-- Footer -->
     <template #append>
-      <v-divider class="mx-3 mb-3" />
-      <v-list nav density="comfortable" class="px-3 pb-3">
-        <v-list-item
+      <div class="divider mx-3 mb-2" />
+      <div class="px-2 pb-3">
+        <button
           v-for="item in footerItems"
           :key="item.title"
-          :value="item.title"
-          rounded="xl"
-          class="mb-2 footer-item"
+          class="logout-btn"
           @click="item.action?.()"
         >
-          <template #prepend>
-            <v-icon size="20">{{ item.icon }}</v-icon>
-          </template>
-          <v-list-item-title class="text-body-1 font-weight-medium">{{
-            item.title
-          }}</v-list-item-title>
-        </v-list-item>
-      </v-list>
+          <v-icon size="16">{{ item.icon }}</v-icon>
+          <span>{{ item.title }}</span>
+        </button>
+      </div>
     </template>
   </v-navigation-drawer>
 
-  <v-dialog v-model="showCompanyModal" max-width="480" transition="dialog-bottom-transition">
-    <v-card rounded="lg" elevation="8">
-      <v-card-title class="d-flex align-center justify-space-between pa-5 bg-primary">
-        <div class="d-flex align-center ga-3">
-          <v-icon color="secondary" size="28">mdi-office-building</v-icon>
-          <span class="text-h5 font-weight-bold text-secondary">Trocar Empresa</span>
-        </div>
-        <v-btn
-          icon="mdi-close"
-          variant="text"
-          size="small"
-          @click="showCompanyModal = false"
-          color="secondary"
-        ></v-btn>
-      </v-card-title>
+  <!-- Company Switch Dialog -->
+  <v-dialog v-model="showCompanyModal" max-width="440" transition="dialog-bottom-transition">
+    <v-card rounded="xl" elevation="8" color="primary" class="company-dialog">
+      <div class="d-flex align-center justify-space-between pa-4 pb-3">
+        <span class="text-body-2 font-weight-bold" style="color: rgba(var(--v-theme-secondary), 0.7)">
+          Trocar Empresa
+        </span>
+        <v-btn icon="mdi-close" variant="text" size="x-small" color="secondary" @click="showCompanyModal = false" />
+      </div>
 
-      <v-card-text class="pa-0">
-        <v-list class="py-2" bg-color="transparent">
-          <v-list-item
-            v-for="(company, index) in companies"
-            :key="company.id"
-            @click="switchCompany(company)"
-            :active="company.active"
-            class="mx-3 mb-2 company-item"
-            rounded="lg"
-            :class="{ 'active-company': company.active }"
-          >
-            <template #prepend>
-              <v-avatar :color="company.active ? 'secondary' : 'grey-lighten-2'" size="40">
-                <v-icon :color="company.active ? 'primary' : 'grey'" size="20">mdi-domain</v-icon>
-              </v-avatar>
-            </template>
+      <div class="divider mx-4 mb-2" />
 
-            <v-list-item-title class="text-body-1 font-weight-medium mb-1">{{
-              company.name
-            }}</v-list-item-title>
-            <v-list-item-subtitle class="text-body-2"
-              >CNPJ: {{ company.cnpj }}</v-list-item-subtitle
-            >
-
-            <template #append>
-              <v-icon v-if="company.active" color="success" size="24">mdi-check-circle</v-icon>
-            </template>
-          </v-list-item>
-        </v-list>
-      </v-card-text>
+      <div class="pa-3 pt-2">
+        <button
+          v-for="company in companies"
+          :key="company.id"
+          class="company-option"
+          :class="{ 'company-option--active': company.active }"
+          @click="switchCompany(company)"
+        >
+          <div class="company-option-icon">
+            <v-icon size="16" :style="{ opacity: company.active ? 1 : 0.45 }">mdi-domain</v-icon>
+          </div>
+          <div class="company-option-info">
+            <span class="company-option-name">{{ company.name }}</span>
+            <span class="company-option-cnpj">{{ company.cnpj }}</span>
+          </div>
+          <v-icon v-if="company.active" size="14" color="success">mdi-check-circle</v-icon>
+        </button>
+      </div>
     </v-card>
   </v-dialog>
 </template>
@@ -347,59 +306,196 @@ defineEmits<{
   border-right: 1px solid rgba(var(--v-theme-secondary), 0.08) !important;
 }
 
-.menu-item {
-  transition: all 0.2s ease;
-  margin-bottom: 4px;
+.divider {
+  height: 1px;
+  background: rgba(var(--v-theme-secondary), 0.08);
 }
 
-.menu-item:hover {
-  transform: translateX(4px);
-}
-
-.submenu-item {
-  transition: all 0.2s ease;
-}
-
-.submenu-item:hover {
-  transform: translateX(2px);
-}
-
-.footer-item {
-  transition: all 0.2s ease;
-  color: rgb(var(--v-theme-primary-lighten));
-}
-
-.footer-item:hover {
-  color: rgb(var(--v-theme-secondary));
-  background-color: rgba(var(--v-theme-secondary), 0.08);
-}
-
-.v-list-item--active {
-  background: rgb(var(--v-theme-secondary)) !important;
-  color: rgb(var(--v-theme-primary)) !important;
-  box-shadow: 0 2px 8px rgba(var(--v-theme-secondary), 0.3);
-}
-
-.v-list-item--active :deep(.v-icon) {
-  color: rgb(var(--v-theme-primary)) !important;
-}
-
-.company-item {
-  border: 2px solid transparent;
-  transition: all 0.3s ease;
+/* ─── Company button ─── */
+.company-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  background: rgba(var(--v-theme-secondary), 0.05);
+  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: default;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  text-align: left;
   cursor: pointer;
 }
 
-.company-item:hover {
-  border-color: rgb(var(--v-theme-secondary));
-  background-color: rgba(var(--v-theme-secondary), 0.08);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+.company-btn--clickable {
+  cursor: pointer;
 }
 
-.active-company {
-  border-color: rgb(var(--v-theme-secondary));
-  background-color: rgba(var(--v-theme-secondary), 0.12);
-  box-shadow: 0 2px 8px rgba(var(--v-theme-secondary), 0.2);
+.company-btn--clickable:hover {
+  background: rgba(var(--v-theme-secondary), 0.08);
+  border-color: rgba(var(--v-theme-secondary), 0.18);
+}
+
+.company-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.company-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(var(--v-theme-secondary), 0.35);
+  line-height: 1.2;
+  letter-spacing: 0.03em;
+}
+
+.company-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-secondary), 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.company-chevron {
+  color: rgba(var(--v-theme-secondary), 0.55) !important;
+  flex-shrink: 0;
+}
+
+.company-btn--clickable:hover .company-chevron {
+  color: rgba(var(--v-theme-secondary), 0.8) !important;
+}
+
+/* ─── Nav items ─── */
+.nav-item {
+  min-height: 32px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.nav-item--sub {
+  padding-left: 28px !important;
+}
+
+.nav-item--deep {
+  padding-left: 44px !important;
+}
+
+.nav-icon {
+  color: rgba(var(--v-theme-secondary), 0.45) !important;
+  margin-right: 2px;
+}
+
+.nav-label {
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  color: rgba(var(--v-theme-secondary), 0.65) !important;
+}
+
+.v-list-item--active .nav-icon {
+  color: rgb(var(--v-theme-secondary)) !important;
+}
+
+.v-list-item--active .nav-label {
+  color: rgb(var(--v-theme-secondary)) !important;
+  font-weight: 600 !important;
+}
+
+.v-list-item--active {
+  background: rgba(var(--v-theme-secondary), 0.08) !important;
+}
+
+/* ─── Logout button ─── */
+.logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  color: rgba(var(--v-theme-secondary), 0.4);
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
+}
+
+.logout-btn:hover {
+  background: rgba(var(--v-theme-error), 0.08);
+  color: rgb(var(--v-theme-error));
+}
+
+.logout-btn:hover :deep(.v-icon) {
+  color: rgb(var(--v-theme-error)) !important;
+}
+
+/* ─── Company dialog ─── */
+.company-dialog {
+  border: 1px solid rgba(var(--v-theme-secondary), 0.1) !important;
+}
+
+.company-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  text-align: left;
+  font-family: inherit;
+  margin-bottom: 4px;
+}
+
+.company-option:hover {
+  background: rgba(var(--v-theme-secondary), 0.06);
+  border-color: rgba(var(--v-theme-secondary), 0.12);
+}
+
+.company-option--active {
+  background: rgba(var(--v-theme-secondary), 0.08) !important;
+  border-color: rgba(var(--v-theme-secondary), 0.18) !important;
+}
+
+.company-option-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: rgba(var(--v-theme-secondary), 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.company-option-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.company-option-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-secondary), 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.company-option-cnpj {
+  font-size: 11px;
+  color: rgba(var(--v-theme-secondary), 0.4);
 }
 </style>
