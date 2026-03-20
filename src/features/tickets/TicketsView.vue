@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import ticketService from '@/service/tickets/ticket-service'
 
 type Ticket = {
@@ -24,6 +24,7 @@ const selectedTicket = ref<Ticket | null>(null)
 const snackbar = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref('error')
+const activeFilter = ref<string>('ALL')
 
 const form = ref({
   title: '',
@@ -31,40 +32,44 @@ const form = ref({
   status: 'TODO',
 })
 
-const getStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-    TODO: 'orange',
-    IN_PROGRESS: 'blue',
-    IN_TESTING: 'purple',
-    DONE: 'green',
-  }
-  return colors[status] || 'grey'
+const statusMap: Record<string, { color: string; label: string; icon: string }> = {
+  TODO:        { color: '#6B7280', label: 'A Fazer',      icon: 'mdi-circle-outline' },
+  IN_PROGRESS: { color: '#F59E0B', label: 'Em Progresso', icon: 'mdi-circle-slice-4' },
+  IN_TESTING:  { color: '#8B5CF6', label: 'Em Teste',     icon: 'mdi-circle-slice-6' },
+  DONE:        { color: '#10B981', label: 'Concluído',    icon: 'mdi-check-circle' },
 }
 
-const getStatusLabel = (status: string) => {
-  const labels: Record<string, string> = {
-    TODO: 'A Fazer',
-    IN_PROGRESS: 'Em Progresso',
-    IN_TESTING: 'Em Teste',
-    DONE: 'Concluído',
-  }
-  return labels[status] || status
-}
+const statusOptions = Object.entries(statusMap).map(([value, s]) => ({ value, label: s.label }))
 
-const statusOptions = [
-  { value: 'TODO', label: 'A Fazer' },
-  { value: 'IN_PROGRESS', label: 'Em Progresso' },
-  { value: 'IN_TESTING', label: 'Em Teste' },
-  { value: 'DONE', label: 'Concluído' },
+const filterOptions = [
+  { value: 'ALL', label: 'Todos' },
+  ...statusOptions,
 ]
 
-const formatDate = (date: string) => {
-  return new Date(date).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
+const filteredTickets = computed(() => {
+  if (activeFilter.value === 'ALL') return tickets.value
+  return tickets.value.filter((t) => t.status === activeFilter.value)
+})
+
+const statusCounts = computed(() => {
+  const counts: Record<string, number> = { ALL: tickets.value.length }
+  for (const key of Object.keys(statusMap)) {
+    counts[key] = tickets.value.filter((t) => t.status === key).length
+  }
+  return counts
+})
+
+const getUserInitials = (name: string) =>
+  name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+
+const getUserColor = (name: string) => {
+  const colors = ['#1976D2', '#388E3C', '#D32F2F', '#7B1FA2', '#F57C00', '#0097A7']
+  const index = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length
+  return colors[index]
 }
+
+const formatDate = (date: string) =>
+  new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
 
 const loadTickets = async () => {
   loading.value = true
@@ -72,9 +77,7 @@ const loadTickets = async () => {
     const response = await ticketService.getTickets()
     tickets.value = response.data || response
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar tickets'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showSnackbar(error.response?.data?.message || 'Erro ao carregar tickets', 'error')
   } finally {
     loading.value = false
   }
@@ -110,19 +113,15 @@ const saveTicket = async () => {
   try {
     if (editMode.value && selectedTicket.value) {
       await ticketService.patchTicket(selectedTicket.value.id, form.value)
-      snackbarMessage.value = 'Ticket atualizado com sucesso'
+      showSnackbar('Ticket atualizado com sucesso', 'success')
     } else {
       await ticketService.postTicket(form.value)
-      snackbarMessage.value = 'Ticket criado com sucesso'
+      showSnackbar('Ticket criado com sucesso', 'success')
     }
-    snackbarColor.value = 'success'
-    snackbar.value = true
     dialog.value = false
     await loadTickets()
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao salvar ticket'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showSnackbar(error.response?.data?.message || 'Erro ao salvar ticket', 'error')
   } finally {
     loading.value = false
   }
@@ -135,179 +134,227 @@ const deleteTicket = async () => {
     await ticketService.deletTicket(selectedTicket.value.id)
     deleteDialog.value = false
     await loadTickets()
-    snackbarMessage.value = 'Ticket excluído com sucesso'
-    snackbarColor.value = 'success'
-    snackbar.value = true
+    showSnackbar('Ticket excluído', 'success')
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao excluir ticket'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showSnackbar(error.response?.data?.message || 'Erro ao excluir ticket', 'error')
   } finally {
     loading.value = false
   }
 }
 
-onMounted(() => {
-  loadTickets()
-})
+const showSnackbar = (msg: string, color: string) => {
+  snackbarMessage.value = msg
+  snackbarColor.value = color
+  snackbar.value = true
+}
+
+onMounted(loadTickets)
 </script>
 
 <template>
-  <v-container fluid :class="$vuetify.display.mobile ? 'pa-3' : 'pa-6'" style="overflow-x: auto;">
-    <div class="d-flex align-center justify-space-between mb-4 flex-wrap ga-2">
+  <div class="tickets-page">
+    <!-- Header -->
+    <div class="page-header">
       <div>
-        <h1 :class="$vuetify.display.mobile ? 'text-h5' : 'text-h4'" class="font-weight-bold mb-1">Tickets</h1>
-        <p class="text-body-2 text-medium-emphasis">Gerencie tickets de suporte e solicitações</p>
+        <h1 class="page-title">Tickets</h1>
+        <p class="page-subtitle">Gerencie solicitações e suporte</p>
       </div>
-      <v-btn 
-        color="primary" 
+      <v-btn
+        variant="flat"
         size="default"
         prepend-icon="mdi-plus"
+        class="new-btn"
         @click="openCreateDialog"
       >
         Novo Ticket
       </v-btn>
     </div>
 
-    <v-progress-linear v-if="loading" indeterminate></v-progress-linear>
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <button
+        v-for="f in filterOptions"
+        :key="f.value"
+        class="filter-chip"
+        :class="{ active: activeFilter === f.value }"
+        @click="activeFilter = f.value"
+      >
+        <span
+          v-if="f.value !== 'ALL'"
+          class="filter-dot"
+          :style="{ backgroundColor: statusMap[f.value]?.color }"
+        />
+        {{ f.label }}
+        <span class="filter-count">{{ statusCounts[f.value] }}</span>
+      </button>
+    </div>
 
-    <v-row v-else-if="tickets.length > 0">
-      <v-col v-for="ticket in tickets" :key="ticket.id" cols="12" sm="6" md="4" lg="3" xl="2">
-        <v-card rounded="lg" elevation="2" hover class="cursor-pointer h-100 d-flex flex-column" @click="openDetailsDialog(ticket)">
-          <v-card-title class="bg-primary pa-3">
-            <div class="d-flex align-center justify-space-between mb-1">
-              <v-icon color="secondary" size="20">mdi-ticket</v-icon>
-              <v-chip
-                :color="getStatusColor(ticket.status)"
-                size="x-small"
-                variant="flat"
+    <!-- Loading -->
+    <div v-if="loading" class="loading-row">
+      <div v-for="i in 4" :key="i" class="ticket-skeleton" />
+    </div>
+
+    <!-- Empty state -->
+    <div v-else-if="filteredTickets.length === 0" class="empty-state">
+      <v-icon size="52" color="grey-darken-1">mdi-ticket-outline</v-icon>
+      <p class="empty-title">Nenhum ticket encontrado</p>
+      <p class="empty-sub">
+        {{ activeFilter === 'ALL' ? 'Crie seu primeiro ticket clicando em Novo Ticket' : 'Nenhum ticket com este status' }}
+      </p>
+    </div>
+
+    <!-- Grid -->
+    <div v-else class="tickets-grid">
+      <div
+        v-for="ticket in filteredTickets"
+        :key="ticket.id"
+        class="ticket-card"
+        @click="openDetailsDialog(ticket)"
+      >
+        <!-- status accent top bar -->
+        <div
+          class="ticket-accent"
+          :style="{ backgroundColor: statusMap[ticket.status]?.color }"
+        />
+
+        <div class="ticket-body">
+          <!-- status badge -->
+          <div class="ticket-top">
+            <div
+              class="status-pill"
+              :style="{
+                color: statusMap[ticket.status]?.color,
+                backgroundColor: (statusMap[ticket.status]?.color ?? '#6B7280') + '18',
+              }"
+            >
+              <v-icon size="11">{{ statusMap[ticket.status]?.icon }}</v-icon>
+              {{ statusMap[ticket.status]?.label }}
+            </div>
+          </div>
+
+          <!-- title -->
+          <p class="ticket-title">{{ ticket.title }}</p>
+
+          <!-- description -->
+          <p v-if="ticket.description" class="ticket-desc">{{ ticket.description }}</p>
+
+          <!-- footer -->
+          <div class="ticket-footer">
+            <div class="ticket-author">
+              <div
+                class="author-avatar"
+                :style="{ backgroundColor: getUserColor(ticket.createdBy.name) }"
               >
-                {{ getStatusLabel(ticket.status) }}
-              </v-chip>
-            </div>
-            <div class="text-body-2 font-weight-bold text-secondary text-truncate-2">
-              {{ ticket.title }}
-            </div>
-          </v-card-title>
-
-          <v-card-text class="pa-3 flex-grow-1 d-flex flex-column">
-            <p class="text-caption mb-3 text-truncate-2">{{ ticket.description }}</p>
-
-            <v-spacer></v-spacer>
-
-            <v-divider class="mb-2" />
-
-            <div class="d-flex flex-column ga-1 text-caption text-medium-emphasis">
-              <div class="d-flex align-center ga-1">
-                <v-icon size="14">mdi-account</v-icon>
-                <span class="text-truncate">{{ ticket.createdBy.name }}</span>
+                {{ getUserInitials(ticket.createdBy.name) }}
               </div>
-              <div class="d-flex align-center ga-1">
-                <v-icon size="14">mdi-calendar</v-icon>
-                <span>{{ formatDate(ticket.createdAt) }}</span>
-              </div>
+              <span class="author-name">{{ ticket.createdBy.name }}</span>
             </div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
+            <span class="ticket-date">{{ formatDate(ticket.createdAt) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
-    <v-row v-else>
-      <v-col cols="12">
-        <v-card rounded="lg" elevation="2" class="text-center pa-12">
-          <v-icon size="80" color="grey-lighten-1">mdi-ticket-outline</v-icon>
-          <h3 class="text-h6 mt-4 text-medium-emphasis">Nenhum ticket encontrado</h3>
-          <p class="text-body-2 text-medium-emphasis mt-2">Crie seu primeiro ticket clicando no botão acima</p>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <v-dialog v-model="detailsDialog" :max-width="$vuetify.display.mobile ? '100%' : '700'" :fullscreen="$vuetify.display.mobile">
-      <v-card rounded="lg" v-if="selectedTicket">
-        <v-card-title class="d-flex align-center justify-space-between pa-4 bg-primary">
+    <!-- ─── Details dialog ─── -->
+    <v-dialog v-model="detailsDialog" max-width="560" :scrim-opacity="0.6">
+      <v-card v-if="selectedTicket" class="dialog-card" rounded="xl">
+        <div class="dialog-header">
           <div class="d-flex align-center ga-3">
-            <v-icon color="secondary" size="28">mdi-ticket</v-icon>
-            <span class="text-h6 font-weight-bold text-secondary">Detalhes do Ticket</span>
+            <div
+              class="dialog-status-dot"
+              :style="{ backgroundColor: statusMap[selectedTicket.status]?.color }"
+            />
+            <span class="dialog-title-text">{{ selectedTicket.title }}</span>
           </div>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            size="small"
-            color="secondary"
-            @click="detailsDialog = false"
-          ></v-btn>
-        </v-card-title>
-        <v-card-text class="pa-4">
-          <div class="mb-4">
-            <div class="d-flex align-center justify-space-between mb-3 flex-wrap ga-2">
-              <h3 class="text-h6 font-weight-bold">{{ selectedTicket.title }}</h3>
-              <v-chip
-                :color="getStatusColor(selectedTicket.status)"
-                size="default"
-                variant="flat"
+          <v-btn icon size="small" variant="text" @click="detailsDialog = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </v-btn>
+        </div>
+
+        <div class="dialog-body">
+          <div
+            class="status-pill mb-4"
+            style="width: fit-content"
+            :style="{
+              color: statusMap[selectedTicket.status]?.color,
+              backgroundColor: (statusMap[selectedTicket.status]?.color ?? '#6B7280') + '18',
+            }"
+          >
+            <v-icon size="11">{{ statusMap[selectedTicket.status]?.icon }}</v-icon>
+            {{ statusMap[selectedTicket.status]?.label }}
+          </div>
+
+          <p v-if="selectedTicket.description" class="dialog-desc">{{ selectedTicket.description }}</p>
+
+          <div class="dialog-meta">
+            <div class="d-flex align-center ga-2">
+              <div
+                class="author-avatar"
+                :style="{ backgroundColor: getUserColor(selectedTicket.createdBy.name) }"
               >
-                {{ getStatusLabel(selectedTicket.status) }}
-              </v-chip>
+                {{ getUserInitials(selectedTicket.createdBy.name) }}
+              </div>
+              <span style="font-size: 13px; color: rgba(var(--v-theme-secondary), 0.6)">
+                {{ selectedTicket.createdBy.name }}
+              </span>
             </div>
-            <p class="text-body-1">{{ selectedTicket.description }}</p>
+            <span style="font-size: 12px; color: rgba(var(--v-theme-secondary), 0.35)">
+              {{ formatDate(selectedTicket.createdAt) }}
+            </span>
           </div>
-          <v-divider class="my-4"></v-divider>
-          <div class="d-flex align-center justify-space-between text-body-2 flex-wrap ga-3">
-            <div class="d-flex align-center ga-2">
-              <v-icon size="20" color="secondary">mdi-account</v-icon>
-              <span>Criado por: <strong>{{ selectedTicket.createdBy.name }}</strong></span>
-            </div>
-            <div class="d-flex align-center ga-2">
-              <v-icon size="20" color="secondary">mdi-calendar</v-icon>
-              <span>{{ formatDate(selectedTicket.createdAt) }}</span>
-            </div>
-          </div>
-        </v-card-text>
-        <v-card-actions class="px-4 pb-4 flex-wrap ga-2">
-          <v-spacer></v-spacer>
+        </div>
+
+        <div class="dialog-actions">
           <v-btn
+            size="small"
+            variant="text"
             color="error"
-            variant="outlined"
-            prepend-icon="mdi-delete"
+            prepend-icon="mdi-delete-outline"
             @click="openDeleteDialog(selectedTicket)"
           >
             Excluir
           </v-btn>
+          <v-spacer />
           <v-btn
-            color="primary"
+            size="small"
             variant="flat"
-            prepend-icon="mdi-pencil"
+            class="edit-btn"
+            prepend-icon="mdi-pencil-outline"
             @click="openEditDialog(selectedTicket)"
           >
             Editar
           </v-btn>
-        </v-card-actions>
+        </div>
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="dialog" :max-width="$vuetify.display.mobile ? '100%' : '600'" :fullscreen="$vuetify.display.mobile">
-      <v-card rounded="lg">
-        <v-card-title class="pa-4 bg-primary">
-          <span class="text-h6 font-weight-bold text-secondary">
-            {{ editMode ? 'Editar Ticket' : 'Novo Ticket' }}
-          </span>
-        </v-card-title>
-        <v-card-text class="pa-4">
+    <!-- ─── Create / Edit dialog ─── -->
+    <v-dialog v-model="dialog" max-width="520" :scrim-opacity="0.6">
+      <v-card class="dialog-card" rounded="xl">
+        <div class="dialog-header">
+          <span class="dialog-title-text">{{ editMode ? 'Editar Ticket' : 'Novo Ticket' }}</span>
+          <v-btn icon size="small" variant="text" @click="dialog = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </v-btn>
+        </div>
+        <div class="dialog-body">
           <v-text-field
             v-model="form.title"
             label="Título"
             variant="outlined"
             density="comfortable"
+            rounded="lg"
             class="mb-3"
-          ></v-text-field>
+          />
           <v-textarea
             v-model="form.description"
             label="Descrição"
             variant="outlined"
             density="comfortable"
+            rounded="lg"
             rows="4"
             class="mb-3"
-          ></v-textarea>
+          />
           <v-select
             v-model="form.status"
             :items="statusOptions"
@@ -316,60 +363,370 @@ onMounted(() => {
             label="Status"
             variant="outlined"
             density="comfortable"
-          ></v-select>
-        </v-card-text>
-        <v-card-actions class="px-4 pb-4">
-          <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="dialog = false">Cancelar</v-btn>
-          <v-btn color="primary" variant="flat" @click="saveTicket" :loading="loading">Salvar</v-btn>
-        </v-card-actions>
+            rounded="lg"
+          />
+        </div>
+        <div class="dialog-actions">
+          <v-btn variant="text" size="small" @click="dialog = false">Cancelar</v-btn>
+          <v-spacer />
+          <v-btn variant="flat" size="small" class="edit-btn" :loading="loading" @click="saveTicket">
+            Salvar
+          </v-btn>
+        </div>
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="deleteDialog" :max-width="$vuetify.display.mobile ? '100%' : '400'" :fullscreen="$vuetify.display.mobile">
-      <v-card rounded="lg">
-        <v-card-title class="pa-4 bg-error">
-          <span class="text-h6 font-weight-bold text-white">Confirmar Exclusão</span>
-        </v-card-title>
-        <v-card-text class="pa-4">
-          <p class="text-body-1">
-            Tem certeza que deseja excluir o ticket <strong>"{{ selectedTicket?.title }}"</strong>?
+    <!-- ─── Delete confirm dialog ─── -->
+    <v-dialog v-model="deleteDialog" max-width="400" :scrim-opacity="0.6">
+      <v-card class="dialog-card" rounded="xl">
+        <div class="dialog-header">
+          <span class="dialog-title-text">Confirmar exclusão</span>
+          <v-btn icon size="small" variant="text" @click="deleteDialog = false">
+            <v-icon size="18">mdi-close</v-icon>
+          </v-btn>
+        </div>
+        <div class="dialog-body">
+          <p style="font-size: 14px; color: rgba(var(--v-theme-secondary), 0.65)">
+            Tem certeza que deseja excluir
+            <strong style="color: rgb(var(--v-theme-secondary))">"{{ selectedTicket?.title }}"</strong>?
+            Esta ação não pode ser desfeita.
           </p>
-        </v-card-text>
-        <v-card-actions class="px-4 pb-4">
-          <v-spacer></v-spacer>
-          <v-btn variant="outlined" @click="deleteDialog = false">Cancelar</v-btn>
-          <v-btn color="error" variant="flat" @click="deleteTicket" :loading="loading">Excluir</v-btn>
-        </v-card-actions>
+        </div>
+        <div class="dialog-actions">
+          <v-btn variant="text" size="small" @click="deleteDialog = false">Cancelar</v-btn>
+          <v-spacer />
+          <v-btn variant="flat" size="small" color="error" :loading="loading" @click="deleteTicket">
+            Excluir
+          </v-btn>
+        </div>
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
+    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top right" rounded="lg">
       {{ snackbarMessage }}
     </v-snackbar>
-  </v-container>
+  </div>
 </template>
 
 <style scoped>
-.cursor-pointer {
-  cursor: pointer;
+/* ─── Page layout ─── */
+.tickets-page {
+  padding: 24px;
+  max-width: 100%;
 }
 
-.text-truncate-2 {
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: rgb(var(--v-theme-secondary));
+  margin: 0 0 3px;
+  letter-spacing: -0.02em;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: rgba(var(--v-theme-secondary), 0.45);
+  margin: 0;
+}
+
+.new-btn {
+  background: rgb(var(--v-theme-secondary)) !important;
+  color: rgb(var(--v-theme-primary)) !important;
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: 10px !important;
+}
+
+/* ─── Filter bar ─── */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(var(--v-theme-secondary), 0.5);
+  background: rgba(var(--v-theme-secondary), 0.06);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.filter-chip:hover {
+  color: rgba(var(--v-theme-secondary), 0.8);
+  background: rgba(var(--v-theme-secondary), 0.09);
+}
+
+.filter-chip.active {
+  color: rgb(var(--v-theme-secondary));
+  background: rgba(var(--v-theme-secondary), 0.1);
+  border-color: rgba(var(--v-theme-secondary), 0.15);
+}
+
+.filter-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.filter-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-secondary), 0.35);
+  margin-left: 1px;
+}
+
+/* ─── Grid ─── */
+.tickets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+/* ─── Ticket card ─── */
+.ticket-card {
+  background: rgb(var(--v-theme-primary));
+  border: 1px solid rgba(var(--v-theme-secondary), 0.07);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.ticket-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+  border-color: rgba(var(--v-theme-secondary), 0.13);
+}
+
+.ticket-accent {
+  height: 3px;
+  width: 100%;
+  opacity: 0.6;
+}
+
+.ticket-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ticket-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+}
+
+.ticket-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-secondary));
+  margin: 0;
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.text-truncate-4 {
+.ticket-desc {
+  font-size: 12.5px;
+  color: rgba(var(--v-theme-secondary), 0.45);
+  margin: 0;
+  line-height: 1.5;
   display: -webkit-box;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.ticket-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(var(--v-theme-secondary), 0.06);
+}
+
+.ticket-author {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.author-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.author-name {
+  font-size: 12px;
+  color: rgba(var(--v-theme-secondary), 0.5);
+  max-width: 100px;
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-date {
+  font-size: 11.5px;
+  color: rgba(var(--v-theme-secondary), 0.3);
+}
+
+/* ─── Loading skeleton ─── */
+.loading-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.ticket-skeleton {
+  height: 160px;
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--v-theme-secondary), 0.04) 0%,
+    rgba(var(--v-theme-secondary), 0.08) 50%,
+    rgba(var(--v-theme-secondary), 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ─── Empty state ─── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  gap: 8px;
+}
+
+.empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-secondary), 0.5);
+  margin: 0;
+}
+
+.empty-sub {
+  font-size: 13px;
+  color: rgba(var(--v-theme-secondary), 0.3);
+  margin: 0;
+  text-align: center;
+}
+
+/* ─── Dialogs ─── */
+.dialog-card {
+  background: rgb(var(--v-theme-primary)) !important;
+  border: 1px solid rgba(var(--v-theme-secondary), 0.1) !important;
+  overflow: hidden;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.07);
+  gap: 12px;
+}
+
+.dialog-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dialog-title-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgb(var(--v-theme-secondary));
+  line-height: 1.3;
+}
+
+.dialog-body {
+  padding: 18px;
+}
+
+.dialog-desc {
+  font-size: 14px;
+  color: rgba(var(--v-theme-secondary), 0.6);
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.dialog-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 14px;
+  border-top: 1px solid rgba(var(--v-theme-secondary), 0.07);
+}
+
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  padding: 12px 18px 18px;
+  border-top: 1px solid rgba(var(--v-theme-secondary), 0.07);
+  gap: 8px;
+}
+
+.edit-btn {
+  background: rgb(var(--v-theme-secondary)) !important;
+  color: rgb(var(--v-theme-primary)) !important;
+  font-weight: 600;
+  font-size: 12.5px;
+  border-radius: 8px !important;
 }
 </style>

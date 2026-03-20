@@ -3,17 +3,24 @@ import { ref, computed } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
 import AppBar from '@/core/components/AppBar.vue'
 import NavigationDrawer from '@/core/components/NavigationDrawer.vue'
+import CommandPalette from '@/components/CommandPalette.vue'
 
 const drawer = ref(true)
 const route = useRoute()
 const isLoginPage = computed(() => route.name === 'login')
+const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
+
+const openCommandPalette = () => {
+  commandPaletteRef.value?.open()
+}
 </script>
 
 <template>
   <v-app>
     <template v-if="!isLoginPage">
       <NavigationDrawer v-model="drawer" />
-      <AppBar v-model:drawer="drawer" />
+      <AppBar v-model:drawer="drawer" @open-command-palette="openCommandPalette" />
+      <CommandPalette ref="commandPaletteRef" />
     </template>
     <v-main>
       <RouterView />

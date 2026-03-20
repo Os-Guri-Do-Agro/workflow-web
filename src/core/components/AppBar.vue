@@ -10,30 +10,24 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:drawer': [value: boolean]
+  'open-command-palette': []
 }>()
 
 const theme = useTheme()
 const route = useRoute()
 const router = useRouter()
 const userMenu = ref(false)
-const temaSalvo = localStorage.getItem('theme')
 const user = getUserToken()
 
 const userInitials = computed(() => {
   const name = user?.name || ''
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
 })
 
 const firstName = computed(() => user?.name?.split(' ')[0] || '')
 
 const toggleTheme = () => {
   theme.global.name.value = theme.global.name.value === 'light' ? 'dark' : 'light'
-
   localStorage.setItem('theme', theme.global.name.value)
 }
 
@@ -42,105 +36,186 @@ const handleLogout = () => {
   router.push('/login')
 }
 
-const pageTitle = computed(() => {
-  const titles: Record<string, string> = {
-    '/': 'Dashboard',
-    '/tasks': 'Tarefas',
-    '/settings': 'Configurações',
-  }
-  return titles[route.path] || 'Stack Roads'
-})
-
 const breadcrumbs = computed(() => {
   const path = route.path
   const routes: Record<string, { title: string; parent?: string }> = {
     '/': { title: 'Dashboard' },
     '/settings': { title: 'Configurações' },
-    '/relatorio/q1': { title: 'Relatório Q1', parent: 'Q1 • Jan-Mar' },
-    '/relatorio/q2': { title: 'Relatório Q2', parent: 'Q2 • Abr-Jun' },
-    '/relatorio/q3': { title: 'Relatório Q3', parent: 'Q3 • Jul-Set' },
-    '/relatorio/q4': { title: 'Relatório Q4', parent: 'Q4 • Out-Dez' },
-    '/tasks/janeiro': { title: 'Janeiro', parent: 'Q1 • Jan-Mar' },
-    '/tasks/fevereiro': { title: 'Fevereiro', parent: 'Q1 • Jan-Mar' },
-    '/tasks/marco': { title: 'Março', parent: 'Q1 • Jan-Mar' },
-    '/tasks/abril': { title: 'Abril', parent: 'Q2 • Abr-Jun' },
-    '/tasks/maio': { title: 'Maio', parent: 'Q2 • Abr-Jun' },
-    '/tasks/junho': { title: 'Junho', parent: 'Q2 • Abr-Jun' },
-    '/tasks/julho': { title: 'Julho', parent: 'Q3 • Jul-Set' },
-    '/tasks/agosto': { title: 'Agosto', parent: 'Q3 • Jul-Set' },
-    '/tasks/setembro': { title: 'Setembro', parent: 'Q3 • Jul-Set' },
-    '/tasks/outubro': { title: 'Outubro', parent: 'Q4 • Out-Dez' },
-    '/tasks/novembro': { title: 'Novembro', parent: 'Q4 • Out-Dez' },
-    '/tasks/dezembro': { title: 'Dezembro', parent: 'Q4 • Out-Dez' },
+    '/variables': { title: 'Variáveis' },
+    '/company-users': { title: 'Usuários / Empresas' },
+    '/tickets': { title: 'Tickets' },
   }
 
   const current = routes[path]
-  if (!current) return [{ title: pageTitle.value }]
-  if (path === '/') return [{ title: 'Dashboard' }]
-  if (path === '/settings') return [{ title: 'Configurações' }]
+  if (current) return [{ title: current.title }]
 
-  const items = [{ title: 'Tarefas' }]
-  if (current.parent) items.push({ title: current.parent })
-  items.push({ title: current.title })
+  if (path.startsWith('/tasks/')) {
+    const parts = path.split('/')
+    const items = [{ title: 'Tarefas' }]
+    if (parts[2]) items.push({ title: 'Mês' })
+    if (parts[3]) items.push({ title: 'Detalhes' })
+    return items
+  }
 
-  return items
+  if (path.startsWith('/relatorio/')) {
+    return [{ title: 'Tarefas' }, { title: 'Relatório' }]
+  }
+
+  return [{ title: 'Forge' }]
 })
+
+const isMac = navigator.platform.toUpperCase().includes('MAC')
+const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
 </script>
 
 <template>
-  <v-app-bar elevation="0" color="primary" border="b" height="56">
-    <v-app-bar-nav-icon color="secondary" @click="emit('update:drawer', !drawer)" />
+  <v-app-bar elevation="0" color="primary" height="48" class="app-bar-custom">
+    <v-btn icon size="small" variant="text" @click="emit('update:drawer', !drawer)">
+      <v-icon size="18" color="secondary">mdi-menu</v-icon>
+    </v-btn>
 
-    <v-breadcrumbs :items="breadcrumbs" class="pa-0">
-      <template v-slot:divider>
-        <v-icon size="16" color="secondary-lighten-2">mdi-chevron-right</v-icon>
+    <v-breadcrumbs :items="breadcrumbs" class="pa-0 ml-1">
+      <template #divider>
+        <v-icon size="14" style="opacity: 0.3">mdi-chevron-right</v-icon>
       </template>
-      <template v-slot:item="{ item }">
-        <span class="text-caption text-secondary">{{ item.title }}</span>
+      <template #item="{ item }">
+        <span class="breadcrumb-text">{{ item.title }}</span>
       </template>
     </v-breadcrumbs>
 
     <v-spacer />
 
-    <v-btn icon variant="text" color="secondary" @click="toggleTheme">
-      <v-icon size="20">{{
-        theme.global.name.value === 'light' ? 'mdi-weather-night' : 'mdi-weather-sunny'
-      }}</v-icon>
+    <!-- Search / Command palette trigger -->
+    <button class="cmd-k-btn" @click="emit('open-command-palette')">
+      <v-icon size="14" style="opacity: 0.45">mdi-magnify</v-icon>
+      <span class="cmd-k-text">Buscar...</span>
+      <kbd class="cmd-k-kbd">{{ shortcutLabel }}</kbd>
+    </button>
+
+    <!-- Theme toggle -->
+    <v-btn icon size="small" variant="text" @click="toggleTheme" class="ml-1">
+      <v-icon size="18" color="secondary" style="opacity: 0.6">
+        {{ theme.global.name.value === 'light' ? 'mdi-moon-waning-crescent' : 'mdi-white-balance-sunny' }}
+      </v-icon>
     </v-btn>
 
-    <!-- <v-btn icon variant="text" color="secondary">
-      <v-icon size="20">mdi-magnify</v-icon>
-    </v-btn>
-
-    <v-btn icon variant="text" color="secondary">
-      <v-badge color="error" content="3" dot>
-        <v-icon size="20">mdi-bell-outline</v-icon>
-      </v-badge>
-    </v-btn> -->
-
-    <v-menu v-model="userMenu" :close-on-content-click="false" location="bottom end">
-      <template v-slot:activator="{ props }">
-        <v-btn variant="text" v-bind="props" class="d-flex align-center">
-          <v-avatar size="30" color="secondary">
-            <span style="font-size: 11px" class="font-weight-bold text-primary">{{
-              userInitials
-            }}</span>
-          </v-avatar>
-          <span class="text-secondary ml-2">{{ firstName }}</span>
-        </v-btn>
+    <!-- User menu -->
+    <v-menu v-model="userMenu" :close-on-content-click="true" location="bottom end">
+      <template #activator="{ props }">
+        <button v-bind="props" class="user-btn mr-3">
+          <div class="user-avatar">{{ userInitials }}</div>
+          <span class="user-name">{{ firstName }}</span>
+        </button>
       </template>
-
-      <v-card class="mr-3" min-width="200">
-        <v-list>
+      <v-card class="user-menu-card" rounded="lg" min-width="180">
+        <v-list density="compact" class="py-1">
           <v-list-item
-            prepend-icon="mdi-cog"
+            density="compact"
+            prepend-icon="mdi-cog-outline"
             title="Configurações"
             @click="router.push('/settings')"
           />
-          <v-divider />
-          <v-list-item prepend-icon="mdi-logout" title="Sair" @click="handleLogout" />
+          <v-divider class="my-1" />
+          <v-list-item
+            density="compact"
+            prepend-icon="mdi-logout"
+            title="Sair"
+            @click="handleLogout"
+          />
         </v-list>
       </v-card>
     </v-menu>
   </v-app-bar>
 </template>
+
+<style scoped>
+.app-bar-custom {
+  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08) !important;
+}
+
+.breadcrumb-text {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(var(--v-theme-secondary), 0.55);
+}
+
+/* ─── Cmd+K button ─── */
+.cmd-k-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(var(--v-theme-secondary), 0.06);
+  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+  height: 32px;
+  width: 300px;
+  justify-content: space-between;
+}
+
+.cmd-k-btn:hover {
+  border-color: rgba(var(--v-theme-secondary), 0.2);
+  background: rgba(var(--v-theme-secondary), 0.09);
+}
+
+.cmd-k-text {
+  font-size: 12.5px;
+  color: rgba(var(--v-theme-secondary), 0.35);
+  white-space: nowrap;
+}
+
+.cmd-k-kbd {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-secondary), 0.3);
+  background: rgba(var(--v-theme-secondary), 0.07);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+/* ─── User button ─── */
+.user-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.12s ease;
+}
+
+.user-btn:hover {
+  background: rgba(var(--v-theme-secondary), 0.06);
+}
+
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-secondary));
+  color: rgb(var(--v-theme-primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.user-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(var(--v-theme-secondary), 0.7);
+}
+
+.user-menu-card {
+  background: rgb(var(--v-theme-primary)) !important;
+  border: 1px solid rgba(var(--v-theme-secondary), 0.1) !important;
+}
+</style>
