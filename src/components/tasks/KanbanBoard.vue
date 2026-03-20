@@ -306,8 +306,8 @@ const isOverdue = (dueDate: string) => {
                 class="avatar-chip"
                 :style="{
                   backgroundColor: getUserColor(responsible.user.name),
-                  marginLeft: i > 0 ? '-6px' : '0',
-                  zIndex: 4 - i,
+                  marginLeft: (i as number) > 0 ? '-6px' : '0',
+                  zIndex: 4 - (i as number),
                 }"
               >
                 <v-tooltip :text="responsible.user.name" location="top">
