@@ -151,7 +151,6 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
   cursor: pointer;
   transition: border-color 0.12s ease, background 0.12s ease;
   height: 32px;
-  width: 300px;
   justify-content: space-between;
 }
 
