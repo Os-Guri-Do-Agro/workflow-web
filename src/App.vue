@@ -7,7 +7,8 @@ import CommandPalette from '@/components/CommandPalette.vue'
 
 const drawer = ref(true)
 const route = useRoute()
-const isLoginPage = computed(() => route.name === 'login')
+const isLoginPage = computed(() => route.name === 'login' )
+const isDownloadPage = computed(() => route.name === 'download' )
 const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
 
 const openCommandPalette = () => {
@@ -17,7 +18,7 @@ const openCommandPalette = () => {
 
 <template>
   <v-app>
-    <template v-if="!isLoginPage">
+    <template v-if="!isLoginPage && !isDownloadPage">
       <NavigationDrawer v-model="drawer" />
       <AppBar v-model:drawer="drawer" @open-command-palette="openCommandPalette" />
       <CommandPalette ref="commandPaletteRef" />

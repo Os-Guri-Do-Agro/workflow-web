@@ -5,6 +5,7 @@ import TaskDetailsView from '@/features/tasks/TaskDetailsView.vue'
 import ReportView from '@/features/reports/ReportView.vue'
 import SettingsView from '@/features/settings/SettingsView.vue'
 import LoginView from '@/features/auth/LoginView.vue'
+import DownloadView from '@/features/download/DownloadView.vue'
 import CompanyVariablesView from '@/features/companies/CompanyVariablesView.vue'
 import CompanyUsersView from '@/features/companies/CompanyUsersView.vue'
 import TicketsView from '@/features/tickets/TicketsView.vue'
@@ -17,6 +18,11 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: LoginView,
+    },
+    {
+      path: '/download',
+      name: 'download',
+      component: DownloadView,
     },
     {
       path: '/',
@@ -63,7 +69,7 @@ const router = createRouter({
 const { posthog } = usePostHog()
 router.beforeEach((to) => {
   const token = localStorage.getItem('token')
-  if (!token && to.name !== 'login') return { name: 'login' }
+  if (!token && to.name !== 'login' && to.name !== 'download') return { name: 'login' }
 })
 router.afterEach(() => {
   posthog.capture('$pageview')

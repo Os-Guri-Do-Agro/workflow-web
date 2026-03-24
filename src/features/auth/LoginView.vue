@@ -106,6 +106,17 @@ onMounted(() => {
           >
             Entrar
           </v-btn>
+
+          <v-btn
+            variant="text"
+            block
+            class="text-none mt-4 text-grey-darken-1"
+            append-icon="mdi-download"
+            @click="router.push('/download')"
+            elevation="0"
+          >
+            Desktop App
+          </v-btn>
         </v-form>
       </div>
     </v-col>
