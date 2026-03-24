@@ -26,6 +26,7 @@ jobs:
     - name: Build Electron App
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VITE_API_URL: "https://workflow-api-production-v1.up.railway.app"
       run: npm run build:electron
 
     - name: Upload Windows Executable
