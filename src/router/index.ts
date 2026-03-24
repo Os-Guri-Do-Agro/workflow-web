@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import DashboardView from '@/features/dashboard/DashboardView.vue'
 import TasksView from '@/features/tasks/TasksView.vue'
 import TaskDetailsView from '@/features/tasks/TaskDetailsView.vue'
@@ -11,7 +11,7 @@ import TicketsView from '@/features/tickets/TicketsView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: createWebHashHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/login',

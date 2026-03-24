@@ -41,3 +41,9 @@ __screenshots__/
 # Envs
 .env
 *.env
+
+# Electron
+dist-electron
+release
+*.zip
+*.exe

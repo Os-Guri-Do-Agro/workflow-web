@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import vuetify from 'vite-plugin-vuetify'
+import electron from 'vite-plugin-electron'
+import renderer from 'vite-plugin-electron-renderer'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -11,6 +13,12 @@ export default defineConfig({
     vue(),
     vueDevTools(),
     vuetify({ autoImport: true }),
+    electron([
+      {
+        entry: 'electron/main.ts',
+      }
+    ]),
+    renderer(),
   ],
   resolve: {
     alias: {
