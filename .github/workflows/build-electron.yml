@@ -5,6 +5,9 @@ on:
     branches: [ "main", "feature/electron-windows" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -21,6 +24,8 @@ jobs:
       run: npm install
 
     - name: Build Electron App
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: npm run build:electron
 
     - name: Upload Windows Executable
