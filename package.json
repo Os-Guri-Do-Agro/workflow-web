@@ -73,7 +73,8 @@
       "dist-electron/**/*"
     ],
     "win": {
-      "target": "dir"
+      "icon": "public/icone.png",
+      "target": "nsis"
     }
   }
 }

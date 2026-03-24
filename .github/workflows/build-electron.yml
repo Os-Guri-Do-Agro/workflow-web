@@ -1,0 +1,30 @@
+name: Build Electron Windows App
+
+on:
+  push:
+    branches: [ "main", "feature/electron-windows" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build Electron App
+      run: npm run build:electron
+
+    - name: Upload Windows Executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: WorkFlow-Setup-Windows
+        path: release/*.exe
