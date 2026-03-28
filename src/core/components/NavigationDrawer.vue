@@ -95,6 +95,7 @@ const switchCompany = (company: Company) => {
 const menuItems = computed(() => {
   const items: MenuItem[] = [
     { title: 'Workspace', icon: 'mdi-view-grid', to: '/' },
+    { title: 'Board', icon: 'mdi-view-column', to: '/board' },
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/dashboard' },
     { title: 'Notas', icon: 'mdi-note-text', to: '/notes' },
     { title: 'Calendário', icon: 'mdi-calendar', to: '/calendar' },

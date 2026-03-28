@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import WorkspaceView from '@/features/workspace/WorkspaceView.vue'
+import BoardView from '@/features/board/BoardView.vue'
 import DashboardView from '@/features/dashboard/DashboardView.vue'
 import TasksView from '@/features/tasks/TasksView.vue'
 import TaskDetailsView from '@/features/tasks/TaskDetailsView.vue'
@@ -32,6 +33,11 @@ const router = createRouter({
       path: '/',
       name: 'workspace',
       component: WorkspaceView,
+    },
+    {
+      path: '/board',
+      name: 'board',
+      component: BoardView,
     },
     {
       path: '/dashboard',

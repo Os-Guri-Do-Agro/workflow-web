@@ -66,6 +66,42 @@ const companiesWithMetrics = computed(() => {
   return workspace.workspaceData?.companies || []
 })
 
+const workspaceData = computed(() => workspace.workspaceData)
+
+const notes = computed(() => workspaceData.value?.notes || [])
+const events = computed(() => workspaceData.value?.events || [])
+
+const eventColors: Record<string, string> = {
+  'MEETING': '#3B82F6',
+  'DEADLINE': '#EF4444',
+  'REMINDER': '#F59E0B',
+  'SPRINT': '#10B981',
+  'RETROSPECTIVE': '#8B5CF6',
+}
+
+function getEventColor(type: string): string {
+  return eventColors[type] || '#6B7280'
+}
+
+function formatEventDate(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  const isTomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toDateString() === date.toDateString()
+  
+  if (isToday) return 'Hoje'
+  if (isTomorrow) return 'Amanhã'
+  return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })
+}
+
+function openNote(id: string) {
+  router.push(`/notes/${id}`)
+}
+
+function openEvent(id: string) {
+  router.push('/calendar')
+}
+
 const statusConfig: Record<string, { color: string; label: string }> = {
   'TODO': { color: '#3B82F6', label: 'A Fazer' },
   'IN_PROGRESS': { color: '#F59E0B', label: 'Em Andamento' },
@@ -230,84 +266,70 @@ function getPriorityLabel(priority: number): string {
         </div>
       </div>
 
-      <!-- Activities List -->
-      <div class="workspace-panel workspace-panel--wide">
+      <!-- Notes & Events -->
+      <div class="workspace-panel">
         <div class="panel-header">
-          <span class="panel-title">Atividades Consolidadas</span>
-          <span class="panel-count">{{ filteredActivities.length }}</span>
+          <span class="panel-title">Minhas Notas</span>
+          <span class="panel-count">{{ workspaceData?.notes?.length || 0 }}</span>
         </div>
         <div class="panel-body">
-          <div v-if="loading" class="activities-skeleton">
-            <div v-for="i in 5" :key="i" class="activity-skeleton" />
+          <div v-if="loading" class="notes-skeleton">
+            <div v-for="i in 3" :key="i" class="note-skeleton" />
           </div>
-          <div v-else-if="filteredActivities.length === 0" class="panel-empty">
-            <v-icon size="36" color="grey-darken-2">mdi-check-all</v-icon>
-            <span>Nenhuma atividade pendente</span>
+          <div v-else-if="!workspaceData?.notes?.length" class="panel-empty">
+            <v-icon size="24" color="grey-darken-2">mdi-note-outline</v-icon>
+            <span>Nenhuma nota</span>
           </div>
-          <div v-else class="activities-list">
+          <div v-else class="notes-list">
             <div
-              v-for="activity in filteredActivities"
-              :key="activity.id"
-              class="activity-item"
-              :class="{ 'activity-item--mine': activity.isMine }"
+              v-for="note in workspaceData.notes.slice(0, 5)"
+              :key="note.id"
+              class="note-item"
+              :class="{ 'note-item--pinned': note.isPinned }"
+              @click="openNote(note.id)"
             >
-              <div class="activity-left">
-                <div
-                  class="activity-status-dot"
-                  :style="{ backgroundColor: statusConfig[activity.status]?.color }"
-                />
-                <div class="activity-info">
-                  <div class="activity-header">
-                    <span class="activity-title">{{ activity.title }}</span>
-                    <div class="activity-badges">
-                      <span
-                        v-if="activity.priority < 3"
-                        class="priority-badge"
-                        :class="`priority-${activity.priority}`"
-                      >
-                        {{ getPriorityLabel(activity.priority) }}
-                      </span>
-                      <span
-                        class="company-badge"
-                        :style="{ backgroundColor: roleConfig[activity.myRole]?.color + '14' }"
-                      >
-                        {{ activity.companyName }} • {{ activity.quarter }}
-                      </span>
-                    </div>
-                  </div>
-                  <div class="activity-meta">
-                    <span
-                      class="activity-date"
-                      :class="{ 'activity-date--overdue': activity.dueDate && new Date(activity.dueDate) < new Date() && activity.status !== 'DONE' }"
-                    >
-                      {{ formatDate(activity.dueDate) }}
-                    </span>
-                    <span class="activity-responsibles">
-                      <span
-                        v-for="(resp, idx) in activity.responsibles.slice(0, 2)"
-                        :key="resp.id"
-                        class="responsible-tag"
-                        :class="{ 'responsible-tag--me': resp.isMe }"
-                      >
-                        {{ resp.isMe ? 'Eu' : resp.name }}
-                        <span v-if="idx < activity.responsibles.slice(0, 2).length - 1">, </span>
-                      </span>
-                      <span v-if="activity.responsibles.length > 2" class="more-responsibles">
-                        +{{ activity.responsibles.length - 2 }}
-                      </span>
-                    </span>
-                  </div>
-                </div>
+              <div class="note-header">
+                <v-icon v-if="note.isPinned" size="12" color="warning">mdi-pin</v-icon>
+                <span class="note-title">{{ note.title }}</span>
               </div>
+              <p class="note-preview">{{ note.content?.substring(0, 60) || '' }}...</p>
+              <div v-if="note.folder" class="note-folder">
+                <v-icon size="10">mdi-folder</v-icon>
+                {{ note.folder.name }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
+      <!-- Events -->
+      <div class="workspace-panel">
+        <div class="panel-header">
+          <span class="panel-title">Próximos Eventos</span>
+          <span class="panel-count">{{ workspaceData?.events?.length || 0 }}</span>
+        </div>
+        <div class="panel-body">
+          <div v-if="loading" class="events-skeleton">
+            <div v-for="i in 3" :key="i" class="event-skeleton" />
+          </div>
+          <div v-else-if="!workspaceData?.events?.length" class="panel-empty">
+            <v-icon size="24" color="grey-darken-2">mdi-calendar-blank</v-icon>
+            <span>Nenhum evento</span>
+          </div>
+          <div v-else class="events-list">
+            <div
+              v-for="event in workspaceData.events.slice(0, 5)"
+              :key="event.id"
+              class="event-item"
+              @click="openEvent(event.id)"
+            >
               <div
-                class="activity-status-badge"
-                :style="{
-                  color: statusConfig[activity.status]?.color,
-                  backgroundColor: (statusConfig[activity.status]?.color || '#000') + '14',
-                }"
-              >
-                {{ statusConfig[activity.status]?.label }}
+                class="event-dot"
+                :style="{ backgroundColor: getEventColor(event.type) }"
+              />
+              <div class="event-info">
+                <span class="event-title">{{ event.title }}</span>
+                <span class="event-date">{{ formatEventDate(event.startDate) }}</span>
               </div>
             </div>
           </div>
@@ -798,5 +820,144 @@ function getPriorityLabel(priority: number): string {
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+
+/* Notes */
+.notes-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-skeleton {
+  height: 60px;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-secondary), 0.05);
+  animation: shimmer 1.4s ease infinite;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.note-item {
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-secondary), 0.03);
+  border: 1px solid rgba(var(--v-theme-secondary), 0.06);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.note-item:hover {
+  background: rgba(var(--v-theme-secondary), 0.06);
+  border-color: rgba(var(--v-theme-secondary), 0.1);
+}
+
+.note-item--pinned {
+  background: rgba(245, 158, 11, 0.05);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.note-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.note-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-preview {
+  font-size: 12px;
+  color: rgba(var(--v-theme-secondary), 0.5);
+  margin: 0;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.note-folder {
+  font-size: 11px;
+  color: rgba(var(--v-theme-secondary), 0.4);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Events */
+.events-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-skeleton {
+  height: 50px;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-secondary), 0.05);
+  animation: shimmer 1.4s ease infinite;
+}
+
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.event-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-secondary), 0.03);
+  border: 1px solid rgba(var(--v-theme-secondary), 0.06);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.event-item:hover {
+  background: rgba(var(--v-theme-secondary), 0.06);
+  border-color: rgba(var(--v-theme-secondary), 0.1);
+}
+
+.event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.event-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-secondary));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-date {
+  font-size: 11px;
+  color: rgba(var(--v-theme-secondary), 0.5);
 }
 </style>
