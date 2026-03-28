@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import WorkspaceView from '@/features/workspace/WorkspaceView.vue'
 import DashboardView from '@/features/dashboard/DashboardView.vue'
 import TasksView from '@/features/tasks/TasksView.vue'
 import TaskDetailsView from '@/features/tasks/TaskDetailsView.vue'
@@ -9,6 +10,9 @@ import DownloadView from '@/features/download/DownloadView.vue'
 import CompanyVariablesView from '@/features/companies/CompanyVariablesView.vue'
 import CompanyUsersView from '@/features/companies/CompanyUsersView.vue'
 import TicketsView from '@/features/tickets/TicketsView.vue'
+import NotesView from '@/features/notes/NotesView.vue'
+import NoteEditorView from '@/features/notes/NoteEditorView.vue'
+import CalendarView from '@/features/calendar/CalendarView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 
 const router = createRouter({
@@ -26,8 +30,28 @@ const router = createRouter({
     },
     {
       path: '/',
+      name: 'workspace',
+      component: WorkspaceView,
+    },
+    {
+      path: '/dashboard',
       name: 'dashboard',
       component: DashboardView,
+    },
+    {
+      path: '/notes',
+      name: 'notes',
+      component: NotesView,
+    },
+    {
+      path: '/notes/:id',
+      name: 'note-editor',
+      component: NoteEditorView,
+    },
+    {
+      path: '/calendar',
+      name: 'calendar',
+      component: CalendarView,
     },
     {
       path: '/tasks/:month',
@@ -58,6 +82,7 @@ const router = createRouter({
       path: '/company-users',
       name: 'company-users',
       component: CompanyUsersView,
+      meta: { requiredRole: 'ADMIN' }
     },
     {
       path: '/tickets',

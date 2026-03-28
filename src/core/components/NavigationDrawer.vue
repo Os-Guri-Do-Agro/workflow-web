@@ -4,7 +4,7 @@ import { ref, computed, onMounted } from 'vue'
 import companiesServices from '@/service/companies/companies-services'
 import quartersService from '@/service/quarters/quarters-service'
 import { getInfoAuth } from '@/utils/authContent'
-import { useActiveCompanyId } from '@/stores/authStores'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 
 type MenuItem = {
   title: string
@@ -29,7 +29,7 @@ type CompanyResponse = {
 
 const companies = ref<any[]>([])
 const quaters = ref<any[]>([])
-const newCompanyId = useActiveCompanyId()
+const workspace = useWorkspaceStore()
 
 const findCompanies = async () => {
   try {
@@ -49,7 +49,7 @@ const findCompanies = async () => {
     }
 
     if (!savedCompanyId && companies.value.length > 0) {
-      newCompanyId.setCompanyId(companies.value[0].id)
+      workspace.setActiveCompany(companies.value[0].id)
       localStorage.setItem('activeCompany', companies.value[0].id)
     }
   } catch (e) {
@@ -73,7 +73,6 @@ onMounted(async () => {
   if (!localStorage.getItem('token')) return
   await findCompanies()
   await findQuaters()
-  console.log('Novo id da empresa: ', newCompanyId.companyId)
 })
 
 const showCompanyModal = ref(false)
@@ -82,7 +81,7 @@ const activeCompany = computed(() => companies.value.find((c) => c.active))
 
 const switchCompany = (company: Company) => {
   companies.value.forEach((c) => (c.active = c.id === company.id))
-  newCompanyId.setCompanyId(company.id)
+  workspace.setActiveCompany(company.id)
   localStorage.setItem('activeCompany', company.id)
   getInfoAuth()
   showCompanyModal.value = false
@@ -95,9 +94,12 @@ const switchCompany = (company: Company) => {
 
 const menuItems = computed(() => {
   const items: MenuItem[] = [
-    { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/' },
-    { title: 'Variáveis', icon: 'mdi-note-text', to: '/variables' },
-    { title: 'Usuários/Empresas', icon: 'mdi-account-group', to: '/company-users', role: 'WORKER' },
+    { title: 'Workspace', icon: 'mdi-view-grid', to: '/' },
+    { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/dashboard' },
+    { title: 'Notas', icon: 'mdi-note-text', to: '/notes' },
+    { title: 'Calendário', icon: 'mdi-calendar', to: '/calendar' },
+    { title: 'Variáveis', icon: 'mdi-variable', to: '/variables' },
+    { title: 'Usuários', icon: 'mdi-account-group', to: '/company-users', role: 'ADMIN' },
     { title: 'Tickets', icon: 'mdi-ticket', to: '/tickets' },
   ]
 
