@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useSortable } from '@vueuse/integrations/useSortable'
@@ -20,6 +20,14 @@ const columns = [
   { id: 'IN_TESTING', title: 'Em Teste', color: '#8B5CF6' },
   { id: 'DONE', title: 'Concluído', color: '#10B981' },
 ]
+
+const roleConfig: Record<string, { color: string; label: string }> = {
+  'OWNER': { color: '#EF4444', label: 'Proprietário' },
+  'ADMIN': { color: '#F59E0B', label: 'Admin' },
+  'WORKER': { color: '#3B82F6', label: 'Membro' },
+  'VIEWER': { color: '#6B7280', label: 'Visualizador' },
+  'CLIENT': { color: '#10B981', label: 'Cliente' },
+}
 
 const allActivities = computed(() => {
   let activities = workspace.workspaceData?.activities || []
@@ -66,11 +74,23 @@ const companies = computed(() => {
 })
 
 onMounted(async () => {
-  if (!workspace.workspaceData) {
-    await workspace.fetchWorkspace()
+  try {
+    if (!workspace.workspaceData) {
+      await workspace.fetchWorkspace()
+    }
+  } catch (err) {
+    console.error('Erro ao carregar workspace:', err)
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 })
+
+// Watch para atualizar quando dados chegarem
+watch(() => workspace.workspaceData, (data) => {
+  if (data) {
+    loading.value = false
+  }
+}, { immediate: true })
 
 function openTask(activity: any) {
   router.push(`/tasks/${activity.month}/${activity.id}`)
@@ -204,8 +224,8 @@ function handleDrop(columnId: string) {
                 <span 
                   class="company-tag"
                   :style="{ 
-                    backgroundColor: roleConfig[task.myRole]?.color + '15',
-                    color: roleConfig[task.myRole]?.color 
+                    backgroundColor: (roleConfig[task.myRole || 'WORKER']?.color || '#3B82F6') + '15',
+                    color: roleConfig[task.myRole || 'WORKER']?.color || '#3B82F6'
                   }"
                 >
                   {{ task.companyName }}

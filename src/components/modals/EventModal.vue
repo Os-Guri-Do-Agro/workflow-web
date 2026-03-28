@@ -199,12 +199,15 @@ if (props.event) {
                 <v-icon size="14" class="label-icon">mdi-link-variant</v-icon>
                 Vincular à Atividade (opcional)
               </label>
-              <select v-model="selectedActivity" class="form-select">
-                <option value="">Nenhuma</option>
-                <option value="activity1">Refatorar módulo de autenticação</option>
-                <option value="activity2">Implementar novo dashboard</option>
-                <option value="activity3">Corrigir bugs reportados</option>
-              </select>
+              <div class="custom-select-wrapper">
+                <select v-model="selectedActivity" class="custom-select">
+                  <option value="">Nenhuma atividade</option>
+                  <option value="activity1">Refatorar módulo de autenticação</option>
+                  <option value="activity2">Implementar novo dashboard</option>
+                  <option value="activity3">Corrigir bugs reportados</option>
+                </select>
+                <v-icon size="18" class="select-arrow">mdi-chevron-down</v-icon>
+              </div>
             </div>
 
             <!-- Description Editor -->
@@ -413,6 +416,47 @@ if (props.event) {
   border-color: #3B82F6;
   background: rgb(var(--v-theme-primary));
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Custom Select Premium */
+.custom-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.custom-select {
+  width: 100%;
+  padding: 12px 40px 12px 14px;
+  border: 1px solid rgba(var(--v-theme-secondary), 0.12);
+  border-radius: 12px;
+  background: rgba(var(--v-theme-secondary), 0.02);
+  font-size: 14px;
+  color: rgb(var(--v-theme-secondary));
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.custom-select:hover {
+  border-color: rgba(var(--v-theme-secondary), 0.2);
+  background: rgba(var(--v-theme-secondary), 0.04);
+}
+
+.custom-select:focus {
+  border-color: #3B82F6;
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.select-arrow {
+  position: absolute;
+  right: 14px;
+  color: rgba(var(--v-theme-secondary), 0.5);
+  pointer-events: none;
 }
 
 .title-input {
