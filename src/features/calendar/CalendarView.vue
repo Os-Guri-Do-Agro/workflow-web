@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import eventsService from '@/service/events/events-service'
+import EventModal from '@/components/modals/EventModal.vue'
 
-const viewMode = ref<'month' | 'week' | 'day'>('month')
 const currentDate = ref(new Date())
 const events = ref<any[]>([])
 const loading = ref(true)
@@ -92,9 +92,36 @@ function getEventColor(type: string): string {
   return colors[type] || '#6B7280'
 }
 
-function openEventModal(event?: any) {
-  selectedEvent.value = event || null
+function openEventModal(event?: any, date?: Date) {
+  if (date && !event) {
+    const iso = date.toISOString().slice(0, 10) + 'T09:00'
+    selectedEvent.value = { startDate: iso }
+  } else {
+    selectedEvent.value = event || null
+  }
   showEventModal.value = true
+}
+
+async function handleSave(eventData: any) {
+  try {
+    if (eventData.id) {
+      await eventsService.updateEvent(eventData.id, eventData)
+    } else {
+      await eventsService.createEvent(eventData)
+    }
+    await fetchEvents()
+  } catch (e) {
+    console.error('Erro ao salvar evento:', e)
+  }
+}
+
+async function handleDelete(id: string) {
+  try {
+    await eventsService.deleteEvent(id)
+    await fetchEvents()
+  } catch (e) {
+    console.error('Erro ao deletar evento:', e)
+  }
 }
 
 function formatDate(dateString: string): string {
@@ -115,26 +142,6 @@ function formatDate(dateString: string): string {
         <p class="calendar-sub">Eventos e prazos do time</p>
       </div>
       <div class="header-actions">
-        <div class="view-switcher">
-          <button
-            :class="{ active: viewMode === 'month' }"
-            @click="viewMode = 'month'"
-          >
-            Mês
-          </button>
-          <button
-            :class="{ active: viewMode === 'week' }"
-            @click="viewMode = 'week'"
-          >
-            Semana
-          </button>
-          <button
-            :class="{ active: viewMode === 'day' }"
-            @click="viewMode = 'day'"
-          >
-            Dia
-          </button>
-        </div>
         <button class="create-btn" @click="openEventModal()">
           <v-icon size="16">mdi-plus</v-icon>
           Novo Evento
@@ -176,6 +183,7 @@ function formatDate(dateString: string): string {
             'day-cell--today': isToday(date),
             'day-cell--other-month': !isCurrentMonth(date),
           }"
+          @click="openEventModal(undefined, date)"
         >
           <span class="day-number">{{ date.getDate() }}</span>
           <div class="day-events">
@@ -184,7 +192,7 @@ function formatDate(dateString: string): string {
               :key="event.id"
               class="event-chip"
               :style="{ backgroundColor: getEventColor(event.type) + '20', color: getEventColor(event.type) }"
-              @click="openEventModal(event)"
+              @click.stop="openEventModal(event)"
             >
               {{ event.title }}
             </div>
@@ -227,6 +235,13 @@ function formatDate(dateString: string): string {
       </div>
     </div>
   </div>
+
+  <EventModal
+    v-model="showEventModal"
+    :event="selectedEvent"
+    @save="handleSave"
+    @delete="handleDelete"
+  />
 </template>
 
 <style scoped>
@@ -259,31 +274,6 @@ function formatDate(dateString: string): string {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.view-switcher {
-  display: flex;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  border-radius: 8px;
-  padding: 3px;
-}
-
-.view-switcher button {
-  padding: 6px 12px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.6);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.view-switcher button.active {
-  background: rgb(var(--v-theme-primary));
-  color: rgb(var(--v-theme-secondary));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .create-btn {

@@ -164,7 +164,7 @@ const selectedColor = ref(0)
           </div>
 
           <!-- Body -->
-          <div class="modal-body" :style="{ backgroundColor: noteColors[selectedColor].bg }">
+          <div class="modal-body" :style="{ backgroundColor: noteColors[selectedColor]?.bg }">
             <!-- Title -->
             <input 
               v-model="title" 
@@ -185,12 +185,12 @@ const selectedColor = ref(0)
                 :key="action.cmd"
                 class="toolbar-btn"
                 :class="{ active: editor?.isActive(action.active) }"
-                @click="editor?.chain().focus()[action.cmd]().run()"
+                @click="(editor?.chain().focus() as any)[action.cmd]().run()"
               >
                 <v-icon size="14">{{ action.icon }}</v-icon>
               </button>
               <div class="toolbar-divider" />
-              <button 
+              <button
                 v-for="action in [
                   { icon: 'mdi-format-header-1', cmd: 'toggleHeading', arg: { level: 1 } },
                   { icon: 'mdi-format-list-bulleted', cmd: 'toggleBulletList' },
@@ -199,7 +199,7 @@ const selectedColor = ref(0)
                 :key="action.icon"
                 class="toolbar-btn"
                 :class="{ active: action.arg ? editor?.isActive('heading', action.arg) : editor?.isActive(action.cmd.replace('toggle', '').toLowerCase()) }"
-                @click="editor?.chain().focus()[action.cmd](action.arg).run()"
+                @click="(editor?.chain().focus() as any)[action.cmd](action.arg).run()"
               >
                 <v-icon size="14">{{ action.icon }}</v-icon>
               </button>

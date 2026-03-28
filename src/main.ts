@@ -26,4 +26,10 @@ app.use(pinia)
 app.use(vuetify)
 app.use(router)
 
+// Sincronizar authStore com localStorage na inicialização
+import('@/stores/authStores').then(({ useActiveCompanyId }) => {
+  const savedId = localStorage.getItem('activeCompany')
+  if (savedId) useActiveCompanyId().setCompanyId(savedId)
+})
+
 app.mount('#app')

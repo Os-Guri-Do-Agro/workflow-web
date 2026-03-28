@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
-import type { CompanyRole } from '@prisma/client'
+export type CompanyRole = 'OWNER' | 'ADMIN' | 'WORKER' | 'CLIENT' | 'VIEWER'
 import dashboardService from '@/service/dashboard/dashboard-service'
 import companiesServices from '@/service/companies/companies-services'
+import { useActiveCompanyId } from '@/stores/authStores'
 
 export interface CompanySummary {
   id: string
@@ -9,6 +10,7 @@ export interface CompanySummary {
   cnpj: string
   myRole: CompanyRole
   createdAt: string
+  color?: string
 }
 
 export interface CompanyMetrics {
@@ -36,6 +38,7 @@ export interface ActivityItem {
   }>
   quarter: string
   month: string
+  monthId: string
   companyId: string
   companyName: string
   myRole: CompanyRole
@@ -63,6 +66,19 @@ export interface WorkspaceData {
   }
   companies: WorkspaceCompany[]
   activities: ActivityItem[]
+  notes?: Array<{
+    id: string
+    title: string
+    content?: string
+    isPinned?: boolean
+    folder?: { name: string }
+  }>
+  events?: Array<{
+    id: string
+    title: string
+    startDate: string
+    type: string
+  }>
 }
 
 export const useWorkspaceStore = defineStore('workspace', {
@@ -147,7 +163,7 @@ export const useWorkspaceStore = defineStore('workspace', {
         
         // Se não tem empresa ativa, selecionar a primeira
         if (!this.activeCompanyId && this.companies.length > 0) {
-          this.setActiveCompany(this.companies[0].id)
+          this.setActiveCompany(this.companies[0]!.id)
         }
         
         return response
@@ -182,17 +198,23 @@ export const useWorkspaceStore = defineStore('workspace', {
     setActiveCompany(companyId: string) {
       this.activeCompanyId = companyId
       localStorage.setItem('activeCompany', companyId)
-      
+
+      // Sincronizar authStore (fonte única para todos os watchers)
+      const authStore = useActiveCompanyId()
+      authStore.setCompanyId(companyId)
+
+      // Limpar cache para forçar re-fetch com a empresa correta
+      this.workspaceData = null
+
       // Atualizar role ativa
       const company = this.companies.find(c => c.id === companyId)
       if (company) {
         this.activeRole = company.myRole
       }
     },
-    
+
     switchCompany(companyId: string) {
       this.setActiveCompany(companyId)
-      // Recarregar a página ou redirecionar
       window.location.href = '/'
     },
     
@@ -224,8 +246,9 @@ export const useWorkspaceStore = defineStore('workspace', {
         'VIEWER': 0,
       }
       
-      if (!this.activeRole) return false
-      return hierarchy[this.activeRole] >= hierarchy[requiredRole]
+      const role = this.activeRole
+      if (!role) return false
+      return hierarchy[role] >= hierarchy[requiredRole]
     },
   },
 })

@@ -5,6 +5,34 @@ import companiesServices from '@/service/companies/companies-services'
 import quartersService from '@/service/quarters/quarters-service'
 import { getInfoAuth } from '@/utils/authContent'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import {
+  LayoutDashboard,
+  Columns3,
+  ListTodo,
+  Ticket,
+  Settings2,
+  StickyNote,
+  CalendarDays,
+  Users,
+  ChevronsUpDown,
+  LogOut,
+  BarChart3,
+  CalendarRange,
+  type LucideIcon,
+} from 'lucide-vue-next'
+
+const lucideIcons: Record<string, LucideIcon> = {
+  'l-dashboard': LayoutDashboard,
+  'l-board': Columns3,
+  'l-tasks': ListTodo,
+  'l-ticket': Ticket,
+  'l-variables': Settings2,
+  'l-notes': StickyNote,
+  'l-calendar': CalendarDays,
+  'l-users': Users,
+  'l-report': BarChart3,
+  'l-month': CalendarRange,
+}
 
 type MenuItem = {
   title: string
@@ -92,50 +120,49 @@ const switchCompany = (company: Company) => {
   findQuaters()
 }
 
-const menuItems = computed(() => {
-  const items: MenuItem[] = [
-    { title: 'Workspace', icon: 'mdi-view-grid', to: '/' },
-    { title: 'Board', icon: 'mdi-view-column', to: '/board' },
-    { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/dashboard' },
-    { title: 'Notas', icon: 'mdi-note-text', to: '/notes' },
-    { title: 'Calendário', icon: 'mdi-calendar', to: '/calendar' },
-    { title: 'Variáveis', icon: 'mdi-variable', to: '/variables' },
-    { title: 'Usuários', icon: 'mdi-account-group', to: '/company-users', role: 'ADMIN' },
-    { title: 'Tickets', icon: 'mdi-ticket', to: '/tickets' },
-  ]
+const mainItems = computed<MenuItem[]>(() => [
+  { title: 'Dashboard', icon: 'l-dashboard', to: '/dashboard' },
+  { title: 'Board', icon: 'l-board', to: '/board' },
+  { title: 'Tickets', icon: 'l-ticket', to: '/tickets' },
+  { title: 'Variáveis', icon: 'l-variables', to: '/variables' },
+  { title: 'Usuários', icon: 'l-users', to: '/company-users', role: 'ADMIN' },
+])
 
-  if (quaters.value?.length > 0) {
-    const quarterIcons = [
-      'mdi-numeric-1-box',
-      'mdi-numeric-2-box',
-      'mdi-numeric-3-box',
-      'mdi-numeric-4-box',
-    ]
+const personalItems = computed<MenuItem[]>(() => [
+  { title: 'Notas', icon: 'l-notes', to: '/notes' },
+  { title: 'Calendário', icon: 'l-calendar', to: '/calendar' },
+])
 
-    items.push({
-      title: 'Tarefas',
-      icon: 'mdi-calendar-month',
-      children: quaters.value.map((quarter, index) => ({
-        title: `${quarter.label} • ${quarter.months?.map((m: any) => m.name.slice(0, 3)).join('-') || ''}`,
-        icon: quarterIcons[index] || 'mdi-numeric',
-        children: [
-          {
-            title: `Relatório ${quarter.label}`,
-            icon: 'mdi-chart-box',
-            to: `/relatorio/${quarter.id}`,
-          },
-          ...(quarter.months?.map((month: any) => ({
-            title: month.name,
-            icon: 'mdi-calendar',
-            to: `/tasks/${month.id}`,
-          })) || []),
-        ],
-      })),
-    })
-  }
+const taskItems = computed<MenuItem[]>(() => {
+  if (!quaters.value?.length) return []
 
-  return items
+  return [{
+    title: 'Tarefas',
+    icon: 'l-tasks',
+    children: quaters.value.map((quarter) => ({
+      title: `${quarter.label} • ${quarter.months?.map((m: any) => m.name.slice(0, 3)).join('-') || ''}`,
+      icon: 'l-tasks',
+      children: [
+        {
+          title: `Relatório ${quarter.label}`,
+          icon: 'l-report',
+          to: `/relatorio/${quarter.id}`,
+        },
+        ...(quarter.months?.map((month: any) => ({
+          title: month.name,
+          icon: 'l-month',
+          to: `/tasks/${month.id}`,
+        })) || []),
+      ],
+    })),
+  }]
 })
+
+const menuItems = computed(() => [...mainItems.value, ...taskItems.value])
+
+function getLucideIcon(name: string) {
+  return lucideIcons[name]
+}
 
 const logout = () => {
   localStorage.clear()
@@ -143,7 +170,7 @@ const logout = () => {
 }
 
 const footerItems = [
-  { title: 'Sair', icon: 'mdi-logout', action: logout },
+  { title: 'Sair', action: logout },
 ]
 
 defineProps<{
@@ -175,7 +202,7 @@ defineEmits<{
           <span class="company-label">Empresa</span>
           <span class="company-name">{{ activeCompany?.name || 'Selecione' }}</span>
         </div>
-        <v-icon size="14" class="company-chevron">mdi-chevron-up-down</v-icon>
+        <ChevronsUpDown :size="14" class="company-chevron" />
       </button>
     </div>
 
@@ -193,7 +220,7 @@ defineEmits<{
           color="secondary"
         >
           <template #prepend>
-            <v-icon size="16" class="nav-icon">{{ item.icon }}</v-icon>
+            <component :is="getLucideIcon(item.icon!)" :size="16" class="nav-icon" />
           </template>
           <v-list-item-title class="nav-label">{{ item.title }}</v-list-item-title>
         </v-list-item>
@@ -202,7 +229,7 @@ defineEmits<{
           <template #activator="{ props }">
             <v-list-item v-bind="props" rounded="lg" class="nav-item mb-0" color="secondary">
               <template #prepend>
-                <v-icon size="16" class="nav-icon">{{ item.icon }}</v-icon>
+                <component :is="getLucideIcon(item.icon!)" :size="16" class="nav-icon" />
               </template>
               <v-list-item-title class="nav-label">{{ item.title }}</v-list-item-title>
             </v-list-item>
@@ -218,7 +245,7 @@ defineEmits<{
               color="secondary"
             >
               <template #prepend>
-                <v-icon size="14" class="nav-icon">{{ subItem.icon }}</v-icon>
+                <component :is="getLucideIcon(subItem.icon!)" :size="14" class="nav-icon" />
               </template>
               <v-list-item-title class="nav-label">{{ subItem.title }}</v-list-item-title>
             </v-list-item>
@@ -227,7 +254,7 @@ defineEmits<{
               <template #activator="{ props }">
                 <v-list-item v-bind="props" class="nav-item nav-item--sub mb-0" rounded="lg">
                   <template #prepend>
-                    <v-icon size="14" class="nav-icon">{{ subItem.icon }}</v-icon>
+                    <component :is="getLucideIcon(subItem.icon!)" :size="14" class="nav-icon" />
                   </template>
                   <v-list-item-title class="nav-label">{{ subItem.title }}</v-list-item-title>
                 </v-list-item>
@@ -243,7 +270,7 @@ defineEmits<{
                 color="secondary"
               >
                 <template #prepend>
-                  <v-icon size="13" class="nav-icon">{{ child.icon }}</v-icon>
+                  <component :is="getLucideIcon(child.icon!)" :size="13" class="nav-icon" />
                 </template>
                 <v-list-item-title class="nav-label">{{ child.title }}</v-list-item-title>
               </v-list-item>
@@ -251,6 +278,27 @@ defineEmits<{
           </template>
         </v-list-group>
       </template>
+    </v-list>
+
+    <!-- Pessoal section -->
+    <div class="section-divider mx-3 mt-3 mb-1">
+      <span class="section-label">Pessoal</span>
+    </div>
+    <v-list nav density="compact" class="px-2 pt-0">
+      <v-list-item
+        v-for="item in personalItems"
+        :key="item.title"
+        :to="item.to"
+        :value="item.title"
+        rounded="lg"
+        class="nav-item mb-0"
+        color="secondary"
+      >
+        <template #prepend>
+          <component :is="getLucideIcon(item.icon!)" :size="16" class="nav-icon" />
+        </template>
+        <v-list-item-title class="nav-label">{{ item.title }}</v-list-item-title>
+      </v-list-item>
     </v-list>
 
     <!-- Footer -->
@@ -263,7 +311,7 @@ defineEmits<{
           class="logout-btn"
           @click="item.action?.()"
         >
-          <v-icon size="16">{{ item.icon }}</v-icon>
+          <LogOut :size="16" />
           <span>{{ item.title }}</span>
         </button>
       </div>
@@ -371,6 +419,29 @@ defineEmits<{
 
 .company-btn--clickable:hover .company-chevron {
   color: rgba(var(--v-theme-secondary), 0.8) !important;
+}
+
+/* ─── Section divider ─── */
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-secondary), 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(var(--v-theme-secondary), 0.06);
 }
 
 /* ─── Nav items ─── */

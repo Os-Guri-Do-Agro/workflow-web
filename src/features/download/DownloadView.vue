@@ -82,13 +82,12 @@ const goBack = () => {
   max-width: 600px;
   padding: 0 24px;
 }
-
+/* @ts-ignore */
 .display-title {
   font-size: 3.5rem;
   line-height: 1.1;
   letter-spacing: -0.02em;
   background: linear-gradient(180deg, #FFFFFF 0%, rgba(255, 255, 255, 0.7) 100%);
-  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useSortable } from '@vueuse/integrations/useSortable'
@@ -73,27 +73,46 @@ const companies = computed(() => {
   })) || []
 })
 
-onMounted(async () => {
+async function loadData() {
+  loading.value = true
   try {
-    if (!workspace.workspaceData) {
-      await workspace.fetchWorkspace()
-    }
+    // Invalida cache se ainda não tem monthId (dados de antes do fix)
+    const hasStaleData = workspace.workspaceData?.activities.some(a => !a.monthId)
+    if (hasStaleData) workspace.workspaceData = null
+
+    await workspace.fetchWorkspace()
   } catch (err) {
     console.error('Erro ao carregar workspace:', err)
   } finally {
     loading.value = false
   }
+}
+
+onMounted(loadData)
+
+watch(() => workspace.activeCompanyId, async (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    await nextTick()
+    await loadData()
+  }
 })
 
-// Watch para atualizar quando dados chegarem
-watch(() => workspace.workspaceData, (data) => {
-  if (data) {
-    loading.value = false
+async function openTask(activity: any) {
+  // Se monthId estiver ausente (cache antigo), re-fetcha antes de navegar
+  if (!activity.monthId) {
+    await workspace.fetchWorkspace()
+    const fresh = workspace.workspaceData?.activities.find(a => a.id === activity.id)
+    if (!fresh?.monthId) {
+      console.error('monthId não encontrado para a atividade', activity.id)
+      return
+    }
+    activity = fresh
   }
-}, { immediate: true })
 
-function openTask(activity: any) {
-  router.push(`/tasks/${activity.month}/${activity.id}`)
+  router.push({
+    path: `/tasks/${activity.monthId}/${activity.id}`,
+    query: activity.companyId ? { company: activity.companyId } : undefined,
+  })
 }
 
 function getPriorityLabel(p: number) {
@@ -249,7 +268,7 @@ function handleDrop(columnId: string) {
                 </div>
                 <div class="meta-item" v-if="task.responsibles?.length">
                   <v-icon size="12">mdi-account</v-icon>
-                  <span>{{ task.responsibles.filter((r: any) => r.isMe).length ? 'Eu' : task.responsibles[0].name }}</span>
+                  <span>{{ task.responsibles.filter((r: any) => r.isMe).length ? 'Eu' : task.responsibles[0]?.name }}</span>
                   <span v-if="task.responsibles.length > 1" class="more-resp">
                     +{{ task.responsibles.length - 1 }}
                   </span>

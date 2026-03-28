@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -66,7 +66,6 @@ function resetForm() {
 
 function close() {
   isOpen.value = false
-  resetForm()
 }
 
 function save() {
@@ -90,16 +89,19 @@ function deleteEvent() {
   }
 }
 
-// Pre-fill when editing
-if (props.event) {
-  title.value = props.event.title || ''
-  description.value = props.event.description || ''
-  startDate.value = props.event.startDate ? new Date(props.event.startDate).toISOString().slice(0, 16) : ''
-  endDate.value = props.event.endDate ? new Date(props.event.endDate).toISOString().slice(0, 16) : ''
-  eventType.value = props.event.type || 'MEETING'
-  selectedActivity.value = props.event.activityId || ''
-  editor.value?.commands.setContent(props.event.description || '')
-}
+watch(() => props.modelValue, (open) => {
+  if (open && props.event) {
+    title.value = props.event.title || ''
+    description.value = props.event.description || ''
+    startDate.value = props.event.startDate ? new Date(props.event.startDate).toISOString().slice(0, 16) : ''
+    endDate.value = props.event.endDate ? new Date(props.event.endDate).toISOString().slice(0, 16) : ''
+    eventType.value = props.event.type || 'MEETING'
+    selectedActivity.value = props.event.activityId || ''
+    editor.value?.commands.setContent(props.event.description || '')
+  } else if (!open) {
+    resetForm()
+  }
+})
 </script>
 
 <template>
@@ -193,22 +195,6 @@ if (props.event) {
               </div>
             </div>
 
-            <!-- Link to Activity -->
-            <div class="form-group">
-              <label class="form-label">
-                <v-icon size="14" class="label-icon">mdi-link-variant</v-icon>
-                Vincular à Atividade (opcional)
-              </label>
-              <div class="custom-select-wrapper">
-                <select v-model="selectedActivity" class="custom-select">
-                  <option value="">Nenhuma atividade</option>
-                  <option value="activity1">Refatorar módulo de autenticação</option>
-                  <option value="activity2">Implementar novo dashboard</option>
-                  <option value="activity3">Corrigir bugs reportados</option>
-                </select>
-                <v-icon size="18" class="select-arrow">mdi-chevron-down</v-icon>
-              </div>
-            </div>
 
             <!-- Description Editor -->
             <div class="form-group">
@@ -223,7 +209,7 @@ if (props.event) {
                   :key="action.cmd"
                   class="toolbar-btn"
                   :class="{ active: editor?.isActive(action.active) }"
-                  @click="editor?.chain().focus()[action.cmd]().run()"
+                  @click="(editor?.chain().focus() as any)[action.cmd]().run()"
                 >
                   <v-icon size="14">{{ action.icon }}</v-icon>
                 </button>
@@ -236,7 +222,7 @@ if (props.event) {
                   :key="action.cmd"
                   class="toolbar-btn"
                   :class="{ active: editor?.isActive(action.active) }"
-                  @click="editor?.chain().focus()[action.cmd]().run()"
+                  @click="(editor?.chain().focus() as any)[action.cmd]().run()"
                 >
                   <v-icon size="14">{{ action.icon }}</v-icon>
                 </button>

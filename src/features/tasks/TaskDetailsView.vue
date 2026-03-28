@@ -4,10 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTasks } from '@/features/tasks/useTasks'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 
 const route = useRoute()
 const router = useRouter()
 const { companies } = useTasks()
+const workspaceStore = useWorkspaceStore()
 
 const taskId = computed(() => route.params.taskId as string)
 const month = computed(() => route.params.month as string)
@@ -171,6 +173,12 @@ const createSubtask = async () => {
 }
 
 onMounted(async () => {
+  // Se a URL traz ?company=, garante que o contexto está correto antes de buscar
+  const companyFromQuery = route.query.company as string | undefined
+  if (companyFromQuery && companyFromQuery !== workspaceStore.activeCompanyId) {
+    workspaceStore.setActiveCompany(companyFromQuery)
+  }
+
   await Promise.all([InfoActivity(), findMembers()])
   loading.value = false
 })
