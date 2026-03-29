@@ -4,6 +4,7 @@ import { RouterView, useRoute } from 'vue-router'
 import AppBar from '@/core/components/AppBar.vue'
 import NavigationDrawer from '@/core/components/NavigationDrawer.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
+import AppToast from '@/components/AppToast.vue'
 
 const drawer = ref(true)
 const route = useRoute()
@@ -26,6 +27,7 @@ const openCommandPalette = () => {
     <v-main>
       <RouterView />
     </v-main>
+    <AppToast />
   </v-app>
 </template>
 

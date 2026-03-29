@@ -3,6 +3,7 @@ import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TiptapEditor from '@/components/reports/TiptapEditor.vue'
 import quartersService from '@/service/quarters/quarters-service'
+import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,9 +16,7 @@ const isLoading = ref(true)
 const isImproving = ref(false)
 const showSuggestionDialog = ref(false)
 const suggestedContent = ref('')
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('error')
+const { success: showSuccess, error: showError } = useToast()
 
 const quarterName = computed(() => {
   if (!quarter.value) return ''
@@ -35,9 +34,7 @@ const loadQuarter = async () => {
     const quarters = response
     quarter.value = quarters.find((q: any) => q.id === quarterId.value)
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar trimestre'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showError(error.response?.data?.message || 'Erro ao carregar trimestre')
   } finally {
     isLoading.value = false
   }
@@ -48,9 +45,7 @@ const loadReport = async () => {
     const response = await quartersService.getReport(quarterId.value)
     content.value = response?.report || `Relatório do trimestre ${response.label}`
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao carregar relatório'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showError(error.response?.data?.message || 'Erro ao carregar relatório')
   }
 }
 
@@ -60,13 +55,9 @@ const saveReport = async () => {
     await quartersService.postReport(quarterId.value, {
       report: content.value,
     })
-    snackbarMessage.value = 'Relatório salvo com sucesso'
-    snackbarColor.value = 'success'
-    snackbar.value = true
+    showSuccess('Relatório salvo com sucesso')
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao salvar relatório'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showError(error.response?.data?.message || 'Erro ao salvar relatório')
   } finally {
     isSaving.value = false
   }
@@ -81,9 +72,7 @@ const improveReport = async () => {
     suggestedContent.value = response.improvedReport
     showSuggestionDialog.value = true
   } catch (error: any) {
-    snackbarMessage.value = error.response?.data?.message || 'Erro ao melhorar relatório'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showError(error.response?.data?.message || 'Erro ao melhorar relatório')
   } finally {
     isImproving.value = false
   }
@@ -234,12 +223,4 @@ watch(quarterId, () => {
     </v-card>
   </v-dialog>
 
-  <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top">
-    {{ snackbarMessage }}
-    <template #actions>
-      <v-btn color="white" variant="text" @click="snackbar = false">
-        Fechar
-      </v-btn>
-    </template>
-  </v-snackbar>
 </template>

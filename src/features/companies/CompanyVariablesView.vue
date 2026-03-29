@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import companyVariableService from '../../service/companies/variables/variables-services'
+import { useToast } from '@/composables/useToast'
 
 interface Variable {
   id?: string
@@ -18,9 +19,7 @@ const showModal = ref(false)
 const showDeleteDialog = ref(false)
 const variableToDelete = ref<string | null>(null)
 const editingVariable = ref<Variable | null>(null)
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('error')
+const { success: showSuccess, error: showError } = useToast()
 const search = ref('')
 const revealedSecrets = ref<Set<string>>(new Set())
 
@@ -68,7 +67,7 @@ const loadVariables = async () => {
   try {
     variables.value = await companyVariableService.getCompanyVariables()
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao carregar variáveis', 'error')
+    showError(error.response?.data?.message || 'Erro ao carregar variáveis')
   } finally {
     loading.value = false
   }
@@ -96,15 +95,15 @@ const saveVariable = async () => {
   try {
     if (editingVariable.value?.id) {
       await companyVariableService.patchCompanyVariable(editingVariable.value.id, formData.value)
-      showSnackbar('Variável atualizada', 'success')
+      showSuccess('Variável atualizada')
     } else {
       await companyVariableService.postCompanyVariable(formData.value)
-      showSnackbar('Variável criada', 'success')
+      showSuccess('Variável criada')
     }
     await loadVariables()
     closeModal()
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao salvar variável', 'error')
+    showError(error.response?.data?.message || 'Erro ao salvar variável')
   } finally {
     saving.value = false
   }
@@ -123,21 +122,15 @@ const deleteVariable = async () => {
     await loadVariables()
     showDeleteDialog.value = false
     variableToDelete.value = null
-    showSnackbar('Variável excluída', 'success')
+    showSuccess('Variável excluída')
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao deletar variável', 'error')
+    showError(error.response?.data?.message || 'Erro ao deletar variável')
   } finally {
     deleting.value = false
   }
 }
 
 const openUrl = (url: string) => window.open(url, '_blank')
-
-const showSnackbar = (msg: string, color: string) => {
-  snackbarMessage.value = msg
-  snackbarColor.value = color
-  snackbar.value = true
-}
 
 onMounted(loadVariables)
 </script>
@@ -346,9 +339,6 @@ onMounted(loadVariables)
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top right" rounded="lg">
-      {{ snackbarMessage }}
-    </v-snackbar>
   </div>
 </template>
 

@@ -2,14 +2,14 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import authService from '@/service/auth/auth-service'
+import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
 const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
-const snackbar = ref(false)
-const errorMessage = ref('')
+const { error: showError } = useToast()
 
 const login = async () => {
   loading.value = true
@@ -24,9 +24,7 @@ const login = async () => {
     }
     router.push('/')
   } catch (error: any) {
-    errorMessage.value =
-      error?.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.'
-    snackbar.value = true
+    showError(error?.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.')
   } finally {
     loading.value = false
   }
@@ -157,9 +155,6 @@ onMounted(() => {
     </v-col>
   </v-row>
 
-  <v-snackbar v-model="snackbar" color="error" :timeout="3000">
-    {{ errorMessage }}
-  </v-snackbar>
 </template>
 
 <style scoped>

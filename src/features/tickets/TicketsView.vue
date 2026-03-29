@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import ticketService from '@/service/tickets/ticket-service'
+import { useToast } from '@/composables/useToast'
 
 type Ticket = {
   id: string
@@ -21,9 +22,7 @@ const deleteDialog = ref(false)
 const detailsDialog = ref(false)
 const editMode = ref(false)
 const selectedTicket = ref<Ticket | null>(null)
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('error')
+const { success: showSuccess, error: showError } = useToast()
 const activeFilter = ref<string>('ALL')
 
 const form = ref({
@@ -77,7 +76,7 @@ const loadTickets = async () => {
     const response = await ticketService.getTickets()
     tickets.value = response.data || response
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao carregar tickets', 'error')
+    showError(error.response?.data?.message || 'Erro ao carregar tickets')
   } finally {
     loading.value = false
   }
@@ -113,15 +112,15 @@ const saveTicket = async () => {
   try {
     if (editMode.value && selectedTicket.value) {
       await ticketService.patchTicket(selectedTicket.value.id, form.value)
-      showSnackbar('Ticket atualizado com sucesso', 'success')
+      showSuccess('Ticket atualizado com sucesso')
     } else {
       await ticketService.postTicket(form.value)
-      showSnackbar('Ticket criado com sucesso', 'success')
+      showSuccess('Ticket criado com sucesso')
     }
     dialog.value = false
     await loadTickets()
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao salvar ticket', 'error')
+    showError(error.response?.data?.message || 'Erro ao salvar ticket')
   } finally {
     loading.value = false
   }
@@ -134,18 +133,12 @@ const deleteTicket = async () => {
     await ticketService.deletTicket(selectedTicket.value.id)
     deleteDialog.value = false
     await loadTickets()
-    showSnackbar('Ticket excluído', 'success')
+    showSuccess('Ticket excluído')
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao excluir ticket', 'error')
+    showError(error.response?.data?.message || 'Erro ao excluir ticket')
   } finally {
     loading.value = false
   }
-}
-
-const showSnackbar = (msg: string, color: string) => {
-  snackbarMessage.value = msg
-  snackbarColor.value = color
-  snackbar.value = true
 }
 
 onMounted(loadTickets)
@@ -402,9 +395,6 @@ onMounted(loadTickets)
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top right" rounded="lg">
-      {{ snackbarMessage }}
-    </v-snackbar>
   </div>
 </template>
 

@@ -3,6 +3,9 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useSortable } from '@vueuse/integrations/useSortable'
+import { useToast } from '@/composables/useToast'
+
+const { error: showError } = useToast()
 
 const router = useRouter()
 const workspace = useWorkspaceStore()
@@ -82,7 +85,7 @@ async function loadData() {
 
     await workspace.fetchWorkspace()
   } catch (err) {
-    console.error('Erro ao carregar workspace:', err)
+    showError('Erro ao carregar atividades')
   } finally {
     loading.value = false
   }

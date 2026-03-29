@@ -6,6 +6,7 @@ import BulkAddUsersModal from './components/BulkAddUsersModal.vue'
 import CreateCompanyModal from './components/CreateCompanyModal.vue'
 import CreateUserModal from '@/components/CreateUserModal.vue'
 import { getInfoAuth } from '@/utils/authContent'
+import { useToast } from '@/composables/useToast'
 
 type Company = {
   id: string
@@ -32,9 +33,7 @@ const showBulkAddModal = ref(false)
 const showUserAddModal = ref(false)
 const selectedCompany = ref<any>(null)
 const isWorkerRole = ref(false)
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('error')
+const { success: showSuccess, error: showError } = useToast()
 
 const fetchSystemCompanies = async () => {
   try {
@@ -46,9 +45,7 @@ const fetchSystemCompanies = async () => {
       usersCount: 0,
     }))
   } catch (error: any) {
-    snackbarMessage.value = error.response?.message || 'Erro ao carregar empresas do sistema'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showError(error.response?.message || 'Erro ao carregar empresas do sistema')
   }
 }
 
@@ -57,9 +54,7 @@ const fetchUserCompanies = async () => {
     const data = await companieService.getCompany()
     userCompanies.value = data
   } catch (error: any) {
-    snackbarMessage.value = error.response?.message || 'Erro ao carregar empresas do usuário'
-    snackbarColor.value = 'error'
-    snackbar.value = true
+    showError(error.response?.message || 'Erro ao carregar empresas do usuário')
   }
 }
 
@@ -184,12 +179,8 @@ onMounted(async () => {
       </v-window-item>
     </v-window>
 
-    <AddUserModal v-model="showAddUserModal" :company="selectedCompany" @success="(msg, color) => { snackbarMessage = msg; snackbarColor = color; snackbar = true }" />
-    <AddUserModal v-model="showUserAddModal" :company="selectedCompany" @success="(msg, color) => { snackbarMessage = msg; snackbarColor = color; snackbar = true }" />
-    <BulkAddUsersModal v-model="showBulkAddModal" :company="selectedCompany" @success="(msg, color) => { snackbarMessage = msg; snackbarColor = color; snackbar = true }" />
-
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000">
-      {{ snackbarMessage }}
-    </v-snackbar>
+    <AddUserModal v-model="showAddUserModal" :company="selectedCompany" @success="(msg: string, color: string) => color === 'success' ? showSuccess(msg) : showError(msg)" />
+    <AddUserModal v-model="showUserAddModal" :company="selectedCompany" @success="(msg: string, color: string) => color === 'success' ? showSuccess(msg) : showError(msg)" />
+    <BulkAddUsersModal v-model="showBulkAddModal" :company="selectedCompany" @success="(msg: string, color: string) => color === 'success' ? showSuccess(msg) : showError(msg)" />
   </v-container>
 </template>

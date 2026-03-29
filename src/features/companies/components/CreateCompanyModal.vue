@@ -35,6 +35,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import companieService from '@/service/companies/companies-services'
+import { useToast } from '@/composables/useToast'
+
+const { success, error: showError } = useToast()
 
 const emit = defineEmits(['created'])
 
@@ -76,8 +79,9 @@ const handleSubmit = async () => {
     formData.value = { name: '', cnpj: '' }
     form.value.reset()
     emit('created')
-  } catch (error) {
-    console.error(error)
+    success('Empresa criada com sucesso')
+  } catch (error: any) {
+    showError(error?.response?.data?.message || 'Erro ao criar empresa')
   } finally {
     loading.value = false
   }

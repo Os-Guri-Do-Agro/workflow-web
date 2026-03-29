@@ -45,6 +45,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import userService from '@/service/user/user-service'
+import { useToast } from '@/composables/useToast'
+
+const { success, error: showError } = useToast()
 
 const emit = defineEmits(['created'])
 
@@ -83,8 +86,9 @@ const handleSubmit = async () => {
     formData.value = { name: '', email: '', password: '', role: '' }
     form.value.reset()
     emit('created')
-  } catch (error) {
-    console.error(error)
+    success('Usuário criado com sucesso')
+  } catch (error: any) {
+    showError(error?.response?.data?.message || 'Erro ao criar usuário')
   } finally {
     loading.value = false
   }

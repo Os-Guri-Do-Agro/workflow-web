@@ -24,6 +24,7 @@ import Color from '@tiptap/extension-color'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { common, createLowlight } from 'lowlight'
 import notesService from '@/service/notes/notes-service'
+import { useToast } from '@/composables/useToast'
 import {
   ArrowLeft, Save, Loader2,
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -41,6 +42,7 @@ import {
 } from 'lucide-vue-next'
 
 const lowlight = createLowlight(common)
+const { success, error: showError } = useToast()
 
 const route = useRoute()
 const router = useRouter()
@@ -112,7 +114,7 @@ async function fetchFolders() {
     const response = await notesService.getFolders()
     folders.value = response
   } catch (e) {
-    console.error('Erro ao buscar pastas:', e)
+    showError('Erro ao carregar pastas')
   }
 }
 
@@ -128,7 +130,7 @@ async function fetchNote() {
       editor.value.commands.setContent(response.content)
     }
   } catch (e) {
-    console.error('Erro ao buscar nota:', e)
+    showError('Erro ao carregar nota')
   }
 }
 
@@ -145,11 +147,13 @@ async function saveNote() {
     if (isNew.value) {
       const response = await notesService.createNote(data)
       router.replace(`/notes/${response.id}`)
+      success('Nota criada com sucesso')
     } else {
       await notesService.updateNote(noteId.value, data)
+      success('Nota salva com sucesso')
     }
   } catch (e) {
-    console.error('Erro ao salvar nota:', e)
+    showError('Erro ao salvar nota')
   } finally {
     saving.value = false
   }

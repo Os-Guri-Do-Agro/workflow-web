@@ -10,6 +10,7 @@ import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import backlogService from '@/service/backlog/backlog-service'
 import { getInfoAuth } from '@/utils/authContent'
+import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,9 +23,7 @@ const currentTab = ref<'board' | 'backlog'>('board')
 const members = ref<any[]>([])
 const backLog = ref<any[]>([])
 const isWorkerRole = ref(false)
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('error')
+const { success: showSuccess, error: showError } = useToast()
 const formActivity = ref<any>({
   title: '',
   description: '',
@@ -106,7 +105,7 @@ const findBackLog = async () => {
     const response = await backlogService.getBacklogByCompany(companyId)
     backLog.value = response
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao buscar backlog', 'error')
+    showError(error.response?.data?.message || 'Erro ao buscar backlog')
   }
 }
 
@@ -117,7 +116,7 @@ const findMembers = async () => {
     const response = await companiesServices.getCompanyMembers(id)
     members.value = response.data || response
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao buscar membros', 'error')
+    showError(error.response?.data?.message || 'Erro ao buscar membros')
   }
 }
 
@@ -149,9 +148,9 @@ const createActivity = async () => {
     await findTasks()
     formActivity.value = { title: '', description: '', priorityNumber: 0, dueDate: '', assignees: [], attachment: null }
     dialog.value = false
-    showSnackbar('Atividade criada com sucesso', 'success')
+    showSuccess('Atividade criada com sucesso')
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao criar atividade', 'error')
+    showError(error.response?.data?.message || 'Erro ao criar atividade')
   } finally {
     creating.value = false
   }
@@ -163,7 +162,7 @@ const findTasks = async () => {
   try {
     tasks.value = await quartersService.getCompanyBoards(monthId)
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao buscar tarefas', 'error')
+    showError(error.response?.data?.message || 'Erro ao buscar tarefas')
   }
 }
 
@@ -181,7 +180,7 @@ const findMonthData = async () => {
       }
     }
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao buscar dados do mês', 'error')
+    showError(error.response?.data?.message || 'Erro ao buscar dados do mês')
   }
 }
 
@@ -241,7 +240,7 @@ const handleUpdateStatus = async (taskId: string, apiStatus: string) => {
   try {
     await quartersService.patchActivityStatus(taskId, apiStatus)
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao atualizar status', 'error')
+    showError(error.response?.data?.message || 'Erro ao atualizar status')
     await findTasks() // revert on failure
   }
 }
@@ -251,6 +250,7 @@ const handleRenameTask = async (taskId: string, newTitle: string) => {
   try {
     await activityService.patchActivity(taskId, { title: newTitle })
   } catch {
+    showError('Erro ao renomear atividade')
     await findTasks() // revert
   }
 }
@@ -272,9 +272,9 @@ const deleteTask = async () => {
     await activityService.deleteActivity(taskToDelete.value.id)
     await findTasks()
     confirmDelete.value = false
-    showSnackbar('Atividade excluída', 'success')
+    showSuccess('Atividade excluída')
   } catch (error: any) {
-    showSnackbar(error.response?.data?.message || 'Erro ao deletar', 'error')
+    showError(error.response?.data?.message || 'Erro ao deletar')
   } finally {
     deleting.value = null
     taskToDelete.value = null
@@ -300,12 +300,6 @@ const sortedHistory = computed(() =>
 
 const formatDate = (date: string) =>
   new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-
-const showSnackbar = (msg: string, color: string) => {
-  snackbarMessage.value = msg
-  snackbarColor.value = color
-  snackbar.value = true
-}
 
 const showFilters = ref(false)
 </script>
@@ -497,9 +491,6 @@ const showFilters = ref(false)
       />
     </v-dialog>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top right" rounded="lg">
-      {{ snackbarMessage }}
-    </v-snackbar>
   </div>
 </template>
 

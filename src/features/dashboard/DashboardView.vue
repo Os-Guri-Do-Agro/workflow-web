@@ -12,9 +12,6 @@ const metrics = ref<any>(null)
 const backlog = ref<any[]>([])
 const showCompanyModal = ref(false)
 const showUserModal = ref(false)
-const snackbar = ref(false)
-const snackbarMessage = ref('')
-const snackbarColor = ref('success')
 const companies = ref<any[]>([])
 const loading = ref(true)
 const loadingCompanies = ref(true)
@@ -318,9 +315,6 @@ const handleProjectClick = (projectName: string) => {
       </div>
     </div>
 
-    <v-snackbar v-model="snackbar" :color="snackbarColor" :timeout="3000" location="top right" rounded="lg">
-      {{ snackbarMessage }}
-    </v-snackbar>
   </div>
 </template>
 

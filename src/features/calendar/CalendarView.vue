@@ -2,6 +2,9 @@
 import { ref, computed, onMounted } from 'vue'
 import eventsService from '@/service/events/events-service'
 import EventModal from '@/components/modals/EventModal.vue'
+import { useToast } from '@/composables/useToast'
+
+const { success, error: showError } = useToast()
 
 const currentDate = ref(new Date())
 const events = ref<any[]>([])
@@ -53,7 +56,7 @@ async function fetchEvents() {
     const response = await eventsService.getEvents()
     events.value = response
   } catch (e) {
-    console.error('Erro ao buscar eventos:', e)
+    showError('Erro ao carregar eventos')
   }
 }
 
@@ -106,12 +109,14 @@ async function handleSave(eventData: any) {
   try {
     if (eventData.id) {
       await eventsService.updateEvent(eventData.id, eventData)
+      success('Evento atualizado com sucesso')
     } else {
       await eventsService.createEvent(eventData)
+      success('Evento criado com sucesso')
     }
     await fetchEvents()
   } catch (e) {
-    console.error('Erro ao salvar evento:', e)
+    showError('Erro ao salvar evento')
   }
 }
 
@@ -119,8 +124,9 @@ async function handleDelete(id: string) {
   try {
     await eventsService.deleteEvent(id)
     await fetchEvents()
+    success('Evento excluído com sucesso')
   } catch (e) {
-    console.error('Erro ao deletar evento:', e)
+    showError('Erro ao excluir evento')
   }
 }
 
