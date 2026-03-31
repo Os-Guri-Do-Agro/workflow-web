@@ -367,10 +367,10 @@ onMounted(loadVariables)
                   </button>
                   <v-icon
                     size="14"
-                    :color="typeConfig[field.type || 'TEXT'].color"
-                    :title="typeConfig[field.type || 'TEXT'].label"
+                    :color="typeConfig[field?.type || 'TEXT']?.color"
+                    :title="typeConfig[field?.type || 'TEXT']?.label"
                   >
-                    {{ typeConfig[field.type || 'TEXT'].icon }}
+                    {{ typeConfig[field?.type || 'TEXT']?.icon }}
                   </v-icon>
                 </div>
               </div>
