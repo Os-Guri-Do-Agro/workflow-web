@@ -1,21 +1,26 @@
 <script setup lang="ts">
 import OverviewChart from '@/components/dashboard/OverviewChart.vue'
-import dashboardService from '@/service/dashboard/dashboard-service'
 import companiesServices from '@/service/companies/companies-services'
-import { ref, onMounted, computed, watch } from 'vue'
-import backlogService from '@/service/backlog/backlog-service'
+import { ref, onMounted, computed } from 'vue'
 import { useActiveCompanyId } from '@/stores/authStores'
+import { useDashboardMetrics } from '@/composables/useDashboardMetrics'
+import { useBacklog } from '@/composables/useBacklog'
 
 const activeCompanyStore = useActiveCompanyId()
 
-const metrics = ref<any>(null)
-const backlog = ref<any[]>([])
 const showCompanyModal = ref(false)
 const showUserModal = ref(false)
 const companies = ref<any[]>([])
-const loading = ref(true)
 const loadingCompanies = ref(true)
-const loadingBacklog = ref(true)
+
+// Reactive companyId — Vue Query auto-refetches when company switches
+const companyId = computed(() => activeCompanyStore.companyId ?? localStorage.getItem('activeCompany') ?? '')
+
+const { data: metricsData, isLoading: loading } = useDashboardMetrics(companyId)
+const { data: backlogData, isLoading: loadingBacklog } = useBacklog(companyId)
+
+const metrics = computed(() => metricsData.value ?? null)
+const backlog = computed(() => backlogData.value ?? [])
 
 const findCompanies = async () => {
   loadingCompanies.value = true
@@ -29,43 +34,16 @@ const findCompanies = async () => {
   }
 }
 
-const findMetrics = async () => {
-  const companyId = localStorage.getItem('activeCompany')
-  if (!companyId) return
-  loading.value = true
-  try {
-    const res = await dashboardService.getCompanyMetrics(companyId)
-    metrics.value = res
-  } catch (e) {
-    console.error('Erro ao buscar métricas:', e)
-  } finally {
-    loading.value = false
-  }
-}
-
-const findBacklog = async () => {
-  const companyId = localStorage.getItem('activeCompany')
-  if (!companyId) return
-  loadingBacklog.value = true
-  try {
-    const response = await backlogService.getBacklogByCompany(companyId)
-    backlog.value = response
-  } catch (e) {
-    console.error('Erro ao buscar backlog:', e)
-  } finally {
-    loadingBacklog.value = false
-  }
-}
-
 const ensureActiveCompany = async () => {
   if (!localStorage.getItem('activeCompany')) {
     try {
       const response = await companiesServices.getCompany()
-      const companies = Array.isArray(response) ? response : response?.data || []
-      if (companies.length > 0) {
-        const firstCompanyId = companies[0]?.company?.id || companies[0]?.id
+      const list = Array.isArray(response) ? response : response?.data || []
+      if (list.length > 0) {
+        const firstCompanyId = list[0]?.company?.id || list[0]?.id
         if (firstCompanyId) {
           localStorage.setItem('activeCompany', firstCompanyId)
+          activeCompanyStore.setCompanyId(firstCompanyId)
         }
       }
     } catch (e) {
@@ -76,20 +54,8 @@ const ensureActiveCompany = async () => {
 
 onMounted(async () => {
   await ensureActiveCompany()
-  await findMetrics()
-  await findBacklog()
-  await findCompanies()
+  findCompanies()
 })
-
-watch(
-  () => activeCompanyStore.companyId,
-  async (newId) => {
-    if (newId) {
-      await findMetrics()
-      await findBacklog()
-    }
-  },
-)
 
 const stats = computed(() => {
   if (!metrics.value?.metrics) return []

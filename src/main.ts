@@ -8,6 +8,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart } from 'echarts/charts'
 import { createPinia } from 'pinia'
 import { TitleComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import { VueQueryPlugin } from '@tanstack/vue-query'
 
 use([CanvasRenderer, PieChart, TitleComponent, TooltipComponent, LegendComponent])
 
@@ -25,6 +26,17 @@ app.component('VChart', VChart)
 app.use(pinia)
 app.use(vuetify)
 app.use(router)
+app.use(VueQueryPlugin, {
+  queryClientConfig: {
+    defaultOptions: {
+      queries: {
+        staleTime: 1000 * 60 * 2,
+        gcTime: 1000 * 60 * 10,
+        refetchOnWindowFocus: false,
+      },
+    },
+  },
+})
 
 // Sincronizar authStore com localStorage na inicialização
 import('@/stores/authStores').then(({ useActiveCompanyId }) => {

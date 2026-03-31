@@ -157,7 +157,7 @@ const openDeleteConfirm = (task: any) => {
 
 const getSubtaskProgress = (task: any) => {
   if (!task.subtasks?.length) return null
-  const done = task.subtasks.filter((s: any) => s.completed).length
+  const done = task.subtasks.filter((s: any) => s.status === 'DONE').length
   return { done, total: task.subtasks.length }
 }
 
@@ -165,6 +165,20 @@ const isOverdue = (dueDate: string) => {
   if (!dueDate) return false
   return new Date(dueDate) < new Date()
 }
+
+// ── Subtasks expand/collapse ──
+const expandedTasks = ref<Set<string>>(new Set())
+
+const toggleExpand = (taskId: string) => {
+  if (expandedTasks.value.has(taskId)) {
+    expandedTasks.value.delete(taskId)
+  } else {
+    expandedTasks.value.add(taskId)
+  }
+  expandedTasks.value = new Set(expandedTasks.value)
+}
+
+const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 </script>
 
 <template>
@@ -228,7 +242,7 @@ const isOverdue = (dueDate: string) => {
         >
           <!-- cover image -->
           <div v-if="getImageAttachment(task)" class="card-image">
-            <img :src="getImageAttachment(task)" alt="" />
+            <img :src="getImageAttachment(task)" alt="" loading="lazy" />
           </div>
 
           <div class="card-body">
@@ -291,11 +305,35 @@ const isOverdue = (dueDate: string) => {
                 {{ new Date(task.dueDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) }}
               </div>
 
-              <!-- subtasks -->
-              <div v-if="getSubtaskProgress(task)" class="meta-badge subtask-badge">
-                <v-icon size="11">mdi-format-list-checks</v-icon>
-                {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
+            <!-- subtasks expand & progress -->
+            <div v-if="task.subtasks?.length" class="subtasks-section" @click.stop>
+              <button
+                class="subtasks-toggle"
+                @click="toggleExpand(task.id)"
+              >
+                <v-icon size="12">
+                  {{ isExpanded(task.id) ? 'mdi-chevron-up' : 'mdi-chevron-down' }}
+                </v-icon>
+                <span class="subtasks-count">
+                  {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }} subtarefas
+                </span>
+              </button>
+
+              <!-- Expanded subtasks list -->
+              <div v-if="isExpanded(task.id)" class="subtasks-list">
+                <div
+                  v-for="subtask in task.subtasks"
+                  :key="subtask.id"
+                  class="subtask-item"
+                  :class="{ 'subtask-done': subtask.status === 'DONE' }"
+                >
+                  <v-icon size="12" :color="subtask.status === 'DONE' ? '#10B981' : '#6B7280'">
+                    {{ subtask.status === 'DONE' ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+                  </v-icon>
+                  <span class="subtask-title">{{ subtask.title }}</span>
+                </div>
               </div>
+            </div>
             </div>
 
             <!-- bottom row: avatars -->
@@ -590,5 +628,71 @@ const isOverdue = (dueDate: string) => {
 
 .drag-moving {
   cursor: grabbing !important;
+}
+
+/* ─── Subtasks Section ─── */
+.subtasks-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.subtasks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(var(--v-theme-secondary), 0.5);
+  background: rgba(var(--v-theme-secondary), 0.06);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  align-self: flex-start;
+}
+
+.subtasks-toggle:hover {
+  background: rgba(var(--v-theme-secondary), 0.1);
+  color: rgba(var(--v-theme-secondary), 0.7);
+}
+
+.subtasks-count {
+  font-size: 10.5px;
+}
+
+.subtasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(var(--v-theme-secondary), 0.03);
+  border-radius: 6px;
+  margin-left: 2px;
+}
+
+.subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: rgb(var(--v-theme-secondary));
+  padding: 2px 0;
+}
+
+.subtask-item.subtask-done {
+  opacity: 0.6;
+}
+
+.subtask-item.subtask-done .subtask-title {
+  text-decoration: line-through;
+}
+
+.subtask-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

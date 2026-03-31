@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
+    "@tanstack/vue-query": "^5.96.0",
     "@tiptap/extension-character-count": "^3.21.0",
     "@tiptap/extension-code-block-lowlight": "^3.21.0",
     "@tiptap/extension-color": "^3.21.0",
@@ -45,6 +46,7 @@
     "jwt-decode": "^4.0.0",
     "lowlight": "^3.3.0",
     "lucide-vue-next": "^1.0.0",
+    "nprogress": "^0.2.0",
     "pinia": "^3.0.4",
     "posthog-js": "^1.362.0",
     "sortablejs": "^1.15.7",
@@ -56,6 +58,7 @@
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.11.0",
+    "@types/nprogress": "^0.2.3",
     "@vitejs/plugin-vue": "^6.0.4",
     "@vue/eslint-config-typescript": "^14.7.0",
     "@vue/tsconfig": "^0.8.1",

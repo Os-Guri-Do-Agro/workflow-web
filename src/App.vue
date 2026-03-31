@@ -31,6 +31,7 @@ const openCommandPalette = () => {
   </v-app>
 </template>
 
+
 <style scoped>
 * {
   font-family:

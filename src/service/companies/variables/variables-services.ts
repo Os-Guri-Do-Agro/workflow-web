@@ -66,6 +66,23 @@ class companyVariableService {
       'Erro ao deletar variável',
     )
   }
+
+  uploadVariableImage(id: string, file: File): Promise<any> {
+    const token = localStorage.getItem('token')
+    const companyId = localStorage.getItem('activeCompany')
+    const formData = new FormData()
+    formData.append('file', file)
+    return this.handleRequest(
+      api.post(`/company-variable/${id}/image`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-company-id': companyId,
+          'Content-Type': 'multipart/form-data',
+        },
+      }),
+      'Erro ao fazer upload da imagem',
+    )
+  }
 }
 
 export default new companyVariableService()

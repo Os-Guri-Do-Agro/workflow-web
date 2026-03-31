@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx vue-tsc:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(find /c/Users/nickc/OneDrive/Desktop/trabalho/workflow/work-flow/src -name \"*.vue\" -exec grep -l \"transition\\\\|Transition\" {})"
     ]
   }
 }

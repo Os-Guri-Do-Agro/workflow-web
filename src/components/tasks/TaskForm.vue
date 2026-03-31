@@ -29,6 +29,11 @@ const valid = computed(() => !!form.value?.title?.trim())
 
 const submit = () => {
   if (form.value?.title?.trim()) {
+    if (form.value.dueDate) {
+      const [year, month, day] = form.value.dueDate.split('-').map(Number)
+      const date = new Date(year, month - 1, day, 12, 0, 0)
+      emit('update:modelValue', { ...form.value, dueDate: date.toISOString() })
+    }
     emit('submit')
   }
 }

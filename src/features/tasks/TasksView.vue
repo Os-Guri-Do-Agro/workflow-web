@@ -8,20 +8,23 @@ import type { Activity } from '@/core/types'
 import quartersService from '@/service/quarters/quarters-service'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
-import backlogService from '@/service/backlog/backlog-service'
 import { getInfoAuth } from '@/utils/authContent'
 import { useToast } from '@/composables/useToast'
+import { useCompanyBoards } from '@/composables/useCompanyBoards'
+import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
+import { useBacklog } from '@/composables/useBacklog'
+import { useQueryClient } from '@tanstack/vue-query'
 
 const route = useRoute()
 const router = useRouter()
-const { updateActivityStatus } = useTasks()
-const loading = ref(true)
+useTasks()
+const queryClient = useQueryClient()
+
 const dialog = ref(false)
 const creating = ref(false)
 const selectedUser = ref<string>('')
 const currentTab = ref<'board' | 'backlog'>('board')
 const members = ref<any[]>([])
-const backLog = ref<any[]>([])
 const isWorkerRole = ref(false)
 const { success: showSuccess, error: showError } = useToast()
 const formActivity = ref<any>({
@@ -32,11 +35,89 @@ const formActivity = ref<any>({
   assignees: [],
   attachment: null,
 })
-const tasks = ref<any>({
-  TODO: [],
-  IN_PROGRESS: [],
-  IN_TESTING: [],
-  DONE: [],
+
+// Local mutable tasks ref for optimistic drag-and-drop updates
+const tasks = ref<any>({ TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] })
+
+// ── Reactive query keys ──
+const companyId = computed(() => localStorage.getItem('activeCompany') ?? '')
+const monthId = computed(() => route.params.month as string)
+
+// ── Vue Query — data loads independently, no blocking ──
+const { data: tasksData, isLoading: tasksLoading } = useCompanyBoards(monthId)
+const { data: quartersData } = useCompanyQuarters(companyId)
+const { data: backlogData } = useBacklog(companyId)
+
+// Sync tasks query data → local ref (preserves optimistic mutation support)
+watch(tasksData, (val) => { if (val) tasks.value = val }, { immediate: true })
+
+const loading = computed(() => tasksLoading.value)
+
+const backLog = computed(() => backlogData.value ?? [])
+
+const currentMonthData = computed(() => {
+  const raw = quartersData.value
+  const quarters: any[] = raw?.data ?? (Array.isArray(raw) ? raw : [])
+  for (const quarter of quarters) {
+    const month = quarter.months?.find((m: any) => m.id === monthId.value)
+    if (month) return month
+  }
+  return null
+})
+
+const refreshTasks = () =>
+  queryClient.refetchQueries({ queryKey: ['boards', monthId.value] })
+
+const findMembers = async () => {
+  const id = localStorage.getItem('activeCompany')
+  if (!id) return
+  try {
+    const response = await companiesServices.getCompanyMembers(id)
+    members.value = response.data || response
+  } catch (error: any) {
+    showError(error.response?.data?.message || 'Erro ao buscar membros')
+  }
+}
+
+const createActivity = async () => {
+  if (!formActivity.value.title) return
+  creating.value = true
+  try {
+    const setNoonTime = (dateStr: string) => {
+      const date = new Date(dateStr)
+      date.setHours(12, 0, 0, 0)
+      return date.toISOString()
+    }
+    const payload = {
+      title: formActivity.value.title,
+      description: formActivity.value.description || '',
+      priorityNumber: Number(formActivity.value.priorityNumber) || 0,
+      dueDate: formActivity.value.dueDate
+        ? setNoonTime(formActivity.value.dueDate)
+        : setNoonTime(new Date().toISOString()),
+      monthId: monthId.value,
+      responsibleUserIds: formActivity.value.assignees || [],
+    }
+    const created = await activityService.postActivity(payload)
+    if (formActivity.value.attachment) {
+      const fd = new FormData()
+      fd.append('file', formActivity.value.attachment)
+      await activityService.postActivityAttachment(created.id, fd)
+    }
+    await refreshTasks()
+    formActivity.value = { title: '', description: '', priorityNumber: 0, dueDate: '', assignees: [], attachment: null }
+    dialog.value = false
+    showSuccess('Atividade criada com sucesso')
+  } catch (error: any) {
+    showError(error.response?.data?.message || 'Erro ao criar atividade')
+  } finally {
+    creating.value = false
+  }
+}
+
+onMounted(async () => {
+  isWorkerRole.value = (await getInfoAuth()) || false
+  findMembers()
 })
 
 // ── Filters ──
@@ -53,28 +134,17 @@ const priorityOptions = [
   { value: 5, label: 'P5' },
 ]
 
-const statusFilterOptions = [
-  { value: null, label: 'Todos' },
-  { value: 'TODO', label: 'A Fazer' },
-  { value: 'IN_PROGRESS', label: 'Em Andamento' },
-  { value: 'IN_TESTING', label: 'Em Teste' },
-  { value: 'DONE', label: 'Concluído' },
-]
-
 const filteredTasks = computed(() => {
   if (!tasks.value) return tasks.value
   const result: any = {}
   for (const [status, list] of Object.entries(tasks.value)) {
     let arr = (list as any[]) || []
-    // user filter
     if (selectedUser.value) {
       arr = arr.filter((t: any) => t.responsibles?.some((r: any) => r.user.name === selectedUser.value))
     }
-    // priority filter
     if (filterPriority.value !== null) {
       arr = arr.filter((t: any) => t.priorityNumber === filterPriority.value)
     }
-    // status filter (for list view — hide entire columns)
     if (filterStatus.value !== null && status !== filterStatus.value) {
       arr = []
     }
@@ -97,106 +167,6 @@ const clearFilters = () => {
   filterStatus.value = null
 }
 
-// ── Data loading ──
-const findBackLog = async () => {
-  const companyId = localStorage.getItem('activeCompany')
-  if (!companyId) return
-  try {
-    const response = await backlogService.getBacklogByCompany(companyId)
-    backLog.value = response
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao buscar backlog')
-  }
-}
-
-const findMembers = async () => {
-  const id = localStorage.getItem('activeCompany')
-  if (!id) return
-  try {
-    const response = await companiesServices.getCompanyMembers(id)
-    members.value = response.data || response
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao buscar membros')
-  }
-}
-
-const createActivity = async () => {
-  const monthId = route.params.month as string
-  if (!formActivity.value.title) return
-
-  creating.value = true
-  try {
-    const payload = {
-      title: formActivity.value.title,
-      description: formActivity.value.description || '',
-      priorityNumber: Number(formActivity.value.priorityNumber) || 0,
-      dueDate: formActivity.value.dueDate
-        ? new Date(formActivity.value.dueDate).toISOString()
-        : new Date().toISOString(),
-      monthId,
-      responsibleUserIds: formActivity.value.assignees || [],
-    }
-
-    const created = await activityService.postActivity(payload)
-
-    if (formActivity.value.attachment) {
-      const fd = new FormData()
-      fd.append('file', formActivity.value.attachment)
-      await activityService.postActivityAttachment(created.id, fd)
-    }
-
-    await findTasks()
-    formActivity.value = { title: '', description: '', priorityNumber: 0, dueDate: '', assignees: [], attachment: null }
-    dialog.value = false
-    showSuccess('Atividade criada com sucesso')
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao criar atividade')
-  } finally {
-    creating.value = false
-  }
-}
-
-const findTasks = async () => {
-  const monthId = route.params.month as string
-  if (!monthId) return
-  try {
-    tasks.value = await quartersService.getCompanyBoards(monthId)
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao buscar tarefas')
-  }
-}
-
-const findMonthData = async () => {
-  const companyId = localStorage.getItem('activeCompany')
-  if (!companyId) return
-  try {
-    const response = await quartersService.getCompanyQuarters(companyId)
-    const quarters = response.data || response
-    for (const quarter of quarters) {
-      const month = quarter.months?.find((m: any) => m.id === route.params.month)
-      if (month) {
-        currentMonthData.value = month
-        break
-      }
-    }
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao buscar dados do mês')
-  }
-}
-
-onMounted(async () => {
-  isWorkerRole.value = (await getInfoAuth()) || false
-  await Promise.all([findMonthData(), findTasks(), findMembers(), findBackLog()])
-  loading.value = false
-})
-
-watch(() => route.params.month, async () => {
-  await findMonthData()
-  await findTasks()
-})
-
-const currentMonthData = ref<any>(null)
-
 const allUsers = computed(() => {
   const users = new Set<string>()
   if (!tasks.value) return []
@@ -206,13 +176,6 @@ const allUsers = computed(() => {
   return Array.from(users).sort()
 })
 
-const getUserInitials = (name: string) =>
-  name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-
-const getUserColor = (name: string) => {
-  const colors = ['#1976D2', '#388E3C', '#D32F2F', '#7B1FA2', '#F57C00', '#0097A7', '#C2185B', '#5D4037']
-  return colors[name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % colors.length]
-}
 
 const totalTasks = computed(() => {
   if (!tasks.value) return 0
@@ -241,7 +204,7 @@ const handleUpdateStatus = async (taskId: string, apiStatus: string) => {
     await quartersService.patchActivityStatus(taskId, apiStatus)
   } catch (error: any) {
     showError(error.response?.data?.message || 'Erro ao atualizar status')
-    await findTasks() // revert on failure
+    await refreshTasks() // revert on failure
   }
 }
 
@@ -251,7 +214,7 @@ const handleRenameTask = async (taskId: string, newTitle: string) => {
     await activityService.patchActivity(taskId, { title: newTitle })
   } catch {
     showError('Erro ao renomear atividade')
-    await findTasks() // revert
+    await refreshTasks() // revert
   }
 }
 
@@ -270,7 +233,7 @@ const deleteTask = async () => {
   deleting.value = taskToDelete.value.id
   try {
     await activityService.deleteActivity(taskToDelete.value.id)
-    await findTasks()
+    await refreshTasks()
     confirmDelete.value = false
     showSuccess('Atividade excluída')
   } catch (error: any) {
