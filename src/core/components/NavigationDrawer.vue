@@ -186,27 +186,33 @@ defineEmits<{
   <v-navigation-drawer
     :model-value="modelValue"
     @update:model-value="$emit('update:modelValue', $event)"
-    width="260"
+    width="220"
     permanent
     color="primary"
     border="none"
     class="drawer-custom"
   >
+    <!-- Win2000 titlebar inside drawer -->
+    <div class="win-drawer-titlebar">
+      <img src="/icone.png" class="win-drawer-icon" alt="" />
+      <span>Forge 2000</span>
+    </div>
+
     <!-- Company selector -->
-    <div class="px-3 pt-3 pb-2">
+    <div class="px-2 pt-2 pb-1">
       <button class="company-btn" @click="showCompanyModal = true">
-        <v-sheet width="28" height="28" rounded="md" class="bg-transparent">
+        <v-sheet width="22" height="22" rounded="none" class="bg-transparent">
           <v-img src="/icone.png" />
         </v-sheet>
         <div class="company-info">
           <span class="company-label">Empresa</span>
           <span class="company-name">{{ activeCompany?.name || 'Selecione' }}</span>
         </div>
-        <ChevronsUpDown :size="14" class="company-chevron" />
+        <ChevronsUpDown :size="12" class="company-chevron" />
       </button>
     </div>
 
-    <div class="divider mx-3 mb-2" />
+    <div class="divider mx-2 mb-1" />
 
     <!-- Navigation -->
     <v-list nav density="compact" class="px-2">
@@ -353,38 +359,54 @@ defineEmits<{
 </template>
 
 <style scoped>
+/* ── Win2000 drawer chrome ── */
 .drawer-custom {
-  border-right: 1px solid rgba(var(--v-theme-secondary), 0.08) !important;
+  border-right: 2px solid #404040 !important;
+  background: #D4D0C8 !important;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif !important;
+  font-size: 11px !important;
+}
+.win-drawer-titlebar {
+  background: linear-gradient(to right, #000080, #1084D0);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  user-select: none;
+}
+.win-drawer-icon {
+  width: 14px;
+  height: 14px;
+  image-rendering: pixelated;
 }
 
 .divider {
   height: 1px;
-  background: rgba(var(--v-theme-secondary), 0.08);
+  background: #808080;
+  box-shadow: 0 1px 0 #FFFFFF;
 }
 
-/* ─── Company button ─── */
+/* ── Company button ── */
 .company-btn {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
   width: 100%;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 8px;
-  padding: 7px 10px;
-  cursor: default;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+  padding: 4px 7px;
+  cursor: pointer;
   text-align: left;
-  cursor: pointer;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif;
 }
-
-.company-btn--clickable {
-  cursor: pointer;
-}
-
-.company-btn--clickable:hover {
-  background: rgba(var(--v-theme-secondary), 0.08);
-  border-color: rgba(var(--v-theme-secondary), 0.18);
+.company-btn:hover {
+  background: #C8C4BC;
 }
 
 .company-info {
@@ -393,183 +415,171 @@ defineEmits<{
   flex: 1;
   min-width: 0;
 }
-
 .company-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.35);
+  font-size: 9px;
+  font-weight: bold;
+  color: #555;
   line-height: 1.2;
-  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-
 .company-name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.85);
+  font-size: 11px;
+  font-weight: bold;
+  color: #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.3;
 }
-
 .company-chevron {
-  color: rgba(var(--v-theme-secondary), 0.55) !important;
+  color: #555 !important;
   flex-shrink: 0;
 }
 
-.company-btn--clickable:hover .company-chevron {
-  color: rgba(var(--v-theme-secondary), 0.8) !important;
-}
-
-/* ─── Section divider ─── */
+/* ── Section divider ── */
 .section-divider {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
-
 .section-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.3);
+  font-size: 9px;
+  font-weight: bold;
+  color: #555;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
 }
-
 .section-divider::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: rgba(var(--v-theme-secondary), 0.06);
+  background: #808080;
+  box-shadow: 0 1px 0 #FFFFFF;
 }
 
-/* ─── Nav items ─── */
+/* ── Nav items ── */
 .nav-item {
-  min-height: 32px !important;
+  min-height: 24px !important;
   padding-top: 0 !important;
   padding-bottom: 0 !important;
+  border-radius: 0 !important;
 }
-
 .nav-item--sub {
-  padding-left: 28px !important;
+  padding-left: 24px !important;
 }
-
 .nav-item--deep {
-  padding-left: 44px !important;
+  padding-left: 40px !important;
 }
-
 .nav-icon {
-  color: rgba(var(--v-theme-secondary), 0.45) !important;
+  color: #000 !important;
   margin-right: 2px;
 }
-
 .nav-label {
-  font-size: 12.5px !important;
-  font-weight: 500 !important;
-  color: rgba(var(--v-theme-secondary), 0.65) !important;
+  font-size: 11px !important;
+  font-weight: normal !important;
+  color: #000 !important;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif !important;
 }
-
 .v-list-item--active .nav-icon {
-  color: rgb(var(--v-theme-secondary)) !important;
+  color: #FFFFFF !important;
 }
-
 .v-list-item--active .nav-label {
-  color: rgb(var(--v-theme-secondary)) !important;
-  font-weight: 600 !important;
+  color: #FFFFFF !important;
+  font-weight: bold !important;
 }
-
 .v-list-item--active {
-  background: rgba(var(--v-theme-secondary), 0.08) !important;
+  background: #000080 !important;
+  border-radius: 0 !important;
 }
 
-/* ─── Logout button ─── */
+/* ── Logout button ── */
 .logout-btn {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
   width: 100%;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  padding: 7px 10px;
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+  padding: 4px 10px;
   cursor: pointer;
-  transition: background 0.12s ease;
-  color: rgba(var(--v-theme-secondary), 0.4);
-  font-size: 12.5px;
-  font-weight: 500;
-  font-family: inherit;
+  color: #000;
+  font-size: 11px;
+  font-weight: bold;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif;
 }
-
 .logout-btn:hover {
-  background: rgba(var(--v-theme-error), 0.08);
-  color: rgb(var(--v-theme-error));
+  background: #800000;
+  color: #FFFFFF;
+  border-top-color: #FF6060;
+  border-left-color: #FF6060;
 }
 
-.logout-btn:hover :deep(.v-icon) {
-  color: rgb(var(--v-theme-error)) !important;
-}
-
-/* ─── Company dialog ─── */
+/* ── Company dialog ── */
 .company-dialog {
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1) !important;
+  border-top: 2px solid #FFFFFF !important;
+  border-left: 2px solid #FFFFFF !important;
+  border-right: 2px solid #404040 !important;
+  border-bottom: 2px solid #404040 !important;
+  background: #D4D0C8 !important;
+  box-shadow: 2px 2px 0 #808080 !important;
+  border-radius: 0 !important;
 }
-
 .company-option {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 8px 10px;
+  padding: 5px 8px;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif;
+  font-size: 11px;
   text-align: left;
-  font-family: inherit;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
-
 .company-option:hover {
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border-color: rgba(var(--v-theme-secondary), 0.12);
+  background: #000080;
+  color: #FFFFFF;
 }
-
 .company-option--active {
-  background: rgba(var(--v-theme-secondary), 0.08) !important;
-  border-color: rgba(var(--v-theme-secondary), 0.18) !important;
+  background: #C8C4BC !important;
+  border: 1px solid #808080 !important;
 }
-
 .company-option-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  background: rgba(var(--v-theme-secondary), 0.07);
+  width: 24px;
+  height: 24px;
+  background: #E8E4DC;
+  border-top: 1px solid #FFFFFF;
+  border-left: 1px solid #FFFFFF;
+  border-right: 1px solid #808080;
+  border-bottom: 1px solid #808080;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-
 .company-option-info {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-width: 0;
 }
-
 .company-option-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.85);
+  font-size: 11px;
+  font-weight: bold;
+  color: #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 .company-option-cnpj {
-  font-size: 11px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  font-size: 10px;
+  color: #555;
 }
 </style>

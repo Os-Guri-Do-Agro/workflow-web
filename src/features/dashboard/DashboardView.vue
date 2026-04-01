@@ -13,7 +13,6 @@ const showUserModal = ref(false)
 const companies = ref<any[]>([])
 const loadingCompanies = ref(true)
 
-// Reactive companyId — Vue Query auto-refetches when company switches
 const companyId = computed(() => activeCompanyStore.companyId ?? localStorage.getItem('activeCompany') ?? '')
 
 const { data: metricsData, isLoading: loading } = useDashboardMetrics(companyId)
@@ -64,29 +63,29 @@ const stats = computed(() => {
     {
       title: 'Total',
       value: m.total?.toString() || '0',
-      icon: 'mdi-folder-outline',
-      color: '#3B82F6',
+      icon: 'mdi-folder',
+      color: '#000080',
       trend: `${m.progress || 0}%`,
     },
     {
       title: 'Concluídas',
       value: m.status?.completed?.toString() || '0',
-      icon: 'mdi-check-circle-outline',
-      color: '#10B981',
+      icon: 'mdi-check-circle',
+      color: '#008000',
       trend: `${Math.round((m.status?.completed / m.total) * 100) || 0}%`,
     },
     {
       title: 'Em Progresso',
       value: m.status?.inProgress?.toString() || '0',
       icon: 'mdi-progress-clock',
-      color: '#F59E0B',
+      color: '#808000',
       trend: `${Math.round((m.status?.inProgress / m.total) * 100) || 0}%`,
     },
     {
       title: 'Atrasadas',
       value: m.time?.overdue?.toString() || '0',
-      icon: 'mdi-alert-circle-outline',
-      color: '#EF4444',
+      icon: 'mdi-alert-circle',
+      color: '#800000',
       trend: `${m.time?.dueThisWeek || 0} esta semana`,
     },
   ]
@@ -124,160 +123,213 @@ const projects = computed(() => {
 })
 
 const statusConfig: Record<string, { color: string; label: string }> = {
-  todo: { color: '#3B82F6', label: 'A Fazer' },
-  'in-progress': { color: '#F59E0B', label: 'Em Andamento' },
-  testing: { color: '#8B5CF6', label: 'Em Teste' },
-  done: { color: '#10B981', label: 'Concluído' },
-  completed: { color: '#10B981', label: 'Concluído' },
-  planning: { color: '#3B82F6', label: 'Planejamento' },
-  review: { color: '#8B5CF6', label: 'Em Revisão' },
+  todo: { color: '#000080', label: 'A Fazer' },
+  'in-progress': { color: '#808000', label: 'Em Andamento' },
+  testing: { color: '#800080', label: 'Em Teste' },
+  done: { color: '#008000', label: 'Concluído' },
+  completed: { color: '#008000', label: 'Concluído' },
+  planning: { color: '#000080', label: 'Planejamento' },
+  review: { color: '#800080', label: 'Em Revisão' },
 }
 
 const handleProjectClick = (projectName: string) => {
   console.log('Projeto clicado:', projectName)
-  // Implementação futura: navegação para detalhes do projeto
 }
 </script>
 
 <template>
-  <div class="dashboard-page">
-    <!-- Header -->
-    <div class="dash-header">
-      <div>
-        <h1 class="dash-title">Dashboard</h1>
-        <p class="dash-sub">Visão geral da empresa ativa</p>
-      </div>
-    </div>
+  <div class="win-desktop">
 
-    <!-- Stats row -->
-    <div class="stats-row">
-      <div v-for="stat in stats" :key="stat.title" class="stat-card">
-        <div v-if="loading" class="stat-skeleton" />
-        <template v-else>
-          <div class="stat-left">
-            <div class="stat-icon-wrap" :style="{ backgroundColor: stat.color + '18' }">
-              <v-icon :color="stat.color" size="18">{{ stat.icon }}</v-icon>
-            </div>
-            <div>
-              <div class="stat-value">{{ stat.value }}</div>
-              <div class="stat-label">{{ stat.title }}</div>
-            </div>
-          </div>
-          <div class="stat-trend" :style="{ color: stat.color, backgroundColor: stat.color + '12' }">
-            {{ stat.trend }}
-          </div>
-        </template>
-      </div>
-    </div>
+    <!-- ── Title bar window ── -->
+    <div class="win-window">
 
-    <!-- Main content -->
-    <div class="dash-content">
-      <!-- Recent activity -->
-      <div class="dash-panel dash-panel--wide">
-        <div class="panel-header">
-          <span class="panel-title">Atividades Recentes</span>
+      <!-- Window chrome title bar -->
+      <div class="win-titlebar">
+        <div class="win-titlebar-left">
+          <img src="/icone.png" class="win-titlebar-icon" alt="" />
+          <span>Dashboard – Visão Geral</span>
         </div>
-        <div class="panel-body activity-list">
-          <div v-if="loadingBacklog" class="activity-skeletons">
-            <div v-for="i in 5" :key="i" class="activity-skeleton" />
+        <div class="win-titlebar-buttons">
+          <button class="win-chrome-btn win-min" title="Minimizar">_</button>
+          <button class="win-chrome-btn win-max" title="Maximizar">□</button>
+          <button class="win-chrome-btn win-close" title="Fechar">✕</button>
+        </div>
+      </div>
+
+      <!-- Menu bar -->
+      <div class="win-menubar">
+        <span class="win-menu-item">Arquivo</span>
+        <span class="win-menu-item">Editar</span>
+        <span class="win-menu-item">Exibir</span>
+        <span class="win-menu-item">Ferramentas</span>
+        <span class="win-menu-item">Ajuda</span>
+      </div>
+
+      <!-- Toolbar strip -->
+      <div class="win-toolbar">
+        <button class="win-toolbar-btn">
+          <v-icon size="14">mdi-refresh</v-icon>
+          <span>Atualizar</span>
+        </button>
+        <div class="win-toolbar-sep"></div>
+        <button class="win-toolbar-btn">
+          <v-icon size="14">mdi-printer</v-icon>
+          <span>Imprimir</span>
+        </button>
+        <button class="win-toolbar-btn">
+          <v-icon size="14">mdi-help-circle-outline</v-icon>
+          <span>Ajuda</span>
+        </button>
+      </div>
+
+      <!-- Address bar -->
+      <div class="win-addressbar">
+        <span class="win-addressbar-label">Endereço:</span>
+        <div class="win-addressbar-input">
+          <v-icon size="13">mdi-folder-outline</v-icon>
+          <span>C:\Forge\Dashboard</span>
+        </div>
+        <button class="win-addressbar-go">Ir</button>
+      </div>
+
+      <!-- Window body -->
+      <div class="win-body">
+
+        <!-- Stats row -->
+        <div class="stats-row">
+          <div v-for="stat in stats" :key="stat.title" class="win-stat-card">
+            <div class="win-stat-card-title">
+              <v-icon size="14" :color="stat.color">{{ stat.icon }}</v-icon>
+              {{ stat.title }}
+            </div>
+            <div v-if="loading" class="win-skeleton" style="height:28px;" />
+            <template v-else>
+              <div class="win-stat-value" :style="{ color: stat.color }">{{ stat.value }}</div>
+              <div class="win-stat-trend">{{ stat.trend }}</div>
+            </template>
           </div>
-          <div v-else-if="recentActivities.length === 0" class="panel-empty">
-            <v-icon size="36" color="grey-darken-2">mdi-inbox-outline</v-icon>
-            <span>Nenhuma atividade recente</span>
+        </div>
+
+        <!-- Main content -->
+        <div class="dash-content">
+
+          <!-- Recent activity panel -->
+          <div class="win-panel">
+            <div class="win-panel-titlebar">
+              <v-icon size="12" color="white">mdi-clock-outline</v-icon>
+              Atividades Recentes
+            </div>
+            <div class="win-panel-body win-list-container">
+              <div v-if="loadingBacklog" class="win-loading">
+                <v-icon size="20" class="win-spin">mdi-loading</v-icon>
+                Carregando...
+              </div>
+              <div v-else-if="recentActivities.length === 0" class="win-empty">
+                <v-icon size="32">mdi-inbox-outline</v-icon>
+                <span>Nenhuma atividade recente</span>
+              </div>
+              <table v-else class="win-table">
+                <thead>
+                  <tr>
+                    <th class="win-th">Nome</th>
+                    <th class="win-th">Responsável</th>
+                    <th class="win-th">Data</th>
+                    <th class="win-th">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(activity, idx) in recentActivities"
+                    :key="idx"
+                    class="win-tr"
+                    :class="{ 'win-tr-alt': idx % 2 === 1 }"
+                  >
+                    <td class="win-td win-td-name">
+                      <span
+                        class="win-status-dot"
+                        :style="{ background: statusConfig[activity.status]?.color }"
+                      />
+                      {{ activity.title }}
+                    </td>
+                    <td class="win-td">{{ activity.company }}</td>
+                    <td class="win-td win-td-time">{{ activity.time }}</td>
+                    <td class="win-td">
+                      <span
+                        class="win-badge"
+                        :style="{ color: statusConfig[activity.status]?.color, borderColor: statusConfig[activity.status]?.color }"
+                      >
+                        {{ statusConfig[activity.status]?.label }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          <!-- Chart panel -->
+          <div class="win-panel">
+            <div class="win-panel-titlebar">
+              <v-icon size="12" color="white">mdi-chart-pie</v-icon>
+              Distribuição
+            </div>
+            <div class="win-panel-body">
+              <div v-if="loading" class="win-skeleton" style="height:200px;" />
+              <OverviewChart v-else :metrics="metrics?.metrics" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Projects section -->
+        <div class="win-section-header">
+          <v-icon size="15">mdi-folder-multiple</v-icon>
+          <span>Projetos</span>
+          <span class="win-section-count">{{ projects.length }} objetos</span>
+        </div>
+
+        <div v-if="loadingCompanies" class="projects-grid">
+          <div v-for="i in 4" :key="i" class="win-skeleton" style="height:120px;" />
+        </div>
+
+        <div v-else class="projects-grid">
           <div
-            v-else
-            v-for="(activity, idx) in recentActivities"
-            :key="idx"
-            class="activity-item"
+            v-for="project in projects"
+            :key="project.name"
+            class="win-project-icon"
+            @dblclick="handleProjectClick(project.name)"
           >
-            <div
-              class="activity-dot"
-              :style="{ backgroundColor: statusConfig[activity.status]?.color }"
-            />
-            <div class="activity-info">
-              <span class="activity-title-text">{{ activity.title }}</span>
-              <span class="activity-meta">{{ activity.company }} · {{ activity.time }}</span>
+            <div class="win-folder-icon">
+              <v-icon size="32" :color="statusConfig[project.status]?.color">mdi-folder</v-icon>
+              <div
+                class="win-folder-badge"
+                :style="{ background: statusConfig[project.status]?.color }"
+              >{{ project.progress }}%</div>
             </div>
-            <div
-              v-if="statusConfig[activity.status]"
-              class="activity-status-badge"
-              :style="{
-                color: statusConfig[activity.status]?.color,
-                backgroundColor: (statusConfig[activity.status]?.color || '#000') + '14',
-              }"
-            >
-              {{ statusConfig[activity.status]?.label }}
+            <span class="win-project-name">{{ project.name }}</span>
+            <div class="win-project-detail">
+              <div class="win-progress-bar">
+                <div
+                  class="win-progress-fill"
+                  :style="{
+                    width: project.progress + '%',
+                    background: statusConfig[project.status]?.color,
+                  }"
+                />
+              </div>
             </div>
+            <span class="win-project-stats">{{ project.completed }}/{{ project.total }} tarefas</span>
           </div>
         </div>
+
       </div>
 
-      <!-- Chart -->
-      <div class="dash-panel">
-        <div class="panel-header">
-          <span class="panel-title">Distribuição</span>
-        </div>
-        <div class="panel-body">
-          <div v-if="loading" class="chart-skeleton" />
-          <OverviewChart v-else :metrics="metrics?.metrics" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Projects section -->
-    <div class="section-header">
-      <span class="section-title">Projetos</span>
-      <span class="section-count">{{ projects.length }}</span>
-    </div>
-
-    <div v-if="loadingCompanies" class="projects-grid">
-      <div v-for="i in 4" :key="i" class="project-skeleton" />
-    </div>
-
-    <div v-else class="projects-grid">
-      <div
-        v-for="project in projects"
-        :key="project.name"
-        class="project-card"
-        @click="handleProjectClick(project.name)"
-      >
-        <div class="project-top">
-          <span class="project-name">{{ project.name }}</span>
-          <div
-            class="project-status-dot"
-            :style="{ backgroundColor: statusConfig[project.status]?.color }"
-          />
-        </div>
-
-        <p class="project-cnpj">{{ project.cnpj }}</p>
-
-        <div class="project-progress-row">
-          <div class="project-bar-bg">
-            <div
-              class="project-bar-fill"
-              :style="{
-                width: project.progress + '%',
-                backgroundColor: statusConfig[project.status]?.color,
-              }"
-            />
-          </div>
-          <span
-            class="project-pct"
-            :style="{ color: statusConfig[project.status]?.color }"
-          >{{ project.progress }}%</span>
-        </div>
-
-        <div class="project-stats">
-          <span class="project-stat">
-            <v-icon size="13">mdi-check-circle-outline</v-icon>
-            {{ project.completed }}/{{ project.total }}
-          </span>
-          <span class="project-stat">
-            <v-icon size="13">mdi-progress-clock</v-icon>
-            {{ project.inProgress }} em andamento
-          </span>
-        </div>
+      <!-- Status bar -->
+      <div class="win-statusbar">
+        <span class="win-status-item">{{ projects.length }} empresa(s)</span>
+        <span class="win-status-sep">|</span>
+        <span class="win-status-item">{{ recentActivities.length }} atividades</span>
+        <span class="win-status-sep">|</span>
+        <span class="win-status-item">Microsoft Forge 2000</span>
       </div>
     </div>
 
@@ -285,358 +337,461 @@ const handleProjectClick = (projectName: string) => {
 </template>
 
 <style scoped>
-/* ─── Layout ─── */
-.dashboard-page {
-  padding: 24px;
+/* ── Base / Desktop ── */
+.win-desktop {
+  padding: 12px;
   min-width: 720px;
-}
-
-.dash-header {
-  margin-bottom: 20px;
-}
-
-.dash-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: rgb(var(--v-theme-secondary));
-  letter-spacing: -0.02em;
-  margin: 0 0 3px;
-}
-
-.dash-sub {
-  font-size: 13px;
-  color: rgba(var(--v-theme-secondary), 0.4);
-  margin: 0;
-}
-
-/* ─── Stats ─── */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.stat-card {
-  background: rgb(var(--v-theme-primary));
-  border: 1px solid rgba(var(--v-theme-secondary), 0.07);
-  border-radius: 12px;
-  padding: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  transition: border-color 0.15s ease;
-}
-
-.stat-card:hover {
-  border-color: rgba(var(--v-theme-secondary), 0.13);
-}
-
-.stat-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.stat-icon-wrap {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: rgb(var(--v-theme-secondary));
-  line-height: 1;
-  letter-spacing: -0.03em;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: rgba(var(--v-theme-secondary), 0.45);
-  margin-top: 2px;
-  white-space: nowrap;
-}
-
-.stat-trend {
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.stat-skeleton {
-  height: 48px;
-  border-radius: 8px;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  animation: shimmer 1.4s ease infinite;
-  background-size: 200% 100%;
-}
-
-/* ─── Main content ─── */
-.dash-content {
-  display: grid;
-  grid-template-columns: 1fr 600px;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-
-/* ─── Panel ─── */
-.dash-panel {
-  background: rgb(var(--v-theme-primary));
-  border: 1px solid rgba(var(--v-theme-secondary), 0.07);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.panel-header {
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.06);
-}
-
-.panel-title {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: rgb(var(--v-theme-secondary));
-  letter-spacing: 0.01em;
-}
-
-.panel-body {
-  padding: 10px;
-}
-
-.panel-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
-  gap: 8px;
-  font-size: 13px;
-  color: rgba(var(--v-theme-secondary), 0.35);
-}
-
-/* ─── Activity list ─── */
-.activity-list {
-  max-height: 360px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.activity-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 6px;
-  border-radius: 8px;
-  transition: background 0.12s ease;
-}
-
-.activity-item:hover {
-  background: rgba(var(--v-theme-secondary), 0.04);
-}
-
-.activity-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.activity-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.activity-title-text {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: rgb(var(--v-theme-secondary));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.activity-meta {
-  font-size: 11.5px;
-  color: rgba(var(--v-theme-secondary), 0.38);
-}
-
-.activity-status-badge {
+  background: #008080;
+  min-height: 100vh;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Arial', sans-serif;
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-  flex-shrink: 0;
+  color: #000;
 }
 
-.activity-skeletons {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* ── Window chrome ── */
+.win-window {
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+  box-shadow: 1px 1px 0 #808080;
 }
 
-.activity-skeleton {
-  height: 38px;
-  border-radius: 8px;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  animation: shimmer 1.4s ease infinite;
-  background-size: 200% 100%;
-}
-
-/* chart panel */
-.chart-skeleton {
-  height: 200px;
-  border-radius: 8px;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  animation: shimmer 1.4s ease infinite;
-  background-size: 200% 100%;
-}
-
-/* ─── Projects ─── */
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.section-title {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: rgb(var(--v-theme-secondary));
-}
-
-.section-count {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.35);
-  background: rgba(var(--v-theme-secondary), 0.07);
-  padding: 1px 7px;
-  border-radius: 999px;
-}
-
-.projects-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
-}
-
-.project-card {
-  background: rgb(var(--v-theme-primary));
-  border: 1px solid rgba(var(--v-theme-secondary), 0.07);
-  border-radius: 12px;
-  padding: 14px;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-}
-
-.project-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
-  border-color: rgba(var(--v-theme-secondary), 0.13);
-}
-
-.project-top {
+/* ── Title bar ── */
+.win-titlebar {
+  background: linear-gradient(to right, #000080, #1084D0);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px 4px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  user-select: none;
 }
-
-.project-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgb(var(--v-theme-secondary));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-
-.project-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-left: 8px;
-}
-
-.project-cnpj {
-  font-size: 11.5px;
-  color: rgba(var(--v-theme-secondary), 0.32);
-  margin: 0 0 12px;
-}
-
-.project-progress-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.project-bar-bg {
-  flex: 1;
-  height: 4px;
-  background: rgba(var(--v-theme-secondary), 0.08);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.project-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  transition: width 0.4s ease;
-}
-
-.project-pct {
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-  min-width: 32px;
-  text-align: right;
-}
-
-.project-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.project-stat {
-  font-size: 11.5px;
-  color: rgba(var(--v-theme-secondary), 0.38);
+.win-titlebar-left {
   display: flex;
   align-items: center;
   gap: 5px;
 }
+.win-titlebar-icon {
+  width: 16px;
+  height: 16px;
+  image-rendering: pixelated;
+}
+.win-titlebar-buttons {
+  display: flex;
+  gap: 2px;
+}
+.win-chrome-btn {
+  width: 16px;
+  height: 14px;
+  font-size: 9px;
+  line-height: 1;
+  border-top: 1px solid #FFFFFF;
+  border-left: 1px solid #FFFFFF;
+  border-right: 1px solid #404040;
+  border-bottom: 1px solid #404040;
+  background: #D4D0C8;
+  color: #000;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'MS Sans Serif', Tahoma, sans-serif;
+  padding: 0;
+}
+.win-chrome-btn:active {
+  border-top: 1px solid #404040;
+  border-left: 1px solid #404040;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
+}
+.win-close { background: #D4D0C8; }
 
-.project-skeleton {
-  height: 140px;
-  border-radius: 12px;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  animation: shimmer 1.4s ease infinite;
-  background-size: 200% 100%;
+/* ── Menu bar ── */
+.win-menubar {
+  background: #D4D0C8;
+  border-bottom: 1px solid #808080;
+  padding: 1px 4px;
+  display: flex;
+  gap: 0;
+}
+.win-menu-item {
+  padding: 2px 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.win-menu-item:hover {
+  background: #000080;
+  color: #FFFFFF;
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+/* ── Toolbar ── */
+.win-toolbar {
+  background: #D4D0C8;
+  border-bottom: 1px solid #808080;
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.win-toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: #D4D0C8;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+.win-toolbar-btn:hover {
+  border-top: 1px solid #FFFFFF;
+  border-left: 1px solid #FFFFFF;
+  border-right: 1px solid #404040;
+  border-bottom: 1px solid #404040;
+}
+.win-toolbar-btn:active {
+  border-top: 1px solid #404040;
+  border-left: 1px solid #404040;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
+}
+.win-toolbar-sep {
+  width: 1px;
+  height: 20px;
+  background: #808080;
+  margin: 0 3px;
+  box-shadow: 1px 0 #FFFFFF;
+}
+
+/* ── Address bar ── */
+.win-addressbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border-bottom: 1px solid #808080;
+  background: #D4D0C8;
+  font-size: 11px;
+}
+.win-addressbar-label {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.win-addressbar-input {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #FFFFFF;
+  border-top: 1px solid #808080;
+  border-left: 1px solid #808080;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+.win-addressbar-go {
+  padding: 1px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  background: #D4D0C8;
+  border-top: 1px solid #FFFFFF;
+  border-left: 1px solid #FFFFFF;
+  border-right: 1px solid #404040;
+  border-bottom: 1px solid #404040;
+  cursor: pointer;
+}
+.win-addressbar-go:active {
+  border-top: 1px solid #404040;
+  border-left: 1px solid #404040;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
+}
+
+/* ── Body ── */
+.win-body {
+  padding: 8px;
+  background: #D4D0C8;
+}
+
+/* ── Stats ── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.win-stat-card {
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+  padding: 6px 10px;
+}
+.win-stat-card-title {
+  font-size: 10px;
+  font-weight: bold;
+  color: #000;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.win-stat-value {
+  font-size: 28px;
+  font-weight: bold;
+  line-height: 1;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif;
+}
+.win-stat-trend {
+  font-size: 10px;
+  color: #444;
+  margin-top: 2px;
+}
+
+/* ── Panels ── */
+.dash-content {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.win-panel {
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+}
+.win-panel-titlebar {
+  background: linear-gradient(to right, #000080, #1084D0);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.win-panel-body {
+  padding: 6px;
+}
+.win-list-container {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* ── Table ── */
+.win-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.win-th {
+  background: #D4D0C8;
+  border-top: 1px solid #FFFFFF;
+  border-left: 1px solid #FFFFFF;
+  border-right: 1px solid #808080;
+  border-bottom: 1px solid #808080;
+  padding: 2px 8px;
+  text-align: left;
+  font-weight: bold;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.win-tr:hover td {
+  background: #000080 !important;
+  color: #FFFFFF !important;
+}
+.win-tr-alt td {
+  background: #E8E4DC;
+}
+.win-td {
+  padding: 2px 8px;
+  border-bottom: 1px solid #C8C4BC;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.win-td-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.win-td-time {
+  font-size: 10px;
+  color: #444;
+}
+.win-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.win-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid;
+  background: transparent;
+}
+
+/* ── Section header ── */
+.win-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: bold;
+  border-bottom: 1px solid #808080;
+  padding-bottom: 3px;
+  margin-bottom: 8px;
+}
+.win-section-count {
+  font-weight: normal;
+  color: #555;
+  margin-left: 4px;
+}
+
+/* ── Projects / folder icons ── */
+.projects-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.win-project-icon {
+  width: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 0;
+}
+.win-project-icon:hover {
+  background: #000080;
+  color: #FFFFFF;
+  border: 1px dotted #AAAAFF;
+}
+.win-project-icon:hover .win-project-name,
+.win-project-icon:hover .win-project-stats {
+  color: #FFFFFF;
+}
+.win-folder-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.win-folder-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  font-size: 8px;
+  font-weight: bold;
+  color: #FFFFFF;
+  padding: 1px 3px;
+  border-radius: 0;
+  line-height: 1;
+}
+.win-project-name {
+  font-size: 10px;
+  text-align: center;
+  word-break: break-word;
+  max-width: 80px;
+  line-height: 1.3;
+  color: #000;
+}
+.win-project-stats {
+  font-size: 9px;
+  color: #555;
+  text-align: center;
+}
+.win-project-detail {
+  width: 80px;
+}
+.win-progress-bar {
+  height: 8px;
+  background: #FFFFFF;
+  border-top: 1px solid #808080;
+  border-left: 1px solid #808080;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
+  overflow: hidden;
+}
+.win-progress-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+
+/* ── Status bar ── */
+.win-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-top: 1px solid #808080;
+  background: #D4D0C8;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.win-status-item {
+  padding: 0 8px;
+  border-top: 1px solid #808080;
+  border-left: 1px solid #808080;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
+  margin-right: 4px;
+  line-height: 18px;
+}
+.win-status-sep {
+  color: #808080;
+  margin: 0 2px;
+  display: none;
+}
+
+/* ── Utilities ── */
+.win-skeleton {
+  background: #C8C4BC;
+  border-top: 1px solid #808080;
+  border-left: 1px solid #808080;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
+  width: 100%;
+}
+.win-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 16px;
+  font-size: 11px;
+  color: #555;
+}
+.win-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  gap: 6px;
+  font-size: 12px;
+  color: #555;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.win-spin {
+  animation: spin 1s linear infinite;
 }
 </style>

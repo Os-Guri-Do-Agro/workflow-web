@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useTheme } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, ref } from 'vue'
 import { getUserToken } from '@/utils/authContent'
@@ -13,7 +12,6 @@ const emit = defineEmits<{
   'open-command-palette': []
 }>()
 
-const theme = useTheme()
 const route = useRoute()
 const router = useRouter()
 const userMenu = ref(false)
@@ -26,11 +24,6 @@ const userInitials = computed(() => {
 
 const firstName = computed(() => user?.name?.split(' ')[0] || '')
 
-const toggleTheme = () => {
-  theme.global.name.value = theme.global.name.value === 'light' ? 'dark' : 'light'
-  localStorage.setItem('theme', theme.global.name.value)
-}
-
 const handleLogout = () => {
   localStorage.clear()
   router.push('/login')
@@ -38,17 +31,15 @@ const handleLogout = () => {
 
 const breadcrumbs = computed(() => {
   const path = route.path
-  const routes: Record<string, { title: string; parent?: string }> = {
+  const routes: Record<string, { title: string }> = {
     '/': { title: 'Dashboard' },
     '/settings': { title: 'Configurações' },
     '/variables': { title: 'Variáveis' },
     '/company-users': { title: 'Usuários / Empresas' },
     '/tickets': { title: 'Tickets' },
   }
-
   const current = routes[path]
   if (current) return [{ title: current.title }]
-
   if (path.startsWith('/tasks/')) {
     const parts = path.split('/')
     const items = [{ title: 'Tarefas' }]
@@ -56,165 +47,200 @@ const breadcrumbs = computed(() => {
     if (parts[3]) items.push({ title: 'Detalhes' })
     return items
   }
-
-  if (path.startsWith('/relatorio/')) {
-    return [{ title: 'Tarefas' }, { title: 'Relatório' }]
-  }
-
+  if (path.startsWith('/relatorio/')) return [{ title: 'Tarefas' }, { title: 'Relatório' }]
   return [{ title: 'Forge' }]
 })
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
-const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
+const shortcutLabel = isMac ? '⌘K' : 'Ctrl+K'
 </script>
 
 <template>
-  <v-app-bar elevation="0" color="primary" height="48" class="app-bar-custom">
-    <v-btn icon size="small" variant="text" @click="emit('update:drawer', !drawer)">
-      <v-icon size="18" color="secondary">mdi-menu</v-icon>
-    </v-btn>
+  <!-- Win2000 task-bar / app-bar -->
+  <v-app-bar elevation="0" color="primary" height="30" class="win2k-appbar">
+    <!-- Hamburger -->
+    <button class="win-tb-btn" @click="emit('update:drawer', !drawer)" title="Menu">
+      <v-icon size="15">mdi-menu</v-icon>
+    </button>
 
-    <v-breadcrumbs :items="breadcrumbs" class="pa-0 ml-1">
-      <template #divider>
-        <v-icon size="14" style="opacity: 0.3">mdi-chevron-right</v-icon>
+    <!-- Breadcrumb path -->
+    <div class="win-tb-path">
+      <template v-for="(crumb, idx) in breadcrumbs" :key="idx">
+        <span v-if="idx > 0" class="win-tb-sep">›</span>
+        <span class="win-tb-crumb">{{ crumb.title }}</span>
       </template>
-      <template #item="{ item }">
-        <span class="breadcrumb-text">{{ item.title }}</span>
-      </template>
-    </v-breadcrumbs>
+    </div>
 
     <v-spacer />
 
-    <!-- Search / Command palette trigger -->
-    <button class="cmd-k-btn" @click="emit('open-command-palette')">
-      <v-icon size="14" style="opacity: 0.45">mdi-magnify</v-icon>
-      <span class="cmd-k-text">Buscar...</span>
-      <kbd class="cmd-k-kbd">{{ shortcutLabel }}</kbd>
+    <!-- Search trigger -->
+    <button class="win-tb-search" @click="emit('open-command-palette')" :title="shortcutLabel">
+      <v-icon size="13">mdi-magnify</v-icon>
+      <span>Localizar...</span>
+      <kbd class="win-tb-kbd">{{ shortcutLabel }}</kbd>
     </button>
 
-    <!-- Theme toggle -->
-    <v-btn icon size="small" variant="text" @click="toggleTheme" class="ml-1">
-      <v-icon size="18" color="secondary" style="opacity: 0.6">
-        {{ theme.global.name.value === 'light' ? 'mdi-moon-waning-crescent' : 'mdi-white-balance-sunny' }}
-      </v-icon>
-    </v-btn>
-
-    <!-- User menu -->
+    <!-- User button -->
     <v-menu v-model="userMenu" :close-on-content-click="true" location="bottom end">
       <template #activator="{ props }">
-        <button v-bind="props" class="user-btn mr-3">
-          <div class="user-avatar">{{ userInitials }}</div>
-          <span class="user-name">{{ firstName }}</span>
+        <button v-bind="props" class="win-tb-user">
+          <div class="win-tb-avatar">{{ userInitials }}</div>
+          <span class="win-tb-username">{{ firstName }}</span>
+          <v-icon size="11">mdi-chevron-down</v-icon>
         </button>
       </template>
-      <v-card class="user-menu-card" rounded="lg" min-width="180">
-        <v-list density="compact" class="py-1">
-          <v-list-item
-            density="compact"
-            prepend-icon="mdi-cog-outline"
-            title="Configurações"
-            @click="router.push('/settings')"
-          />
-          <v-divider class="my-1" />
-          <v-list-item
-            density="compact"
-            prepend-icon="mdi-logout"
-            title="Sair"
-            @click="handleLogout"
-          />
-        </v-list>
-      </v-card>
+      <div class="win-dropdown">
+        <div class="win-dropdown-title">
+          <v-icon size="14" color="white">mdi-account</v-icon>
+          {{ user?.name || 'Usuário' }}
+        </div>
+        <div class="win-dropdown-divider" />
+        <button class="win-dropdown-item" @click="router.push('/settings')">
+          <v-icon size="14">mdi-cog</v-icon>
+          Configurações
+        </button>
+        <div class="win-dropdown-divider" />
+        <button class="win-dropdown-item win-dropdown-item--danger" @click="handleLogout">
+          <v-icon size="14">mdi-logout</v-icon>
+          Sair
+        </button>
+      </div>
     </v-menu>
   </v-app-bar>
 </template>
 
 <style scoped>
-.app-bar-custom {
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08) !important;
+/* ── Win2000 task-bar strip ── */
+.win2k-appbar {
+  background: #D4D0C8 !important;
+  border-bottom: 2px solid #404040 !important;
+  border-top: 2px solid #FFFFFF !important;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif;
+  font-size: 11px;
+  color: #000 !important;
 }
 
-.breadcrumb-text {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.55);
-}
-
-/* ─── Cmd+K button ─── */
-.cmd-k-btn {
+/* shared raised button */
+.win-tb-btn,
+.win-tb-search,
+.win-tb-user {
   display: flex;
   align-items: center;
-  gap: 7px;
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 8px;
-  padding: 5px 10px;
+  gap: 4px;
+  background: #D4D0C8;
+  border-top: 1px solid #FFFFFF;
+  border-left: 1px solid #FFFFFF;
+  border-right: 1px solid #404040;
+  border-bottom: 1px solid #404040;
+  padding: 1px 6px;
+  height: 22px;
   cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
-  height: 32px;
-  justify-content: space-between;
-}
-
-.cmd-k-btn:hover {
-  border-color: rgba(var(--v-theme-secondary), 0.2);
-  background: rgba(var(--v-theme-secondary), 0.09);
-}
-
-.cmd-k-text {
-  font-size: 12.5px;
-  color: rgba(var(--v-theme-secondary), 0.35);
-  white-space: nowrap;
-}
-
-.cmd-k-kbd {
-  font-size: 10px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.3);
-  background: rgba(var(--v-theme-secondary), 0.07);
-  padding: 1px 5px;
-  border-radius: 4px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
+  font-size: 11px;
   font-family: inherit;
-  line-height: 1.4;
+  color: #000;
+}
+.win-tb-btn:active,
+.win-tb-search:active,
+.win-tb-user:active {
+  border-top: 1px solid #404040;
+  border-left: 1px solid #404040;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
 }
 
-/* ─── User button ─── */
-.user-btn {
+.win-tb-path {
   display: flex;
   align-items: center;
-  gap: 7px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 8px;
-  transition: background 0.12s ease;
+  gap: 3px;
+  margin-left: 6px;
+}
+.win-tb-sep {
+  color: #808080;
+  font-size: 12px;
+}
+.win-tb-crumb {
+  font-size: 11px;
+  color: #000;
 }
 
-.user-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.06);
+.win-tb-search {
+  margin-right: 4px;
+  min-width: 160px;
+  justify-content: flex-start;
+}
+.win-tb-kbd {
+  margin-left: auto;
+  font-size: 9px;
+  background: #FFFFFF;
+  border: 1px solid #808080;
+  padding: 0 3px;
+  font-family: inherit;
 }
 
-.user-avatar {
-  width: 26px;
-  height: 26px;
+.win-tb-avatar {
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: rgb(var(--v-theme-secondary));
-  color: rgb(var(--v-theme-primary));
+  background: #000080;
+  color: #FFFFFF;
+  font-size: 9px;
+  font-weight: bold;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
+}
+.win-tb-username {
+  font-size: 11px;
+  font-weight: bold;
 }
 
-.user-name {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.7);
+/* ── Dropdown menu ── */
+.win-dropdown {
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+  min-width: 180px;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif;
+  font-size: 11px;
+  box-shadow: 2px 2px 0 #808080;
+  z-index: 9999;
 }
-
-.user-menu-card {
-  background: rgb(var(--v-theme-primary)) !important;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1) !important;
+.win-dropdown-title {
+  background: linear-gradient(to right, #000080, #1084D0);
+  color: #FFFFFF;
+  font-weight: bold;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.win-dropdown-divider {
+  height: 1px;
+  background: #808080;
+  box-shadow: 0 1px 0 #FFFFFF;
+  margin: 1px 0;
+}
+.win-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 3px 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  text-align: left;
+  color: #000;
+}
+.win-dropdown-item:hover {
+  background: #000080;
+  color: #FFFFFF;
+}
+.win-dropdown-item--danger:hover {
+  background: #800000;
 }
 </style>
