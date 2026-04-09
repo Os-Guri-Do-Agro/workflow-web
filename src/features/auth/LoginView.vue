@@ -39,193 +39,327 @@ onMounted(() => {
 </script>
 
 <template>
-  <v-row no-gutters class="fill-height">
-    <v-col cols="12" md="5" class="bg-white d-flex align-center justify-center pa-8">
-      <div class="login-form">
-        <div class="mb-10">
-          <div class="logo-badge mb-6">
-            <v-icon size="32" color="secundary">mdi-clipboard-check</v-icon>
-          </div>
-          <h1 style="font-size: 30px" class="font-weight-bold mb-3 text-black">
-            Bem-vindo de volta
-          </h1>
-          <p style="font-size: 14px" class="text-grey-darken-1">
-            Entre com suas credenciais para acessar sua conta
+  <div class="win-desktop">
+    <!-- Win2000 Login Dialog Window -->
+    <div class="win-dialog">
+      <!-- Title bar -->
+      <div class="win-titlebar">
+        <div class="win-titlebar-left">
+          <v-icon size="16" color="white">mdi-key</v-icon>
+          <span>Entrar no Windows</span>
+        </div>
+        <div class="win-titlebar-buttons">
+          <button class="win-chrome-btn win-close" title="Fechar">x</button>
+        </div>
+      </div>
+
+      <!-- Dialog body -->
+      <div class="win-dialog-body">
+        <div class="win-dialog-left">
+          <img src="/icone.png" class="win-login-icon" alt="Logo" />
+        </div>
+        <div class="win-dialog-right">
+          <p class="win-login-text">
+            Digite seu nome de usuario e senha para entrar no sistema Forge.
           </p>
+
+          <form @submit.prevent="login" class="win-form">
+            <div class="win-form-row">
+              <label class="win-label">Usuario:</label>
+              <input
+                v-model="email"
+                type="email"
+                class="win-input"
+                placeholder="seu@email.com"
+              />
+            </div>
+            <div class="win-form-row">
+              <label class="win-label">Senha:</label>
+              <input
+                v-model="password"
+                :type="showPassword ? 'text' : 'password'"
+                class="win-input"
+                placeholder=""
+              />
+            </div>
+            <div class="win-form-check">
+              <input type="checkbox" id="show-pass" v-model="showPassword" />
+              <label for="show-pass">Mostrar senha</label>
+            </div>
+          </form>
         </div>
-
-        <v-form @submit.prevent="login">
-          <div class="mb-4">
-            <label
-              style="font-size: 12px"
-              class="font-weight-medium text-grey-darken-2 mb-2 d-block"
-              >E-mail</label
-            >
-            <v-text-field
-              v-model="email"
-              type="email"
-              placeholder="seu@email.com"
-              prepend-inner-icon="mdi-email-outline"
-              variant="outlined"
-              density="comfortable"
-              required
-              hide-details
-            />
-          </div>
-
-          <div class="mb-2">
-            <label
-              style="font-size: 12px"
-              class="font-weight-medium text-grey-darken-2 mb-2 d-block"
-              >Senha</label
-            >
-            <v-text-field
-              v-model="password"
-              :type="showPassword ? 'text' : 'password'"
-              placeholder="••••••••"
-              prepend-inner-icon="mdi-lock-outline"
-              :append-inner-icon="showPassword ? 'mdi-eye-outline' : 'mdi-eye-off-outline'"
-              variant="outlined"
-              density="comfortable"
-              required
-              hide-details
-              @click:append-inner="showPassword = !showPassword"
-            />
-          </div>
-
-          <v-btn
-            type="submit"
-            color="primary"
-            block
-            size="x-large"
-            :loading="loading"
-            elevation="0"
-            class="text-none font-weight-medium mt-5"
-          >
-            Entrar
-          </v-btn>
-
-          <v-btn
-            variant="text"
-            block
-            class="text-none mt-4 text-grey-darken-1"
-            append-icon="mdi-download"
-            @click="router.push('/download')"
-            elevation="0"
-          >
-            Desktop App
-          </v-btn>
-        </v-form>
       </div>
-    </v-col>
 
-    <v-col
-      cols="12"
-      md="7"
-      class="bg-black d-none d-md-flex align-center justify-center position-relative"
-    >
-      <div class="hero-content text-center pa-12">
-        <div class="icon-wrapper mb-8 d-flex align-center justify-center">
-          <v-img width="100" height="100" contain src="/icone.png"></v-img>
+      <!-- Dialog buttons -->
+      <div class="win-dialog-footer">
+        <button class="win-btn" @click="login" :disabled="loading">
+          <span v-if="loading">Aguarde...</span>
+          <span v-else>OK</span>
+        </button>
+        <button class="win-btn" @click="router.push('/download')">
+          Baixar App
+        </button>
+      </div>
+    </div>
+
+    <!-- Win2000 Info Window (side) -->
+    <div class="win-info-window">
+      <div class="win-titlebar">
+        <div class="win-titlebar-left">
+          <v-icon size="16" color="white">mdi-information</v-icon>
+          <span>Sobre o Forge 2000</span>
         </div>
-        <h2 style="font-size: 34px" class="font-weight-bold mb-6 text-white">Stack Roads</h2>
-        <p
-          class="font-weight-regular mb-8 text-grey-lighten-1"
-          style="font-size: 19px; max-width: 500px; margin: 0 auto"
-        >
-          Gerencie suas tarefas de forma inteligente. Organize, priorize e acompanhe seu trabalho
-          com eficiência.
+        <div class="win-titlebar-buttons">
+          <button class="win-chrome-btn">_</button>
+        </div>
+      </div>
+      <div class="win-info-body">
+        <div class="win-info-logo">
+          <img src="/icone.png" width="64" height="64" alt="Forge" />
+        </div>
+        <h2 class="win-info-title">Stack Roads</h2>
+        <p class="win-info-desc">
+          Gerencie suas tarefas de forma inteligente. Organize, priorize e acompanhe seu trabalho com eficiencia.
         </p>
-        <div class="features-grid">
-          <div class="feature-item">
-            <v-icon color="secundary" size="20" class="mb-2">mdi-check-circle</v-icon>
-            <p style="font-size: 11px" class="text-grey-lighten-1">Organização simples</p>
+        <div class="win-features">
+          <div class="win-feature">
+            <v-icon size="16" color="#008000">mdi-check-circle</v-icon>
+            <span>Organizacao simples</span>
           </div>
-          <div class="feature-item">
-            <v-icon color="secundary" size="20" class="mb-2">mdi-chart-line</v-icon>
-            <p style="font-size: 11px" class="text-grey-lighten-1">Acompanhamento em tempo real</p>
+          <div class="win-feature">
+            <v-icon size="16" color="#008000">mdi-chart-line</v-icon>
+            <span>Acompanhamento em tempo real</span>
           </div>
-          <div class="feature-item">
-            <v-icon color="secundary" size="20" class="mb-2">mdi-account-group</v-icon>
-            <p style="font-size: 11px" class="text-grey-lighten-1">Colaboração eficiente</p>
+          <div class="win-feature">
+            <v-icon size="16" color="#008000">mdi-account-group</v-icon>
+            <span>Colaboracao eficiente</span>
           </div>
         </div>
+        <div class="win-copyright">
+          Microsoft Forge 2000<br />
+          (C) 2000 Microsoft Corporation
+        </div>
       </div>
-      <div class="gradient-overlay"></div>
-    </v-col>
-  </v-row>
-
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.fill-height {
-  height: 100vh;
-}
-
-.login-form {
-  width: 100%;
-  max-width: 420px;
-}
-
-.logo-badge {
-  width: 56px;
-  height: 56px;
-  background: rgba(var(--v-theme-primary), 0.1);
-  border-radius: 12px;
+/* ── Win2000 Desktop ── */
+.win-desktop {
+  min-height: 100vh;
+  background: #008080;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 20px;
+  padding: 20px;
+  font-family: 'MS Sans Serif', Tahoma, Arial, sans-serif;
+  font-size: 11px;
+  color: #000;
 }
 
-.hero-content {
-  position: relative;
-  z-index: 2;
+/* ── Dialog window ── */
+.win-dialog {
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+  box-shadow: 2px 2px 0 #808080;
+  width: 420px;
 }
-
-.icon-wrapper {
-  position: relative;
+.win-info-window {
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+  box-shadow: 2px 2px 0 #808080;
+  width: 300px;
+  display: none;
 }
-
-.floating-icon {
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0px);
+@media (min-width: 900px) {
+  .win-info-window {
+    display: block;
   }
-  50% {
-    transform: translateY(-10px);
-  }
 }
 
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-  margin-top: 48px;
+/* ── Title bar ── */
+.win-titlebar {
+  background: linear-gradient(to right, #000080, #1084D0);
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.win-titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.win-titlebar-buttons {
+  display: flex;
+  gap: 2px;
+}
+.win-chrome-btn {
+  width: 16px;
+  height: 14px;
+  font-size: 9px;
+  line-height: 1;
+  border-top: 1px solid #FFFFFF;
+  border-left: 1px solid #FFFFFF;
+  border-right: 1px solid #404040;
+  border-bottom: 1px solid #404040;
+  background: #D4D0C8;
+  color: #000;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  padding: 0;
 }
 
-.feature-item {
+/* ── Dialog body ── */
+.win-dialog-body {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+}
+.win-dialog-left {
+  flex-shrink: 0;
+}
+.win-login-icon {
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+}
+.win-dialog-right {
+  flex: 1;
+}
+.win-login-text {
+  font-size: 11px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+/* ── Form ── */
+.win-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.win-form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.win-label {
+  width: 60px;
+  text-align: right;
+  font-size: 11px;
+}
+.win-input {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  background: #FFFFFF;
+  border-top: 1px solid #808080;
+  border-left: 1px solid #808080;
+  border-right: 1px solid #FFFFFF;
+  border-bottom: 1px solid #FFFFFF;
+  outline: none;
+}
+.win-input:focus {
+  outline: 1px dotted #000080;
+}
+.win-form-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 68px;
+  font-size: 11px;
+}
+
+/* ── Dialog footer ── */
+.win-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 16px 14px;
+  border-top: 1px solid #808080;
+}
+.win-btn {
+  min-width: 80px;
+  padding: 4px 16px;
+  font-size: 11px;
+  font-family: inherit;
+  background: #D4D0C8;
+  border-top: 2px solid #FFFFFF;
+  border-left: 2px solid #FFFFFF;
+  border-right: 2px solid #404040;
+  border-bottom: 2px solid #404040;
+  cursor: pointer;
+}
+.win-btn:hover {
+  background: #E8E4DC;
+}
+.win-btn:active {
+  border-top: 2px solid #404040;
+  border-left: 2px solid #404040;
+  border-right: 2px solid #FFFFFF;
+  border-bottom: 2px solid #FFFFFF;
+}
+.win-btn:disabled {
+  color: #808080;
+  cursor: not-allowed;
+}
+
+/* ── Info window body ── */
+.win-info-body {
+  padding: 16px;
   text-align: center;
 }
-
-.gradient-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: radial-gradient(
-    circle at 30% 50%,
-    rgba(var(--v-theme-primary), 0.15) 0%,
-    transparent 50%
-  );
-  pointer-events: none;
+.win-info-logo {
+  margin-bottom: 12px;
 }
-
-.position-relative {
-  position: relative;
+.win-info-logo img {
+  image-rendering: pixelated;
+}
+.win-info-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+.win-info-desc {
+  font-size: 11px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  color: #333;
+}
+.win-features {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.win-feature {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.win-copyright {
+  font-size: 10px;
+  color: #555;
+  border-top: 1px solid #808080;
+  padding-top: 10px;
+  margin-top: 10px;
 }
 </style>
