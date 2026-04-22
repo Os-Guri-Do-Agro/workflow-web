@@ -7,44 +7,18 @@ import AppToast from '@/components/AppToast.vue'
 <template>
   <v-app>
     <AppShell>
-      <RouterView v-slot="{ Component }">
-        <Transition name="route" mode="out-in" appear>
-          <component :is="Component" />
-        </Transition>
-      </RouterView>
+      <RouterView />
     </AppShell>
     <AppToast />
   </v-app>
 </template>
 
 <style>
-.route-enter-active {
-  transition:
-    opacity 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.route-leave-active {
-  transition: opacity 120ms cubic-bezier(0.4, 0, 1, 1);
-}
-
-.route-enter-from {
-  opacity: 0;
-  transform: translateY(4px);
-}
-
-.route-leave-to {
-  opacity: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .route-enter-active,
-  .route-leave-active {
-    transition: opacity 80ms linear;
-  }
-  .route-enter-from,
-  .route-leave-to {
-    transform: none;
-  }
+/* Force Vuetify's app wrapper to inherit our theme tokens so theme changes
+   propagate to every descendant, not just the body background. */
+.v-application,
+.v-application__wrap {
+  background: var(--bg) !important;
+  color: var(--text) !important;
 }
 </style>

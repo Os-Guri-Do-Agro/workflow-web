@@ -117,6 +117,14 @@ export const vuetifyThemeColors = {
   },
 } as const
 
+function hexToRgbTriple(hex: string): string {
+  const h = hex.replace('#', '')
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return `${r},${g},${b}`
+}
+
 export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral'): void {
   const root = document.documentElement
   const tokens = themeTokens[theme]
@@ -127,4 +135,39 @@ export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral
   root.style.setProperty('--accent-fg', accentForeground[theme])
   root.setAttribute('data-theme', theme)
   root.setAttribute('data-accent', accent)
+  root.style.colorScheme = theme
+
+  // Safety net: also write Vuetify's theme CSS vars on :root. Vuetify normally
+  // scopes them under .v-application.v-theme--X, but if the theme swap on the
+  // v-app class doesn't fire (e.g., initial mount, HMR edge case), these root-
+  // level values ensure rgb(var(--v-theme-X)) references still track the theme.
+  const vt = vuetifyThemeColors[theme] as Record<string, string | undefined>
+  const vMap: Record<string, string | undefined> = {
+    '--v-theme-primary': vt.primary,
+    '--v-theme-secondary': vt.secondary,
+    '--v-theme-background': vt.background,
+    '--v-theme-surface': vt.surface,
+    '--v-theme-error': vt.error,
+    '--v-theme-info': vt.info,
+    '--v-theme-success': vt.success,
+    '--v-theme-warning': vt.warning,
+    '--v-theme-on-background': vt.secondary,
+    '--v-theme-on-surface': vt.secondary,
+    '--v-theme-on-primary': vt.secondary,
+    '--v-theme-on-secondary': vt.primary,
+  }
+  for (const [key, value] of Object.entries(vMap)) {
+    if (value) root.style.setProperty(key, hexToRgbTriple(value))
+  }
+
+  // Also force the Vuetify theme class on every .v-application wrapper.
+  // Vuetify's reactive setter (theme.global.name.value) normally handles this,
+  // but if it fails to propagate (timing / HMR / multiple instances), this
+  // guarantees .v-theme--X matches the active theme so Vuetify components
+  // repaint immediately.
+  const apps = document.querySelectorAll('.v-application')
+  apps.forEach((el) => {
+    el.classList.remove('v-theme--dark', 'v-theme--light')
+    el.classList.add(`v-theme--${theme}`)
+  })
 }

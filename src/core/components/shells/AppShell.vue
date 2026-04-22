@@ -23,13 +23,20 @@ const openPalette = () => paletteRef.value?.open()
 </script>
 
 <template>
-  <template v-if="bare">
+  <div v-if="bare" class="app-shell-bare">
     <slot />
-  </template>
-  <template v-else>
+  </div>
+  <div v-else class="app-shell-root">
     <component :is="ActiveShell" @open-command-palette="openPalette">
       <slot />
     </component>
     <CommandPalette ref="paletteRef" />
-  </template>
+  </div>
 </template>
+
+<style scoped>
+.app-shell-root,
+.app-shell-bare {
+  display: contents;
+}
+</style>
