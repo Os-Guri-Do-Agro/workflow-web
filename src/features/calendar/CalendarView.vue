@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import eventsService from '@/service/events/events-service'
 import EventModal from '@/components/modals/EventModal.vue'
 import { useToast } from '@/composables/useToast'
@@ -149,7 +150,7 @@ function formatDate(dateString: string): string {
       </div>
       <div class="header-actions">
         <button class="create-btn" @click="openEventModal()">
-          <v-icon size="16">mdi-plus</v-icon>
+          <Plus :size="16" />
           Novo Evento
         </button>
       </div>
@@ -158,13 +159,13 @@ function formatDate(dateString: string): string {
     <div class="calendar-toolbar">
       <div class="month-nav">
         <button class="nav-btn" @click="previousMonth">
-          <v-icon size="18">mdi-chevron-left</v-icon>
+          <ChevronLeft :size="18" />
         </button>
         <span class="month-title">
           {{ monthNames[currentDate.getMonth()] }} {{ currentDate.getFullYear() }}
         </span>
         <button class="nav-btn" @click="nextMonth">
-          <v-icon size="18">mdi-chevron-right</v-icon>
+          <ChevronRight :size="18" />
         </button>
       </div>
     </div>

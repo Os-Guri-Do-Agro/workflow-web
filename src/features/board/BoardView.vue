@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { Columns3, Search, Calendar, User } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useSortable } from '@vueuse/integrations/useSortable'
 import { useToast } from '@/composables/useToast'
@@ -163,7 +164,7 @@ function handleDrop(columnId: string) {
     <div class="board-header">
       <div class="header-left">
         <div class="header-icon">
-          <v-icon size="24" color="white">mdi-view-column</v-icon>
+          <Columns3 :size="22" class="title-icon" />
         </div>
         <div>
           <h1 class="board-title">Board Geral</h1>
@@ -175,7 +176,7 @@ function handleDrop(columnId: string) {
       
       <div class="header-filters">
         <div class="search-box">
-          <v-icon size="16" class="search-icon">mdi-magnify</v-icon>
+          <Search :size="15" class="search-icon" />
           <input
             v-model="searchQuery"
             type="text"
@@ -266,11 +267,11 @@ function handleDrop(columnId: string) {
               <!-- Card Meta -->
               <div class="card-meta">
                 <div class="meta-item" :class="{ 'meta-item--overdue': isOverdue(task) }">
-                  <v-icon size="12">mdi-calendar</v-icon>
+                  <Calendar :size="11" />
                   <span>{{ formatDate(task.dueDate) }}</span>
                 </div>
                 <div class="meta-item" v-if="task.responsibles?.length">
-                  <v-icon size="12">mdi-account</v-icon>
+                  <User :size="11" />
                   <span>{{ task.responsibles.filter((r: any) => r.isMe).length ? 'Eu' : task.responsibles[0]?.name }}</span>
                   <span v-if="task.responsibles.length > 1" class="more-resp">
                     +{{ task.responsibles.length - 1 }}

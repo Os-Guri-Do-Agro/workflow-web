@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { Plus, Search, FileStack, Folder, FileText, Pin } from 'lucide-vue-next'
 import notesService from '@/service/notes/notes-service'
 
 const router = useRouter()
@@ -59,7 +60,7 @@ function selectFolder(folderId: string | null) {
         <p class="notes-sub">Documentação e anotações do time</p>
       </div>
       <button class="create-btn" @click="createNote">
-        <v-icon size="16">mdi-plus</v-icon>
+        <Plus :size="15" />
         Nova Nota
       </button>
     </div>
@@ -68,7 +69,7 @@ function selectFolder(folderId: string | null) {
       <!-- Sidebar -->
       <div class="notes-sidebar">
         <div class="search-box">
-          <v-icon size="16" class="search-icon">mdi-magnify</v-icon>
+          <Search :size="15" class="search-icon" />
           <input
             v-model="searchQuery"
             type="text"
@@ -83,7 +84,7 @@ function selectFolder(folderId: string | null) {
             :class="{ 'folder-item--active': selectedFolder === null }"
             @click="selectFolder(null)"
           >
-            <v-icon size="16">mdi-note-multiple</v-icon>
+            <FileStack :size="15" />
             <span>Todas as notas</span>
             <span class="folder-count">{{ notes.length }}</span>
           </div>
@@ -97,7 +98,7 @@ function selectFolder(folderId: string | null) {
             :class="{ 'folder-item--active': selectedFolder === folder.id }"
             @click="selectFolder(folder.id)"
           >
-            <v-icon size="16">mdi-folder</v-icon>
+            <Folder :size="15" />
             <span>{{ folder.name }}</span>
             <span class="folder-count">{{ folder._count?.notes || 0 }}</span>
           </div>
@@ -111,7 +112,7 @@ function selectFolder(folderId: string | null) {
         </div>
 
         <div v-else-if="notes.length === 0" class="notes-empty">
-          <v-icon size="48" color="grey-darken-2">mdi-note-text-outline</v-icon>
+          <FileText :size="40" class="empty-icon" />
           <span>Nenhuma nota encontrada</span>
           <button class="create-btn-empty" @click="createNote">
             Criar primeira nota
@@ -128,9 +129,7 @@ function selectFolder(folderId: string | null) {
           >
             <div class="note-header">
               <h3 class="note-title">{{ note.title }}</h3>
-              <v-icon v-if="note.isPinned" size="14" color="warning">
-                mdi-pin
-              </v-icon>
+              <Pin v-if="note.isPinned" :size="13" class="pin-icon" />
             </div>
             <p class="note-preview">{{ note.content.substring(0, 100) }}...</p>
             <div class="note-meta">
