@@ -31,6 +31,15 @@ const startDate = ref('')
 const endDate = ref('')
 const eventType = ref('MEETING')
 const selectedActivity = ref('')
+const recurrence = ref('')
+
+const recurrenceOptions = [
+  { value: '', label: 'Não se repete' },
+  { value: 'FREQ=DAILY', label: 'Todo dia' },
+  { value: 'FREQ=WEEKLY', label: 'Toda semana' },
+  { value: 'FREQ=MONTHLY', label: 'Todo mês' },
+  { value: 'FREQ=YEARLY', label: 'Todo ano' },
+]
 
 const eventTypes = [
   { value: 'MEETING', label: 'Reunião', color: '#3B82F6', icon: 'mdi-video' },
@@ -61,6 +70,7 @@ function resetForm() {
   endDate.value = ''
   eventType.value = 'MEETING'
   selectedActivity.value = ''
+  recurrence.value = ''
   editor.value?.commands.setContent('')
 }
 
@@ -77,6 +87,7 @@ function save() {
     endDate: endDate.value ? new Date(endDate.value).toISOString() : null,
     type: eventType.value,
     activityId: selectedActivity.value || null,
+    recurrence: recurrence.value || undefined,
   }
   emit('save', eventData)
   close()
@@ -97,6 +108,7 @@ watch(() => props.modelValue, (open) => {
     endDate.value = props.event.endDate ? new Date(props.event.endDate).toISOString().slice(0, 16) : ''
     eventType.value = props.event.type || 'MEETING'
     selectedActivity.value = props.event.activityId || ''
+    recurrence.value = props.event.recurrence || ''
     editor.value?.commands.setContent(props.event.description || '')
   } else if (!open) {
     resetForm()
@@ -176,9 +188,9 @@ watch(() => props.modelValue, (open) => {
                   <v-icon size="14" class="label-icon">mdi-calendar-start</v-icon>
                   Início
                 </label>
-                <input 
-                  v-model="startDate" 
-                  type="datetime-local" 
+                <input
+                  v-model="startDate"
+                  type="datetime-local"
                   class="form-input"
                 />
               </div>
@@ -187,14 +199,33 @@ watch(() => props.modelValue, (open) => {
                   <v-icon size="14" class="label-icon">mdi-calendar-end</v-icon>
                   Término (opcional)
                 </label>
-                <input 
-                  v-model="endDate" 
-                  type="datetime-local" 
+                <input
+                  v-model="endDate"
+                  type="datetime-local"
                   class="form-input"
                 />
               </div>
             </div>
 
+            <!-- Recurrence -->
+            <div class="form-group">
+              <label class="form-label">
+                <v-icon size="14" class="label-icon">mdi-repeat</v-icon>
+                Recorrência
+              </label>
+              <div class="custom-select-wrapper">
+                <select v-model="recurrence" class="custom-select">
+                  <option
+                    v-for="opt in recurrenceOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+                <v-icon size="16" class="select-arrow">mdi-chevron-down</v-icon>
+              </div>
+            </div>
 
             <!-- Description Editor -->
             <div class="form-group">

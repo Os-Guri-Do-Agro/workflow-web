@@ -5,9 +5,13 @@ const eventsService = {
     const params = new URLSearchParams()
     if (filters?.start) params.append('start', filters.start)
     if (filters?.end) params.append('end', filters.end)
-    
+
     const response = await api.get(`/events?${params.toString()}`)
     return response.data
+  },
+
+  async getGoogleAuthUrl() {
+    return await api.get('/auth/google/link')
   },
 
   async getUpcomingEvents(limit: number = 5) {
@@ -28,6 +32,7 @@ const eventsService = {
     type: string
     activityId?: string
     attendees?: string[]
+    recurrence?: string
   }) {
     const response = await api.post('/events', data)
     return response.data
@@ -41,6 +46,7 @@ const eventsService = {
     type?: string
     activityId?: string
     attendees?: string[]
+    recurrence?: string
   }) {
     const response = await api.patch(`/events/${id}`, data)
     return response.data
