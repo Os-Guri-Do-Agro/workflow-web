@@ -1,50 +1,50 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
-import AppBar from '@/core/components/AppBar.vue'
-import NavigationDrawer from '@/core/components/NavigationDrawer.vue'
-import CommandPalette from '@/components/CommandPalette.vue'
+import { RouterView } from 'vue-router'
+import AppShell from '@/core/components/shells/AppShell.vue'
 import AppToast from '@/components/AppToast.vue'
-
-const drawer = ref(true)
-const route = useRoute()
-const isLoginPage = computed(() => route.name === 'login' )
-const isDownloadPage = computed(() => route.name === 'download' )
-const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
-
-const openCommandPalette = () => {
-  commandPaletteRef.value?.open()
-}
 </script>
 
 <template>
   <v-app>
-    <template v-if="!isLoginPage && !isDownloadPage">
-      <NavigationDrawer v-model="drawer" />
-      <AppBar v-model:drawer="drawer" @open-command-palette="openCommandPalette" />
-      <CommandPalette ref="commandPaletteRef" />
-    </template>
-    <v-main>
-      <RouterView />
-    </v-main>
+    <AppShell>
+      <RouterView v-slot="{ Component, route }">
+        <Transition name="route" mode="out-in">
+          <component :is="Component" :key="route.fullPath" />
+        </Transition>
+      </RouterView>
+    </AppShell>
     <AppToast />
   </v-app>
 </template>
 
+<style>
+.route-enter-active {
+  transition:
+    opacity 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
 
-<style scoped>
-* {
-  font-family:
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Open Sans',
-    'Helvetica Neue',
-    sans-serif;
+.route-leave-active {
+  transition: opacity 120ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.route-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.route-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-enter-active,
+  .route-leave-active {
+    transition: opacity 80ms linear;
+  }
+  .route-enter-from,
+  .route-leave-to {
+    transform: none;
+  }
 }
 </style>

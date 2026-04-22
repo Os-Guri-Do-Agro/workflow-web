@@ -1,46 +1,111 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useTheme } from 'vuetify'
+import { ref } from 'vue'
+import { Check, Sun, Moon, Columns3, LayoutPanelLeft, Square, Upload, FileCode, Loader2 } from 'lucide-vue-next'
+import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useToast } from '@/composables/useToast'
+import importService from '@/service/import/import-service'
+import type { AccentName, Density, ShellVariant } from '@/plugins/tokens'
+import { accents } from '@/plugins/tokens'
 
-const theme = useTheme()
-const isDarkMode = ref(theme.global.name.value === 'dark')
+const { success: toastSuccess, error: toastError } = useToast()
+const fileInput = ref<HTMLInputElement | null>(null)
+const importing = ref(false)
+const importResult = ref<any>(null)
+const dragOver = ref(false)
 
-const toggleTheme = () => {
-  theme.global.name.value = isDarkMode.value ? 'dark' : 'light'
-  localStorage.setItem('theme', theme.global.name.value)
-}
+const openFilePicker = () => fileInput.value?.click()
 
-// ── Accent color ──
-const accentColors = [
-  { name: 'Padrão', value: '' },
-  { name: 'Azul',   value: '#3B82F6' },
-  { name: 'Violeta', value: '#8B5CF6' },
-  { name: 'Rosa',   value: '#EC4899' },
-  { name: 'Laranja', value: '#F59E0B' },
-  { name: 'Verde',  value: '#10B981' },
-  { name: 'Cyan',   value: '#06B6D4' },
-  { name: 'Vermelho', value: '#EF4444' },
-]
-
-const selectedAccent = ref(localStorage.getItem('accentColor') || '')
-
-const applyAccent = (color: string) => {
-  selectedAccent.value = color
-  if (color) {
-    localStorage.setItem('accentColor', color)
-    document.documentElement.style.setProperty('--app-accent', color)
-  } else {
-    localStorage.removeItem('accentColor')
-    document.documentElement.style.removeProperty('--app-accent')
+const handleJiraFile = async (file: File) => {
+  if (!file.name.toLowerCase().endsWith('.xml')) {
+    toastError('Arquivo precisa ser .xml (export do Jira)')
+    return
+  }
+  importing.value = true
+  importResult.value = null
+  try {
+    const result = await importService.importJiraXml(file)
+    importResult.value = result
+    const imported = result?.imported ?? result?.count ?? result?.total ?? '?'
+    toastSuccess(`Importação concluída — ${imported} issue(s)`)
+  } catch (e: any) {
+    toastError(e?.response?.data?.message || 'Falha ao importar XML do Jira')
+  } finally {
+    importing.value = false
   }
 }
 
-// apply on mount
-if (selectedAccent.value) {
-  document.documentElement.style.setProperty('--app-accent', selectedAccent.value)
+const onFileChange = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (file) handleJiraFile(file)
 }
 
-const language = ref('pt-BR')
+const onDrop = (e: DragEvent) => {
+  e.preventDefault()
+  dragOver.value = false
+  const file = e.dataTransfer?.files?.[0]
+  if (file) handleJiraFile(file)
+}
+
+const onDragOver = (e: DragEvent) => {
+  e.preventDefault()
+  dragOver.value = true
+}
+
+const onDragLeave = () => {
+  dragOver.value = false
+}
+
+const {
+  theme,
+  accent,
+  density,
+  shell,
+  setTheme,
+  toggleTheme,
+  setAccent,
+  setDensity,
+  setShell,
+} = useUiPreferences()
+
+const accentOptions: { name: AccentName; label: string }[] = [
+  { name: 'neutral', label: 'Padrão' },
+  { name: 'blue', label: 'Azul' },
+  { name: 'violet', label: 'Violeta' },
+  { name: 'green', label: 'Verde' },
+  { name: 'orange', label: 'Laranja' },
+  { name: 'pink', label: 'Rosa' },
+]
+
+const densityOptions: { value: Density; label: string; desc: string }[] = [
+  { value: 'compact', label: 'Compacta', desc: 'Mais itens na tela, ideal para power users' },
+  { value: 'comfortable', label: 'Confortável', desc: 'Espaçamento maior, respira mais' },
+]
+
+const shellOptions: {
+  value: ShellVariant
+  label: string
+  desc: string
+  icon: typeof LayoutPanelLeft
+}[] = [
+  {
+    value: 'command',
+    label: 'Command',
+    desc: 'Topbar + sidebar clássica. Foco em hierarquia e breadcrumbs.',
+    icon: LayoutPanelLeft,
+  },
+  {
+    value: 'focus',
+    label: 'Focus',
+    desc: 'Rail de ícones + coluna de contexto. Inspirado no Linear.',
+    icon: Columns3,
+  },
+  {
+    value: 'canvas',
+    label: 'Canvas',
+    desc: 'Nav horizontal + dock flutuante. Mais espaço para o conteúdo.',
+    icon: Square,
+  },
+]
 </script>
 
 <template>
@@ -51,62 +116,174 @@ const language = ref('pt-BR')
     </div>
 
     <div class="settings-grid">
-      <!-- Appearance -->
+      <!-- Appearance: theme + accent + density -->
       <div class="settings-card">
         <div class="card-section-title">Aparência</div>
 
         <div class="setting-row">
           <div class="setting-info">
             <span class="setting-label">Tema</span>
-            <span class="setting-desc">Alternar entre modo claro e escuro</span>
+            <span class="setting-desc">Alternar entre modo escuro e claro</span>
           </div>
-          <button
-            class="theme-toggle"
-            :class="{ dark: isDarkMode }"
-            @click="isDarkMode = !isDarkMode; toggleTheme()"
-          >
-            <div class="theme-toggle-thumb">
-              <v-icon size="14">{{ isDarkMode ? 'mdi-moon-waning-crescent' : 'mdi-white-balance-sunny' }}</v-icon>
-            </div>
-          </button>
+          <div class="segmented">
+            <button
+              class="segmented-btn"
+              :class="{ 'segmented-btn--active': theme === 'dark' }"
+              @click="setTheme('dark')"
+            >
+              <Moon :size="13" />
+              <span>Escuro</span>
+            </button>
+            <button
+              class="segmented-btn"
+              :class="{ 'segmented-btn--active': theme === 'light' }"
+              @click="setTheme('light')"
+            >
+              <Sun :size="13" />
+              <span>Claro</span>
+            </button>
+          </div>
         </div>
 
         <div class="setting-row">
           <div class="setting-info">
             <span class="setting-label">Cor de destaque</span>
-            <span class="setting-desc">Personalize a cor principal do sistema</span>
+            <span class="setting-desc">Usada em botões, foco e detalhes</span>
           </div>
           <div class="accent-picker">
             <button
-              v-for="c in accentColors"
-              :key="c.value"
+              v-for="opt in accentOptions"
+              :key="opt.name"
               class="accent-swatch"
-              :class="{ active: selectedAccent === c.value }"
-              :style="{
-                backgroundColor: c.value || 'rgb(var(--v-theme-secondary))',
-                opacity: c.value ? 1 : 0.3,
-              }"
-              @click="applyAccent(c.value)"
+              :class="{ 'accent-swatch--active': accent === opt.name }"
+              :style="{ backgroundColor: accents[opt.name][theme] }"
+              :title="opt.label"
+              @click="setAccent(opt.name)"
             >
-              <v-icon v-if="selectedAccent === c.value" size="12" color="white">mdi-check</v-icon>
+              <Check v-if="accent === opt.name" :size="12" class="accent-check" />
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Densidade</span>
+            <span class="setting-desc">Compacidade geral das informações</span>
+          </div>
+          <div class="segmented">
+            <button
+              v-for="opt in densityOptions"
+              :key="opt.value"
+              class="segmented-btn"
+              :class="{ 'segmented-btn--active': density === opt.value }"
+              :title="opt.desc"
+              @click="setDensity(opt.value)"
+            >
+              {{ opt.label }}
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Language -->
+      <!-- Shell variant -->
       <div class="settings-card">
-        <div class="card-section-title">Idioma</div>
-        <div class="setting-row">
+        <div class="card-section-title">Layout</div>
+        <div class="setting-row setting-row--column">
           <div class="setting-info">
-            <span class="setting-label">Idioma do sistema</span>
-            <span class="setting-desc">Define o idioma de toda a interface</span>
+            <span class="setting-label">Variante de shell</span>
+            <span class="setting-desc">
+              Escolha como a navegação principal é exibida. A troca é instantânea.
+            </span>
           </div>
-          <select v-model="language" class="settings-select">
-            <option value="pt-BR">Português (BR)</option>
-            <option value="en">English</option>
-            <option value="es">Español</option>
-          </select>
+          <div class="shell-grid">
+            <button
+              v-for="opt in shellOptions"
+              :key="opt.value"
+              class="shell-card"
+              :class="{ 'shell-card--active': shell === opt.value }"
+              @click="setShell(opt.value)"
+            >
+              <div class="shell-preview">
+                <div v-if="opt.value === 'command'" class="preview preview--command">
+                  <div class="preview-topbar" />
+                  <div class="preview-body">
+                    <div class="preview-sidebar" />
+                    <div class="preview-main" />
+                  </div>
+                </div>
+                <div v-else-if="opt.value === 'focus'" class="preview preview--focus">
+                  <div class="preview-rail" />
+                  <div class="preview-context" />
+                  <div class="preview-main" />
+                </div>
+                <div v-else class="preview preview--canvas">
+                  <div class="preview-topnav" />
+                  <div class="preview-main" />
+                  <div class="preview-dock" />
+                </div>
+              </div>
+              <div class="shell-card-body">
+                <div class="shell-card-header">
+                  <component :is="opt.icon" :size="14" class="shell-icon" />
+                  <span class="shell-label">{{ opt.label }}</span>
+                  <Check v-if="shell === opt.value" :size="13" class="shell-check" />
+                </div>
+                <div class="shell-desc">{{ opt.desc }}</div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Integrations -->
+      <div class="settings-card">
+        <div class="card-section-title">Integrações</div>
+        <div class="setting-row setting-row--column">
+          <div class="setting-info">
+            <span class="setting-label">
+              <FileCode :size="13" style="vertical-align: -2px; margin-right: 4px" />
+              Importar do Jira
+            </span>
+            <span class="setting-desc">
+              Envie o XML gerado pelo <em>Entity Engine Export</em> do Jira (até 50MB) para importar issues como tarefas.
+            </span>
+          </div>
+
+          <div
+            class="dropzone press"
+            :class="{ 'dropzone--over': dragOver, 'dropzone--loading': importing }"
+            @click="openFilePicker"
+            @drop="onDrop"
+            @dragover="onDragOver"
+            @dragleave="onDragLeave"
+          >
+            <input
+              ref="fileInput"
+              type="file"
+              accept=".xml,application/xml,text/xml"
+              class="dropzone-input"
+              @change="onFileChange"
+            />
+            <div class="dropzone-icon">
+              <Loader2 v-if="importing" :size="20" class="spin" />
+              <Upload v-else :size="20" />
+            </div>
+            <div class="dropzone-text">
+              <span class="dropzone-title">
+                {{ importing ? 'Importando XML…' : 'Clique ou arraste o XML do Jira' }}
+              </span>
+              <span class="dropzone-meta">.xml · até 50MB</span>
+            </div>
+          </div>
+
+          <div v-if="importResult" class="import-result">
+            <Check :size="13" class="import-result-icon" />
+            <span>
+              Importação concluída.
+              <strong>{{ importResult?.imported ?? importResult?.count ?? importResult?.total ?? 0 }}</strong>
+              itens processados.
+            </span>
+          </div>
         </div>
       </div>
 
@@ -116,23 +293,19 @@ const language = ref('pt-BR')
         <div class="shortcuts-grid">
           <div class="shortcut-row">
             <span class="shortcut-label">Abrir Command Palette</span>
-            <kbd>Ctrl K</kbd>
+            <kbd class="kbd">Ctrl K</kbd>
           </div>
           <div class="shortcut-row">
-            <span class="shortcut-label">Criar atividade</span>
-            <kbd>C</kbd>
+            <span class="shortcut-label">Foco na busca (Variáveis)</span>
+            <kbd class="kbd">/</kbd>
           </div>
           <div class="shortcut-row">
-            <span class="shortcut-label">Ir para Dashboard</span>
-            <kbd>G D</kbd>
+            <span class="shortcut-label">Nova variável</span>
+            <kbd class="kbd">N</kbd>
           </div>
           <div class="shortcut-row">
-            <span class="shortcut-label">Ir para Tickets</span>
-            <kbd>G T</kbd>
-          </div>
-          <div class="shortcut-row">
-            <span class="shortcut-label">Editar título do card</span>
-            <kbd>Double-click</kbd>
+            <span class="shortcut-label">Alternar tema</span>
+            <kbd class="kbd">Ctrl Shift L</kbd>
           </div>
         </div>
       </div>
@@ -143,24 +316,25 @@ const language = ref('pt-BR')
 <style scoped>
 .settings-page {
   padding: 24px;
-  max-width: 680px;
+  max-width: 820px;
+  margin: 0 auto;
 }
 
 .settings-header {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .settings-title {
   font-size: 22px;
   font-weight: 700;
-  color: rgb(var(--v-theme-secondary));
   letter-spacing: -0.02em;
+  color: var(--text);
   margin: 0 0 3px;
 }
 
 .settings-sub {
   font-size: 13px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-3);
   margin: 0;
 }
 
@@ -170,21 +344,20 @@ const language = ref('pt-BR')
   gap: 12px;
 }
 
-/* ─── Card ─── */
 .settings-card {
-  background: rgb(var(--v-theme-primary));
-  border: 1px solid rgba(var(--v-theme-secondary), 0.07);
-  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: 16px 18px;
 }
 
 .card-section-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-4);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 14px;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
 }
 
 .setting-row {
@@ -193,11 +366,16 @@ const language = ref('pt-BR')
   justify-content: space-between;
   gap: 16px;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.05);
+  border-bottom: 1px solid var(--border);
 }
 
 .setting-row:last-child {
   border-bottom: none;
+}
+
+.setting-row--column {
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .setting-info {
@@ -207,55 +385,55 @@ const language = ref('pt-BR')
 }
 
 .setting-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: rgb(var(--v-theme-secondary));
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .setting-desc {
   font-size: 12.5px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-3);
 }
 
-/* ─── Theme toggle ─── */
-.theme-toggle {
-  width: 44px;
-  height: 24px;
-  border-radius: 999px;
-  background: rgba(var(--v-theme-secondary), 0.15);
-  border: none;
-  cursor: pointer;
-  position: relative;
-  transition: background 0.2s ease;
-  flex-shrink: 0;
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  gap: 2px;
 }
 
-.theme-toggle.dark {
-  background: rgba(var(--v-theme-secondary), 0.25);
-}
-
-.theme-toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: rgb(var(--v-theme-secondary));
-  display: flex;
+.segmented-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  transition: transform 0.2s ease;
-  color: rgb(var(--v-theme-primary));
+  gap: 5px;
+  padding: 5px 11px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 
-.theme-toggle.dark .theme-toggle-thumb {
-  transform: translateX(20px);
+.segmented-btn:hover {
+  color: var(--text-2);
 }
 
-/* ─── Accent picker ─── */
+.segmented-btn--active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
 .accent-picker {
-  display: flex;
+  display: inline-flex;
   gap: 6px;
   flex-shrink: 0;
 }
@@ -266,40 +444,158 @@ const language = ref('pt-BR')
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.12s ease, border-color 0.12s ease;
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
 }
 
 .accent-swatch:hover {
-  transform: scale(1.15);
+  transform: scale(1.12);
 }
 
-.accent-swatch.active {
-  border-color: rgb(var(--v-theme-secondary));
-  transform: scale(1.15);
+.accent-swatch--active {
+  border-color: var(--text);
+  transform: scale(1.12);
 }
 
-/* ─── Select ─── */
-.settings-select {
-  font-size: 13px;
-  color: rgb(var(--v-theme-secondary));
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 8px;
-  padding: 6px 10px;
-  outline: none;
-  font-family: inherit;
+.accent-check {
+  color: var(--accent-fg);
+}
+
+.shell-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.shell-card {
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  overflow: hidden;
   cursor: pointer;
-  min-width: 150px;
+  font-family: inherit;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
 }
 
-/* ─── Shortcuts ─── */
+.shell-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.shell-card--active {
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+
+.shell-preview {
+  aspect-ratio: 16 / 9;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+}
+
+.preview {
+  height: 100%;
+  display: flex;
+  gap: 4px;
+}
+
+.preview-topbar,
+.preview-topnav {
+  height: 14%;
+  background: var(--surface-3);
+  border-radius: 3px;
+}
+
+.preview--command,
+.preview--canvas {
+  flex-direction: column;
+}
+
+.preview-body {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.preview-sidebar,
+.preview-context {
+  width: 22%;
+  background: var(--surface-3);
+  border-radius: 3px;
+}
+
+.preview-rail {
+  width: 8%;
+  background: var(--surface-3);
+  border-radius: 3px;
+}
+
+.preview-main {
+  flex: 1;
+  background: var(--surface-2);
+  border-radius: 3px;
+}
+
+.preview--canvas {
+  position: relative;
+}
+
+.preview-dock {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  transform: translateX(-50%);
+  width: 40%;
+  height: 8%;
+  background: var(--surface-3);
+  border-radius: 3px;
+}
+
+.shell-card-body {
+  padding: 10px 12px;
+}
+
+.shell-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.shell-icon {
+  color: var(--text-2);
+}
+
+.shell-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+}
+
+.shell-check {
+  color: var(--accent);
+}
+
+.shell-desc {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
 .shortcuts-grid {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .shortcut-row {
@@ -307,24 +603,115 @@ const language = ref('pt-BR')
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.04);
+  border-bottom: 1px solid var(--border);
 }
 
-.shortcut-row:last-child { border-bottom: none; }
+.shortcut-row:last-child {
+  border-bottom: none;
+}
 
 .shortcut-label {
-  font-size: 13px;
-  color: rgba(var(--v-theme-secondary), 0.6);
+  font-size: 12.5px;
+  color: var(--text-2);
 }
 
-.shortcuts-grid kbd {
+.kbd {
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.45);
-  background: rgba(var(--v-theme-secondary), 0.07);
+  color: var(--text-3);
+  background: var(--surface-2);
   padding: 3px 8px;
   border-radius: 5px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  font-family: inherit;
+  border: 1px solid var(--border);
+}
+
+/* ─── Dropzone (Jira) ─── */
+.dropzone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 18px;
+  margin-top: 12px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.dropzone:hover {
+  background: var(--surface-3);
+  border-color: var(--accent);
+}
+
+.dropzone--over {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+  border-color: var(--accent);
+}
+
+.dropzone--loading {
+  cursor: wait;
+}
+
+.dropzone-input {
+  display: none;
+}
+
+.dropzone-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dropzone-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.dropzone-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dropzone-meta {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.import-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.import-result-icon {
+  color: var(--success);
 }
 </style>

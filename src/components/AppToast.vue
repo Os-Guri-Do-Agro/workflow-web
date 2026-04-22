@@ -1,28 +1,68 @@
 <script setup lang="ts">
-import { useToast } from '@/composables/useToast'
-import { CircleCheck, CircleX, AlertTriangle, Info } from 'lucide-vue-next'
+import { Toaster } from 'vue-sonner'
+import { useUiPreferences } from '@/composables/useUiPreferences'
 
-const { toast, hideToast } = useToast()
-
-const icons = { success: CircleCheck, error: CircleX, warning: AlertTriangle, info: Info }
+const { theme } = useUiPreferences()
 </script>
 
 <template>
-  <v-snackbar
-    v-model="toast.show"
-    :color="toast.type"
-    :timeout="toast.timeout"
-    location="top right"
-    rounded="lg"
-  >
-    <div class="d-flex align-center ga-2">
-      <component :is="icons[toast.type]" :size="18" />
-      <span>{{ toast.message }}</span>
-    </div>
-    <template #actions>
-      <v-btn variant="text" density="compact" icon size="small" @click="hideToast">
-        <v-icon size="16">mdi-close</v-icon>
-      </v-btn>
-    </template>
-  </v-snackbar>
+  <Toaster
+    :theme="theme"
+    position="bottom-right"
+    rich-colors
+    close-button
+    :duration="3200"
+    :toast-options="{
+      style: {
+        background: 'var(--surface)',
+        color: 'var(--text)',
+        border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-overlay)',
+        borderRadius: 'var(--radius)',
+        fontFamily: 'var(--font-family)',
+        fontSize: '12.5px',
+      },
+    }"
+    :class-names="{
+      toast: 'sonner-toast',
+      title: 'sonner-title',
+      description: 'sonner-desc',
+      actionButton: 'sonner-action',
+      cancelButton: 'sonner-cancel',
+      closeButton: 'sonner-close',
+    }"
+  />
 </template>
+
+<style>
+/* vue-sonner global style tweaks to align with tokens */
+:where([data-sonner-toaster]) [data-sonner-toast] {
+  font-family: var(--font-family) !important;
+}
+
+:where([data-sonner-toaster]) .sonner-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+:where([data-sonner-toaster]) .sonner-desc {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+:where([data-sonner-toaster]) [data-sonner-toast][data-type='success'] [data-icon] {
+  color: var(--success) !important;
+}
+
+:where([data-sonner-toaster]) [data-sonner-toast][data-type='error'] [data-icon] {
+  color: var(--err) !important;
+}
+
+:where([data-sonner-toaster]) [data-sonner-toast][data-type='warning'] [data-icon] {
+  color: var(--warn) !important;
+}
+
+:where([data-sonner-toaster]) [data-sonner-toast][data-type='info'] [data-icon] {
+  color: var(--info) !important;
+}
+</style>

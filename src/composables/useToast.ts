@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { toast as sonner } from 'vue-sonner'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
 
@@ -18,10 +19,16 @@ const state = ref<ToastState>({
 
 function showToast(message: string, type: ToastType = 'success', timeout = 3000) {
   state.value = { show: true, message, type, timeout }
+  const common = { duration: timeout }
+  if (type === 'success') sonner.success(message, common)
+  else if (type === 'error') sonner.error(message, common)
+  else if (type === 'warning') sonner.warning(message, common)
+  else sonner.info(message, common)
 }
 
 function hideToast() {
   state.value.show = false
+  sonner.dismiss()
 }
 
 export function useToast() {

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { useTheme } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import { computed, ref } from 'vue'
+import { Menu, ChevronRight, Search, Moon, Sun, Settings, LogOut } from 'lucide-vue-next'
 import { getUserToken } from '@/utils/authContent'
+import { useUiPreferences } from '@/composables/useUiPreferences'
 
 defineProps<{
   drawer: boolean
@@ -13,11 +14,11 @@ const emit = defineEmits<{
   'open-command-palette': []
 }>()
 
-const theme = useTheme()
 const route = useRoute()
 const router = useRouter()
 const userMenu = ref(false)
 const user = getUserToken()
+const { theme, toggleTheme } = useUiPreferences()
 
 const userInitials = computed(() => {
   const name = user?.name || ''
@@ -25,11 +26,6 @@ const userInitials = computed(() => {
 })
 
 const firstName = computed(() => user?.name?.split(' ')[0] || '')
-
-const toggleTheme = () => {
-  theme.global.name.value = theme.global.name.value === 'light' ? 'dark' : 'light'
-  localStorage.setItem('theme', theme.global.name.value)
-}
 
 const handleLogout = () => {
   localStorage.clear()
@@ -71,12 +67,12 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
 <template>
   <v-app-bar elevation="0" color="primary" height="48" class="app-bar-custom">
     <v-btn icon size="small" variant="text" @click="emit('update:drawer', !drawer)">
-      <v-icon size="18" color="secondary">mdi-menu</v-icon>
+      <Menu :size="18" class="bar-icon" />
     </v-btn>
 
     <v-breadcrumbs :items="breadcrumbs" class="pa-0 ml-1">
       <template #divider>
-        <v-icon size="14" style="opacity: 0.3">mdi-chevron-right</v-icon>
+        <ChevronRight :size="14" class="breadcrumb-divider" />
       </template>
       <template #item="{ item }">
         <span class="breadcrumb-text">{{ item.title }}</span>
@@ -87,16 +83,14 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
 
     <!-- Search / Command palette trigger -->
     <button class="cmd-k-btn" @click="emit('open-command-palette')">
-      <v-icon size="14" style="opacity: 0.45">mdi-magnify</v-icon>
+      <Search :size="14" class="cmd-k-icon" />
       <span class="cmd-k-text">Buscar...</span>
       <kbd class="cmd-k-kbd">{{ shortcutLabel }}</kbd>
     </button>
 
     <!-- Theme toggle -->
     <v-btn icon size="small" variant="text" @click="toggleTheme" class="ml-1">
-      <v-icon size="18" color="secondary" style="opacity: 0.6">
-        {{ theme.global.name.value === 'light' ? 'mdi-moon-waning-crescent' : 'mdi-white-balance-sunny' }}
-      </v-icon>
+      <component :is="theme === 'light' ? Moon : Sun" :size="18" class="theme-icon" />
     </v-btn>
 
     <!-- User menu -->
@@ -109,19 +103,19 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
       </template>
       <v-card class="user-menu-card" rounded="lg" min-width="180">
         <v-list density="compact" class="py-1">
-          <v-list-item
-            density="compact"
-            prepend-icon="mdi-cog-outline"
-            title="Configurações"
-            @click="router.push('/settings')"
-          />
+          <v-list-item density="compact" @click="router.push('/settings')">
+            <template #prepend>
+              <Settings :size="15" class="menu-icon" />
+            </template>
+            <v-list-item-title class="menu-title">Configurações</v-list-item-title>
+          </v-list-item>
           <v-divider class="my-1" />
-          <v-list-item
-            density="compact"
-            prepend-icon="mdi-logout"
-            title="Sair"
-            @click="handleLogout"
-          />
+          <v-list-item density="compact" @click="handleLogout">
+            <template #prepend>
+              <LogOut :size="15" class="menu-icon" />
+            </template>
+            <v-list-item-title class="menu-title">Sair</v-list-item-title>
+          </v-list-item>
         </v-list>
       </v-card>
     </v-menu>
@@ -130,13 +124,23 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
 
 <style scoped>
 .app-bar-custom {
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.bar-icon,
+.theme-icon {
+  color: var(--text-2);
+}
+
+.breadcrumb-divider {
+  color: var(--text-4);
+  opacity: 0.6;
 }
 
 .breadcrumb-text {
   font-size: 12.5px;
   font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.55);
+  color: var(--text-2);
 }
 
 /* ─── Cmd+K button ─── */
@@ -144,36 +148,42 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
   display: flex;
   align-items: center;
   gap: 7px;
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 5px 10px;
   cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
   height: 32px;
   justify-content: space-between;
 }
 
 .cmd-k-btn:hover {
-  border-color: rgba(var(--v-theme-secondary), 0.2);
-  background: rgba(var(--v-theme-secondary), 0.09);
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.cmd-k-icon {
+  color: var(--text-3);
 }
 
 .cmd-k-text {
   font-size: 12.5px;
-  color: rgba(var(--v-theme-secondary), 0.35);
+  color: var(--text-3);
   white-space: nowrap;
 }
 
 .cmd-k-kbd {
   font-size: 10px;
   font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.3);
-  background: rgba(var(--v-theme-secondary), 0.07);
+  color: var(--text-3);
+  background: var(--surface-3);
   padding: 1px 5px;
   border-radius: 4px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  font-family: inherit;
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
   line-height: 1.4;
 }
 
@@ -187,19 +197,19 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 8px;
-  transition: background 0.12s ease;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
 .user-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.06);
+  background: var(--surface-2);
 }
 
 .user-avatar {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: rgb(var(--v-theme-secondary));
-  color: rgb(var(--v-theme-primary));
+  background: var(--text);
+  color: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -210,11 +220,21 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
 .user-name {
   font-size: 12.5px;
   font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.7);
+  color: var(--text-2);
 }
 
 .user-menu-card {
-  background: rgb(var(--v-theme-primary)) !important;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.menu-icon {
+  color: var(--text-3);
+  margin-right: 4px;
+}
+
+.menu-title {
+  font-size: 12.5px;
+  color: var(--text);
 }
 </style>

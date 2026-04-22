@@ -1,23 +1,51 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useTheme } from 'vuetify'
+import { useRouter } from 'vue-router'
+import {
+  Search,
+  LayoutDashboard,
+  Ticket,
+  KeyRound,
+  Users,
+  Settings,
+  Sun,
+  Moon,
+  LogOut,
+  Building2,
+  CornerDownLeft,
+  ArrowUp,
+  ArrowDown,
+  Clock,
+  type LucideIcon,
+} from 'lucide-vue-next'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
 import { getInfoAuth } from '@/utils/authContent'
+import { useUiPreferences } from '@/composables/useUiPreferences'
 
 const router = useRouter()
-const route = useRoute()
-const theme = useTheme()
 const activeCompanyStore = useActiveCompanyId()
+const { theme, toggleTheme } = useUiPreferences()
 
 const isOpen = ref(false)
 const query = ref('')
 const selectedIndex = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
-const companies = ref<any[]>([])
+const companies = ref<{ id: string; name: string }[]>([])
+const recentIds = ref<string[]>(loadRecents())
 
-// ── Data ──
+const RECENTS_KEY = 'cmdk.recents'
+function loadRecents(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]')
+  } catch {
+    return []
+  }
+}
+function saveRecents() {
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(recentIds.value.slice(0, 6)))
+}
+
 const loadCompanies = async () => {
   try {
     const response = await companiesServices.getCompany()
@@ -26,29 +54,40 @@ const loadCompanies = async () => {
       id: item.company?.id || item.id,
       name: item.company?.name || item.name,
     }))
-  } catch { /* silent */ }
+  } catch {
+    /* silent */
+  }
 }
 
-// ── Commands ──
 interface Command {
   id: string
   label: string
   hint?: string
-  icon: string
+  icon: LucideIcon
   section: string
   action: () => void
+  keywords?: string
 }
 
 const staticCommands = computed<Command[]>(() => [
-  // Navigation
-  { id: 'nav-dash', label: 'Dashboard', hint: 'Ir para o dashboard', icon: 'mdi-view-dashboard-outline', section: 'Navegação', action: () => go('/') },
-  { id: 'nav-tickets', label: 'Tickets', hint: 'Gerenciar tickets', icon: 'mdi-ticket-outline', section: 'Navegação', action: () => go('/tickets') },
-  { id: 'nav-vars', label: 'Variáveis', hint: 'Variáveis da empresa', icon: 'mdi-key-outline', section: 'Navegação', action: () => go('/variables') },
-  { id: 'nav-users', label: 'Usuários / Empresas', hint: 'Gestão de acesso', icon: 'mdi-account-group-outline', section: 'Navegação', action: () => go('/company-users') },
-  { id: 'nav-settings', label: 'Configurações', hint: 'Aparência e preferências', icon: 'mdi-cog-outline', section: 'Navegação', action: () => go('/settings') },
-  // Actions
-  { id: 'act-theme', label: theme.global.name.value === 'dark' ? 'Modo Claro' : 'Modo Escuro', hint: 'Alternar tema', icon: theme.global.name.value === 'dark' ? 'mdi-white-balance-sunny' : 'mdi-moon-waning-crescent', section: 'Ações', action: toggleTheme },
-  { id: 'act-logout', label: 'Sair', hint: 'Encerrar sessão', icon: 'mdi-logout', section: 'Ações', action: logout },
+  { id: 'nav-dash', label: 'Dashboard', hint: 'Visão geral', icon: LayoutDashboard, section: 'Navegação', keywords: 'home inicio painel', action: () => go('/') },
+  { id: 'nav-tickets', label: 'Tickets', hint: 'Gerenciar tickets', icon: Ticket, section: 'Navegação', keywords: 'suporte', action: () => go('/tickets') },
+  { id: 'nav-vars', label: 'Variáveis', hint: 'Credenciais e URLs', icon: KeyRound, section: 'Navegação', keywords: 'senhas secrets env aws', action: () => go('/variables') },
+  { id: 'nav-users', label: 'Usuários / Empresas', hint: 'Gestão de acesso', icon: Users, section: 'Navegação', keywords: 'pessoas time membros', action: () => go('/company-users') },
+  { id: 'nav-settings', label: 'Configurações', hint: 'Aparência e preferências', icon: Settings, section: 'Navegação', keywords: 'tema shell accent ajustes', action: () => go('/settings') },
+  {
+    id: 'act-theme',
+    label: theme.value === 'dark' ? 'Modo Claro' : 'Modo Escuro',
+    hint: 'Alternar tema',
+    icon: theme.value === 'dark' ? Sun : Moon,
+    section: 'Ações',
+    keywords: 'dark light dia noite',
+    action: () => {
+      toggleTheme()
+      close()
+    },
+  },
+  { id: 'act-logout', label: 'Sair', hint: 'Encerrar sessão', icon: LogOut, section: 'Ações', keywords: 'logout exit', action: logout },
 ])
 
 const companyCommands = computed<Command[]>(() =>
@@ -56,7 +95,7 @@ const companyCommands = computed<Command[]>(() =>
     id: `company-${c.id}`,
     label: c.name,
     hint: 'Trocar empresa',
-    icon: 'mdi-domain',
+    icon: Building2,
     section: 'Empresas',
     action: () => switchCompany(c.id),
   })),
@@ -64,35 +103,70 @@ const companyCommands = computed<Command[]>(() =>
 
 const allCommands = computed(() => [...staticCommands.value, ...companyCommands.value])
 
-const filtered = computed(() => {
-  if (!query.value.trim()) return allCommands.value
-  const q = query.value.toLowerCase()
-  return allCommands.value.filter(
-    (c) => c.label.toLowerCase().includes(q) || c.hint?.toLowerCase().includes(q) || c.section.toLowerCase().includes(q),
-  )
-})
-
-const sections = computed(() => {
-  const map = new Map<string, Command[]>()
-  for (const cmd of filtered.value) {
-    if (!map.has(cmd.section)) map.set(cmd.section, [])
-    map.get(cmd.section)!.push(cmd)
+// Fuzzy subsequence match with score (lower = better)
+function fuzzyScore(text: string, q: string): number | null {
+  const t = text.toLowerCase()
+  const query = q.toLowerCase()
+  if (!query) return 0
+  let ti = 0
+  let prev = -1
+  let score = 0
+  for (const ch of query) {
+    const idx = t.indexOf(ch, ti)
+    if (idx === -1) return null
+    if (prev !== -1) score += idx - prev - 1
+    prev = idx
+    ti = idx + 1
   }
-  return map
+  // prefix bonus
+  if (t.startsWith(query)) score -= 20
+  // exact contains bonus
+  if (t.includes(query)) score -= 5
+  return score
+}
+
+const filtered = computed(() => {
+  const q = query.value.trim()
+  if (!q) return allCommands.value
+  const scored: { cmd: Command; score: number }[] = []
+  for (const cmd of allCommands.value) {
+    const target = `${cmd.label} ${cmd.hint || ''} ${cmd.keywords || ''} ${cmd.section}`
+    const s = fuzzyScore(target, q)
+    if (s !== null) scored.push({ cmd, score: s })
+  }
+  return scored.sort((a, b) => a.score - b.score).map((x) => x.cmd)
 })
 
-const flatList = computed(() => filtered.value)
+const groups = computed(() => {
+  const q = query.value.trim()
+  const groupsMap = new Map<string, Command[]>()
+  if (!q && recentIds.value.length) {
+    const recents = recentIds.value
+      .map((id) => allCommands.value.find((c) => c.id === id))
+      .filter((x): x is Command => !!x)
+    if (recents.length) groupsMap.set('Recentes', recents)
+  }
+  for (const cmd of filtered.value) {
+    if (!groupsMap.has(cmd.section)) groupsMap.set(cmd.section, [])
+    groupsMap.get(cmd.section)!.push(cmd)
+  }
+  return groupsMap
+})
 
-// ── Actions ──
+const flatList = computed(() => {
+  const list: Command[] = []
+  for (const arr of groups.value.values()) list.push(...arr)
+  return list
+})
+
+function trackRecent(id: string) {
+  recentIds.value = [id, ...recentIds.value.filter((x) => x !== id)].slice(0, 6)
+  saveRecents()
+}
+
 function go(path: string) {
   close()
   router.push(path)
-}
-
-function toggleTheme() {
-  theme.global.name.value = theme.global.name.value === 'light' ? 'dark' : 'light'
-  localStorage.setItem('theme', theme.global.name.value)
-  close()
 }
 
 function logout() {
@@ -124,10 +198,12 @@ function close() {
 
 function runSelected() {
   const cmd = flatList.value[selectedIndex.value]
-  if (cmd) cmd.action()
+  if (cmd) {
+    trackRecent(cmd.id)
+    cmd.action()
+  }
 }
 
-// ── Keyboard navigation inside palette ──
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'ArrowDown') {
     e.preventDefault()
@@ -156,7 +232,6 @@ watch(query, () => {
   selectedIndex.value = 0
 })
 
-// ── Global shortcut (Ctrl/Cmd + K) ──
 function globalKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
     e.preventDefault()
@@ -168,7 +243,29 @@ function globalKeydown(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', globalKeydown))
 onUnmounted(() => window.removeEventListener('keydown', globalKeydown))
 
-// expose for AppBar button
+// Highlight fuzzy match as segmented array (rendered via v-for in template)
+type HlSeg = { text: string; match: boolean }
+
+function highlightSegments(text: string, q: string): HlSeg[] {
+  if (!q) return [{ text, match: false }]
+  const low = text.toLowerCase()
+  const query = q.toLowerCase()
+  const segs: HlSeg[] = []
+  let ti = 0
+  for (const ch of query) {
+    const idx = low.indexOf(ch, ti)
+    if (idx === -1) {
+      if (ti < text.length) segs.push({ text: text.slice(ti), match: false })
+      return segs
+    }
+    if (idx > ti) segs.push({ text: text.slice(ti, idx), match: false })
+    segs.push({ text: text[idx] || '', match: true })
+    ti = idx + 1
+  }
+  if (ti < text.length) segs.push({ text: text.slice(ti), match: false })
+  return segs
+}
+
 defineExpose({ open })
 </script>
 
@@ -177,48 +274,59 @@ defineExpose({ open })
     <Transition name="palette">
       <div v-if="isOpen" class="palette-overlay" @mousedown.self="close">
         <div class="palette-container">
-          <!-- Search input -->
           <div class="palette-input-row">
-            <v-icon size="18" class="palette-search-icon">mdi-magnify</v-icon>
+            <Search :size="16" class="palette-search-icon" />
             <input
               ref="inputRef"
               v-model="query"
               class="palette-input"
-              placeholder="Buscar comandos, páginas, empresas..."
+              placeholder="Buscar comandos, páginas, empresas…"
               @keydown="onKeydown"
             />
             <kbd class="palette-kbd">esc</kbd>
           </div>
 
-          <!-- Results -->
           <div class="palette-results">
             <div v-if="flatList.length === 0" class="palette-empty">
-              <v-icon size="28" style="opacity: 0.3">mdi-magnify</v-icon>
+              <Search :size="22" class="empty-icon" />
               <span>Nenhum resultado para "{{ query }}"</span>
             </div>
 
-            <template v-for="[section, commands] in sections" :key="section">
-              <div class="palette-section-label">{{ section }}</div>
+            <template v-for="[section, commands] in groups" :key="section">
+              <div class="palette-section-label">
+                <Clock v-if="section === 'Recentes'" :size="10" class="section-icon" />
+                {{ section }}
+              </div>
               <button
-                v-for="(cmd, idx) in commands"
+                v-for="cmd in commands"
                 :key="cmd.id"
                 class="cmd-item"
                 :class="{ selected: flatList.indexOf(cmd) === selectedIndex }"
                 @mouseenter="selectedIndex = flatList.indexOf(cmd)"
-                @click="cmd.action()"
+                @click="() => { trackRecent(cmd.id); cmd.action() }"
               >
-                <v-icon size="16" class="cmd-icon">{{ cmd.icon }}</v-icon>
-                <span class="cmd-label">{{ cmd.label }}</span>
+                <component :is="cmd.icon" :size="15" class="cmd-icon" />
+                <span class="cmd-label">
+                  <span
+                    v-for="(seg, si) in highlightSegments(cmd.label, query)"
+                    :key="si"
+                    :class="{ 'cmd-match': seg.match }"
+                  >{{ seg.text }}</span>
+                </span>
                 <span v-if="cmd.hint" class="cmd-hint">{{ cmd.hint }}</span>
+                <CornerDownLeft
+                  v-if="flatList.indexOf(cmd) === selectedIndex"
+                  :size="12"
+                  class="cmd-enter-icon"
+                />
               </button>
             </template>
           </div>
 
-          <!-- Footer -->
           <div class="palette-footer">
-            <span><kbd>↑↓</kbd> navegar</span>
-            <span><kbd>↵</kbd> selecionar</span>
-            <span><kbd>esc</kbd> fechar</span>
+            <span class="footer-item"><ArrowUp :size="10" /><ArrowDown :size="10" />navegar</span>
+            <span class="footer-item"><CornerDownLeft :size="10" />selecionar</span>
+            <span class="footer-item"><kbd>esc</kbd>fechar</span>
           </div>
         </div>
       </div>
@@ -227,43 +335,41 @@ defineExpose({ open })
 </template>
 
 <style scoped>
-/* ─── Overlay ─── */
 .palette-overlay {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background: color-mix(in srgb, #000 50%, transparent);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 15vh;
+  padding-top: 13vh;
 }
 
-/* ─── Container ─── */
 .palette-container {
-  width: 560px;
-  max-height: 480px;
-  background: rgb(var(--v-theme-primary));
-  border: 1px solid rgba(var(--v-theme-secondary), 0.12);
-  border-radius: 14px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  width: 600px;
+  max-width: calc(100% - 32px);
+  max-height: 520px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-overlay);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* ─── Search ─── */
 .palette-input-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08);
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border);
 }
 
 .palette-search-icon {
-  color: rgba(var(--v-theme-secondary), 0.35);
+  color: var(--text-3);
   flex-shrink: 0;
 }
 
@@ -272,27 +378,27 @@ defineExpose({ open })
   background: transparent;
   border: none;
   outline: none;
-  font-size: 15px;
-  color: rgb(var(--v-theme-secondary));
-  caret-color: rgb(var(--v-theme-secondary));
-}
-
-.palette-input::placeholder {
-  color: rgba(var(--v-theme-secondary), 0.3);
-}
-
-.palette-kbd {
-  font-size: 10px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.35);
-  background: rgba(var(--v-theme-secondary), 0.08);
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
+  font-size: 14px;
+  color: var(--text);
+  caret-color: var(--accent);
   font-family: inherit;
 }
 
-/* ─── Results ─── */
+.palette-input::placeholder {
+  color: var(--text-4);
+}
+
+.palette-kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--surface-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
 .palette-results {
   flex: 1;
   overflow-y: auto;
@@ -300,12 +406,19 @@ defineExpose({ open })
 }
 
 .palette-section-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-4);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 8px 10px 4px;
+  letter-spacing: 0.08em;
+  padding: 10px 10px 4px;
+}
+
+.section-icon {
+  color: var(--text-4);
 }
 
 .cmd-item {
@@ -318,95 +431,128 @@ defineExpose({ open })
   border: none;
   background: transparent;
   cursor: pointer;
-  transition: background 0.08s ease;
+  transition: background var(--motion-fast) var(--motion-ease);
   text-align: left;
+  font-family: inherit;
+  position: relative;
 }
 
 .cmd-item.selected {
-  background: rgba(var(--v-theme-secondary), 0.08);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .cmd-icon {
-  color: rgba(var(--v-theme-secondary), 0.45);
+  color: var(--text-3);
   flex-shrink: 0;
 }
 
 .cmd-item.selected .cmd-icon {
-  color: rgba(var(--v-theme-secondary), 0.7);
+  color: var(--accent);
 }
 
 .cmd-label {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
-  color: rgb(var(--v-theme-secondary));
+  color: var(--text);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.cmd-label :deep(.cmd-match) {
+  color: var(--accent);
+  background: transparent;
+  font-weight: 700;
+}
+
 .cmd-hint {
-  font-size: 12px;
-  color: rgba(var(--v-theme-secondary), 0.3);
+  font-size: 11.5px;
+  color: var(--text-4);
   flex-shrink: 0;
 }
 
-/* ─── Empty ─── */
+.cmd-enter-icon {
+  color: var(--text-3);
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
 .palette-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 28px;
-  font-size: 13px;
-  color: rgba(var(--v-theme-secondary), 0.35);
+  padding: 44px 20px;
+  font-size: 12.5px;
+  color: var(--text-3);
 }
 
-/* ─── Footer ─── */
+.empty-icon {
+  color: var(--text-4);
+}
+
 .palette-footer {
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 10px 16px;
-  border-top: 1px solid rgba(var(--v-theme-secondary), 0.08);
+  border-top: 1px solid var(--border);
   font-size: 11px;
-  color: rgba(var(--v-theme-secondary), 0.3);
+  color: var(--text-3);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
 }
 
-.palette-footer kbd {
+.footer-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.footer-item kbd {
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
-  background: rgba(var(--v-theme-secondary), 0.07);
+  background: var(--surface-2);
   padding: 1px 5px;
   border-radius: 3px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  font-family: inherit;
-  margin-right: 3px;
+  border: 1px solid var(--border);
 }
 
-/* ─── Transitions ─── */
 .palette-enter-active {
-  transition: opacity 0.15s ease;
+  transition: opacity var(--motion) var(--motion-ease);
 }
+
 .palette-enter-active .palette-container {
-  transition: transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    transform var(--motion) var(--motion-ease),
+    opacity var(--motion) var(--motion-ease);
 }
+
 .palette-leave-active {
-  transition: opacity 0.1s ease;
+  transition: opacity var(--motion-fast) var(--motion-ease);
 }
+
 .palette-leave-active .palette-container {
-  transition: transform 0.1s ease, opacity 0.1s ease;
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
 }
+
 .palette-enter-from {
   opacity: 0;
 }
+
 .palette-enter-from .palette-container {
-  transform: scale(0.96) translateY(-8px);
+  transform: scale(0.95) translateY(-12px);
   opacity: 0;
 }
+
 .palette-leave-to {
   opacity: 0;
 }
+
 .palette-leave-to .palette-container {
   transform: scale(0.98);
   opacity: 0;

@@ -18,6 +18,9 @@ import {
   LogOut,
   BarChart3,
   CalendarRange,
+  X,
+  Building2,
+  CheckCircle2,
   type LucideIcon,
 } from 'lucide-vue-next'
 
@@ -325,7 +328,9 @@ defineEmits<{
         <span class="text-body-2 font-weight-bold" style="color: rgba(var(--v-theme-secondary), 0.7)">
           Trocar Empresa
         </span>
-        <v-btn icon="mdi-close" variant="text" size="x-small" color="secondary" @click="showCompanyModal = false" />
+        <v-btn variant="text" size="x-small" color="secondary" @click="showCompanyModal = false">
+          <X :size="16" />
+        </v-btn>
       </div>
 
       <div class="divider mx-4 mb-2" />
@@ -339,13 +344,13 @@ defineEmits<{
           @click="switchCompany(company)"
         >
           <div class="company-option-icon">
-            <v-icon size="16" :style="{ opacity: company.active ? 1 : 0.45 }">mdi-domain</v-icon>
+            <Building2 :size="15" :style="{ opacity: company.active ? 1 : 0.45 }" />
           </div>
           <div class="company-option-info">
             <span class="company-option-name">{{ company.name }}</span>
             <span class="company-option-cnpj">{{ company.cnpj }}</span>
           </div>
-          <v-icon v-if="company.active" size="14" color="success">mdi-check-circle</v-icon>
+          <CheckCircle2 v-if="company.active" :size="14" class="check-icon" />
         </button>
       </div>
     </v-card>
@@ -571,5 +576,10 @@ defineEmits<{
 .company-option-cnpj {
   font-size: 11px;
   color: rgba(var(--v-theme-secondary), 0.4);
+}
+
+.check-icon {
+  color: var(--success);
+  flex-shrink: 0;
 }
 </style>

@@ -4,8 +4,10 @@ import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { aliases, mdi } from 'vuetify/iconsets/mdi'
 import '@mdi/font/css/materialdesignicons.css'
+import { vuetifyThemeColors, type ThemeName } from './tokens'
 
-const initialColor = localStorage.getItem('theme')
+const storedTheme = localStorage.getItem('ui.theme') || localStorage.getItem('theme')
+const initialTheme: ThemeName = storedTheme === 'light' ? 'light' : 'dark'
 
 export default createVuetify({
   components,
@@ -16,36 +18,13 @@ export default createVuetify({
     sets: { mdi },
   },
   theme: {
-    defaultTheme: initialColor || 'dark',
+    defaultTheme: initialTheme,
     themes: {
-      light: {
-        colors: {
-          primary: '#E8E8E8',
-          secondary: '#1A1A1A',
-          background: '#ECECEC',
-          surface: '#F5F5F5',
-          error: '#FF5252',
-          info: '#2196F3',
-          success: '#4CAF50',
-          warning: '#FB8C00',
-          'primary-lighten': '#616161',
-          'secondary-lighten': '#D0D0D0',
-        },
-      },
-      dark: {
-        colors: {
-          primary: '#1A1A1A',
-          secondary: '#FAFAFA',
-          background: '#121212',
-          surface: '#1E1E1E',
-          error: '#FF5252',
-          info: '#2196F3',
-          success: '#4CAF50',
-          warning: '#FB8C00',
-          'primary-lighten': '#B0B0B0',
-          'secondary-lighten': '#424242',
-        },
-      },
+      light: { dark: false, colors: vuetifyThemeColors.light },
+      dark: { dark: true, colors: vuetifyThemeColors.dark },
     },
+  },
+  defaults: {
+    VDialog: { scrimOpacity: 0.6 },
   },
 })

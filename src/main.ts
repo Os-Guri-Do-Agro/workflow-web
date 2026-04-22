@@ -1,3 +1,8 @@
+import '@fontsource-variable/inter'
+import '@/styles/reset.css'
+import '@/styles/typography.css'
+import 'vue-sonner/style.css'
+
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
@@ -9,8 +14,20 @@ import { PieChart } from 'echarts/charts'
 import { createPinia } from 'pinia'
 import { TitleComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { VueQueryPlugin } from '@tanstack/vue-query'
+import { MotionPlugin } from '@vueuse/motion'
+import { applyThemeTokens, type AccentName, type ThemeName } from '@/plugins/tokens'
 
 use([CanvasRenderer, PieChart, TitleComponent, TooltipComponent, LegendComponent])
+
+const initialTheme: ThemeName =
+  (localStorage.getItem('ui.theme') as ThemeName | null) ||
+  (localStorage.getItem('theme') as ThemeName | null) ||
+  'dark'
+
+const initialAccent: AccentName =
+  (localStorage.getItem('ui.accent') as AccentName | null) || 'neutral'
+
+applyThemeTokens(initialTheme === 'light' ? 'light' : 'dark', initialAccent)
 
 const warn = console.warn.bind(console)
 console.warn = (...args) => {
@@ -26,6 +43,7 @@ app.component('VChart', VChart)
 app.use(pinia)
 app.use(vuetify)
 app.use(router)
+app.use(MotionPlugin)
 app.use(VueQueryPlugin, {
   queryClientConfig: {
     defaultOptions: {
