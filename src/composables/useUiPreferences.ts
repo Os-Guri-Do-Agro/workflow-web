@@ -1,7 +1,13 @@
 import { storeToRefs } from 'pinia'
 import { useTheme } from 'vuetify'
 import { useUiStore } from '@/stores/uiStores'
-import type { AccentName, Density, ShellVariant, ThemeName } from '@/plugins/tokens'
+import {
+  applyThemeTokens,
+  type AccentName,
+  type Density,
+  type ShellVariant,
+  type ThemeName,
+} from '@/plugins/tokens'
 
 export function useUiPreferences() {
   const store = useUiStore()
@@ -10,6 +16,7 @@ export function useUiPreferences() {
 
   const setTheme = (value: ThemeName) => {
     store.theme = value
+    applyThemeTokens(value, store.accent)
     vuetifyTheme.global.name.value = value
   }
 
@@ -17,6 +24,7 @@ export function useUiPreferences() {
 
   const setAccent = (value: AccentName) => {
     store.accent = value
+    applyThemeTokens(store.theme, value)
   }
 
   const setDensity = (value: Density) => {

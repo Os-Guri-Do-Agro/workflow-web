@@ -7,9 +7,9 @@ import AppToast from '@/components/AppToast.vue'
 <template>
   <v-app>
     <AppShell>
-      <RouterView v-slot="{ Component, route }">
-        <Transition name="route" mode="out-in">
-          <component :is="Component" :key="route.fullPath" />
+      <RouterView v-slot="{ Component }">
+        <Transition name="route" mode="out-in" appear>
+          <component :is="Component" />
         </Transition>
       </RouterView>
     </AppShell>
