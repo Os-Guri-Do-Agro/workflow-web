@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { Columns3, Search, Calendar, User } from 'lucide-vue-next'
+import {
+  Search,
+  Calendar,
+  User,
+  LayoutGrid,
+  AlertCircle,
+  ChevronDown,
+  X,
+} from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
-import { useSortable } from '@vueuse/integrations/useSortable'
 import { useToast } from '@/composables/useToast'
 
 const { error: showError } = useToast()
@@ -17,52 +24,51 @@ const filterCompany = ref<string | null>(null)
 const filterPriority = ref<number | null>(null)
 const draggedTask = ref<any>(null)
 
-// Status columns
-const columns = [
-  { id: 'TODO', title: 'A Fazer', color: '#3B82F6' },
-  { id: 'IN_PROGRESS', title: 'Em Andamento', color: '#F59E0B' },
-  { id: 'IN_TESTING', title: 'Em Teste', color: '#8B5CF6' },
-  { id: 'DONE', title: 'Concluído', color: '#10B981' },
+type ColumnStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+
+const columns: { id: ColumnStatus; title: string; token: string }[] = [
+  { id: 'TODO', title: 'A fazer', token: 'var(--status-todo)' },
+  { id: 'IN_PROGRESS', title: 'Em andamento', token: 'var(--status-prog)' },
+  { id: 'IN_TESTING', title: 'Em teste', token: 'var(--status-test)' },
+  { id: 'DONE', title: 'Concluído', token: 'var(--status-done)' },
 ]
 
-const roleConfig: Record<string, { color: string; label: string }> = {
-  'OWNER': { color: '#EF4444', label: 'Proprietário' },
-  'ADMIN': { color: '#F59E0B', label: 'Admin' },
-  'WORKER': { color: '#3B82F6', label: 'Membro' },
-  'VIEWER': { color: '#6B7280', label: 'Visualizador' },
-  'CLIENT': { color: '#10B981', label: 'Cliente' },
+type PrioritySpec = { label: string; token: string }
+const priorityMeta: Record<number, PrioritySpec> = {
+  0: { label: 'P0', token: 'var(--err)' },
+  1: { label: 'P1', token: 'var(--warn)' },
+  2: { label: 'P2', token: 'var(--info)' },
+  3: { label: 'P3', token: 'var(--text-3)' },
 }
+const PRIORITY_FALLBACK: PrioritySpec = { label: '—', token: 'var(--text-3)' }
+const prio = (p: number): PrioritySpec => priorityMeta[p] ?? PRIORITY_FALLBACK
 
 const allActivities = computed(() => {
   let activities = workspace.workspaceData?.activities || []
-  
-  // Search filter
+
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
-    activities = activities.filter(a => 
-      a.title.toLowerCase().includes(q) ||
-      a.companyName.toLowerCase().includes(q)
+    activities = activities.filter(
+      (a) =>
+        a.title.toLowerCase().includes(q) || a.companyName.toLowerCase().includes(q),
     )
   }
-  
-  // Company filter
+
   if (filterCompany.value) {
-    activities = activities.filter(a => a.companyId === filterCompany.value)
+    activities = activities.filter((a) => a.companyId === filterCompany.value)
   }
-  
-  // Priority filter
+
   if (filterPriority.value !== null) {
-    activities = activities.filter(a => a.priority === filterPriority.value)
+    activities = activities.filter((a) => a.priority === filterPriority.value)
   }
-  
+
   return activities
 })
 
 const getColumnTasks = (status: string) => {
   return allActivities.value
-    .filter(a => a.status === status)
+    .filter((a) => a.status === status)
     .sort((a, b) => {
-      // Sort by priority first, then by date
       if (a.priority !== b.priority) return a.priority - b.priority
       if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
       return 0
@@ -70,20 +76,29 @@ const getColumnTasks = (status: string) => {
 }
 
 const companies = computed(() => {
-  return workspace.workspaceData?.companies?.map(c => ({
-    id: c.company.id,
-    name: c.company.name,
-    color: c.company.color || '#3B82F6'
-  })) || []
+  return (
+    workspace.workspaceData?.companies?.map((c) => ({
+      id: c.company.id,
+      name: c.company.name,
+    })) || []
+  )
 })
+
+const hasFilters = computed(
+  () => !!searchQuery.value || !!filterCompany.value || filterPriority.value !== null,
+)
+
+const clearFilters = () => {
+  searchQuery.value = ''
+  filterCompany.value = null
+  filterPriority.value = null
+}
 
 async function loadData() {
   loading.value = true
   try {
-    // Invalida cache se ainda não tem monthId (dados de antes do fix)
-    const hasStaleData = workspace.workspaceData?.activities.some(a => !a.monthId)
+    const hasStaleData = workspace.workspaceData?.activities.some((a) => !a.monthId)
     if (hasStaleData) workspace.workspaceData = null
-
     await workspace.fetchWorkspace()
   } catch (err) {
     showError('Erro ao carregar atividades')
@@ -94,18 +109,20 @@ async function loadData() {
 
 onMounted(loadData)
 
-watch(() => workspace.activeCompanyId, async (newId, oldId) => {
-  if (newId && newId !== oldId) {
-    await nextTick()
-    await loadData()
-  }
-})
+watch(
+  () => workspace.activeCompanyId,
+  async (newId, oldId) => {
+    if (newId && newId !== oldId) {
+      await nextTick()
+      await loadData()
+    }
+  },
+)
 
 async function openTask(activity: any) {
-  // Se monthId estiver ausente (cache antigo), re-fetcha antes de navegar
   if (!activity.monthId) {
     await workspace.fetchWorkspace()
-    const fresh = workspace.workspaceData?.activities.find(a => a.id === activity.id)
+    const fresh = workspace.workspaceData?.activities.find((a) => a.id === activity.id)
     if (!fresh?.monthId) {
       console.error('monthId não encontrado para a atividade', activity.id)
       return
@@ -119,17 +136,13 @@ async function openTask(activity: any) {
   })
 }
 
-function getPriorityLabel(p: number) {
-  return `P${p}`
-}
-
 function formatDate(date: string | null) {
   if (!date) return 'Sem prazo'
   const d = new Date(date)
   const now = new Date()
   const diff = d.getTime() - now.getTime()
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-  
+
   if (days < 0) return `Atrasada ${Math.abs(days)}d`
   if (days === 0) return 'Hoje'
   if (days === 1) return 'Amanhã'
@@ -142,7 +155,6 @@ function isOverdue(activity: any) {
 }
 
 async function updateTaskStatus(taskId: string, newStatus: string) {
-  // TODO: Call API to update status
   console.log('Update task', taskId, 'to', newStatus)
 }
 
@@ -156,137 +168,170 @@ function handleDrop(columnId: string) {
   }
   draggedTask.value = null
 }
+
+function initials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join('')
+    .toUpperCase()
+}
 </script>
 
 <template>
   <div class="board-page">
-    <!-- Header Premium -->
-    <div class="board-header">
-      <div class="header-left">
-        <div class="header-icon">
-          <Columns3 :size="22" class="title-icon" />
-        </div>
-        <div>
-          <h1 class="board-title">Board Geral</h1>
-          <p class="board-subtitle">
-            {{ allActivities.length }} atividades em {{ workspace.workspaceData?.companies?.length || 0 }} empresas
-          </p>
-        </div>
+    <!-- Header -->
+    <header class="page-header">
+      <div class="header-main">
+        <span class="eyebrow">
+          <LayoutGrid :size="11" />
+          Board
+        </span>
+        <h1 class="page-title">Visão geral</h1>
+        <p class="page-sub">
+          {{ allActivities.length }} atividades · {{ workspace.workspaceData?.companies?.length || 0 }} empresa(s)
+        </p>
       </div>
-      
-      <div class="header-filters">
-        <div class="search-box">
-          <Search :size="15" class="search-icon" />
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Buscar atividades..."
-            class="search-input"
-          />
+    </header>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="search-wrap">
+        <Search :size="14" class="search-icon" />
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="Buscar atividades…"
+          class="search-input"
+        />
+      </div>
+
+      <div class="filter-group">
+        <div class="filter-wrap">
+          <select v-model="filterCompany" class="filter-select">
+            <option :value="null">Todas empresas</option>
+            <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <ChevronDown :size="12" class="filter-chev" />
         </div>
-        
-        <select v-model="filterCompany" class="filter-select">
-          <option :value="null">Todas empresas</option>
-          <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
-        
-        <select v-model="filterPriority" class="filter-select">
-          <option :value="null">Todas prioridades</option>
-          <option :value="0">P0 - Crítica</option>
-          <option :value="1">P1 - Alta</option>
-          <option :value="2">P2 - Média</option>
-          <option :value="3">P3 - Baixa</option>
-        </select>
+
+        <div class="filter-wrap">
+          <select v-model="filterPriority" class="filter-select">
+            <option :value="null">Todas prioridades</option>
+            <option :value="0">P0 · Crítica</option>
+            <option :value="1">P1 · Alta</option>
+            <option :value="2">P2 · Média</option>
+            <option :value="3">P3 · Baixa</option>
+          </select>
+          <ChevronDown :size="12" class="filter-chev" />
+        </div>
+
+        <button v-if="hasFilters" class="clear-btn" @click="clearFilters">
+          <X :size="13" />
+          Limpar
+        </button>
       </div>
     </div>
 
-    <!-- Kanban Board -->
-    <div class="kanban-board">
-      <div
+    <!-- Kanban -->
+    <div class="kanban">
+      <section
         v-for="column in columns"
         :key="column.id"
-        class="kanban-column"
-        :class="{ 'kanban-column--drag-over': draggedTask?.status !== column.id }"
+        class="col"
+        :class="{ 'col--drop': draggedTask && draggedTask.status !== column.id }"
         @dragover.prevent
         @drop.prevent="handleDrop(column.id)"
       >
-        <!-- Column Header -->
-        <div class="column-header" :style="{ borderColor: column.color }">
-          <div class="column-title-wrapper">
-            <div class="column-dot" :style="{ backgroundColor: column.color }" />
-            <span class="column-title">{{ column.title }}</span>
-            <span class="column-count">{{ getColumnTasks(column.id).length }}</span>
+        <header class="col-header">
+          <div class="col-title-row">
+            <span class="col-dot" :style="{ background: column.token }" />
+            <span class="col-title">{{ column.title }}</span>
+            <span class="col-count">{{ getColumnTasks(column.id).length }}</span>
           </div>
-          <div class="column-progress" :style="{ backgroundColor: column.color + '20' }">
-            {{ Math.round((getColumnTasks(column.id).length / (allActivities.length || 1)) * 100) }}%
-          </div>
-        </div>
-
-        <!-- Tasks -->
-        <div class="column-tasks">
-          <div v-if="loading" class="column-skeleton">
-            <div v-for="i in 3" :key="i" class="task-skeleton" />
-          </div>
-          
-          <template v-else>
+          <div class="col-bar">
             <div
+              class="col-bar-fill"
+              :style="{
+                width: `${Math.round((getColumnTasks(column.id).length / (allActivities.length || 1)) * 100)}%`,
+                background: column.token,
+              }"
+            />
+          </div>
+        </header>
+
+        <div class="col-body">
+          <template v-if="loading">
+            <div v-for="i in 3" :key="i" class="card-skel" />
+          </template>
+
+          <template v-else-if="!getColumnTasks(column.id).length">
+            <div class="empty">
+              <span class="empty-dot" :style="{ background: column.token }" />
+              <span class="empty-label">Sem atividades</span>
+            </div>
+          </template>
+
+          <template v-else>
+            <article
               v-for="task in getColumnTasks(column.id)"
               :key="task.id"
-              class="kanban-card"
-              :class="{ 
-                'kanban-card--overdue': isOverdue(task),
-                'kanban-card--mine': task.isMine,
-                'kanban-card--dragging': draggedTask?.id === task.id
+              class="card"
+              :class="{
+                'card--overdue': isOverdue(task),
+                'card--mine': task.isMine,
+                'card--drag': draggedTask?.id === task.id,
               }"
               draggable="true"
               @dragstart="handleDragStart(task)"
               @click="openTask(task)"
             >
-              <!-- Card Header -->
-              <div class="card-header">
-                <span 
-                  class="company-tag"
-                  :style="{ 
-                    backgroundColor: (roleConfig[task.myRole || 'WORKER']?.color || '#3B82F6') + '15',
-                    color: roleConfig[task.myRole || 'WORKER']?.color || '#3B82F6'
+              <div class="card-top">
+                <span class="company-chip" :title="task.companyName">
+                  <span class="company-initials">{{ initials(task.companyName) }}</span>
+                  <span class="company-name">{{ task.companyName }}</span>
+                </span>
+                <span
+                  class="priority-chip"
+                  :style="{
+                    color: prio(task.priority).token,
+                    background: `color-mix(in srgb, ${prio(task.priority).token} 14%, transparent)`,
                   }"
                 >
-                  {{ task.companyName }}
-                </span>
-                <span 
-                  class="priority-badge"
-                  :class="`priority-${task.priority}`"
-                >
-                  {{ getPriorityLabel(task.priority) }}
+                  {{ prio(task.priority).label }}
                 </span>
               </div>
 
-              <!-- Card Body -->
-              <h4 class="card-title">{{ task.title }}</h4>
-              
-              <!-- Card Meta -->
+              <h3 class="card-title">{{ task.title }}</h3>
+
               <div class="card-meta">
-                <div class="meta-item" :class="{ 'meta-item--overdue': isOverdue(task) }">
-                  <Calendar :size="11" />
-                  <span>{{ formatDate(task.dueDate) }}</span>
-                </div>
-                <div class="meta-item" v-if="task.responsibles?.length">
+                <span class="meta" :class="{ 'meta--overdue': isOverdue(task) }">
+                  <AlertCircle v-if="isOverdue(task)" :size="11" />
+                  <Calendar v-else :size="11" />
+                  {{ formatDate(task.dueDate) }}
+                </span>
+                <span v-if="task.responsibles?.length" class="meta">
                   <User :size="11" />
-                  <span>{{ task.responsibles.filter((r: any) => r.isMe).length ? 'Eu' : task.responsibles[0]?.name }}</span>
-                  <span v-if="task.responsibles.length > 1" class="more-resp">
+                  {{
+                    task.responsibles.filter((r: any) => r.isMe).length
+                      ? 'Eu'
+                      : task.responsibles[0]?.name
+                  }}
+                  <span v-if="task.responsibles.length > 1" class="more">
                     +{{ task.responsibles.length - 1 }}
                   </span>
-                </div>
+                </span>
               </div>
 
-              <!-- Quarter Badge -->
-              <div class="quarter-badge">
-                {{ task.quarter }} • {{ task.month }}
-              </div>
-            </div>
+              <footer class="card-foot">
+                <span class="quarter">{{ task.quarter }} · {{ task.month }}</span>
+              </footer>
+            </article>
           </template>
         </div>
-      </div>
+      </section>
     </div>
   </div>
 </template>
@@ -297,266 +342,394 @@ function handleDrop(columnId: string) {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, rgba(var(--v-theme-secondary), 0.02) 0%, rgba(var(--v-theme-secondary), 0.05) 100%);
-}
-
-/* Header Premium */
-.board-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  padding: 20px 24px;
-  background: rgb(var(--v-theme-primary));
-  border-radius: 16px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
   gap: 16px;
+  color: var(--text);
 }
 
-.header-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+/* ---- Header ---- */
+.page-header {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
 }
 
-.board-title {
-  font-size: 24px;
+.header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
   font-weight: 700;
-  color: rgb(var(--v-theme-secondary));
+  color: var(--text-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text);
   margin: 0;
-  letter-spacing: -0.02em;
 }
 
-.board-subtitle {
-  font-size: 13px;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  margin: 2px 0 0;
+.page-sub {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: 0;
 }
 
-.header-filters {
+/* ---- Toolbar ---- */
+.toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 
-.search-box {
+.search-wrap {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1;
+  max-width: 320px;
 }
 
 .search-icon {
   position: absolute;
-  left: 12px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  left: 10px;
+  color: var(--text-3);
+  pointer-events: none;
 }
 
 .search-input {
-  width: 240px;
-  padding: 10px 12px 10px 36px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 10px;
-  background: rgba(var(--v-theme-secondary), 0.03);
-  font-size: 13px;
-  color: rgb(var(--v-theme-secondary));
+  width: 100%;
+  padding: 7px 10px 7px 32px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
   outline: none;
-  transition: all 0.2s ease;
-}
-
-.search-input:focus {
-  border-color: #3B82F6;
-  background: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .search-input::placeholder {
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-4);
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.filter-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.filter-chev {
+  position: absolute;
+  right: 10px;
+  color: var(--text-3);
+  pointer-events: none;
 }
 
 .filter-select {
-  padding: 10px 14px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 10px;
-  background: rgba(var(--v-theme-secondary), 0.03);
-  font-size: 13px;
-  color: rgb(var(--v-theme-secondary));
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 7px 28px 7px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: inherit;
   cursor: pointer;
   outline: none;
-  transition: all 0.2s ease;
+  transition: border-color var(--motion-fast) var(--motion-ease);
+}
+
+.filter-select:hover {
+  border-color: var(--border-strong);
 }
 
 .filter-select:focus {
-  border-color: #3B82F6;
+  border-color: var(--accent);
 }
 
-/* Kanban Board */
-.kanban-board {
+.clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.clear-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* ---- Kanban ---- */
+.kanban {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
   flex: 1;
   min-height: 0;
   overflow-x: auto;
 }
 
-.kanban-column {
-  background: rgba(var(--v-theme-secondary), 0.02);
-  border-radius: 16px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.06);
+.col {
   display: flex;
   flex-direction: column;
-  min-width: 280px;
-  transition: all 0.2s ease;
+  min-width: 260px;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
 }
 
-.kanban-column--drag-over {
-  background: rgba(59, 130, 246, 0.05);
-  border-color: rgba(59, 130, 246, 0.2);
+.col--drop {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 
-.column-header {
+.col-header {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  border-bottom: 2px solid;
-  border-color: inherit;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.column-title-wrapper {
+.col-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.column-dot {
-  width: 8px;
-  height: 8px;
+.col-dot {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.column-title {
-  font-size: 14px;
+.col-title {
+  font-size: 12.5px;
   font-weight: 600;
-  color: rgb(var(--v-theme-secondary));
+  color: var(--text);
+  letter-spacing: -0.005em;
+  flex: 1;
 }
 
-.column-count {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  background: rgba(var(--v-theme-secondary), 0.08);
-  padding: 2px 8px;
-  border-radius: 999px;
-}
-
-.column-progress {
+.col-count {
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 6px;
+  color: var(--text-3);
+  background: var(--surface-2);
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
 }
 
-.column-tasks {
+.col-bar {
+  height: 2px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.col-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width var(--motion) var(--motion-ease);
+}
+
+.col-body {
   flex: 1;
-  padding: 12px;
   overflow-y: auto;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  scrollbar-width: thin;
 }
 
-.column-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.task-skeleton {
-  height: 100px;
-  border-radius: 12px;
-  background: rgba(var(--v-theme-secondary), 0.05);
+.card-skel {
+  height: 92px;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    color-mix(in srgb, var(--surface-2) 60%, var(--surface-3)) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
   animation: shimmer 1.4s ease infinite;
 }
 
-/* Kanban Cards Premium */
-.kanban-card {
-  background: rgb(var(--v-theme-primary));
-  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  border-radius: 12px;
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 14px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border);
+}
+
+.empty-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  opacity: 0.6;
+}
+
+.empty-label {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+/* ---- Card ---- */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   cursor: grab;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  position: relative;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
 }
 
-.kanban-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  border-color: rgba(var(--v-theme-secondary), 0.15);
+.card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
 }
 
-.kanban-card--overdue {
-  border-left: 3px solid #EF4444;
-  background: linear-gradient(135deg, rgb(var(--v-theme-primary)) 0%, rgba(239, 68, 68, 0.03) 100%);
+.card:active {
+  cursor: grabbing;
 }
 
-.kanban-card--mine {
-  border-left: 3px solid #3B82F6;
+.card--mine {
+  border-left: 2px solid var(--accent);
 }
 
-.kanban-card--dragging {
-  opacity: 0.5;
-  transform: rotate(3deg);
+.card--overdue {
+  border-left: 2px solid var(--err);
 }
 
-.card-header {
+.card--drag {
+  opacity: 0.45;
+  transform: rotate(1.5deg);
+}
+
+.card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  gap: 8px;
 }
 
-.company-tag {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 6px;
-  max-width: 100px;
+.company-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 65%;
+  font-size: 11px;
+  color: var(--text-2);
+  overflow: hidden;
+}
+
+.company-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.company-name {
+  font-weight: 500;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.priority-badge {
+.priority-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
   font-size: 10px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
 }
-
-.priority-0 { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
-.priority-1 { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
-.priority-2 { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
-.priority-3 { background: rgba(107, 114, 128, 0.15); color: #6B7280; }
 
 .card-title {
   font-size: 13px;
   font-weight: 500;
-  color: rgb(var(--v-theme-secondary));
-  margin: 0 0 12px;
-  line-height: 1.5;
+  line-height: 1.45;
+  color: var(--text);
+  margin: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -567,63 +740,76 @@ function handleDrop(columnId: string) {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
-.meta-item {
-  display: flex;
+.meta {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: rgba(var(--v-theme-secondary), 0.5);
+  color: var(--text-3);
 }
 
-.meta-item--overdue {
-  color: #EF4444;
+.meta--overdue {
+  color: var(--err);
   font-weight: 600;
 }
 
-.more-resp {
+.more {
   font-size: 10px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-4);
+  font-weight: 500;
 }
 
-.quarter-badge {
+.card-foot {
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.quarter {
   font-size: 10px;
-  color: rgba(var(--v-theme-secondary), 0.4);
-  padding-top: 8px;
-  border-top: 1px solid rgba(var(--v-theme-secondary), 0.06);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-4);
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-/* Responsive */
+/* ---- Responsive ---- */
 @media (max-width: 1200px) {
-  .kanban-board {
-    grid-template-columns: repeat(2, 1fr);
+  .kanban {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 768px) {
-  .board-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
-  }
-  
-  .header-filters {
+@media (max-width: 760px) {
+  .page-header,
+  .toolbar {
     flex-wrap: wrap;
   }
-  
-  .search-input {
+  .search-wrap {
+    max-width: 100%;
     width: 100%;
   }
-  
-  .kanban-board {
+  .filter-group {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+  .kanban {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .col,
+  .search-input,
+  .filter-select,
+  .col-bar-fill {
+    transition-duration: 1ms;
+  }
+  .card-skel {
+    animation-duration: 2s;
   }
 }
 </style>
