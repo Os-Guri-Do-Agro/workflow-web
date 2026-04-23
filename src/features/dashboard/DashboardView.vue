@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -24,14 +25,17 @@ import { useDashboardMetrics } from '@/composables/useDashboardMetrics'
 import { useBacklog } from '@/composables/useBacklog'
 import { useUpcomingEvents } from '@/composables/useUpcomingEvents'
 import { useWorkspaceDashboard } from '@/composables/useWorkspaceDashboard'
+import { useNavQuarters } from '@/composables/useNavQuarters'
 import OverviewChart from '@/components/dashboard/OverviewChart.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent])
 
+const router = useRouter()
 const activeCompanyStore = useActiveCompanyId()
 const companies = ref<any[]>([])
 const loadingCompanies = ref(true)
+const { firstMonth } = useNavQuarters()
 
 const mode = ref<'company' | 'workspace'>(
   (localStorage.getItem('dashboard.mode') as 'company' | 'workspace') || 'company',
@@ -252,6 +256,7 @@ const projects = computed(() => {
     if (progress === 100) status = 'done'
     else if (progress >= 50) status = 'in-progress'
     return {
+      id: company?.id || '',
       name: company?.name || '—',
       progress,
       cnpj: company?.cnpj || '',
@@ -263,9 +268,18 @@ const projects = computed(() => {
   })
 })
 
-const handleProjectClick = (_name: string) => {
-  // future: navegação
+const handleProjectClick = (companyIdForNav: string | undefined) => {
+  if (!companyIdForNav) return
+  localStorage.setItem('activeCompany', companyIdForNav)
+  activeCompanyStore.setCompanyId(companyIdForNav)
+  router.push('/variables')
 }
+
+const handleNewTask = () => {
+  if (firstMonth.value) router.push(`/tasks/${firstMonth.value.id}?new=1`)
+}
+
+const openCalendar = () => router.push('/calendar')
 
 // hero sparkline big (aggregate)
 const heroSpark = computed(() => {
@@ -315,7 +329,12 @@ const heroSpark = computed(() => {
                 <span>Workspace</span>
               </button>
             </div>
-            <button class="ghost-btn press">
+            <button
+              class="ghost-btn press"
+              :disabled="!firstMonth"
+              :title="firstMonth ? 'Criar nova tarefa' : 'Nenhum mês disponível'"
+              @click="handleNewTask"
+            >
               <Plus :size="14" />
               <span>Nova tarefa</span>
             </button>
@@ -453,7 +472,12 @@ const heroSpark = computed(() => {
       </div>
 
       <div v-else class="agenda-list">
-        <article v-for="ev in upcoming" :key="ev.id" class="agenda-item press">
+        <article
+          v-for="ev in upcoming"
+          :key="ev.id"
+          class="agenda-item press"
+          @click="openCalendar"
+        >
           <div class="agenda-when">
             <span class="agenda-day">
               {{
@@ -505,7 +529,7 @@ const heroSpark = computed(() => {
           :key="project.name"
           class="project-card"
           :style="{ '--status-c': statusMeta[project.status]?.color || 'var(--accent)' }"
-          @click="handleProjectClick(project.name)"
+          @click="handleProjectClick(project.id)"
         >
           <div class="project-top">
             <div class="project-dot" />

@@ -118,6 +118,10 @@ const createActivity = async () => {
 onMounted(async () => {
   isWorkerRole.value = (await getInfoAuth()) || false
   findMembers()
+  if (route.query.new === '1') {
+    dialog.value = true
+    router.replace({ path: route.path })
+  }
 })
 
 // ── Filters ──

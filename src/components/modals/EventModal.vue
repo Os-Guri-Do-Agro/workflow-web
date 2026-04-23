@@ -1,11 +1,42 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
 import Underline from '@tiptap/extension-underline'
+import {
+  X,
+  Save,
+  Plus,
+  Trash2,
+  CalendarRange,
+  CalendarClock,
+  Repeat,
+  Video,
+  Flag,
+  Bell,
+  Zap,
+  RotateCcw,
+  CheckSquare,
+  User as UserIcon,
+  Bold,
+  Italic,
+  UnderlineIcon,
+  List,
+  ListOrdered,
+  type LucideIcon,
+} from 'lucide-vue-next'
+
+type EventType =
+  | 'MEETING'
+  | 'DEADLINE'
+  | 'REMINDER'
+  | 'SPRINT'
+  | 'RETROSPECTIVE'
+  | 'TASK'
+  | 'PERSONAL'
 
 const props = defineProps<{
   modelValue: boolean
@@ -14,13 +45,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  'save': [event: any]
-  'delete': [id: string]
+  save: [event: any]
+  delete: [id: string]
 }>()
 
 const isOpen = computed({
   get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value)
+  set: (v) => emit('update:modelValue', v),
 })
 
 const isEditing = computed(() => !!props.event?.id)
@@ -29,8 +60,7 @@ const title = ref('')
 const description = ref('')
 const startDate = ref('')
 const endDate = ref('')
-const eventType = ref('MEETING')
-const selectedActivity = ref('')
+const eventType = ref<EventType>('MEETING')
 const recurrence = ref('')
 
 const recurrenceOptions = [
@@ -41,14 +71,22 @@ const recurrenceOptions = [
   { value: 'FREQ=YEARLY', label: 'Todo ano' },
 ]
 
-const eventTypes = [
-  { value: 'MEETING', label: 'Reunião', color: '#3B82F6', icon: 'mdi-video' },
-  { value: 'DEADLINE', label: 'Prazo', color: '#EF4444', icon: 'mdi-clock-alert' },
-  { value: 'REMINDER', label: 'Lembrete', color: '#F59E0B', icon: 'mdi-bell' },
-  { value: 'SPRINT', label: 'Sprint', color: '#10B981', icon: 'mdi-run' },
-  { value: 'RETROSPECTIVE', label: 'Retrospectiva', color: '#8B5CF6', icon: 'mdi-clipboard-text' },
+const eventTypes: Array<{ value: EventType; label: string; token: string; icon: LucideIcon }> = [
+  { value: 'MEETING', label: 'Reunião', token: 'var(--info)', icon: Video },
+  { value: 'DEADLINE', label: 'Prazo', token: 'var(--err)', icon: Flag },
+  { value: 'REMINDER', label: 'Lembrete', token: 'var(--warn)', icon: Bell },
+  { value: 'SPRINT', label: 'Sprint', token: 'var(--success)', icon: Zap },
+  { value: 'RETROSPECTIVE', label: 'Retrospectiva', token: 'var(--status-test)', icon: RotateCcw },
+  { value: 'TASK', label: 'Tarefa', token: 'var(--accent)', icon: CheckSquare },
+  { value: 'PERSONAL', label: 'Pessoal', token: 'var(--status-todo)', icon: UserIcon },
 ]
 
+const currentType = computed(
+  () => eventTypes.find((t) => t.value === eventType.value) ?? eventTypes[0],
+)
+
+// One editor instance per component lifetime (avoids re-instantiation on every open,
+// which was accumulating listeners and causing the freeze on repeated create actions).
 const editor = useEditor({
   content: '',
   extensions: [
@@ -58,234 +96,262 @@ const editor = useEditor({
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Underline,
   ],
-  onUpdate: ({ editor }) => {
-    description.value = editor.getHTML()
+  onUpdate: ({ editor: ed }) => {
+    description.value = ed.getHTML()
   },
 })
 
-function resetForm() {
+onBeforeUnmount(() => {
+  editor.value?.destroy()
+})
+
+const resetForm = () => {
   title.value = ''
   description.value = ''
   startDate.value = ''
   endDate.value = ''
   eventType.value = 'MEETING'
-  selectedActivity.value = ''
   recurrence.value = ''
-  editor.value?.commands.setContent('')
 }
 
-function close() {
+const close = () => {
   isOpen.value = false
 }
 
-function save() {
-  const eventData = {
+const save = () => {
+  if (!title.value || !startDate.value) return
+  emit('save', {
     id: props.event?.id,
     title: title.value,
     description: description.value,
     startDate: new Date(startDate.value).toISOString(),
     endDate: endDate.value ? new Date(endDate.value).toISOString() : null,
     type: eventType.value,
-    activityId: selectedActivity.value || null,
     recurrence: recurrence.value || undefined,
-  }
-  emit('save', eventData)
+  })
   close()
 }
 
-function deleteEvent() {
-  if (props.event?.id && confirm('Tem certeza que deseja excluir este evento?')) {
-    emit('delete', props.event.id)
-    close()
-  }
+const confirmDelete = ref(false)
+const askDelete = () => {
+  confirmDelete.value = true
+}
+const doDelete = () => {
+  if (props.event?.id) emit('delete', props.event.id)
+  confirmDelete.value = false
+  close()
 }
 
-watch(() => props.modelValue, (open) => {
-  if (open && props.event) {
-    title.value = props.event.title || ''
-    description.value = props.event.description || ''
-    startDate.value = props.event.startDate ? new Date(props.event.startDate).toISOString().slice(0, 16) : ''
-    endDate.value = props.event.endDate ? new Date(props.event.endDate).toISOString().slice(0, 16) : ''
-    eventType.value = props.event.type || 'MEETING'
-    selectedActivity.value = props.event.activityId || ''
-    recurrence.value = props.event.recurrence || ''
-    editor.value?.commands.setContent(props.event.description || '')
-  } else if (!open) {
-    resetForm()
-  }
-})
+watch(
+  () => props.modelValue,
+  async (open) => {
+    if (open) {
+      const ev = props.event
+      if (ev) {
+        title.value = ev.title || ''
+        description.value = ev.description || ''
+        startDate.value = ev.startDate
+          ? new Date(ev.startDate).toISOString().slice(0, 16)
+          : ''
+        endDate.value = ev.endDate
+          ? new Date(ev.endDate).toISOString().slice(0, 16)
+          : ''
+        eventType.value = (ev.type as EventType) || 'MEETING'
+        recurrence.value = ev.recurrence || ''
+      } else {
+        resetForm()
+      }
+      await nextTick()
+      editor.value?.commands.setContent(description.value || '')
+    } else {
+      confirmDelete.value = false
+      resetForm()
+      editor.value?.commands.clearContent()
+    }
+  },
+)
+
+const cmd = (fn: 'toggleBold' | 'toggleItalic' | 'toggleUnderline' | 'toggleBulletList' | 'toggleOrderedList') => {
+  const chain: any = editor.value?.chain().focus()
+  chain?.[fn]().run()
+}
+
+const canSave = computed(() => !!title.value && !!startDate.value)
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="isOpen" class="modal-overlay" @click.self="close">
-        <div class="modal-container">
+      <div v-if="isOpen" class="overlay" @click.self="close">
+        <div class="modal" role="dialog" aria-modal="true">
           <!-- Header -->
-          <div class="modal-header" :style="{ borderColor: eventTypes.find(t => t.value === eventType)?.color }">
-            <div class="header-content">
-              <div 
-                class="header-icon"
-                :style="{ backgroundColor: eventTypes.find(t => t.value === eventType)?.color + '20' }"
+          <header class="head">
+            <div class="head-main">
+              <span
+                class="head-icon"
+                :style="{
+                  color: currentType.token,
+                  background: `color-mix(in srgb, ${currentType.token} 14%, transparent)`,
+                }"
               >
-                <v-icon 
-                  size="24" 
-                  :color="eventTypes.find(t => t.value === eventType)?.color"
-                >
-                  {{ eventTypes.find(t => t.value === eventType)?.icon }}
-                </v-icon>
-              </div>
-              <div>
-                <h2 class="modal-title">{{ isEditing ? 'Editar Evento' : 'Novo Evento' }}</h2>
-                <p class="modal-subtitle">{{ isEditing ? 'Atualize os detalhes do evento' : 'Crie um novo evento para sua agenda' }}</p>
+                <component :is="currentType.icon" :size="18" />
+              </span>
+              <div class="head-txt">
+                <h2 class="head-title">{{ isEditing ? 'Editar evento' : 'Novo evento' }}</h2>
+                <p class="head-sub">
+                  {{ isEditing ? 'Atualize os detalhes' : 'Adicione um evento à sua agenda' }}
+                </p>
               </div>
             </div>
-            <button class="close-btn" @click="close">
-              <v-icon size="20">mdi-close</v-icon>
+            <button class="close-btn" aria-label="Fechar" @click="close">
+              <X :size="16" />
             </button>
-          </div>
+          </header>
 
           <!-- Body -->
-          <div class="modal-body">
-            <!-- Title Input -->
-            <div class="form-group">
-              <label class="form-label">Título do Evento</label>
-              <input 
-                v-model="title" 
-                type="text" 
-                class="form-input title-input"
-                placeholder="Ex: Daily Standup, Review de Sprint..."
-                autofocus
+          <div class="body">
+            <!-- Title -->
+            <label class="field">
+              <span class="label">Título</span>
+              <input
+                v-model="title"
+                type="text"
+                class="input input--title"
+                placeholder="Ex: Daily stand-up, review da sprint…"
               />
-            </div>
+            </label>
 
-            <!-- Event Type Selection -->
-            <div class="form-group">
-              <label class="form-label">Tipo de Evento</label>
+            <!-- Type -->
+            <div class="field">
+              <span class="label">Tipo</span>
               <div class="type-grid">
                 <button
-                  v-for="type in eventTypes"
-                  :key="type.value"
+                  v-for="t in eventTypes"
+                  :key="t.value"
                   class="type-btn"
-                  :class="{ active: eventType === type.value }"
-                  :style="{ 
-                    '--type-color': type.color,
-                    backgroundColor: eventType === type.value ? type.color + '15' : 'transparent',
-                    borderColor: eventType === type.value ? type.color : undefined
-                  }"
-                  @click="eventType = type.value"
+                  :class="{ 'type-btn--active': eventType === t.value }"
+                  :style="{
+                    '--type-c': t.token,
+                  } as Record<string, string>"
+                  @click="eventType = t.value"
                 >
-                  <v-icon size="18" :color="type.color">{{ type.icon }}</v-icon>
-                  <span :style="{ color: type.color }">{{ type.label }}</span>
+                  <component :is="t.icon" :size="13" class="type-icon" />
+                  <span>{{ t.label }}</span>
                 </button>
               </div>
             </div>
 
-            <!-- Date & Time -->
-            <div class="form-row">
-              <div class="form-group flex-1">
-                <label class="form-label">
-                  <v-icon size="14" class="label-icon">mdi-calendar-start</v-icon>
+            <!-- Dates -->
+            <div class="row">
+              <label class="field flex-1">
+                <span class="label">
+                  <CalendarRange :size="12" />
                   Início
-                </label>
-                <input
-                  v-model="startDate"
-                  type="datetime-local"
-                  class="form-input"
-                />
-              </div>
-              <div class="form-group flex-1">
-                <label class="form-label">
-                  <v-icon size="14" class="label-icon">mdi-calendar-end</v-icon>
+                </span>
+                <input v-model="startDate" type="datetime-local" class="input" />
+              </label>
+              <label class="field flex-1">
+                <span class="label">
+                  <CalendarClock :size="12" />
                   Término (opcional)
-                </label>
-                <input
-                  v-model="endDate"
-                  type="datetime-local"
-                  class="form-input"
-                />
-              </div>
+                </span>
+                <input v-model="endDate" type="datetime-local" class="input" />
+              </label>
             </div>
 
             <!-- Recurrence -->
-            <div class="form-group">
-              <label class="form-label">
-                <v-icon size="14" class="label-icon">mdi-repeat</v-icon>
+            <label class="field">
+              <span class="label">
+                <Repeat :size="12" />
                 Recorrência
-              </label>
-              <div class="custom-select-wrapper">
-                <select v-model="recurrence" class="custom-select">
-                  <option
-                    v-for="opt in recurrenceOptions"
-                    :key="opt.value"
-                    :value="opt.value"
-                  >
-                    {{ opt.label }}
-                  </option>
-                </select>
-                <v-icon size="16" class="select-arrow">mdi-chevron-down</v-icon>
-              </div>
-            </div>
+              </span>
+              <select v-model="recurrence" class="input">
+                <option v-for="opt in recurrenceOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </label>
 
-            <!-- Description Editor -->
-            <div class="form-group">
-              <label class="form-label">Descrição</label>
-              <div class="editor-toolbar">
-                <button 
-                  v-for="action in [
-                    { icon: 'mdi-format-bold', cmd: 'toggleBold', active: 'bold' },
-                    { icon: 'mdi-format-italic', cmd: 'toggleItalic', active: 'italic' },
-                    { icon: 'mdi-format-underline', cmd: 'toggleUnderline', active: 'underline' },
-                  ]"
-                  :key="action.cmd"
-                  class="toolbar-btn"
-                  :class="{ active: editor?.isActive(action.active) }"
-                  @click="(editor?.chain().focus() as any)[action.cmd]().run()"
-                >
-                  <v-icon size="14">{{ action.icon }}</v-icon>
-                </button>
-                <div class="toolbar-divider" />
-                <button 
-                  v-for="action in [
-                    { icon: 'mdi-format-list-bulleted', cmd: 'toggleBulletList', active: 'bulletList' },
-                    { icon: 'mdi-format-list-numbered', cmd: 'toggleOrderedList', active: 'orderedList' },
-                  ]"
-                  :key="action.cmd"
-                  class="toolbar-btn"
-                  :class="{ active: editor?.isActive(action.active) }"
-                  @click="(editor?.chain().focus() as any)[action.cmd]().run()"
-                >
-                  <v-icon size="14">{{ action.icon }}</v-icon>
-                </button>
-              </div>
-              <div class="editor-container">
-                <EditorContent :editor="editor" class="tiptap-editor" />
+            <!-- Description editor -->
+            <div class="field">
+              <span class="label">Descrição</span>
+              <div class="editor-wrap">
+                <div class="editor-tools">
+                  <button
+                    class="tool-btn"
+                    :class="{ active: editor?.isActive('bold') }"
+                    title="Negrito"
+                    @click="cmd('toggleBold')"
+                  >
+                    <Bold :size="13" />
+                  </button>
+                  <button
+                    class="tool-btn"
+                    :class="{ active: editor?.isActive('italic') }"
+                    title="Itálico"
+                    @click="cmd('toggleItalic')"
+                  >
+                    <Italic :size="13" />
+                  </button>
+                  <button
+                    class="tool-btn"
+                    :class="{ active: editor?.isActive('underline') }"
+                    title="Sublinhado"
+                    @click="cmd('toggleUnderline')"
+                  >
+                    <UnderlineIcon :size="13" />
+                  </button>
+                  <span class="tool-sep" />
+                  <button
+                    class="tool-btn"
+                    :class="{ active: editor?.isActive('bulletList') }"
+                    title="Lista"
+                    @click="cmd('toggleBulletList')"
+                  >
+                    <List :size="13" />
+                  </button>
+                  <button
+                    class="tool-btn"
+                    :class="{ active: editor?.isActive('orderedList') }"
+                    title="Lista numerada"
+                    @click="cmd('toggleOrderedList')"
+                  >
+                    <ListOrdered :size="13" />
+                  </button>
+                </div>
+                <EditorContent v-if="editor" :editor="editor" class="editor-surface" />
               </div>
             </div>
           </div>
 
           <!-- Footer -->
-          <div class="modal-footer">
-            <div class="footer-left">
-              <button v-if="isEditing" class="btn btn-danger" @click="deleteEvent">
-                <v-icon size="16">mdi-delete</v-icon>
+          <footer class="foot">
+            <div class="foot-left">
+              <button v-if="isEditing" class="btn btn-danger" @click="askDelete">
+                <Trash2 :size="13" />
                 Excluir
               </button>
             </div>
-            <div class="footer-right">
-              <button class="btn btn-secondary" @click="close">Cancelar</button>
-              <button 
-                class="btn btn-primary" 
-                :disabled="!title || !startDate"
-                :style="{ 
-                  backgroundColor: eventTypes.find(t => t.value === eventType)?.color,
-                  borderColor: eventTypes.find(t => t.value === eventType)?.color
-                }"
-                @click="save"
-              >
-                <v-icon size="16">{{ isEditing ? 'mdi-content-save' : 'mdi-plus' }}</v-icon>
-                {{ isEditing ? 'Salvar Alterações' : 'Criar Evento' }}
+            <div class="foot-right">
+              <button class="btn btn-ghost" @click="close">Cancelar</button>
+              <button class="btn btn-primary" :disabled="!canSave" @click="save">
+                <component :is="isEditing ? Save : Plus" :size="13" />
+                {{ isEditing ? 'Salvar' : 'Criar evento' }}
               </button>
+            </div>
+          </footer>
+
+          <!-- Inline delete confirm -->
+          <div v-if="confirmDelete" class="confirm">
+            <div class="confirm-box">
+              <p class="confirm-text">Excluir este evento? Essa ação não pode ser desfeita.</p>
+              <div class="confirm-actions">
+                <button class="btn btn-ghost" @click="confirmDelete = false">Cancelar</button>
+                <button class="btn btn-danger" @click="doDelete">
+                  <Trash2 :size="13" />
+                  Excluir
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -295,10 +361,10 @@ watch(() => props.modelValue, (open) => {
 </template>
 
 <style scoped>
-.modal-overlay {
+.overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: color-mix(in srgb, black 62%, transparent);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -307,360 +373,417 @@ watch(() => props.modelValue, (open) => {
   padding: 20px;
 }
 
-.modal-container {
-  background: rgb(var(--v-theme-primary));
-  border-radius: 20px;
+.modal {
+  position: relative;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   width: 100%;
   max-width: 640px;
   max-height: 90vh;
-  overflow: hidden;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-overlay);
 }
 
-/* Header */
-.modal-header {
+/* Head */
+.head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 24px 20px;
-  border-bottom: 2px solid;
-  border-color: transparent;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  gap: 12px;
 }
 
-.header-content {
+.head-main {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  min-width: 0;
 }
 
-.header-icon {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: rgb(var(--v-theme-secondary));
-  margin: 0;
-}
-
-.modal-subtitle {
-  font-size: 13px;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  margin: 4px 0 0;
-}
-
-.close-btn {
+.head-icon {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  border: none;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  color: rgba(var(--v-theme-secondary), 0.6);
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.head-txt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.head-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.head-sub {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 2px 0 0;
+}
+
+.close-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
 .close-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgb(var(--v-theme-secondary));
+  background: var(--surface-3);
+  color: var(--text);
 }
 
 /* Body */
-.modal-body {
-  padding: 24px;
+.body {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   overflow-y: auto;
   flex: 1;
 }
 
-.form-group {
-  margin-bottom: 20px;
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.form-row {
+.row {
   display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 12px;
 }
 
 .flex-1 {
   flex: 1;
-  margin-bottom: 0;
 }
 
-.form-label {
-  display: flex;
+.label {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.7);
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 8px;
+  color: var(--text-3);
 }
 
-.label-icon {
-  color: rgba(var(--v-theme-secondary), 0.4);
-}
-
-.form-input,
-.form-select {
+.input {
   width: 100%;
-  padding: 12px 14px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.12);
-  border-radius: 12px;
-  background: rgba(var(--v-theme-secondary), 0.02);
-  font-size: 14px;
-  color: rgb(var(--v-theme-secondary));
-  outline: none;
-  transition: all 0.2s ease;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
   font-family: inherit;
-}
-
-.form-input:focus,
-.form-select:focus {
-  border-color: #3B82F6;
-  background: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* Custom Select Premium */
-.custom-select-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.custom-select {
-  width: 100%;
-  padding: 12px 40px 12px 14px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.12);
-  border-radius: 12px;
-  background: rgba(var(--v-theme-secondary), 0.02);
-  font-size: 14px;
-  color: rgb(var(--v-theme-secondary));
+  font-size: 13px;
   outline: none;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
 }
 
-.custom-select:hover {
-  border-color: rgba(var(--v-theme-secondary), 0.2);
-  background: rgba(var(--v-theme-secondary), 0.04);
+.input:focus {
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-.custom-select:focus {
-  border-color: #3B82F6;
-  background: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.select-arrow {
-  position: absolute;
-  right: 14px;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  pointer-events: none;
-}
-
-.title-input {
-  font-size: 16px;
+.input--title {
+  font-size: 14.5px;
   font-weight: 500;
 }
 
-/* Event Type Grid */
+select.input {
+  cursor: pointer;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
+    linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-size:
+    4px 4px,
+    4px 4px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
+}
+
+/* Type grid */
 .type-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+@media (max-width: 540px) {
+  .type-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .type-btn {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 14px 8px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 12px;
-  background: transparent;
+  justify-content: center;
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .type-btn:hover {
-  border-color: var(--type-color);
-  background: var(--type-color) + '10';
+  background: var(--surface-3);
+  color: var(--text);
 }
 
-.type-btn.active {
-  border-width: 2px;
+.type-btn--active {
+  background: color-mix(in srgb, var(--type-c) 14%, transparent);
+  border-color: var(--type-c);
+  color: var(--type-c);
   font-weight: 600;
 }
 
-.type-btn span {
-  font-size: 12px;
+.type-icon {
+  flex-shrink: 0;
 }
 
 /* Editor */
-.editor-toolbar {
+.editor-wrap {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px;
-  background: rgba(var(--v-theme-secondary), 0.03);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  border-bottom: none;
-  border-radius: 12px 12px 0 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
 }
 
-.toolbar-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+.editor-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tool-btn {
+  width: 26px;
+  height: 26px;
   border: none;
   background: transparent;
-  color: rgba(var(--v-theme-secondary), 0.5);
+  color: var(--text-3);
+  border-radius: 6px;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  font-family: inherit;
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
-.toolbar-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.05);
-  color: rgb(var(--v-theme-secondary));
+.tool-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
-.toolbar-btn.active {
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgb(var(--v-theme-secondary));
+.tool-btn.active {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
-.toolbar-divider {
+.tool-sep {
   width: 1px;
-  height: 20px;
-  background: rgba(var(--v-theme-secondary), 0.1);
+  height: 16px;
+  background: var(--border);
   margin: 0 4px;
 }
 
-.editor-container {
-  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  border-radius: 0 0 12px 12px;
-  min-height: 120px;
+.editor-surface {
+  min-height: 110px;
 }
 
-.tiptap-editor :deep(.ProseMirror) {
-  padding: 14px;
-  min-height: 120px;
+.editor-surface :deep(.ProseMirror) {
+  padding: 12px 14px;
+  min-height: 110px;
   outline: none;
-  font-size: 14px;
-  line-height: 1.6;
-  color: rgb(var(--v-theme-secondary));
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
 }
 
-.tiptap-editor :deep(.ProseMirror p.is-editor-empty:first-child::before) {
+.editor-surface :deep(.ProseMirror p.is-editor-empty:first-child::before) {
   content: attr(data-placeholder);
-  color: rgba(var(--v-theme-secondary), 0.35);
+  color: var(--text-4);
   float: left;
   pointer-events: none;
+  height: 0;
 }
 
 /* Footer */
-.modal-footer {
+.foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px 24px;
-  border-top: 1px solid rgba(var(--v-theme-secondary), 0.08);
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
-.footer-left,
-.footer-right {
+.foot-left,
+.foot-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 18px;
-  border-radius: 10px;
-  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
   border: 1px solid transparent;
-  font-family: inherit;
 }
 
-.btn-secondary {
-  background: rgba(var(--v-theme-secondary), 0.05);
-  color: rgba(var(--v-theme-secondary), 0.7);
-  border-color: rgba(var(--v-theme-secondary), 0.1);
+.btn-ghost {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
 }
 
-.btn-secondary:hover {
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgb(var(--v-theme-secondary));
+.btn-ghost:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .btn-primary {
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: color-mix(in srgb, var(--accent) 80%, black);
 }
 
 .btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  filter: brightness(1.06);
 }
 
 .btn-primary:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .btn-danger {
-  background: rgba(239, 68, 68, 0.1);
-  color: #EF4444;
-  border-color: rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--err) 14%, transparent);
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 35%, transparent);
 }
 
 .btn-danger:hover {
-  background: rgba(239, 68, 68, 0.15);
+  background: color-mix(in srgb, var(--err) 20%, transparent);
+  border-color: var(--err);
+}
+
+/* Inline confirm */
+.confirm {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, black 45%, transparent);
+  backdrop-filter: blur(2px);
+  padding: 20px;
+}
+
+.confirm-box {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 18px;
+  max-width: 320px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow-overlay);
+}
+
+.confirm-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* Transitions */
 .modal-enter-active,
 .modal-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity var(--motion) var(--motion-ease);
+}
+
+.modal-enter-active .modal,
+.modal-leave-active .modal {
+  transition:
+    opacity var(--motion) var(--motion-ease),
+    transform var(--motion) var(--motion-ease);
 }
 
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
-  transform: scale(0.95);
 }
 
-.modal-enter-to,
-.modal-leave-from {
-  opacity: 1;
-  transform: scale(1);
+.modal-enter-from .modal,
+.modal-leave-to .modal {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import {
   LayoutDashboard,
   Columns3,
@@ -13,7 +13,7 @@ import {
   CalendarRange,
   type LucideIcon,
 } from 'lucide-vue-next'
-import quartersService from '@/service/quarters/quarters-service'
+import { useNavQuarters } from '@/composables/useNavQuarters'
 
 export type NavItem = {
   title: string
@@ -24,22 +24,7 @@ export type NavItem = {
   section?: 'Trabalho' | 'Pessoal'
 }
 
-const quarters = ref<any[]>([])
-
-const loadQuarters = async () => {
-  const companyId = localStorage.getItem('activeCompany')
-  if (!companyId) return
-  try {
-    const response = await quartersService.getCompanyQuarters(companyId)
-    quarters.value = response.data || response
-  } catch (e) {
-    console.error('Error fetching quarters:', e)
-  }
-}
-
-onMounted(() => {
-  if (localStorage.getItem('token')) loadQuarters()
-})
+const { quarters } = useNavQuarters()
 
 const mainItems = computed<NavItem[]>(() => [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/dashboard', section: 'Trabalho' },
@@ -50,13 +35,13 @@ const mainItems = computed<NavItem[]>(() => [
 ])
 
 const taskItem = computed<NavItem | null>(() => {
-  if (!quarters.value?.length) return null
+  if (!quarters.value.length) return null
   return {
     title: 'Tarefas',
     icon: ListTodo,
     section: 'Trabalho',
     children: quarters.value.map((quarter) => ({
-      title: `${quarter.label} • ${quarter.months?.map((m: any) => m.name.slice(0, 3)).join('-') || ''}`,
+      title: `${quarter.label} • ${quarter.monthsLabel}`,
       icon: ListTodo,
       children: [
         {
@@ -64,11 +49,11 @@ const taskItem = computed<NavItem | null>(() => {
           icon: BarChart3,
           to: `/relatorio/${quarter.id}`,
         },
-        ...(quarter.months?.map((month: any) => ({
+        ...quarter.months.map((month) => ({
           title: month.name,
           icon: CalendarRange,
           to: `/tasks/${month.id}`,
-        })) || []),
+        })),
       ],
     })),
   }
