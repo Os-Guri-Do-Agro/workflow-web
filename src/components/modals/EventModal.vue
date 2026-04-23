@@ -71,8 +71,12 @@ const recurrenceOptions = [
   { value: 'FREQ=YEARLY', label: 'Todo ano' },
 ]
 
-const eventTypes: Array<{ value: EventType; label: string; token: string; icon: LucideIcon }> = [
-  { value: 'MEETING', label: 'Reunião', token: 'var(--info)', icon: Video },
+type TypeMeta = { value: EventType; label: string; token: string; icon: LucideIcon }
+
+const DEFAULT_TYPE: TypeMeta = { value: 'MEETING', label: 'Reunião', token: 'var(--info)', icon: Video }
+
+const eventTypes: TypeMeta[] = [
+  DEFAULT_TYPE,
   { value: 'DEADLINE', label: 'Prazo', token: 'var(--err)', icon: Flag },
   { value: 'REMINDER', label: 'Lembrete', token: 'var(--warn)', icon: Bell },
   { value: 'SPRINT', label: 'Sprint', token: 'var(--success)', icon: Zap },
@@ -81,8 +85,8 @@ const eventTypes: Array<{ value: EventType; label: string; token: string; icon: 
   { value: 'PERSONAL', label: 'Pessoal', token: 'var(--status-todo)', icon: UserIcon },
 ]
 
-const currentType = computed(
-  () => eventTypes.find((t) => t.value === eventType.value) ?? eventTypes[0],
+const currentType = computed<TypeMeta>(
+  () => eventTypes.find((t) => t.value === eventType.value) ?? DEFAULT_TYPE,
 )
 
 // One editor instance per component lifetime (avoids re-instantiation on every open,
