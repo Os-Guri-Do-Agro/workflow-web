@@ -1,6 +1,11 @@
 # work-flow — src/ guide
 
-Guia interno para navegar e evoluir o código. Spec-mãe: [docs/specs/design-system-evolution.md](../docs/specs/design-system-evolution.md).
+Guia interno para navegar e evoluir o código.
+
+**Specs:**
+- [design-system-evolution.md](../docs/specs/design-system-evolution.md) — spec-mãe (F1-F4 + Fase P)
+- [shell-nav-unification.md](../docs/specs/shell-nav-unification.md) — Q1-Q4 em todos os shells + dead buttons + modais (entregue `0d1ea7c`)
+- [legacy-views-migration.md](../docs/specs/legacy-views-migration.md) — migração mdi→lucide + tokens das views legadas (L1-L4, planejada)
 
 ## Stack
 
