@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  Bug,
+  AlertTriangle,
   Upload,
   Video,
   X,
@@ -11,6 +11,9 @@ import {
   AlertCircle,
   Sparkles,
   ArrowRight,
+  Circle,
+  Square,
+  Monitor,
 } from 'lucide-vue-next'
 import bugReportService from '@/service/bug-report/bug-report-service'
 
@@ -34,16 +37,46 @@ const progress = ref(0)
 const submittedId = ref<string | null>(null)
 const submitError = ref<string | null>(null)
 
+// Gravação no browser
+const recording = ref(false)
+const recordError = ref<string | null>(null)
+const recordSeconds = ref(0)
+let mediaRecorder: MediaRecorder | null = null
+let recordedChunks: Blob[] = []
+let displayStream: MediaStream | null = null
+let micStream: MediaStream | null = null
+let recordTimer: number | null = null
+
 const ALLOWED_MIME = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska']
 const MAX_BYTES = 18 * 1024 * 1024
+const RECORD_MAX_SECONDS = 60
 
 const fileSizeMB = computed(() =>
   file.value ? (file.value.size / (1024 * 1024)).toFixed(1) : '',
 )
 
+const recordTimeText = computed(() => {
+  const s = recordSeconds.value
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+})
+
+const canRecord = computed(() => {
+  return (
+    typeof navigator !== 'undefined' &&
+    !!navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getDisplayMedia === 'function' &&
+    typeof window !== 'undefined' &&
+    typeof window.MediaRecorder === 'function'
+  )
+})
+
+const canSubmit = computed(
+  () => !!file.value || descriptionText.value.trim().length > 0,
+)
+
 onMounted(async () => {
   if (!companyId.value) {
-    companyError.value = 'URL inválida — companyId ausente'
+    companyError.value = 'Link incompleto. Pede pra te mandarem o link novamente.'
     loadingCompany.value = false
     return
   }
@@ -52,19 +85,23 @@ onMounted(async () => {
   } catch (e: any) {
     companyError.value =
       e?.response?.status === 404
-        ? 'Empresa não encontrada'
-        : 'Erro ao carregar empresa. Verifique o link.'
+        ? 'Não achamos essa empresa. Confere se o link está completo.'
+        : 'Não foi possível carregar. Confere o link e tenta de novo.'
   } finally {
     loadingCompany.value = false
   }
 })
 
+onBeforeUnmount(() => {
+  cleanupRecording()
+})
+
 function validateFile(f: File): string | null {
   if (!ALLOWED_MIME.includes(f.type)) {
-    return `Formato não suportado (${f.type || 'desconhecido'}). Use MP4, WebM ou MOV.`
+    return 'Esse arquivo não parece um vídeo. Tenta um arquivo de vídeo (MP4, MOV ou WebM).'
   }
   if (f.size > MAX_BYTES) {
-    return `Vídeo maior que ${MAX_BYTES / (1024 * 1024)}MB. Grava algo mais curto, por favor.`
+    return 'Esse vídeo é longo demais. Tenta gravar algo mais curto, de até 1 minuto.'
   }
   return null
 }
@@ -97,14 +134,135 @@ function onPick(ev: Event) {
   setFile(input.files?.[0] ?? null)
 }
 
-const canSubmit = computed(
-  () => !!file.value || descriptionText.value.trim().length > 0,
-)
+async function startRecording() {
+  recordError.value = null
+  submitError.value = null
+  recordedChunks = []
+
+  try {
+    displayStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 15 },
+      audio: true,
+    })
+
+    // Tenta combinar com microfone — se o user negar, segue sem
+    let combined: MediaStream
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      combined = new MediaStream([
+        ...displayStream.getVideoTracks(),
+        ...displayStream.getAudioTracks(),
+        ...micStream.getAudioTracks(),
+      ])
+    } catch {
+      micStream = null
+      combined = displayStream
+    }
+
+    const mr = pickRecorder(combined)
+    if (!mr) {
+      cleanupRecording()
+      recordError.value =
+        'Seu navegador não consegue gravar nesse formato. Tenta usar o Chrome ou Edge.'
+      return
+    }
+
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunks.push(e.data)
+    }
+
+    mr.onstop = () => {
+      const type = mr.mimeType || 'video/webm'
+      const blob = new Blob(recordedChunks, { type })
+      const ext = type.includes('mp4') ? 'mp4' : 'webm'
+      const f = new File([blob], `gravacao-${Date.now()}.${ext}`, { type })
+
+      if (f.size > MAX_BYTES) {
+        submitError.value =
+          'A gravação ficou muito grande. Tenta gravar algo mais curto.'
+      } else {
+        setFile(f)
+      }
+      cleanupRecording()
+    }
+
+    // Se o user clicar "parar de compartilhar" do navegador, parar
+    displayStream.getVideoTracks()[0].onended = () => {
+      if (recording.value) stopRecording()
+    }
+
+    mediaRecorder = mr
+    mr.start(1000)
+    recording.value = true
+    recordSeconds.value = 0
+    recordTimer = window.setInterval(() => {
+      recordSeconds.value++
+      if (recordSeconds.value >= RECORD_MAX_SECONDS) stopRecording()
+    }, 1000)
+  } catch (e: any) {
+    cleanupRecording()
+    if (e?.name === 'NotAllowedError') {
+      recordError.value = 'Você cancelou a gravação.'
+    } else {
+      recordError.value =
+        'Não consegui gravar a tela. Você pode anexar um vídeo ou descrever em texto.'
+    }
+  }
+}
+
+function pickRecorder(stream: MediaStream): MediaRecorder | null {
+  const candidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4',
+  ]
+  for (const mimeType of candidates) {
+    if (MediaRecorder.isTypeSupported(mimeType)) {
+      try {
+        return new MediaRecorder(stream, { mimeType })
+      } catch {
+        // tenta próximo
+      }
+    }
+  }
+  try {
+    return new MediaRecorder(stream)
+  } catch {
+    return null
+  }
+}
+
+function stopRecording() {
+  if (recordTimer !== null) {
+    clearInterval(recordTimer)
+    recordTimer = null
+  }
+  try {
+    mediaRecorder?.stop()
+  } catch {
+    /* ignora */
+  }
+}
+
+function cleanupRecording() {
+  if (recordTimer !== null) {
+    clearInterval(recordTimer)
+    recordTimer = null
+  }
+  displayStream?.getTracks().forEach((t) => t.stop())
+  micStream?.getTracks().forEach((t) => t.stop())
+  displayStream = null
+  micStream = null
+  mediaRecorder = null
+  recording.value = false
+}
 
 async function submit() {
   if (!company.value) return
   if (!canSubmit.value) {
-    submitError.value = 'Envie um vídeo OU descreva o bug em texto'
+    submitError.value =
+      'Pra gente conseguir te ajudar, anexa um vídeo, grava a tela ou descreve em texto.'
     return
   }
   uploading.value = true
@@ -115,7 +273,8 @@ async function submit() {
     if (file.value) form.append('file', file.value)
     form.append('companyId', company.value.id)
     if (reporterName.value.trim()) form.append('reporterName', reporterName.value.trim())
-    if (reporterContact.value.trim()) form.append('reporterContact', reporterContact.value.trim())
+    if (reporterContact.value.trim())
+      form.append('reporterContact', reporterContact.value.trim())
     if (rawTitle.value.trim()) form.append('rawTitle', rawTitle.value.trim())
     if (descriptionText.value.trim())
       form.append('descriptionText', descriptionText.value.trim())
@@ -125,8 +284,7 @@ async function submit() {
   } catch (e: any) {
     submitError.value =
       e?.response?.data?.message ||
-      e?.message ||
-      'Falha no envio. Tente novamente.'
+      'Não conseguimos enviar agora. Tenta de novo daqui a pouco.'
   } finally {
     uploading.value = false
   }
@@ -141,6 +299,7 @@ function reset() {
   descriptionText.value = ''
   progress.value = 0
   submitError.value = null
+  recordError.value = null
 }
 </script>
 
@@ -166,41 +325,81 @@ function reset() {
         <div class="success-icon-wrap">
           <CheckCircle2 :size="48" />
         </div>
-        <h1 class="card-title">Recebemos seu report</h1>
+        <h1 class="card-title">Recebemos! Obrigado.</h1>
         <p class="card-sub">
-          A IA está assistindo o vídeo e organizando os detalhes — você não
-          precisa fazer mais nada. Obrigado por reportar.
+          Vamos dar uma olhada nisso agora. Se a gente precisar de mais detalhes,
+          alguém entra em contato.
         </p>
-        <div class="receipt">
-          <span class="receipt-label">ID</span>
-          <code class="receipt-value">{{ submittedId }}</code>
-        </div>
         <button class="btn-secondary" @click="reset">
-          <Bug :size="14" />
-          <span>Reportar outro bug</span>
+          <span>Reportar outro problema</span>
         </button>
       </div>
     </section>
 
     <!-- ── ESTADO: form principal ───────────────────────────────────── -->
     <section v-else class="form-layout">
-      <!-- Header -->
       <header class="page-head">
         <div class="logo-wrap">
-          <Bug :size="18" />
+          <AlertTriangle :size="18" />
         </div>
         <div class="head-text">
-          <h1 class="page-title">Reportar bug</h1>
+          <h1 class="page-title">Reportar um problema</h1>
           <p class="page-sub">
-            Enviando para
+            Para
             <strong>{{ company?.name }}</strong>
           </p>
         </div>
       </header>
 
+      <p class="intro">
+        Conta o que aconteceu — pode mostrar pela tela ou só escrever. A gente
+        cuida do resto.
+      </p>
+
       <form class="form" @submit.prevent="submit" novalidate>
-        <!-- Drop zone -->
+        <!-- Botão grande: gravar tela direto no navegador -->
+        <button
+          v-if="!recording && !file && canRecord"
+          type="button"
+          class="record-cta"
+          @click="startRecording"
+        >
+          <Monitor :size="18" />
+          <div class="record-cta-text">
+            <span class="record-cta-title">Gravar a tela agora</span>
+            <span class="record-cta-sub">
+              É só apertar — o navegador vai pedir qual aba ou janela mostrar.
+            </span>
+          </div>
+        </button>
+
+        <!-- Painel "GRAVANDO" -->
+        <div v-if="recording" class="recording-panel">
+          <div class="recording-row">
+            <div class="rec-dot-wrap">
+              <Circle :size="10" class="rec-dot" />
+              <span class="rec-label">Gravando</span>
+            </div>
+            <span class="rec-time">{{ recordTimeText }} / 01:00</span>
+            <button type="button" class="btn-stop" @click="stopRecording">
+              <Square :size="13" />
+              <span>Parar</span>
+            </button>
+          </div>
+          <p class="rec-hint">
+            Mostra pra gente onde tá o problema. A gravação para sozinha em 1 minuto.
+          </p>
+        </div>
+
+        <!-- Erro de gravação -->
+        <div v-if="recordError" class="alert alert-warn">
+          <AlertCircle :size="14" />
+          <span>{{ recordError }}</span>
+        </div>
+
+        <!-- Drop zone (anexar vídeo já existente) -->
         <div
+          v-if="!recording"
           class="dropzone"
           :class="{
             'dropzone--dragging': isDragging,
@@ -209,7 +408,7 @@ function reset() {
           @dragover.prevent="isDragging = true"
           @dragleave.prevent="isDragging = false"
           @drop="onDrop"
-          @click="inputRef?.click()"
+          @click="!file && inputRef?.click()"
         >
           <input
             ref="inputRef"
@@ -221,10 +420,12 @@ function reset() {
 
           <template v-if="!file">
             <div class="dropzone-icon">
-              <Upload :size="22" />
+              <Upload :size="20" />
             </div>
-            <p class="dropzone-title">Arraste o vídeo aqui ou clique pra escolher</p>
-            <p class="dropzone-hint">MP4, WebM ou MOV — até 18MB</p>
+            <p class="dropzone-title">
+              {{ canRecord ? 'Ou anexar um vídeo do computador' : 'Anexar um vídeo' }}
+            </p>
+            <p class="dropzone-hint">Vídeo curto (até 1 minuto)</p>
           </template>
 
           <template v-else>
@@ -232,7 +433,7 @@ function reset() {
               <Video :size="20" />
               <div class="file-info">
                 <p class="file-name">{{ file.name }}</p>
-                <p class="file-size">{{ fileSizeMB }} MB</p>
+                <p class="file-size">{{ fileSizeMB }} MB · vídeo pronto pra enviar</p>
               </div>
               <button
                 type="button"
@@ -247,33 +448,32 @@ function reset() {
         </div>
 
         <!-- OU separator -->
-        <div class="or-divider">
+        <div v-if="!recording" class="or-divider">
           <span class="or-line" />
-          <span class="or-text">ou descreva em texto</span>
+          <span class="or-text">ou descrever por escrito</span>
           <span class="or-line" />
         </div>
 
-        <!-- Texto puro -->
-        <div class="field">
-          <label class="field-label">Descrição (alternativa ao vídeo)</label>
+        <!-- Texto -->
+        <div v-if="!recording" class="field">
           <textarea
             v-model="descriptionText"
             class="textarea"
             rows="5"
-            placeholder="Conta o que tá acontecendo, em qual fluxo, qual erro aparece, o que esperava…"
+            placeholder="Conta o que aconteceu, com suas palavras. Não precisa ser técnico."
             maxlength="4000"
           />
         </div>
 
         <!-- Campos opcionais -->
-        <div class="fields">
+        <div v-if="!recording" class="fields">
           <div class="field">
-            <label class="field-label">Título (opcional)</label>
+            <label class="field-label">Resumo curto (opcional)</label>
             <input
               v-model="rawTitle"
               type="text"
               class="input"
-              placeholder='ex: "Botão de export trava"'
+              placeholder='ex: "A página não abre"'
               maxlength="120"
             />
           </div>
@@ -290,12 +490,12 @@ function reset() {
               />
             </div>
             <div class="field">
-              <label class="field-label">Contato (opcional)</label>
+              <label class="field-label">Como falar com você (opcional)</label>
               <input
                 v-model="reporterContact"
                 type="text"
                 class="input"
-                placeholder="email ou whatsapp"
+                placeholder="email ou WhatsApp"
                 maxlength="120"
               />
             </div>
@@ -312,25 +512,25 @@ function reset() {
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: progress + '%' }" />
           </div>
-          <span class="progress-text">Enviando vídeo… {{ progress }}%</span>
+          <span class="progress-text">Enviando… {{ progress }}%</span>
         </div>
 
         <!-- Submit -->
         <button
           type="submit"
           class="btn-primary"
-          :disabled="!canSubmit || uploading"
+          :disabled="!canSubmit || uploading || recording"
         >
           <Loader2 v-if="uploading" :size="15" class="spin" />
           <template v-else>
-            <span>Enviar report</span>
+            <span>Enviar</span>
             <ArrowRight :size="15" />
           </template>
         </button>
 
         <p class="form-foot">
           <Sparkles :size="12" />
-          <span>A IA vai assistir o vídeo, identificar o problema, e criar a tarefa automaticamente.</span>
+          <span>Quanto mais detalhe, melhor. Pode ser vídeo, texto, ou os dois.</span>
         </p>
       </form>
     </section>
@@ -363,7 +563,7 @@ function reset() {
   max-width: 540px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 22px;
 }
 
 .page-head {
@@ -403,10 +603,125 @@ function reset() {
   margin: 0;
 }
 
+.intro {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin: 0;
+}
+
 .form {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* CTA de gravação */
+.record-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 18px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: var(--radius-lg, 14px);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: filter var(--motion-fast), border-color var(--motion-fast);
+}
+
+.record-cta:hover {
+  filter: brightness(1.05);
+  border-color: var(--accent);
+}
+
+.record-cta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.record-cta-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.record-cta-sub {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+/* Painel gravando */
+.recording-panel {
+  padding: 16px 18px;
+  background: color-mix(in srgb, #ef4444 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, #ef4444 32%, var(--border));
+  border-radius: var(--radius-lg, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recording-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.rec-dot-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.rec-dot {
+  fill: #ef4444;
+  color: #ef4444;
+  animation: pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.45; }
+  100% { opacity: 1; }
+}
+
+.rec-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ef4444;
+  letter-spacing: 0.02em;
+}
+
+.rec-time {
+  font-size: 13px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.btn-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--text);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rec-hint {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 0;
 }
 
 /* Dropzone */
@@ -415,7 +730,7 @@ function reset() {
   border: 1.5px dashed var(--border-strong);
   border-radius: var(--radius-lg, 14px);
   background: var(--surface);
-  padding: 32px 20px;
+  padding: 28px 20px;
   text-align: center;
   cursor: pointer;
   transition:
@@ -424,7 +739,7 @@ function reset() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .dropzone:hover {
@@ -452,8 +767,8 @@ function reset() {
 }
 
 .dropzone-icon {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -463,7 +778,7 @@ function reset() {
 }
 
 .dropzone-title {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   margin: 0;
 }
@@ -554,34 +869,7 @@ function reset() {
   color: var(--text-3);
 }
 
-.input {
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: 14px;
-  font-family: inherit;
-  outline: none;
-  transition:
-    border-color var(--motion-fast),
-    box-shadow var(--motion-fast);
-}
-
-.input:hover {
-  border-color: var(--border-strong);
-}
-
-.input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
-}
-
-.input::placeholder {
-  color: var(--text-4);
-}
-
+.input,
 .textarea {
   width: 100%;
   padding: 10px 12px;
@@ -591,23 +879,29 @@ function reset() {
   color: var(--text);
   font-size: 14px;
   font-family: inherit;
-  resize: vertical;
   outline: none;
-  line-height: 1.5;
   transition:
     border-color var(--motion-fast),
     box-shadow var(--motion-fast);
 }
 
+.textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.input:hover,
 .textarea:hover {
   border-color: var(--border-strong);
 }
 
+.input:focus,
 .textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+.input::placeholder,
 .textarea::placeholder {
   color: var(--text-4);
 }
@@ -646,6 +940,12 @@ function reset() {
   background: color-mix(in srgb, #ef4444 12%, var(--surface));
   border: 1px solid color-mix(in srgb, #ef4444 30%, var(--border));
   color: color-mix(in srgb, #ef4444 80%, var(--text));
+}
+
+.alert-warn {
+  background: color-mix(in srgb, #f59e0b 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, #f59e0b 30%, var(--border));
+  color: color-mix(in srgb, #f59e0b 80%, var(--text));
 }
 
 /* Progress */
@@ -785,30 +1085,6 @@ function reset() {
 
 .error-card {
   border-color: color-mix(in srgb, #ef4444 26%, var(--border));
-}
-
-.receipt {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 11.5px;
-  margin: 4px 0 8px;
-}
-
-.receipt-label {
-  color: var(--text-3);
-  letter-spacing: 0.04em;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.receipt-value {
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 /* Animations */
