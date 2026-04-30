@@ -64,6 +64,34 @@ class bugReportService {
       'Erro ao listar bug reports',
     )
   }
+
+  listMessages(reportId: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get(`/bug-report/${reportId}/messages`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      'Erro ao listar mensagens',
+    )
+  }
+
+  postMessage(reportId: string, content: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.post(
+        `/bug-report/${reportId}/message`,
+        { content },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      ),
+      'Erro ao enviar mensagem',
+    )
+  }
 }
 
 export default new bugReportService()

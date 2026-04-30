@@ -10,6 +10,8 @@ import SettingsView from '@/features/settings/SettingsView.vue'
 import LoginView from '@/features/auth/LoginView.vue'
 import DownloadView from '@/features/download/DownloadView.vue'
 import ReportBugView from '@/features/bug-report/ReportBugView.vue'
+import BugReportsListView from '@/features/bug-report/BugReportsListView.vue'
+import BugReportDetailView from '@/features/bug-report/BugReportDetailView.vue'
 import CompanyVariablesView from '@/features/companies/CompanyVariablesView.vue'
 import CompanyUsersView from '@/features/companies/CompanyUsersView.vue'
 import TicketsView from '@/features/tickets/TicketsView.vue'
@@ -44,6 +46,8 @@ const router = createRouter({
     { path: '/variables', name: 'variables', component: CompanyVariablesView },
     { path: '/company-users', name: 'company-users', component: CompanyUsersView, meta: { requiredRole: 'ADMIN' } },
     { path: '/tickets', name: 'tickets', component: TicketsView },
+    { path: '/bug-reports', name: 'bug-reports-list', component: BugReportsListView },
+    { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView },
   ],
 })
 
