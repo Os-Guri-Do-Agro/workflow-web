@@ -14,7 +14,6 @@ import BugReportsListView from '@/features/bug-report/BugReportsListView.vue'
 import BugReportDetailView from '@/features/bug-report/BugReportDetailView.vue'
 import CompanyVariablesView from '@/features/companies/CompanyVariablesView.vue'
 import CompanyUsersView from '@/features/companies/CompanyUsersView.vue'
-import TicketsView from '@/features/tickets/TicketsView.vue'
 import NotesView from '@/features/notes/NotesView.vue'
 import NoteEditorView from '@/features/notes/NoteEditorView.vue'
 import CalendarView from '@/features/calendar/CalendarView.vue'
@@ -45,7 +44,6 @@ const router = createRouter({
     { path: '/settings', name: 'settings', component: SettingsView },
     { path: '/variables', name: 'variables', component: CompanyVariablesView },
     { path: '/company-users', name: 'company-users', component: CompanyUsersView, meta: { requiredRole: 'ADMIN' } },
-    { path: '/tickets', name: 'tickets', component: TicketsView },
     { path: '/bug-reports', name: 'bug-reports-list', component: BugReportsListView },
     { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView },
   ],

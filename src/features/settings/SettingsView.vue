@@ -1,9 +1,24 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Check, Sun, Moon, Columns3, LayoutPanelLeft, Square, Upload, FileCode, Loader2 } from 'lucide-vue-next'
+import { ref, onMounted } from 'vue'
+import {
+  Check,
+  Sun,
+  Moon,
+  Columns3,
+  LayoutPanelLeft,
+  Square,
+  Upload,
+  FileCode,
+  Loader2,
+  Bell,
+  Send,
+  Eye,
+  EyeOff,
+} from 'lucide-vue-next'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useToast } from '@/composables/useToast'
 import importService from '@/service/import/import-service'
+import notificationsService from '@/service/notifications/notifications-service'
 import type { AccentName, Density, ShellVariant } from '@/plugins/tokens'
 import { accents } from '@/plugins/tokens'
 
@@ -80,6 +95,111 @@ const densityOptions: { value: Density; label: string; desc: string }[] = [
   { value: 'compact', label: 'Compacta', desc: 'Mais itens na tela, ideal para power users' },
   { value: 'comfortable', label: 'Confortável', desc: 'Espaçamento maior, respira mais' },
 ]
+
+// ── Discord notifications ────────────────────────────────────────────────
+type NotifCompany = {
+  id: string
+  name: string
+  notificationsEnabled: boolean
+  hasWebhook: boolean
+}
+
+const notifCompanies = ref<NotifCompany[]>([])
+const notifLoading = ref(false)
+const notifSavingId = ref<string | null>(null)
+const notifTogglingAll = ref(false)
+const webhookDrafts = ref<Record<string, string>>({})
+const showWebhook = ref<Record<string, boolean>>({})
+const runningNow = ref(false)
+
+const allEnabled = ref(false)
+
+const loadNotifications = async () => {
+  notifLoading.value = true
+  try {
+    const list = await notificationsService.listCompanies()
+    notifCompanies.value = Array.isArray(list) ? list : list?.data || []
+    allEnabled.value =
+      notifCompanies.value.length > 0 &&
+      notifCompanies.value.every((c) => c.notificationsEnabled)
+  } catch (e: any) {
+    toastError(e?.response?.data?.message || 'Erro ao carregar empresas')
+  } finally {
+    notifLoading.value = false
+  }
+}
+
+const toggleAll = async () => {
+  notifTogglingAll.value = true
+  try {
+    if (allEnabled.value) {
+      await notificationsService.disableAll()
+      toastSuccess('Notificações desativadas em todas as empresas')
+      allEnabled.value = false
+    } else {
+      await notificationsService.enableAll()
+      toastSuccess('Notificações ativadas em todas as empresas')
+      allEnabled.value = true
+    }
+    await loadNotifications()
+  } catch (e: any) {
+    toastError(e?.response?.data?.message || 'Falha ao alternar')
+  } finally {
+    notifTogglingAll.value = false
+  }
+}
+
+const saveCompanyWebhook = async (companyId: string) => {
+  const url = (webhookDrafts.value[companyId] || '').trim()
+  if (url && !url.startsWith('https://discord.com/api/webhooks/')) {
+    toastError('Webhook precisa começar com https://discord.com/api/webhooks/')
+    return
+  }
+  notifSavingId.value = companyId
+  try {
+    await notificationsService.updateCompany(companyId, {
+      discordWebhookUrl: url || null,
+    })
+    toastSuccess('Webhook salvo')
+    webhookDrafts.value[companyId] = ''
+    showWebhook.value[companyId] = false
+    await loadNotifications()
+  } catch (e: any) {
+    toastError(e?.response?.data?.message || 'Erro ao salvar webhook')
+  } finally {
+    notifSavingId.value = null
+  }
+}
+
+const toggleCompanyEnabled = async (companyId: string, value: boolean) => {
+  notifSavingId.value = companyId
+  try {
+    await notificationsService.updateCompany(companyId, {
+      notificationsEnabled: value,
+    })
+    await loadNotifications()
+  } catch (e: any) {
+    toastError(e?.response?.data?.message || 'Erro ao alternar empresa')
+  } finally {
+    notifSavingId.value = null
+  }
+}
+
+const runCronNow = async () => {
+  runningNow.value = true
+  try {
+    const r = await notificationsService.runNow()
+    toastSuccess(
+      `Cron rodou: ${r?.companiesProcessed ?? 0} empresas, ${r?.notificationsSent ?? 0} notificações`,
+    )
+  } catch (e: any) {
+    toastError(e?.response?.data?.message || 'Erro ao disparar cron')
+  } finally {
+    runningNow.value = false
+  }
+}
+
+onMounted(() => loadNotifications())
 
 const shellOptions: {
   value: ShellVariant
@@ -235,6 +355,135 @@ const shellOptions: {
         </div>
       </div>
 
+      <!-- Notifications Discord -->
+      <div class="settings-card">
+        <div class="card-section-title">
+          <Bell :size="13" style="vertical-align: -2px; margin-right: 4px" />
+          Notificações Discord
+        </div>
+
+        <!-- Toggle global -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Ativar notificações em todas as empresas</span>
+            <span class="setting-desc">
+              A cada 2 horas, posta no Discord o que está atrasado, sem responsável,
+              e os bug reports novos.
+            </span>
+          </div>
+          <button
+            type="button"
+            class="toggle"
+            :class="{ 'toggle--on': allEnabled }"
+            :disabled="notifTogglingAll"
+            @click="toggleAll"
+          >
+            <Loader2 v-if="notifTogglingAll" :size="13" class="spin" />
+            <span v-else class="toggle-knob" />
+          </button>
+        </div>
+
+        <!-- Lista por empresa -->
+        <div v-if="notifLoading" class="notif-loading">
+          <Loader2 :size="16" class="spin" />
+          <span>Carregando empresas…</span>
+        </div>
+
+        <div v-else-if="notifCompanies.length" class="notif-list">
+          <div v-for="c in notifCompanies" :key="c.id" class="notif-row">
+            <div class="notif-row-head">
+              <div class="notif-company">
+                <span class="notif-company-name">{{ c.name }}</span>
+                <span
+                  class="notif-status"
+                  :class="{
+                    'notif-status--on': c.notificationsEnabled && c.hasWebhook,
+                    'notif-status--warn': c.notificationsEnabled && !c.hasWebhook,
+                  }"
+                >
+                  <template v-if="c.notificationsEnabled && c.hasWebhook">
+                    Ativa
+                  </template>
+                  <template v-else-if="c.notificationsEnabled && !c.hasWebhook">
+                    Faltando webhook
+                  </template>
+                  <template v-else>Desativada</template>
+                </span>
+              </div>
+              <button
+                type="button"
+                class="toggle toggle--sm"
+                :class="{ 'toggle--on': c.notificationsEnabled }"
+                :disabled="notifSavingId === c.id"
+                @click="toggleCompanyEnabled(c.id, !c.notificationsEnabled)"
+              >
+                <span class="toggle-knob" />
+              </button>
+            </div>
+
+            <div class="notif-webhook">
+              <div class="notif-webhook-status">
+                <span v-if="c.hasWebhook" class="notif-webhook-set">
+                  <Check :size="12" />
+                  Webhook configurado
+                </span>
+                <span v-else class="notif-webhook-empty">Sem webhook configurado</span>
+              </div>
+              <div class="notif-webhook-edit">
+                <input
+                  v-model="webhookDrafts[c.id]"
+                  :type="showWebhook[c.id] ? 'text' : 'password'"
+                  class="notif-input"
+                  placeholder="https://discord.com/api/webhooks/..."
+                  :disabled="notifSavingId === c.id"
+                />
+                <button
+                  type="button"
+                  class="notif-eye"
+                  :aria-label="showWebhook[c.id] ? 'Ocultar' : 'Mostrar'"
+                  @click="showWebhook[c.id] = !showWebhook[c.id]"
+                >
+                  <component :is="showWebhook[c.id] ? EyeOff : Eye" :size="13" />
+                </button>
+                <button
+                  type="button"
+                  class="notif-save"
+                  :disabled="!webhookDrafts[c.id]?.trim() || notifSavingId === c.id"
+                  @click="saveCompanyWebhook(c.id)"
+                >
+                  <Loader2 v-if="notifSavingId === c.id" :size="13" class="spin" />
+                  <span v-else>Salvar</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="notif-empty">
+          Você não é membro de nenhuma empresa ainda.
+        </div>
+
+        <!-- Botão de teste manual -->
+        <div class="setting-row" style="margin-top: 12px">
+          <div class="setting-info">
+            <span class="setting-label">Disparar verificação agora</span>
+            <span class="setting-desc">
+              Roda o cron manualmente — útil pra testar se o webhook está certo.
+            </span>
+          </div>
+          <button
+            type="button"
+            class="btn-run-now"
+            :disabled="runningNow"
+            @click="runCronNow"
+          >
+            <Loader2 v-if="runningNow" :size="13" class="spin" />
+            <Send v-else :size="13" />
+            <span>{{ runningNow ? 'Rodando…' : 'Rodar agora' }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Integrations -->
       <div class="settings-card">
         <div class="card-section-title">Integrações</div>
@@ -376,6 +625,257 @@ const shellOptions: {
 .setting-row--column {
   flex-direction: column;
   align-items: stretch;
+}
+
+/* ── Discord notifications ───────────────────────────────────────────── */
+
+.toggle {
+  width: 42px;
+  height: 24px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+
+.toggle--sm {
+  width: 36px;
+  height: 20px;
+}
+
+.toggle:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.toggle-knob {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: transform var(--motion-fast), background var(--motion-fast);
+}
+
+.toggle--sm .toggle-knob {
+  width: 14px;
+  height: 14px;
+}
+
+.toggle--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  justify-content: flex-end;
+}
+
+.toggle--on .toggle-knob {
+  background: var(--accent-fg);
+  transform: translateX(0);
+}
+
+.notif-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.notif-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.notif-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+}
+
+.notif-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notif-company {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.notif-company-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-status {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.notif-status--on {
+  color: #10b981;
+  border-color: color-mix(in srgb, #10b981 30%, var(--border));
+  background: color-mix(in srgb, #10b981 10%, var(--surface-2));
+}
+
+.notif-status--warn {
+  color: #f59e0b;
+  border-color: color-mix(in srgb, #f59e0b 30%, var(--border));
+  background: color-mix(in srgb, #f59e0b 10%, var(--surface-2));
+}
+
+.notif-webhook {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notif-webhook-status {
+  font-size: 11.5px;
+}
+
+.notif-webhook-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #10b981;
+}
+
+.notif-webhook-empty {
+  color: var(--text-4);
+}
+
+.notif-webhook-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.notif-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  outline: none;
+}
+
+.notif-input:focus {
+  border-color: var(--accent);
+}
+
+.notif-eye {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.notif-eye:hover {
+  color: var(--text);
+}
+
+.notif-save {
+  padding: 6px 12px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 1px solid color-mix(in srgb, var(--accent) 80%, black);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notif-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notif-empty {
+  font-size: 12.5px;
+  color: var(--text-3);
+  padding: 16px 0;
+  text-align: center;
+}
+
+.btn-run-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.btn-run-now:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn-run-now:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.spin {
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .setting-info {
