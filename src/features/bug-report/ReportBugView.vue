@@ -24,6 +24,7 @@ const companyError = ref<string | null>(null)
 const reporterName = ref('')
 const reporterContact = ref('')
 const rawTitle = ref('')
+const descriptionText = ref('')
 const file = ref<File | null>(null)
 const isDragging = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -96,18 +97,28 @@ function onPick(ev: Event) {
   setFile(input.files?.[0] ?? null)
 }
 
+const canSubmit = computed(
+  () => !!file.value || descriptionText.value.trim().length > 0,
+)
+
 async function submit() {
-  if (!file.value || !company.value) return
+  if (!company.value) return
+  if (!canSubmit.value) {
+    submitError.value = 'Envie um vídeo OU descreva o bug em texto'
+    return
+  }
   uploading.value = true
   progress.value = 0
   submitError.value = null
   try {
     const form = new FormData()
-    form.append('file', file.value)
+    if (file.value) form.append('file', file.value)
     form.append('companyId', company.value.id)
     if (reporterName.value.trim()) form.append('reporterName', reporterName.value.trim())
     if (reporterContact.value.trim()) form.append('reporterContact', reporterContact.value.trim())
     if (rawTitle.value.trim()) form.append('rawTitle', rawTitle.value.trim())
+    if (descriptionText.value.trim())
+      form.append('descriptionText', descriptionText.value.trim())
 
     const res = await bugReportService.uploadBugReport(form, (p) => (progress.value = p))
     submittedId.value = res.id
@@ -127,6 +138,7 @@ function reset() {
   reporterName.value = ''
   reporterContact.value = ''
   rawTitle.value = ''
+  descriptionText.value = ''
   progress.value = 0
   submitError.value = null
 }
@@ -234,6 +246,25 @@ function reset() {
           </template>
         </div>
 
+        <!-- OU separator -->
+        <div class="or-divider">
+          <span class="or-line" />
+          <span class="or-text">ou descreva em texto</span>
+          <span class="or-line" />
+        </div>
+
+        <!-- Texto puro -->
+        <div class="field">
+          <label class="field-label">Descrição (alternativa ao vídeo)</label>
+          <textarea
+            v-model="descriptionText"
+            class="textarea"
+            rows="5"
+            placeholder="Conta o que tá acontecendo, em qual fluxo, qual erro aparece, o que esperava…"
+            maxlength="4000"
+          />
+        </div>
+
         <!-- Campos opcionais -->
         <div class="fields">
           <div class="field">
@@ -288,7 +319,7 @@ function reset() {
         <button
           type="submit"
           class="btn-primary"
-          :disabled="!file || uploading"
+          :disabled="!canSubmit || uploading"
         >
           <Loader2 v-if="uploading" :size="15" class="spin" />
           <template v-else>
@@ -549,6 +580,56 @@ function reset() {
 
 .input::placeholder {
   color: var(--text-4);
+}
+
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  line-height: 1.5;
+  transition:
+    border-color var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+
+.textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.textarea::placeholder {
+  color: var(--text-4);
+}
+
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+}
+
+.or-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.or-text {
+  font-size: 11px;
+  color: var(--text-3);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 /* Alerts */
