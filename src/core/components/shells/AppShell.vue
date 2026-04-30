@@ -10,7 +10,12 @@ import { useUiPreferences } from '@/composables/useUiPreferences'
 const route = useRoute()
 const { shell } = useUiPreferences()
 
-const bare = computed(() => route.name === 'login' || route.name === 'download')
+const bare = computed(
+  () =>
+    route.name === 'login' ||
+    route.name === 'download' ||
+    route.name === 'bug-report',
+)
 
 const ActiveShell = computed(() => {
   if (shell.value === 'focus') return FocusShell
