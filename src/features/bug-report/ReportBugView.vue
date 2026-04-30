@@ -139,8 +139,11 @@ async function startRecording() {
   submitError.value = null
   recordedChunks = []
 
+  let ds: MediaStream | null = null
+  let ms: MediaStream | null = null
+
   try {
-    displayStream = await navigator.mediaDevices.getDisplayMedia({
+    ds = await navigator.mediaDevices.getDisplayMedia({
       video: { frameRate: 15 },
       audio: true,
     })
@@ -148,20 +151,21 @@ async function startRecording() {
     // Tenta combinar com microfone — se o user negar, segue sem
     let combined: MediaStream
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      ms = await navigator.mediaDevices.getUserMedia({ audio: true })
       combined = new MediaStream([
-        ...displayStream.getVideoTracks(),
-        ...displayStream.getAudioTracks(),
-        ...micStream.getAudioTracks(),
+        ...ds.getVideoTracks(),
+        ...ds.getAudioTracks(),
+        ...ms.getAudioTracks(),
       ])
     } catch {
-      micStream = null
-      combined = displayStream
+      ms = null
+      combined = ds
     }
 
     const mr = pickRecorder(combined)
     if (!mr) {
-      cleanupRecording()
+      ds.getTracks().forEach((t) => t.stop())
+      ms?.getTracks().forEach((t) => t.stop())
       recordError.value =
         'Seu navegador não consegue gravar nesse formato. Tenta usar o Chrome ou Edge.'
       return
@@ -187,11 +191,18 @@ async function startRecording() {
     }
 
     // Se o user clicar "parar de compartilhar" do navegador, parar
-    displayStream.getVideoTracks()[0].onended = () => {
-      if (recording.value) stopRecording()
+    const videoTrack = ds.getVideoTracks()[0]
+    if (videoTrack) {
+      videoTrack.onended = () => {
+        if (recording.value) stopRecording()
+      }
     }
 
+    // Promove para o escopo do componente só agora que tudo deu certo
+    displayStream = ds
+    micStream = ms
     mediaRecorder = mr
+
     mr.start(1000)
     recording.value = true
     recordSeconds.value = 0
@@ -200,7 +211,8 @@ async function startRecording() {
       if (recordSeconds.value >= RECORD_MAX_SECONDS) stopRecording()
     }, 1000)
   } catch (e: any) {
-    cleanupRecording()
+    ds?.getTracks().forEach((t) => t.stop())
+    ms?.getTracks().forEach((t) => t.stop())
     if (e?.name === 'NotAllowedError') {
       recordError.value = 'Você cancelou a gravação.'
     } else {
