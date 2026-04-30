@@ -188,33 +188,70 @@ const stats = computed<StatCard[]>(() => {
   ]
 })
 
-const sparkOption = (data: number[], color: string) => ({
-  grid: { top: 2, right: 2, bottom: 2, left: 2 },
-  xAxis: { type: 'category', show: false, data: data.map((_, i) => i) },
-  yAxis: { type: 'value', show: false, min: (v: any) => v.min - v.min * 0.2 },
-  series: [
-    {
-      type: 'line',
-      data,
-      smooth: 0.55,
-      symbol: 'none',
-      lineStyle: { color, width: 1.6, shadowBlur: 8, shadowColor: color },
-      areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [
-            { offset: 0, color: color + '80' },
-            { offset: 1, color: color + '00' },
-          ],
+// Canvas (ECharts) não entende `var(--xxx)` nem `color-mix`. Resolve em runtime.
+function resolveCssColor(input: string): string {
+  if (!input.startsWith('var(')) return input
+  const name = input.slice(4, -1).trim()
+  if (typeof window === 'undefined') return '#6366f1'
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return v || '#6366f1'
+}
+
+function withAlpha(input: string, alpha: number): string {
+  const c = resolveCssColor(input)
+  // hex #rrggbb -> #rrggbbaa
+  if (/^#[0-9a-f]{6}$/i.test(c)) {
+    const a = Math.round(alpha * 255).toString(16).padStart(2, '0')
+    return c + a
+  }
+  // hex #rgb -> expande e aplica alpha
+  if (/^#[0-9a-f]{3}$/i.test(c)) {
+    const r = c[1], g = c[2], b = c[3]
+    const a = Math.round(alpha * 255).toString(16).padStart(2, '0')
+    return `#${r}${r}${g}${g}${b}${b}${a}`
+  }
+  // rgb(...) -> rgba(...)
+  const m = c.match(/^rgb\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)\s*\)$/i)
+  if (m) return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`
+  // hsl/named: já dá pra echarts, mas sem alpha confiável — devolve como está
+  return c
+}
+
+const sparkOption = (data: number[], color: string) => {
+  const resolved = resolveCssColor(color)
+  return {
+    grid: { top: 2, right: 2, bottom: 2, left: 2 },
+    xAxis: { type: 'category', show: false, data: data.map((_, i) => i) },
+    yAxis: { type: 'value', show: false, min: (v: any) => v.min - v.min * 0.2 },
+    series: [
+      {
+        type: 'line',
+        data,
+        smooth: 0.55,
+        symbol: 'none',
+        lineStyle: {
+          color: resolved,
+          width: 1.6,
+          shadowBlur: 8,
+          shadowColor: resolved,
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: withAlpha(color, 0.5) },
+              { offset: 1, color: withAlpha(color, 0) },
+            ],
+          },
         },
       },
-    },
-  ],
-})
+    ],
+  }
+}
 
 const recentActivities = computed(() => {
   return backlog.value.slice(0, 10).map((item: any) => ({
