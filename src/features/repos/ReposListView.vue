@@ -55,8 +55,12 @@ const grouped = computed<Group[]>(() => {
       title = 'Outros'
       source = 'github'
     }
-    if (!map[key]) map[key] = { key, title, source, items: [] }
-    map[key].items.push(r)
+    let group = map[key]
+    if (!group) {
+      group = { key, title, source, items: [] }
+      map[key] = group
+    }
+    group.items.push(r)
   }
   // Ordena: GitHub orgs primeiro, depois company-bound, depois misc
   return Object.values(map).sort((a, b) => {
