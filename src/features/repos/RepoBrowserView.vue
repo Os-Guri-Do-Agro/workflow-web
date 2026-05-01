@@ -12,13 +12,45 @@ import {
   Code2,
   GitPullRequest,
   ChevronRight,
-  ChevronDown,
   X,
   Plus,
   ExternalLink,
 } from 'lucide-vue-next'
+import hljs from 'highlight.js/lib/common'
+import 'highlight.js/styles/github-dark.css'
 import repositoryService from '@/service/repository/repository-service'
 import { useToast } from '@/composables/useToast'
+
+// Mapa extensão -> linguagem hljs
+const LANG_MAP: Record<string, string> = {
+  ts: 'typescript', tsx: 'typescript',
+  js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  vue: 'xml', html: 'xml', xml: 'xml', svg: 'xml',
+  py: 'python',
+  go: 'go',
+  rs: 'rust',
+  rb: 'ruby',
+  php: 'php',
+  java: 'java',
+  kt: 'kotlin', kts: 'kotlin',
+  swift: 'swift',
+  c: 'c', h: 'c',
+  cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp',
+  cs: 'csharp',
+  scala: 'scala',
+  md: 'markdown', mdx: 'markdown',
+  json: 'json',
+  yml: 'yaml', yaml: 'yaml',
+  toml: 'ini', ini: 'ini',
+  sql: 'sql',
+  sh: 'bash', bash: 'bash', zsh: 'bash',
+  ps1: 'powershell',
+  dockerfile: 'dockerfile',
+  prisma: 'javascript',
+  css: 'css', scss: 'scss', less: 'less',
+  graphql: 'graphql', gql: 'graphql',
+  env: 'bash',
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -60,6 +92,38 @@ const fileLanguage = computed(() => {
   if (!fileContent.value) return ''
   const ext = fileContent.value.path.split('.').pop()?.toLowerCase() || ''
   return ext
+})
+
+const fileHljsLang = computed(() => {
+  const ext = fileLanguage.value
+  if (LANG_MAP[ext]) return LANG_MAP[ext]
+  if (hljs.getLanguage(ext)) return ext
+  return ''
+})
+
+const highlightedContent = computed(() => {
+  if (!fileContent.value || fileContent.value.tooLarge || !fileContent.value.content) {
+    return ''
+  }
+  const code = String(fileContent.value.content)
+  const lang = fileHljsLang.value
+  try {
+    if (lang) {
+      return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+    }
+    return hljs.highlightAuto(code).value
+  } catch {
+    // Fallback: escape e devolve plaintext
+    return code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+  }
+})
+
+const lineCount = computed(() => {
+  if (!fileContent.value?.content) return 0
+  return String(fileContent.value.content).split('\n').length
 })
 
 // ─── Loaders ─────────────────────────────────────────────────────────────
@@ -343,13 +407,22 @@ watch(tab, (t) => {
             <div class="content-head">
               <span class="content-path">{{ fileContent.path }}</span>
               <span class="content-size">
-                {{ (fileContent.size / 1024).toFixed(1) }} KB · {{ fileLanguage }}
+                {{ lineCount }} linhas
+                · {{ (fileContent.size / 1024).toFixed(1) }} KB
+                <span v-if="fileHljsLang">· {{ fileHljsLang }}</span>
               </span>
             </div>
             <div v-if="fileContent.tooLarge" class="content-too-large">
               Arquivo muito grande pra exibir aqui (&gt; 1MB).
             </div>
-            <pre v-else class="content-body"><code>{{ fileContent.content }}</code></pre>
+            <div v-else class="content-scroll">
+              <div class="code-grid">
+                <div class="line-numbers">
+                  <span v-for="n in lineCount" :key="n">{{ n }}</span>
+                </div>
+                <pre class="code-pre"><code class="hljs" v-html="highlightedContent"></code></pre>
+              </div>
+            </div>
           </div>
         </main>
       </div>
@@ -738,15 +811,51 @@ watch(tab, (t) => {
   color: var(--text-3);
   font-size: 13px;
 }
-.content-body {
-  margin: 0;
-  padding: 12px 16px;
+.content-scroll {
+  flex: 1;
   overflow: auto;
+  background: #0d1117; /* mesmo bg do tema github-dark */
+}
+.code-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  min-height: 100%;
+}
+.line-numbers {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 12px 16px;
+  background: #0d1117;
+  border-right: 1px solid #21262d;
+  color: #6e7681;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12.5px;
   line-height: 1.55;
-  flex: 1;
+  text-align: right;
+  user-select: none;
+  position: sticky;
+  left: 0;
+}
+.line-numbers span {
+  display: block;
+}
+.code-pre {
+  margin: 0;
+  padding: 12px 16px;
+  background: #0d1117;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
   white-space: pre;
+  overflow-x: auto;
+}
+.code-pre :deep(code.hljs) {
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 /* ── Pulls ───────────────────────────────────────────── */
