@@ -432,8 +432,8 @@ const showFilters = ref(false)
           </v-btn>
         </div>
         <div class="dialog-body">
-          <p style="font-size: 14px; color: rgba(var(--v-theme-secondary), 0.6)">
-            Tem certeza que deseja excluir <strong style="color: rgb(var(--v-theme-secondary))">{{ taskToDelete?.title }}</strong>?
+          <p style="font-size: 14px; color: var(--text-3)">
+            Tem certeza que deseja excluir <strong style="color: var(--text)">{{ taskToDelete?.title }}</strong>?
           </p>
         </div>
         <div class="dialog-actions">
@@ -464,7 +464,9 @@ const showFilters = ref(false)
 <style scoped>
 /* ─── Layout ─── */
 .tasks-page {
-  padding: 24px;
+  padding: 24px 28px;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 /* ─── Header ─── */
@@ -480,14 +482,14 @@ const showFilters = ref(false)
 .tasks-title {
   font-size: 22px;
   font-weight: 700;
-  color: rgb(var(--v-theme-secondary));
+  color: var(--text);
   letter-spacing: -0.02em;
   margin: 0 0 2px;
 }
 
 .tasks-sub {
   font-size: 13px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-3);
   margin: 0;
 }
 
@@ -502,7 +504,7 @@ const showFilters = ref(false)
 .view-toggle {
   display: flex;
   align-items: center;
-  background: rgba(var(--v-theme-secondary), 0.06);
+  background: var(--surface-2);
   border-radius: 8px;
   padding: 3px;
   gap: 2px;
@@ -514,7 +516,7 @@ const showFilters = ref(false)
   gap: 5px;
   font-size: 12.5px;
   font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.5);
+  color: var(--text-3);
   padding: 5px 10px;
   border-radius: 6px;
   border: none;
@@ -525,12 +527,12 @@ const showFilters = ref(false)
 }
 
 .view-btn:hover {
-  color: rgba(var(--v-theme-secondary), 0.8);
+  color: var(--text-2);
 }
 
 .view-btn.active {
-  color: rgb(var(--v-theme-secondary));
-  background: rgba(var(--v-theme-secondary), 0.1);
+  color: var(--text);
+  background: var(--border);
   font-weight: 600;
 }
 
@@ -541,8 +543,8 @@ const showFilters = ref(false)
   gap: 5px;
   font-size: 12.5px;
   font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  background: rgba(var(--v-theme-secondary), 0.06);
+  color: var(--text-3);
+  background: var(--surface-2);
   padding: 5px 11px;
   border-radius: 8px;
   border: 1px solid transparent;
@@ -551,15 +553,15 @@ const showFilters = ref(false)
 }
 
 .filter-toggle-btn:hover, .filter-toggle-btn.active {
-  color: rgb(var(--v-theme-secondary));
-  border-color: rgba(var(--v-theme-secondary), 0.15);
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 .filter-badge {
   font-size: 10px;
   font-weight: 700;
-  background: rgb(var(--v-theme-secondary));
-  color: rgb(var(--v-theme-primary));
+  background: var(--accent);
+  color: var(--accent-fg);
   padding: 0 5px;
   border-radius: 999px;
   min-width: 16px;
@@ -569,23 +571,23 @@ const showFilters = ref(false)
 
 /* ─── New activity btn ─── */
 .new-activity-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: 12.5px;
   font-weight: 600;
-  background: rgb(var(--v-theme-secondary));
-  color: rgb(var(--v-theme-primary));
+  background: var(--accent);
+  color: var(--accent-fg);
   padding: 6px 14px;
-  border-radius: 8px;
-  border: none;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 80%, black);
   cursor: pointer;
-  transition: opacity 0.12s ease;
+  transition: filter var(--motion-fast);
   white-space: nowrap;
 }
 
 .new-activity-btn:hover {
-  opacity: 0.85;
+  filter: brightness(1.07);
 }
 
 /* ─── Filter bar ─── */
@@ -595,8 +597,8 @@ const showFilters = ref(false)
   gap: 16px;
   padding: 14px 16px;
   margin-bottom: 14px;
-  background: rgba(var(--v-theme-secondary), 0.03);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.07);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 10px;
   flex-wrap: wrap;
 }
@@ -610,16 +612,16 @@ const showFilters = ref(false)
 .filter-label {
   font-size: 11px;
   font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-3);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .filter-select {
   font-size: 12.5px;
-  color: rgb(var(--v-theme-secondary));
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 8px;
   outline: none;
@@ -629,7 +631,7 @@ const showFilters = ref(false)
 }
 
 .filter-select:focus {
-  border-color: rgba(var(--v-theme-secondary), 0.25);
+  border-color: var(--accent);
 }
 
 .filter-chips {
@@ -641,8 +643,8 @@ const showFilters = ref(false)
 .filter-chip {
   font-size: 11.5px;
   font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  background: rgba(var(--v-theme-secondary), 0.06);
+  color: var(--text-3);
+  background: var(--surface-2);
   border: 1px solid transparent;
   padding: 4px 10px;
   border-radius: 999px;
@@ -651,14 +653,14 @@ const showFilters = ref(false)
 }
 
 .filter-chip:hover {
-  color: rgba(var(--v-theme-secondary), 0.8);
-  background: rgba(var(--v-theme-secondary), 0.1);
+  color: var(--text-2);
+  background: var(--border);
 }
 
 .filter-chip.active {
-  color: rgb(var(--v-theme-secondary));
-  background: rgba(var(--v-theme-secondary), 0.12);
-  border-color: rgba(var(--v-theme-secondary), 0.2);
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
   font-weight: 600;
 }
 
@@ -667,7 +669,7 @@ const showFilters = ref(false)
   align-items: center;
   gap: 4px;
   font-size: 11.5px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-3);
   background: none;
   border: none;
   cursor: pointer;
@@ -679,7 +681,7 @@ const showFilters = ref(false)
 }
 
 .clear-filters-btn:hover {
-  color: rgba(var(--v-theme-secondary), 0.8);
+  color: var(--text-2);
 }
 
 /* ─── Slide transition ─── */
@@ -701,8 +703,8 @@ const showFilters = ref(false)
 
 /* ─── Backlog ─── */
 .backlog-panel {
-  background: rgb(var(--v-theme-primary));
-  border: 1px solid rgba(var(--v-theme-secondary), 0.07);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -717,12 +719,12 @@ const showFilters = ref(false)
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.05);
+  border-bottom: 1px solid var(--border);
   transition: background 0.1s ease;
 }
 
 .backlog-item:last-child { border-bottom: none; }
-.backlog-item:hover { background: rgba(var(--v-theme-secondary), 0.03); }
+.backlog-item:hover { background: var(--surface-2); }
 
 .backlog-dot {
   width: 7px;
@@ -742,7 +744,7 @@ const showFilters = ref(false)
 .backlog-title {
   font-size: 13.5px;
   font-weight: 500;
-  color: rgb(var(--v-theme-secondary));
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -750,7 +752,7 @@ const showFilters = ref(false)
 
 .backlog-meta {
   font-size: 12px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-3);
 }
 
 .backlog-status-badge {
@@ -759,7 +761,7 @@ const showFilters = ref(false)
 
 .backlog-time {
   font-size: 11.5px;
-  color: rgba(var(--v-theme-secondary), 0.3);
+  color: var(--text-4);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -771,18 +773,18 @@ const showFilters = ref(false)
   gap: 6px;
   padding: 48px;
   font-size: 14px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-3);
 }
 
 .backlog-empty-sub {
   font-size: 12.5px;
-  color: rgba(var(--v-theme-secondary), 0.25);
+  color: var(--accent);
 }
 
 /* ─── Dialogs ─── */
 .dialog-card {
-  background: rgb(var(--v-theme-primary)) !important;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
 }
 
 .dialog-header {
@@ -790,13 +792,13 @@ const showFilters = ref(false)
   align-items: center;
   justify-content: space-between;
   padding: 18px 18px 14px;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.07);
+  border-bottom: 1px solid var(--border);
 }
 
 .dialog-title-text {
   font-size: 15px;
   font-weight: 700;
-  color: rgb(var(--v-theme-secondary));
+  color: var(--text);
 }
 
 .dialog-body { padding: 18px; }
@@ -805,7 +807,7 @@ const showFilters = ref(false)
   display: flex;
   align-items: center;
   padding: 12px 18px 18px;
-  border-top: 1px solid rgba(var(--v-theme-secondary), 0.07);
+  border-top: 1px solid var(--border);
   gap: 8px;
 }
 </style>

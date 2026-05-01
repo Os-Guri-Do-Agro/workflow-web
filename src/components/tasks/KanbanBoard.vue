@@ -1,6 +1,19 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
+import {
+  Circle,
+  CircleDashed,
+  CircleDot,
+  CircleCheck,
+  Plus,
+  X,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  Trash2,
+} from 'lucide-vue-next'
 import type { Activity } from '@/core/types'
 
 interface Props {
@@ -45,38 +58,39 @@ const columns = [
     apiStatus: 'TODO',
     title: 'A Fazer',
     color: '#6B7280',
-    accent: '#6B7280',
-    icon: 'mdi-circle-outline',
+    icon: Circle,
   },
   {
     status: 'in-progress',
     apiStatus: 'IN_PROGRESS',
     title: 'Em Andamento',
     color: '#F59E0B',
-    accent: '#F59E0B',
-    icon: 'mdi-circle-slice-4',
+    icon: CircleDashed,
   },
   {
     status: 'testing',
     apiStatus: 'IN_TESTING',
     title: 'Em Teste',
     color: '#8B5CF6',
-    accent: '#8B5CF6',
-    icon: 'mdi-circle-slice-6',
+    icon: CircleDot,
   },
   {
     status: 'done',
     apiStatus: 'DONE',
     title: 'Concluído',
     color: '#10B981',
-    accent: '#10B981',
-    icon: 'mdi-check-circle',
+    icon: CircleCheck,
   },
 ]
 
 const isDragging = ref(false)
 const dragOverColumn = ref<string | null>(null)
-const columnActivities = ref<any>({ todo: [], 'in-progress': [], testing: [], done: [] })
+const columnActivities = ref<any>({
+  todo: [],
+  'in-progress': [],
+  testing: [],
+  done: [],
+})
 
 watch(
   () => props.tasks,
@@ -99,9 +113,9 @@ const getUserInitials = (name: string) =>
     .slice(0, 2)
 
 const getUserColor = (name: string) => {
-  const colors = ['#1976D2', '#388E3C', '#D32F2F', '#7B1FA2', '#F57C00', '#0097A7', '#C2185B', '#5D4037']
+  const colors = ['#6366F1', '#10B981', '#EF4444', '#8B5CF6', '#F59E0B', '#06B6D4', '#EC4899', '#84CC16']
   const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
-  return colors[index]
+  return colors[index] || '#6366F1'
 }
 
 const getPriorityColor = (priority: number) => {
@@ -148,7 +162,7 @@ const onEnterColumn = (status: string) => {
   if (isDragging.value) dragOverColumn.value = status
 }
 const onLeaveColumn = () => {
-  // deixa o dragOverColumn limpar só no onEnd para não piscar
+  // limpa só no onEnd pra não piscar
 }
 
 const openDeleteConfirm = (task: any) => {
@@ -183,34 +197,43 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 
 <template>
   <div class="kanban-board">
-    <div
-      v-for="column in columns"
-      :key="column.status"
-      class="kanban-col"
-    >
+    <div v-for="column in columns" :key="column.status" class="kanban-col">
       <!-- Column header -->
-      <div class="column-header mb-2 px-1">
-        <div class="d-flex align-center justify-space-between">
-          <div class="d-flex align-center ga-2">
-            <v-icon :color="column.color" size="16">{{ column.icon }}</v-icon>
+      <div class="column-header">
+        <div class="column-head-row">
+          <div class="column-head-left">
+            <component
+              :is="column.icon"
+              :size="13"
+              :color="column.color"
+              class="column-icon"
+            />
             <span class="column-title">{{ column.title }}</span>
           </div>
-          <span class="column-count" :style="{ color: column.color }">
-            {{ columnActivities[column.status].length }}
+          <span
+            class="column-count"
+            :style="{
+              color: column.color,
+              background: `color-mix(in srgb, ${column.color} 14%, var(--surface-2))`,
+              borderColor: `color-mix(in srgb, ${column.color} 30%, var(--border))`,
+            }"
+          >
+            {{ columnActivities[column.status]?.length || 0 }}
           </span>
         </div>
-        <!-- accent line -->
         <div
-          class="column-accent-line mt-2"
-          :style="{ backgroundColor: column.color + '40' }"
+          class="column-accent-line"
+          :style="{ background: `color-mix(in srgb, ${column.color} 50%, transparent)` }"
         />
       </div>
 
-      <!-- Draggable zone -->
+      <!-- Drop zone -->
       <VueDraggable
         v-model="columnActivities[column.status]"
         class="column-content"
-        :class="{ 'column-drop-active': isDragging && dragOverColumn === column.status }"
+        :class="{
+          'column-drop-active': isDragging && dragOverColumn === column.status,
+        }"
         group="activities"
         :animation="180"
         :disabled="props.readonly"
@@ -223,12 +246,13 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
         @dragenter="onEnterColumn(column.status)"
         @dragleave="onLeaveColumn"
       >
-        <!-- Empty state -->
+        <!-- Empty -->
         <div
-          v-if="columnActivities[column.status].length === 0 && !isDragging"
+          v-if="(columnActivities[column.status]?.length || 0) === 0 && !isDragging"
           class="empty-column"
         >
-          <v-icon size="20" :color="column.color + '60'">mdi-plus</v-icon>
+          <Plus :size="14" />
+          <span>Vazio</span>
         </div>
 
         <!-- Task card -->
@@ -236,7 +260,7 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
           v-for="task in columnActivities[column.status]"
           :key="task.id"
           :data-id="task.id"
-          class="task-card mb-2"
+          class="task-card"
           :style="{ '--priority-color': getPriorityColor(task.priorityNumber) }"
           @click="emit('open-details', task)"
         >
@@ -246,7 +270,7 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
           </div>
 
           <div class="card-body">
-            <!-- top row: title + actions -->
+            <!-- top row -->
             <div class="card-top">
               <input
                 v-if="editingTaskId === task.id"
@@ -262,64 +286,60 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
                 v-else
                 class="card-title"
                 @dblclick="startEditing(task, $event)"
-              >{{ task.title }}</span>
-              <div class="card-actions" @click.stop>
-                <v-btn
-                  v-if="!props.readonly"
-                  icon
-                  size="x-small"
-                  variant="text"
-                  class="delete-btn"
-                  @click.stop="openDeleteConfirm(task)"
-                >
-                  <v-icon size="14">mdi-close</v-icon>
-                </v-btn>
-              </div>
+              >
+                {{ task.title }}
+              </span>
+              <button
+                v-if="!props.readonly"
+                class="card-action"
+                aria-label="Excluir"
+                @click.stop="openDeleteConfirm(task)"
+              >
+                <Trash2 :size="12" />
+              </button>
             </div>
 
-            <!-- meta row -->
+            <!-- meta -->
             <div class="card-meta">
-              <!-- priority -->
-              <div
+              <span
                 v-if="task.priorityNumber !== undefined"
-                class="meta-badge priority-badge"
+                class="meta-pill priority-pill"
+                :title="getPriorityLabel(task.priorityNumber)"
                 :style="{
                   color: getPriorityColor(task.priorityNumber),
-                  backgroundColor: getPriorityColor(task.priorityNumber) + '18',
+                  background: `color-mix(in srgb, ${getPriorityColor(task.priorityNumber)} 14%, var(--surface-2))`,
+                  borderColor: `color-mix(in srgb, ${getPriorityColor(task.priorityNumber)} 30%, var(--border))`,
                 }"
               >
-                <v-tooltip :text="getPriorityLabel(task.priorityNumber)" location="top">
-                  <template #activator="{ props: tp }">
-                    <span v-bind="tp">P{{ task.priorityNumber }}</span>
-                  </template>
-                </v-tooltip>
-              </div>
+                P{{ task.priorityNumber }}
+              </span>
 
-              <!-- due date -->
-              <div
+              <span
                 v-if="task.dueDate"
-                class="meta-badge"
-                :class="{ 'overdue': isOverdue(task.dueDate) }"
+                class="meta-pill"
+                :class="{ 'meta-pill--overdue': isOverdue(task.dueDate) }"
               >
-                <v-icon size="11">mdi-calendar-outline</v-icon>
-                {{ new Date(task.dueDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) }}
-              </div>
+                <Calendar :size="10" />
+                {{
+                  new Date(task.dueDate).toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: 'short',
+                  })
+                }}
+              </span>
+            </div>
 
-            <!-- subtasks expand & progress -->
+            <!-- subtasks -->
             <div v-if="task.subtasks?.length" class="subtasks-section" @click.stop>
-              <button
-                class="subtasks-toggle"
-                @click="toggleExpand(task.id)"
-              >
-                <v-icon size="12">
-                  {{ isExpanded(task.id) ? 'mdi-chevron-up' : 'mdi-chevron-down' }}
-                </v-icon>
-                <span class="subtasks-count">
-                  {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }} subtarefas
+              <button class="subtasks-toggle" @click="toggleExpand(task.id)">
+                <ChevronUp v-if="isExpanded(task.id)" :size="11" />
+                <ChevronDown v-else :size="11" />
+                <span>
+                  {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
+                  subtarefas
                 </span>
               </button>
 
-              <!-- Expanded subtasks list -->
               <div v-if="isExpanded(task.id)" class="subtasks-list">
                 <div
                   v-for="subtask in task.subtasks"
@@ -327,32 +347,31 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
                   class="subtask-item"
                   :class="{ 'subtask-done': subtask.status === 'DONE' }"
                 >
-                  <v-icon size="12" :color="subtask.status === 'DONE' ? '#10B981' : '#6B7280'">
-                    {{ subtask.status === 'DONE' ? 'mdi-check-circle' : 'mdi-circle-outline' }}
-                  </v-icon>
+                  <CheckCircle2
+                    v-if="subtask.status === 'DONE'"
+                    :size="11"
+                    color="#10B981"
+                  />
+                  <Circle v-else :size="11" />
                   <span class="subtask-title">{{ subtask.title }}</span>
                 </div>
               </div>
             </div>
-            </div>
 
-            <!-- bottom row: avatars -->
+            <!-- avatars -->
             <div v-if="task.responsibles?.length" class="card-avatars">
               <div
                 v-for="(responsible, i) in task.responsibles.slice(0, 4)"
                 :key="responsible.userId"
                 class="avatar-chip"
+                :title="responsible.user.name"
                 :style="{
-                  backgroundColor: getUserColor(responsible.user.name),
+                  background: getUserColor(responsible.user.name),
                   marginLeft: (i as number) > 0 ? '-6px' : '0',
                   zIndex: 4 - (i as number),
                 }"
               >
-                <v-tooltip :text="responsible.user.name" location="top">
-                  <template #activator="{ props: tp }">
-                    <span v-bind="tp">{{ getUserInitials(responsible.user.name) }}</span>
-                  </template>
-                </v-tooltip>
+                {{ getUserInitials(responsible.user.name) }}
               </div>
               <div
                 v-if="task.responsibles.length > 4"
@@ -364,10 +383,10 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
             </div>
           </div>
 
-          <!-- priority accent bar on left -->
+          <!-- priority bar -->
           <div
             class="card-priority-bar"
-            :style="{ backgroundColor: getPriorityColor(task.priorityNumber) }"
+            :style="{ background: getPriorityColor(task.priorityNumber) }"
           />
         </div>
       </VueDraggable>
@@ -376,35 +395,76 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 </template>
 
 <style scoped>
-/* ─── Layout ─── */
+/* ── Layout ─────────────────────────────────────────────────── */
 .kanban-board {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
   align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .kanban-board {
+    grid-template-columns: 1fr;
+  }
 }
 
 .kanban-col {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* ─── Column header ─── */
+/* ── Column header ──────────────────────────────────────────── */
 .column-header {
   padding: 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.column-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.column-head-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.column-icon {
+  flex-shrink: 0;
 }
 
 .column-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgb(var(--v-theme-secondary));
-  letter-spacing: 0.01em;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-2);
 }
 
 .column-count {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 8px;
+  font-size: 11px;
   font-weight: 700;
-  min-width: 20px;
-  text-align: right;
+  border-radius: 999px;
+  border: 1px solid var(--border);
 }
 
 .column-accent-line {
@@ -412,68 +472,73 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   border-radius: 999px;
 }
 
-/* ─── Drop zone ─── */
+/* ── Drop zone ──────────────────────────────────────────────── */
 .column-content {
   min-height: 80px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 4px;
-  transition: background 0.15s ease, outline 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background var(--motion-fast), outline var(--motion-fast);
 }
 
 .column-drop-active {
-  background: rgba(var(--v-theme-secondary), 0.03) !important;
-  outline: 1.5px dashed rgba(var(--v-theme-secondary), 0.15);
-  outline-offset: 0px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent) !important;
+  outline: 1.5px dashed color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 0;
 }
 
 .empty-column {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 52px;
-  border-radius: 8px;
-  border: 1.5px dashed rgba(var(--v-theme-secondary), 0.08);
+  gap: 4px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--border);
+  color: var(--text-4);
+  font-size: 11.5px;
 }
 
-/* ─── Task card ─── */
+/* ── Task card ──────────────────────────────────────────────── */
 .task-card {
   position: relative;
-  border-radius: 10px;
-  background: rgb(var(--v-theme-primary));
-  border: 1px solid rgba(var(--v-theme-secondary), 0.07);
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
   cursor: pointer;
   overflow: hidden;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  transition:
+    transform var(--motion-fast),
+    border-color var(--motion-fast),
+    box-shadow var(--motion-fast);
   will-change: transform;
 }
 
 .task-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(var(--v-theme-secondary), 0.14);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 
-.task-card:active {
-  transform: translateY(0);
-}
-
-/* priority bar on left edge */
 .card-priority-bar {
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
   width: 3px;
-  border-radius: 10px 0 0 10px;
-  opacity: 0.7;
+  border-radius: var(--radius) 0 0 var(--radius);
+  opacity: 0.85;
 }
 
-/* cover image */
 .card-image {
   width: 100%;
-  height: 110px;
+  height: 100px;
   overflow: hidden;
+  background: var(--surface-2);
 }
+
 .card-image img {
   width: 100%;
   height: 100%;
@@ -482,13 +547,13 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 }
 
 .card-body {
-  padding: 10px 10px 10px 13px;
+  padding: 10px 12px 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-/* title row */
+/* card top */
 .card-top {
   display: flex;
   align-items: flex-start;
@@ -497,10 +562,10 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 }
 
 .card-title {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: rgb(var(--v-theme-secondary));
-  line-height: 1.45;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -509,46 +574,47 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   flex: 1;
 }
 
-/* inline edit input */
 .card-title-input {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: rgb(var(--v-theme-secondary));
-  line-height: 1.45;
   flex: 1;
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.18);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
   border-radius: 5px;
-  padding: 2px 6px;
-  outline: none;
+  padding: 3px 6px;
   font-family: inherit;
+  outline: none;
   min-width: 0;
 }
 
-.card-title-input:focus {
-  border-color: rgba(var(--v-theme-secondary), 0.35);
-}
-
-/* delete button — subtle, appears on hover */
-.card-actions {
+.card-action {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-4);
+  cursor: pointer;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.15s ease;
-  margin-top: -2px;
+  transition: all var(--motion-fast);
 }
 
-.task-card:hover .card-actions {
+.task-card:hover .card-action {
   opacity: 1;
 }
 
-.delete-btn {
-  color: rgba(var(--v-theme-secondary), 0.4) !important;
-}
-.delete-btn:hover {
-  color: rgb(var(--v-theme-error)) !important;
+.card-action:hover {
+  color: #ef4444;
+  border-color: color-mix(in srgb, #ef4444 30%, var(--border));
+  background: color-mix(in srgb, #ef4444 10%, transparent);
 }
 
-/* ─── Meta badges ─── */
+/* meta pills */
 .card-meta {
   display: flex;
   align-items: center;
@@ -556,121 +622,117 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   gap: 5px;
 }
 
-.meta-badge {
+.meta-pill {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 999px;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  background: rgba(var(--v-theme-secondary), 0.07);
-  user-select: none;
-  white-space: nowrap;
-}
-
-.meta-badge.overdue {
-  color: #EF4444;
-  background: rgba(239, 68, 68, 0.12);
-}
-
-.priority-badge {
-  font-weight: 700;
+  padding: 1px 7px;
   font-size: 10.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-3);
   letter-spacing: 0.02em;
 }
 
-/* ─── Avatars ─── */
+.priority-pill {
+  font-weight: 700;
+}
+
+.meta-pill--overdue {
+  color: #ef4444;
+  background: color-mix(in srgb, #ef4444 12%, var(--surface-2));
+  border-color: color-mix(in srgb, #ef4444 30%, var(--border));
+}
+
+/* avatars */
 .card-avatars {
   display: flex;
   align-items: center;
+  margin-top: 2px;
 }
 
 .avatar-chip {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 700;
   color: white;
-  position: relative;
-  border: 1.5px solid rgb(var(--v-theme-primary));
+  border: 1.5px solid var(--surface);
   flex-shrink: 0;
   cursor: default;
 }
 
 .avatar-extra {
-  background: rgba(var(--v-theme-secondary), 0.15) !important;
-  color: rgba(var(--v-theme-secondary), 0.7);
-  font-size: 9px;
+  background: var(--surface-2) !important;
+  color: var(--text-3) !important;
+  border-color: var(--border) !important;
 }
 
-/* ─── Drag states ─── */
+/* ── Drag states ────────────────────────────────────────────── */
 .drag-ghost {
-  opacity: 0.25 !important;
-  background: rgb(var(--v-theme-surface)) !important;
-  border: 1.5px dashed rgba(var(--v-theme-secondary), 0.2) !important;
-  border-radius: 10px !important;
+  opacity: 0.35 !important;
+  background: var(--surface-2) !important;
+  border: 1.5px dashed var(--accent) !important;
+  border-radius: var(--radius) !important;
   box-shadow: none !important;
 }
 
 .drag-chosen {
   cursor: grabbing !important;
-  transform: rotate(1.5deg) scale(1.03) !important;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45) !important;
+  transform: rotate(1.5deg) scale(1.02) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4) !important;
   z-index: 9999 !important;
-  border-color: rgba(var(--v-theme-secondary), 0.2) !important;
+  border-color: var(--accent) !important;
 }
 
 .drag-moving {
   cursor: grabbing !important;
 }
 
-/* ─── Subtasks Section ─── */
+/* ── Subtasks ───────────────────────────────────────────────── */
 .subtasks-section {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .subtasks-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-family: inherit;
   font-size: 11px;
-  font-weight: 500;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border: none;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 4px 8px;
+  padding: 3px 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
   align-self: flex-start;
+  transition: border-color var(--motion-fast), color var(--motion-fast);
 }
 
 .subtasks-toggle:hover {
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgba(var(--v-theme-secondary), 0.7);
-}
-
-.subtasks-count {
-  font-size: 10.5px;
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .subtasks-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   padding: 6px 8px;
-  background: rgba(var(--v-theme-secondary), 0.03);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  margin-left: 2px;
 }
 
 .subtask-item {
@@ -678,12 +740,11 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   align-items: center;
   gap: 6px;
   font-size: 11.5px;
-  color: rgb(var(--v-theme-secondary));
-  padding: 2px 0;
+  color: var(--text-2);
 }
 
 .subtask-item.subtask-done {
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .subtask-item.subtask-done .subtask-title {
