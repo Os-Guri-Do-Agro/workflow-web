@@ -128,19 +128,21 @@ onMounted(() => load())
 <template>
   <div class="conns-root">
     <div class="conns-head">
-      <div class="conns-title-block">
-        <span class="conns-title">
-          <GitBranch :size="13" style="vertical-align: -2px; margin-right: 4px" />
-          Repositórios
-        </span>
-        <span class="conns-sub">
-          Conecte uma organização do GitHub e todos os repos ficam visíveis em
-          <strong>Repos</strong> na sidebar.
-        </span>
+      <div class="conns-head-left">
+        <div class="conns-head-icon">
+          <Github :size="18" />
+        </div>
+        <div class="conns-title-block">
+          <span class="conns-title">GitHub</span>
+          <span class="conns-sub">
+            Conecte uma organização e todos os repos ficam disponíveis em
+            <strong>Repos</strong> pra todo o time interno.
+          </span>
+        </div>
       </div>
-      <button class="conns-add" @click="showCreate = true">
+      <button v-if="connections.length" class="conns-add" @click="showCreate = true">
         <Plus :size="13" />
-        <span>Conectar org</span>
+        <span>Nova conexão</span>
       </button>
     </div>
 
@@ -149,44 +151,59 @@ onMounted(() => load())
       <span>Carregando…</span>
     </div>
 
-    <div v-else-if="!connections.length" class="conns-state">
-      <Github :size="28" />
-      <p>
-        Nenhuma org conectada. Clique em <strong>Conectar org</strong> e cole um
-        PAT pra importar todos os repositórios de uma vez.
+    <div v-else-if="!connections.length" class="conns-empty">
+      <div class="conns-empty-icon">
+        <Github :size="34" />
+      </div>
+      <h3 class="conns-empty-title">Nenhuma organização conectada</h3>
+      <p class="conns-empty-sub">
+        Conecte sua org do GitHub uma vez e o time inteiro passa a navegar nos
+        repositórios pelo workflow — sem precisar abrir o GitHub.
       </p>
+      <button class="conns-cta" @click="showCreate = true">
+        <Github :size="14" />
+        <span>Conectar GitHub</span>
+      </button>
     </div>
 
     <ul v-else class="conns-list">
       <li v-for="c in connections" :key="c.id" class="conn-card">
-        <div class="conn-icon"><Github :size="18" /></div>
-        <div class="conn-body">
-          <div class="conn-name-row">
-            <span class="conn-name">{{ c.ownerLogin }}</span>
-            <span class="conn-count">{{ c.repositoryCount }} repos</span>
+        <div class="conn-card-head">
+          <div class="conn-icon">
+            <Github :size="20" />
           </div>
-          <div class="conn-meta">
-            <span>Última sync: <strong>{{ formatDate(c.lastSyncedAt) }}</strong></span>
+          <div class="conn-body">
+            <div class="conn-name-row">
+              <span class="conn-name">{{ c.ownerLogin }}</span>
+              <span class="conn-count">
+                <GitBranch :size="10" />
+                {{ c.repositoryCount }}
+              </span>
+            </div>
+            <div class="conn-meta">
+              Sincronizado <strong>{{ formatDate(c.lastSyncedAt) }}</strong>
+            </div>
           </div>
-        </div>
-        <div class="conn-actions">
-          <button
-            class="conn-btn"
-            :disabled="syncingId === c.id"
-            @click="syncConnection(c.id)"
-          >
-            <Loader2 v-if="syncingId === c.id" :size="13" class="spin" />
-            <RefreshCw v-else :size="13" />
-            <span>Sincronizar</span>
-          </button>
-          <button
-            class="conn-btn conn-btn--danger"
-            :disabled="removingId === c.id"
-            @click="removeConnection(c.id, c.ownerLogin)"
-          >
-            <Loader2 v-if="removingId === c.id" :size="13" class="spin" />
-            <Trash2 v-else :size="13" />
-          </button>
+          <div class="conn-actions">
+            <button
+              class="conn-btn"
+              :disabled="syncingId === c.id"
+              @click="syncConnection(c.id)"
+            >
+              <Loader2 v-if="syncingId === c.id" :size="13" class="spin" />
+              <RefreshCw v-else :size="13" />
+              <span>Sincronizar</span>
+            </button>
+            <button
+              class="conn-btn conn-btn--danger"
+              :disabled="removingId === c.id"
+              :aria-label="`Remover ${c.ownerLogin}`"
+              @click="removeConnection(c.id, c.ownerLogin)"
+            >
+              <Loader2 v-if="removingId === c.id" :size="13" class="spin" />
+              <Trash2 v-else :size="13" />
+            </button>
+          </div>
         </div>
       </li>
     </ul>
@@ -195,54 +212,83 @@ onMounted(() => load())
     <div v-if="showCreate" class="modal-bd" @click.self="showCreate = false">
       <div class="modal">
         <div class="modal-h">
-          <h3>Conectar organização do GitHub</h3>
+          <div class="modal-h-left">
+            <div class="modal-h-icon">
+              <Github :size="16" />
+            </div>
+            <h3>Conectar GitHub</h3>
+          </div>
           <button class="modal-x" @click="showCreate = false">
             <X :size="14" />
           </button>
         </div>
         <div class="modal-body">
-          <div class="ff">
-            <label>Owner / Organização</label>
-            <input
-              v-model="draft.ownerLogin"
-              class="fi"
-              placeholder="Os-Guri-Do-Agro"
-              maxlength="80"
-            />
-            <span class="hint">
-              Mesmo login que aparece em
-              <code>github.com/&lt;owner&gt;</code>
-            </span>
-          </div>
-          <div class="ff">
-            <label>GitHub PAT (criptografado antes de salvar)</label>
-            <div class="fi-wrap">
-              <input
-                v-model="draft.token"
-                :type="showToken ? 'text' : 'password'"
-                class="fi"
-                placeholder="ghp_… ou github_pat_…"
-                autocomplete="off"
-              />
-              <button type="button" class="fi-eye" @click="showToken = !showToken">
-                <component :is="showToken ? EyeOff : Eye" :size="13" />
-              </button>
-            </div>
-            <span class="hint">
-              Vai em
-              <a
-                href="https://github.com/settings/tokens"
-                target="_blank"
-                rel="noopener"
-                class="link"
-              >
-                github.com/settings/tokens
-                <ExternalLink :size="10" style="vertical-align: -1px" />
-              </a>
-              → "Generate new token (classic)" → marque scope <code>repo</code>.
-              Se a org tem SSO, autorize o token na lista após gerar.
-            </span>
-          </div>
+          <ol class="steps">
+            <li class="step">
+              <span class="step-num">1</span>
+              <div class="step-body">
+                <p class="step-title">Gere um Personal Access Token</p>
+                <p class="step-desc">
+                  Abra
+                  <a
+                    href="https://github.com/settings/tokens/new?scopes=repo&description=workflow+stackroads"
+                    target="_blank"
+                    rel="noopener"
+                    class="link"
+                  >
+                    github.com/settings/tokens
+                    <ExternalLink :size="10" style="vertical-align: -1px" />
+                  </a>
+                  → <strong>"Tokens (classic)"</strong> → marque o scope
+                  <code>repo</code>.
+                </p>
+                <p class="step-desc step-desc--note">
+                  Se a org usa SSO, clique em <strong>Configure SSO</strong> ao
+                  lado do token recém-criado e autorize a org.
+                </p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">2</span>
+              <div class="step-body">
+                <p class="step-title">Cole abaixo o owner e o token</p>
+
+                <div class="ff">
+                  <label>Owner / Organização</label>
+                  <input
+                    v-model="draft.ownerLogin"
+                    class="fi"
+                    placeholder="Os-Guri-Do-Agro"
+                    maxlength="80"
+                  />
+                  <span class="hint">
+                    Mesmo trecho que aparece em
+                    <code>github.com/&lt;owner&gt;</code>
+                  </span>
+                </div>
+
+                <div class="ff">
+                  <label>Personal Access Token</label>
+                  <div class="fi-wrap">
+                    <input
+                      v-model="draft.token"
+                      :type="showToken ? 'text' : 'password'"
+                      class="fi"
+                      placeholder="ghp_… ou github_pat_…"
+                      autocomplete="off"
+                    />
+                    <button type="button" class="fi-eye" @click="showToken = !showToken">
+                      <component :is="showToken ? EyeOff : Eye" :size="13" />
+                    </button>
+                  </div>
+                  <span class="hint">
+                    Criptografado com AES-256-GCM antes de salvar. Não é
+                    retornado pela API depois.
+                  </span>
+                </div>
+              </div>
+            </li>
+          </ol>
         </div>
         <div class="modal-f">
           <button class="btn-cancel" @click="showCreate = false">Cancelar</button>
@@ -269,6 +315,24 @@ onMounted(() => load())
   justify-content: space-between;
   gap: 14px;
 }
+.conns-head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.conns-head-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  flex-shrink: 0;
+}
 .conns-title-block {
   display: flex;
   flex-direction: column;
@@ -276,13 +340,15 @@ onMounted(() => load())
   min-width: 0;
 }
 .conns-title {
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--text);
+  letter-spacing: -0.01em;
 }
 .conns-sub {
   font-size: 12.5px;
   color: var(--text-3);
+  line-height: 1.5;
 }
 .conns-add {
   display: inline-flex;
@@ -313,10 +379,61 @@ onMounted(() => load())
   font-size: 13px;
   text-align: center;
 }
-.conns-state p {
+
+.conns-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 36px 24px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+}
+.conns-empty-icon {
+  width: 60px;
+  height: 60px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.conns-empty-title {
+  font-size: 15px;
+  font-weight: 700;
   margin: 0;
-  max-width: 360px;
-  line-height: 1.5;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.conns-empty-sub {
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.55;
+  margin: 0;
+  max-width: 380px;
+}
+.conns-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 1px solid color-mix(in srgb, var(--accent) 80%, black);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+.conns-cta:hover {
+  filter: brightness(1.07);
 }
 
 .conns-list {
@@ -328,22 +445,29 @@ onMounted(() => load())
   gap: 8px;
 }
 .conn-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  transition: border-color var(--motion-fast);
+}
+.conn-card:hover {
+  border-color: var(--border-strong);
+}
+.conn-card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
 }
 .conn-icon {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface-2);
+  border: 1px solid var(--border);
   color: var(--text);
   flex-shrink: 0;
 }
@@ -354,25 +478,30 @@ onMounted(() => load())
 .conn-name-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 .conn-name {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 14.5px;
+  font-weight: 700;
   color: var(--text);
+  letter-spacing: -0.01em;
 }
 .conn-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
-  color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  padding: 1px 8px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  padding: 2px 8px;
   border-radius: 999px;
 }
 .conn-meta {
   font-size: 11.5px;
   color: var(--text-3);
-  margin-top: 3px;
+  margin-top: 4px;
 }
 .conn-actions {
   display: flex;
@@ -406,6 +535,87 @@ onMounted(() => load())
 .conn-btn--danger:hover:not(:disabled) {
   color: #ef4444;
   border-color: color-mix(in srgb, #ef4444 30%, var(--border));
+}
+
+/* Steps no modal */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.step-num {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 50%;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.step-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.step-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+.step-desc {
+  font-size: 12.5px;
+  color: var(--text-3);
+  margin: 0;
+  line-height: 1.55;
+}
+.step-desc--note {
+  font-size: 11.5px;
+  color: var(--text-4);
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.step-desc code {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.modal-h-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.modal-h-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
 }
 
 /* Modal */

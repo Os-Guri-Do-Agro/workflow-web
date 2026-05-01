@@ -15,23 +15,40 @@ import {
   type LucideIcon,
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 
 export type NavItem = {
   title: string
   icon: LucideIcon
   to?: string
   children?: NavItem[]
-  role?: string
+  role?: 'WORKER' | 'ADMIN' | 'OWNER'
   section?: 'Trabalho' | 'Pessoal'
 }
 
 const { quarters } = useNavQuarters()
+const workspace = useWorkspaceStore()
+
+const ROLE_RANK: Record<string, number> = {
+  VIEWER: 0,
+  CLIENT: 1,
+  WORKER: 2,
+  ADMIN: 3,
+  OWNER: 4,
+}
+
+function userMeetsRole(required?: string): boolean {
+  if (!required) return true
+  const active = workspace.activeRole
+  if (!active) return false
+  return ROLE_RANK[active] >= ROLE_RANK[required]
+}
 
 const mainItems = computed<NavItem[]>(() => [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/dashboard', section: 'Trabalho' },
   { title: 'Board', icon: Columns3, to: '/board', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', section: 'Trabalho' },
-  { title: 'Repos', icon: GitBranch, to: '/repos', section: 'Trabalho' },
+  { title: 'Repos', icon: GitBranch, to: '/repos', role: 'WORKER', section: 'Trabalho' },
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
   { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },
 ])
@@ -72,7 +89,7 @@ const workItems = computed<NavItem[]>(() => {
     const idx = items.findIndex((i) => i.to === '/variables')
     items.splice(idx >= 0 ? idx : items.length, 0, taskItem.value)
   }
-  return items
+  return items.filter((i) => userMeetsRole(i.role))
 })
 
 defineExpose({ workItems, personalItems })
