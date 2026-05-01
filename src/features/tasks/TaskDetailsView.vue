@@ -673,7 +673,7 @@ const deleteAttachment = async (attachmentId: string) => {
                   style="
                     width: 80px;
                     height: 80px;
-                    background: rgba(var(--v-theme-secondary), 0.08);
+                    background: rgba(var(--text), 0.08);
                     cursor: pointer;
                   "
                 >
@@ -681,7 +681,7 @@ const deleteAttachment = async (attachmentId: string) => {
                   <span
                     style="
                       font-size: 9px;
-                      color: var(--v-theme-secondary);
+                      color: var(--text);
                       text-align: center;
                       padding: 0 4px;
                       overflow: hidden;
@@ -762,8 +762,8 @@ const deleteAttachment = async (attachmentId: string) => {
           elevation="0"
           class="mt-3 mb-3 pa-3"
           style="
-            border: 2px solid rgba(var(--v-theme-secondary), 0.3);
-            background: rgba(var(--v-theme-secondary), 0.05);
+            border: 2px solid rgba(var(--text), 0.3);
+            background: rgba(var(--text), 0.05);
           "
         >
           <div class="d-flex align-center ga-2 mb-2">
@@ -793,11 +793,11 @@ const deleteAttachment = async (attachmentId: string) => {
                 class="d-flex align-center justify-space-between pa-2 rounded"
                 :style="{
                   background: isSubtaskCreated(task)
-                    ? 'rgba(var(--v-theme-success), 0.1)'
-                    : 'rgba(var(--v-theme-surface), 0.5)',
+                    ? 'color-mix(in srgb, #10b981 12%, var(--surface-2))'
+                    : 'var(--surface-2)',
                   border: isSubtaskCreated(task)
-                    ? '1px solid rgba(var(--v-theme-success), 0.3)'
-                    : '1px solid rgba(var(--v-theme-secondary), 0.2)',
+                    ? '1px solid color-mix(in srgb, #10b981 30%, var(--border))'
+                    : '1px solid var(--border)',
                   opacity: isSubtaskCreated(task) ? 0.7 : 1,
                 }"
               >
@@ -930,7 +930,7 @@ const deleteAttachment = async (attachmentId: string) => {
                   style="
                     width: 100px;
                     height: 100px;
-                    background: rgba(var(--v-theme-secondary), 0.08);
+                    background: rgba(var(--text), 0.08);
                     cursor: pointer;
                   "
                 >
@@ -938,7 +938,7 @@ const deleteAttachment = async (attachmentId: string) => {
                   <span
                     style="
                       font-size: 9px;
-                      color: var(--v-theme-secondary);
+                      color: var(--text);
                       text-align: center;
                       padding: 0 4px;
                       overflow: hidden;
@@ -1199,7 +1199,7 @@ const deleteAttachment = async (attachmentId: string) => {
                     style="
                       width: 100px;
                       height: 100px;
-                      background: rgba(var(--v-theme-secondary), 0.08);
+                      background: rgba(var(--text), 0.08);
                       cursor: pointer;
                     "
                   >
@@ -1207,7 +1207,7 @@ const deleteAttachment = async (attachmentId: string) => {
                     <span
                       style="
                         font-size: 9px;
-                        color: var(--v-theme-secondary);
+                        color: var(--text);
                         text-align: center;
                         padding: 0 4px;
                         overflow: hidden;
@@ -1344,7 +1344,7 @@ const deleteAttachment = async (attachmentId: string) => {
                     style="
                       width: 100px;
                       height: 100px;
-                      background: rgba(var(--v-theme-secondary), 0.08);
+                      background: rgba(var(--text), 0.08);
                       cursor: pointer;
                     "
                   >
@@ -1352,7 +1352,7 @@ const deleteAttachment = async (attachmentId: string) => {
                     <span
                       style="
                         font-size: 9px;
-                        color: var(--v-theme-secondary);
+                        color: var(--text);
                         text-align: center;
                         padding: 0 4px;
                         overflow: hidden;
@@ -1493,12 +1493,12 @@ const deleteAttachment = async (attachmentId: string) => {
   border-radius: 8px;
   transition: all 0.2s ease;
   background: transparent;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.2);
+  border: 1px solid rgba(var(--text), 0.2);
 }
 
 .subtask-item:hover {
-  background: rgba(var(--v-theme-secondary), 0.05);
-  border-color: rgba(var(--v-theme-secondary), 0.3);
+  background: rgba(var(--text), 0.05);
+  border-color: rgba(var(--text), 0.3);
 }
 
 .clickable {

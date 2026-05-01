@@ -477,10 +477,16 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   min-height: 80px;
   border-radius: var(--radius);
   padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  /* sortablejs/vue-draggable não convive bem com flex+gap aqui;
+     mantém block + margin-bottom nos cards. */
   transition: background var(--motion-fast), outline var(--motion-fast);
+}
+
+.task-card {
+  margin-bottom: 8px;
+}
+.task-card:last-child {
+  margin-bottom: 0;
 }
 
 .column-drop-active {
