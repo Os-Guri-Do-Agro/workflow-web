@@ -19,7 +19,7 @@ import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useToast } from '@/composables/useToast'
 import importService from '@/service/import/import-service'
 import notificationsService from '@/service/notifications/notifications-service'
-import RepositoriesSection from './RepositoriesSection.vue'
+// import RepositoriesSection from './RepositoriesSection.vue' // oculto até liberar feature
 import type { AccentName, Density, ShellVariant } from '@/plugins/tokens'
 import { accents } from '@/plugins/tokens'
 
@@ -485,10 +485,8 @@ const shellOptions: {
         </div>
       </div>
 
-      <!-- Repositórios -->
-      <div class="settings-card">
-        <RepositoriesSection />
-      </div>
+      <!-- Repositórios — oculto enquanto a feature de Repos está em desenvolvimento -->
+      <!-- <div class="settings-card"><RepositoriesSection /></div> -->
 
       <!-- Integrations -->
       <div class="settings-card">
