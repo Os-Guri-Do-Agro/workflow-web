@@ -10,8 +10,13 @@ const dashboardService = {
     const params: any = {}
     if (quarter) params.quarter = quarter
     if (month) params.month = month
-    
+
     const response = await api.get(`/dashboard/company/${companyId}`, { params })
+    return response.data
+  },
+
+  async getWeeklyTrend(companyId: string) {
+    const response = await api.get(`/dashboard/company/${companyId}/weekly-trend`)
     return response.data
   },
 }

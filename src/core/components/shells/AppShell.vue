@@ -13,8 +13,10 @@ const { shell } = useUiPreferences()
 const bare = computed(
   () =>
     route.name === 'login' ||
+    route.name === 'signup' ||
     route.name === 'download' ||
-    route.name === 'bug-report',
+    route.name === 'bug-report' ||
+    route.name === 'report-status',
 )
 
 const ActiveShell = computed(() => {

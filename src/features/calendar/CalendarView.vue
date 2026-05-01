@@ -240,11 +240,12 @@ function formatTime(dateString: string): string {
       </div>
 
       <div class="header-actions">
-        <button class="btn-ghost press" :disabled="linking" @click="linkGoogle">
+        <!-- Vincular Google oculto por enquanto -->
+        <!-- <button class="btn-ghost press" :disabled="linking" @click="linkGoogle">
           <Loader2 v-if="linking" :size="13" class="spin" />
           <Link2 v-else :size="13" />
           Vincular Google
-        </button>
+        </button> -->
         <button class="btn-ghost press" @click="goToToday">
           Hoje
         </button>

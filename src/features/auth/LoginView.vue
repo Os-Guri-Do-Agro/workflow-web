@@ -126,6 +126,13 @@ const features = [
           <button
             type="button"
             class="btn-ghost"
+            @click="router.push('/signup')"
+          >
+            Criar conta gratuita
+          </button>
+          <button
+            type="button"
+            class="btn-ghost"
             @click="router.push('/download')"
           >
             <Download :size="14" />

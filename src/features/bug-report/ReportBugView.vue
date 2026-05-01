@@ -11,6 +11,8 @@ import {
   AlertCircle,
   Sparkles,
   ArrowRight,
+  Copy,
+  Check,
 } from 'lucide-vue-next'
 import bugReportService from '@/service/bug-report/bug-report-service'
 
@@ -45,6 +47,21 @@ const fileSizeMB = computed(() =>
 const canSubmit = computed(
   () => !!file.value || descriptionText.value.trim().length > 0,
 )
+
+const statusUrl = computed(() =>
+  submittedId.value ? `${window.location.origin}/r/${submittedId.value}` : '',
+)
+const copied = ref(false)
+async function copyStatusLink() {
+  if (!statusUrl.value) return
+  try {
+    await navigator.clipboard.writeText(statusUrl.value)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 1500)
+  } catch {
+    /* ignora */
+  }
+}
 
 onMounted(async () => {
   if (!companyId.value) {
@@ -170,12 +187,28 @@ function reset() {
         </div>
         <h1 class="card-title">Recebemos! Obrigado.</h1>
         <p class="card-sub">
-          Vamos dar uma olhada nisso agora. Se a gente precisar de mais detalhes,
-          alguém entra em contato.
+          Vamos dar uma olhada nisso agora. Salve o link abaixo pra acompanhar
+          o andamento sempre que quiser — sem precisar de login.
         </p>
-        <button class="btn-secondary" @click="reset">
-          <span>Reportar outro problema</span>
-        </button>
+
+        <a
+          class="status-link"
+          :href="statusUrl"
+          target="_blank"
+          rel="noopener"
+        >
+          <span class="status-link-text">{{ statusUrl }}</span>
+          <span class="status-link-action">Abrir</span>
+        </a>
+
+        <div class="status-actions">
+          <button class="btn-copy-link" @click="copyStatusLink">
+            <Check v-if="copied" :size="13" />
+            <Copy v-else :size="13" />
+            <span>{{ copied ? 'Copiado' : 'Copiar link' }}</span>
+          </button>
+          <button class="btn-secondary" @click="reset">Reportar outro</button>
+        </div>
       </div>
     </section>
 

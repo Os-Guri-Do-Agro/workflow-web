@@ -8,8 +8,10 @@ import TaskDetailsView from '@/features/tasks/TaskDetailsView.vue'
 import ReportView from '@/features/reports/ReportView.vue'
 import SettingsView from '@/features/settings/SettingsView.vue'
 import LoginView from '@/features/auth/LoginView.vue'
+import SignupView from '@/features/auth/SignupView.vue'
 import DownloadView from '@/features/download/DownloadView.vue'
 import ReportBugView from '@/features/bug-report/ReportBugView.vue'
+import ReportStatusView from '@/features/bug-report/ReportStatusView.vue'
 import BugReportsListView from '@/features/bug-report/BugReportsListView.vue'
 import BugReportDetailView from '@/features/bug-report/BugReportDetailView.vue'
 import ReposListView from '@/features/repos/ReposListView.vue'
@@ -27,6 +29,7 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/login', name: 'login', component: LoginView },
+    { path: '/signup', name: 'signup', component: SignupView },
     { path: '/download', name: 'download', component: DownloadView },
     {
       path: '/report/:companyId',
@@ -34,6 +37,7 @@ const router = createRouter({
       name: 'bug-report',
       component: ReportBugView,
     },
+    { path: '/r/:id', name: 'report-status', component: ReportStatusView },
     { path: '/', name: 'home', component: DashboardView },
     { path: '/board', name: 'board', component: BoardView },
     { path: '/dashboard', name: 'dashboard', component: DashboardView },
@@ -61,8 +65,10 @@ router.beforeEach((to, from) => {
   if (
     !token &&
     to.name !== 'login' &&
+    to.name !== 'signup' &&
     to.name !== 'download' &&
-    to.name !== 'bug-report'
+    to.name !== 'bug-report' &&
+    to.name !== 'report-status'
   ) {
     return { name: 'login' }
   }

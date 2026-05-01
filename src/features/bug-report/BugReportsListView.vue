@@ -11,8 +11,14 @@ import {
   Clock,
   Cpu,
   ArrowRight,
+  Link2,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronRight as ChevronRightIcon,
 } from 'lucide-vue-next'
 import bugReportService from '@/service/bug-report/bug-report-service'
+import companieService from '@/service/companies/companies-services'
 import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
@@ -75,7 +81,41 @@ const load = async () => {
 
 const open = (id: string) => router.push(`/bug-reports/${id}`)
 
-onMounted(() => load())
+// ── Wiki de links pra reportar ───────────────────────────────────────────
+const companies = ref<any[]>([])
+const linksOpen = ref(false)
+const copiedId = ref<string | null>(null)
+
+const reportUrlFor = (companyId: string) =>
+  `${window.location.origin}/reports/${companyId}`
+
+async function copyReportUrl(companyId: string) {
+  try {
+    await navigator.clipboard.writeText(reportUrlFor(companyId))
+    copiedId.value = companyId
+    setTimeout(() => (copiedId.value = null), 1500)
+  } catch {
+    showError('Não consegui copiar')
+  }
+}
+
+const loadCompanies = async () => {
+  try {
+    const r = await companieService.getCompany()
+    const list = Array.isArray(r) ? r : r?.data || []
+    // normaliza: às vezes vem como { company: {...} } via UserCompany
+    companies.value = list
+      .map((c: any) => c.company || c)
+      .filter((c: any) => !!c?.id)
+  } catch {
+    /* silencioso — wiki é opcional */
+  }
+}
+
+onMounted(() => {
+  load()
+  loadCompanies()
+})
 </script>
 
 <template>
@@ -90,7 +130,45 @@ onMounted(() => load())
           <p class="page-sub">Vídeos e relatos enviados pelo time</p>
         </div>
       </div>
+      <button
+        class="links-toggle"
+        :class="{ 'links-toggle--open': linksOpen }"
+        @click="linksOpen = !linksOpen"
+      >
+        <Link2 :size="13" />
+        <span>Links pra reportar</span>
+        <ChevronDown v-if="linksOpen" :size="12" />
+        <ChevronRightIcon v-else :size="12" />
+      </button>
     </header>
+
+    <!-- Wiki: lista de Companies com URL pública pra compartilhar -->
+    <section v-if="linksOpen" class="links-pane">
+      <p class="links-hint">
+        Compartilhe um destes links com o time/cliente. Quem abrir reporta
+        bugs sem precisar de login.
+      </p>
+      <ul class="links-list">
+        <li v-for="c in companies" :key="c.id" class="link-row">
+          <div class="link-info">
+            <span class="link-company">{{ c.name }}</span>
+            <code class="link-url">{{ reportUrlFor(c.id) }}</code>
+          </div>
+          <button
+            class="link-copy"
+            :class="{ 'link-copy--ok': copiedId === c.id }"
+            @click="copyReportUrl(c.id)"
+          >
+            <Check v-if="copiedId === c.id" :size="13" />
+            <Copy v-else :size="13" />
+            <span>{{ copiedId === c.id ? 'Copiado' : 'Copiar' }}</span>
+          </button>
+        </li>
+        <li v-if="!companies.length" class="link-empty">
+          Nenhuma empresa carregada.
+        </li>
+      </ul>
+    </section>
 
     <div class="filter-bar">
       <button
@@ -173,6 +251,116 @@ onMounted(() => load())
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+/* Toggle "Links pra reportar" */
+.links-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--motion-fast), color var(--motion-fast);
+}
+.links-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.links-toggle--open {
+  background: var(--surface-2);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.links-pane {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.links-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+}
+.links-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.link-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.link-company {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.link-url {
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.link-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.link-copy:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.link-copy--ok {
+  color: #10b981;
+  border-color: color-mix(in srgb, #10b981 30%, var(--border));
+}
+.link-empty {
+  font-size: 12px;
+  color: var(--text-4);
+  padding: 8px;
+  text-align: center;
 }
 
 .head-left {

@@ -56,6 +56,25 @@ const { data: workspaceData, isLoading: loadingWorkspace } = useWorkspaceDashboa
 )
 const { data: upcomingData, isLoading: loadingUpcoming } = useUpcomingEvents(5)
 
+// Trend semanal real (substitui mock antigo)
+import dashboardService from '@/service/dashboard/dashboard-service'
+import { useQuery } from '@tanstack/vue-query'
+
+const { data: weeklyTrendData } = useQuery({
+  queryKey: computed(() => ['weeklyTrend', companyId.value]),
+  queryFn: () => dashboardService.getWeeklyTrend(companyId.value!),
+  enabled: computed(() => !!companyId.value),
+})
+
+const weeklySeries = computed<{ created: number[]; completed: number[] }>(() => {
+  const w = weeklyTrendData.value as any
+  const series: any[] = w?.series ?? []
+  return {
+    created: series.map((d) => d.created ?? 0),
+    completed: series.map((d) => d.completed ?? 0),
+  }
+})
+
 const metrics = computed(() => metricsData.value ?? null)
 const backlog = computed(() => backlogData.value ?? [])
 const upcoming = computed<any[]>(() => {
@@ -147,18 +166,23 @@ const stats = computed<StatCard[]>(() => {
   const completed = m.status?.completed || 0
   const inProgress = m.status?.inProgress || 0
   const overdue = m.time?.overdue || 0
-  // Mocked spark data fallback (no historical in API today) — shape used for visual trend only
-  const sparkUp = (seed: number, n = 12) =>
-    Array.from({ length: n }, (_, i) => Math.round(seed * 0.4 + seed * 0.6 * ((i + 1) / n) + Math.sin(i) * seed * 0.06))
-  const sparkFlat = (v: number, n = 12) =>
-    Array.from({ length: n }, (_, i) => Math.round(v + Math.sin(i * 0.8) * v * 0.1))
+
+  // Spark com dados reais dos últimos 7 dias (substitui mock anterior)
+  const createdSeries = weeklySeries.value.created
+  const completedSeries = weeklySeries.value.completed
+  // Quando não temos dados ainda, devolve flat para não estourar o gráfico
+  const fallback = (v: number) => Array(7).fill(Math.max(0, v))
+
+  const completedThisWeek = completedSeries.reduce((a, b) => a + b, 0)
+  const createdThisWeek = createdSeries.reduce((a, b) => a + b, 0)
+
   return [
     {
       title: 'Total',
       value: String(total),
       icon: FolderOpen,
       color: 'var(--info)',
-      spark: sparkUp(total || 20),
+      spark: createdSeries.length ? createdSeries : fallback(total),
       trend: `${hero.value.progress}% concluído`,
     },
     {
@@ -166,23 +190,27 @@ const stats = computed<StatCard[]>(() => {
       value: String(completed),
       icon: CheckCircle2,
       color: 'var(--success)',
-      spark: sparkUp(completed || 8),
-      trend: `+${Math.max(1, Math.floor(completed / 6))} esta semana`,
+      spark: completedSeries.length ? completedSeries : fallback(completed),
+      trend: completedThisWeek > 0
+        ? `+${completedThisWeek} esta semana`
+        : 'Nenhuma fechada esta semana',
     },
     {
       title: 'Em progresso',
       value: String(inProgress),
       icon: Clock3,
       color: 'var(--warn)',
-      spark: sparkFlat(inProgress || 5),
-      trend: `${inProgress} em execução`,
+      spark: createdSeries.length ? createdSeries : fallback(inProgress),
+      trend: createdThisWeek > 0
+        ? `${createdThisWeek} novas esta semana`
+        : `${inProgress} em execução`,
     },
     {
       title: 'Atrasadas',
       value: String(overdue),
       icon: AlertTriangle,
       color: 'var(--err)',
-      spark: sparkFlat(Math.max(1, overdue)),
+      spark: fallback(overdue),
       trend: `${m.time?.dueThisWeek || 0} vencem esta semana`,
     },
   ]
