@@ -12,6 +12,8 @@ import DownloadView from '@/features/download/DownloadView.vue'
 import ReportBugView from '@/features/bug-report/ReportBugView.vue'
 import BugReportsListView from '@/features/bug-report/BugReportsListView.vue'
 import BugReportDetailView from '@/features/bug-report/BugReportDetailView.vue'
+import ReposListView from '@/features/repos/ReposListView.vue'
+import RepoBrowserView from '@/features/repos/RepoBrowserView.vue'
 import CompanyVariablesView from '@/features/companies/CompanyVariablesView.vue'
 import CompanyUsersView from '@/features/companies/CompanyUsersView.vue'
 import NotesView from '@/features/notes/NotesView.vue'
@@ -46,6 +48,8 @@ const router = createRouter({
     { path: '/company-users', name: 'company-users', component: CompanyUsersView, meta: { requiredRole: 'ADMIN' } },
     { path: '/bug-reports', name: 'bug-reports-list', component: BugReportsListView },
     { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView },
+    { path: '/repos', name: 'repos-list', component: ReposListView },
+    { path: '/repos/:id', name: 'repo-browser', component: RepoBrowserView },
   ],
 })
 

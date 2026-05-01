@@ -11,6 +11,7 @@ import {
   BarChart3,
   CalendarRange,
   Bug,
+  GitBranch,
   type LucideIcon,
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
@@ -30,6 +31,7 @@ const mainItems = computed<NavItem[]>(() => [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/dashboard', section: 'Trabalho' },
   { title: 'Board', icon: Columns3, to: '/board', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', section: 'Trabalho' },
+  { title: 'Repos', icon: GitBranch, to: '/repos', section: 'Trabalho' },
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
   { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },
 ])

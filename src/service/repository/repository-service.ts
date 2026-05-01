@@ -99,6 +99,77 @@ class repositoryService {
       'Erro ao revogar acesso',
     )
   }
+
+  // ─── GitHub proxy ─────────────────────────────────────────────────────
+
+  listBranches(id: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get(`/repository/${id}/branches`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      'Erro ao listar branches',
+    )
+  }
+
+  listTree(id: string, branch?: string, path?: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    const params = new URLSearchParams()
+    if (branch) params.append('branch', branch)
+    if (path) params.append('path', path)
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    return this.handleRequest(
+      api.get(`/repository/${id}/tree${qs}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      'Erro ao listar arquivos',
+    )
+  }
+
+  getFile(id: string, path: string, branch?: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    const params = new URLSearchParams({ path })
+    if (branch) params.append('branch', branch)
+    return this.handleRequest(
+      api.get(`/repository/${id}/file?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      'Erro ao carregar arquivo',
+    )
+  }
+
+  listPulls(id: string, state: 'open' | 'closed' | 'all' = 'open'): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get(`/repository/${id}/pulls?state=${state}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      'Erro ao listar pull requests',
+    )
+  }
+
+  createPull(
+    id: string,
+    data: { title: string; body?: string; head: string; base?: string; draft?: boolean },
+  ): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.post(`/repository/${id}/pulls`, data, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      'Erro ao criar pull request',
+    )
+  }
+
+  getCloneInfo(id: string): Promise<any> {
+    const token = localStorage.getItem('token')
+    return this.handleRequest(
+      api.get(`/repository/${id}/clone`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      'Erro ao buscar URLs de clone',
+    )
+  }
 }
 
 export default new repositoryService()
