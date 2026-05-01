@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { GitBranch, Loader2, Lock, Users, ChevronRight, Settings } from 'lucide-vue-next'
+import {
+  GitBranch,
+  Loader2,
+  Lock,
+  Users,
+  ChevronRight,
+  Settings,
+  Github,
+  Search,
+} from 'lucide-vue-next'
 import repositoryService from '@/service/repository/repository-service'
 import { useToast } from '@/composables/useToast'
 
@@ -9,15 +18,51 @@ const router = useRouter()
 const { error: showError } = useToast()
 const repos = ref<any[]>([])
 const loading = ref(true)
+const search = ref('')
 
-const grouped = computed(() => {
-  const map: Record<string, { company: { id: string; name: string }; items: any[] }> = {}
-  for (const r of repos.value) {
-    const cId = r.companyId
-    if (!map[cId]) map[cId] = { company: r.company, items: [] }
-    map[cId].items.push(r)
+type Group = {
+  key: string
+  title: string
+  source: 'github' | 'company'
+  items: any[]
+}
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return repos.value
+  return repos.value.filter((r) => {
+    const full = `${r.owner}/${r.name}`.toLowerCase()
+    return full.includes(q)
+  })
+})
+
+const grouped = computed<Group[]>(() => {
+  const map: Record<string, Group> = {}
+  for (const r of filtered.value) {
+    let key: string
+    let title: string
+    let source: 'github' | 'company'
+    if (r.connection?.ownerLogin) {
+      key = `gh:${r.connection.ownerLogin}`
+      title = r.connection.ownerLogin
+      source = 'github'
+    } else if (r.company?.name) {
+      key = `co:${r.company.id}`
+      title = r.company.name
+      source = 'company'
+    } else {
+      key = 'misc'
+      title = 'Outros'
+      source = 'github'
+    }
+    if (!map[key]) map[key] = { key, title, source, items: [] }
+    map[key].items.push(r)
   }
-  return Object.values(map)
+  // Ordena: GitHub orgs primeiro, depois company-bound, depois misc
+  return Object.values(map).sort((a, b) => {
+    if (a.source !== b.source) return a.source === 'github' ? -1 : 1
+    return a.title.localeCompare(b.title)
+  })
 })
 
 onMounted(async () => {
@@ -57,45 +102,70 @@ const goSettings = () => router.push('/settings')
     </div>
 
     <div v-else-if="!repos.length" class="state">
+      <Github :size="32" />
       <p>
         Nenhum repositório vinculado. Vá em
         <button class="link" @click="goSettings">Configurações → Repositórios</button>
-        e adicione um.
+        e conecte uma org do GitHub.
       </p>
     </div>
 
-    <div v-else class="groups">
-      <section v-for="g in grouped" :key="g.company.id" class="group">
-        <h2 class="group-title">{{ g.company.name }}</h2>
-        <ul class="repo-list">
-          <li
-            v-for="r in g.items"
-            :key="r.id"
-            class="repo-card"
-            @click="open(r.id)"
-          >
-            <div class="repo-card-icon"><GitBranch :size="16" /></div>
-            <div class="repo-card-body">
-              <div class="repo-card-name">{{ r.owner }}/{{ r.name }}</div>
-              <div class="repo-card-meta">
-                <span class="branch">{{ r.defaultBranch }}</span>
-                <span class="sep">·</span>
-                <span :class="r.visibility === 'TEAM' ? 'vis-team' : 'vis-rest'">
-                  <Users v-if="r.visibility === 'TEAM'" :size="11" />
-                  <Lock v-else :size="11" />
-                  {{ r.visibility === 'TEAM' ? 'Team' : 'Restrito' }}
-                </span>
-                <span class="sep">·</span>
-                <span :class="r.hasToken ? 'tok-yes' : 'tok-no'">
-                  {{ r.hasToken ? 'token salvo' : 'sem token' }}
-                </span>
+    <template v-else>
+      <div class="search-bar">
+        <Search :size="14" class="search-icon" />
+        <input
+          v-model="search"
+          class="search-input"
+          placeholder="Buscar repositório (owner/name)…"
+        />
+      </div>
+
+      <div v-if="!grouped.length" class="state">
+        <p>Nenhum resultado para "{{ search }}"</p>
+      </div>
+
+      <div v-else class="groups">
+        <section v-for="g in grouped" :key="g.key" class="group">
+          <h2 class="group-title">
+            <Github v-if="g.source === 'github'" :size="11" />
+            <Users v-else :size="11" />
+            <span>{{ g.title }}</span>
+            <span class="group-count">{{ g.items.length }}</span>
+          </h2>
+          <ul class="repo-list">
+            <li
+              v-for="r in g.items"
+              :key="r.id"
+              class="repo-card"
+              @click="open(r.id)"
+            >
+              <div class="repo-card-icon"><GitBranch :size="16" /></div>
+              <div class="repo-card-body">
+                <div class="repo-card-name">{{ r.owner }}/{{ r.name }}</div>
+                <div class="repo-card-meta">
+                  <span class="branch">{{ r.defaultBranch }}</span>
+                  <template v-if="r.company?.name">
+                    <span class="sep">·</span>
+                    <span class="vis-team">
+                      <Users :size="11" />
+                      {{ r.company.name }}
+                    </span>
+                  </template>
+                  <template v-if="r.visibility === 'RESTRICTED'">
+                    <span class="sep">·</span>
+                    <span class="vis-rest">
+                      <Lock :size="11" />
+                      Restrito
+                    </span>
+                  </template>
+                </div>
               </div>
-            </div>
-            <ChevronRight :size="14" class="repo-card-arrow" />
-          </li>
-        </ul>
-      </section>
-    </div>
+              <ChevronRight :size="14" class="repo-card-arrow" />
+            </li>
+          </ul>
+        </section>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -189,12 +259,53 @@ const goSettings = () => router.push('/settings')
   gap: 8px;
 }
 .group-title {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-3);
   margin: 0 4px;
+}
+.group-count {
+  font-size: 10.5px;
+  color: var(--text-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 999px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-4);
+  pointer-events: none;
+}
+.search-input {
+  width: 100%;
+  padding: 9px 12px 9px 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.search-input:focus {
+  border-color: var(--accent);
+}
+.search-input::placeholder {
+  color: var(--text-4);
 }
 .repo-list {
   list-style: none;
