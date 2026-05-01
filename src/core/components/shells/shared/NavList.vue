@@ -11,7 +11,6 @@ import {
   BarChart3,
   CalendarRange,
   Bug,
-  GitBranch,
   type LucideIcon,
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
@@ -41,14 +40,14 @@ function userMeetsRole(required?: string): boolean {
   if (!required) return true
   const active = workspace.activeRole
   if (!active) return false
-  return ROLE_RANK[active] >= ROLE_RANK[required]
+  return (ROLE_RANK[active] ?? -1) >= (ROLE_RANK[required] ?? -1)
 }
 
 const mainItems = computed<NavItem[]>(() => [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/dashboard', section: 'Trabalho' },
   { title: 'Board', icon: Columns3, to: '/board', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', section: 'Trabalho' },
-  { title: 'Repos', icon: GitBranch, to: '/repos', role: 'WORKER', section: 'Trabalho' },
+  // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
   { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },
 ])
