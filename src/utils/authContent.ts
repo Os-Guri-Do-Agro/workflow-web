@@ -1,6 +1,8 @@
 import userService from '@/service/user/user-service'
 import { jwtDecode } from 'jwt-decode'
 
+type CompanyRole = 'OWNER' | 'ADMIN' | 'WORKER' | 'CLIENT' | 'VIEWER'
+
 interface DecodedToken {
   sub: string
   name: string
@@ -9,11 +11,13 @@ interface DecodedToken {
     companyId: string
     name: string
     cnpj: string
-    role: 'WORKER' | 'CLIENT'
+    role: CompanyRole
   }>
   iat: number
   exp: number
 }
+
+const EDITOR_ROLES: CompanyRole[] = ['OWNER', 'ADMIN', 'WORKER']
 
 const newToken = getUserToken()
 
@@ -35,5 +39,6 @@ export async function getInfoAuth() {
   const activeCompanyId = localStorage.getItem('activeCompany')
   const response = await userService.getInfoAuth()
   const compareRole = response.companies.find((company: any) => company.companyId === activeCompanyId)
-  return compareRole.role === 'WORKER'
+  if (!compareRole) return false
+  return EDITOR_ROLES.includes(compareRole.role as CompanyRole)
 }
