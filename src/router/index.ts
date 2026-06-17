@@ -21,6 +21,7 @@ import CompanyUsersView from '@/features/companies/CompanyUsersView.vue'
 import NotesView from '@/features/notes/NotesView.vue'
 import NoteEditorView from '@/features/notes/NoteEditorView.vue'
 import CalendarView from '@/features/calendar/CalendarView.vue'
+import RoadmapView from '@/features/roadmap/RoadmapView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
@@ -44,6 +45,7 @@ const router = createRouter({
     { path: '/notes', name: 'notes', component: NotesView },
     { path: '/notes/:id', name: 'note-editor', component: NoteEditorView },
     { path: '/calendar', name: 'calendar', component: CalendarView },
+    { path: '/roadmap', name: 'roadmap', component: RoadmapView },
     { path: '/tasks/:month', name: 'tasks', component: TasksView },
     { path: '/tasks/:month/:taskId', name: 'task-details', component: TaskDetailsView },
     { path: '/relatorio/:quarterId', name: 'report', component: ReportView },

@@ -41,3 +41,6 @@ __screenshots__/
 # Envs
 .env
 *.env
+
+# Cursor — rules locais (não versionar)
+.cursor/rules/

@@ -1,19 +1,132 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useQueryClient } from '@tanstack/vue-query'
 import { useTasks } from '@/features/tasks/useTasks'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useToast } from '@/composables/useToast'
+import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
+import {
+  AlertCircle,
+  ArrowLeft,
+  Calendar,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Circle,
+  Clock,
+  File,
+  FileText,
+  Flag,
+  FlaskConical,
+  Info,
+  Lightbulb,
+  ListChecks,
+  Loader2,
+  Paperclip,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+  type LucideIcon,
+} from 'lucide-vue-next'
+import Pill from '@/components/ui/Pill.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+
+function getActivityMonthId(activity: any): string | undefined {
+  if (!activity) return undefined
+  return activity.monthId ?? activity.month?.id ?? undefined
+}
+
+function getResponsibleUserIds(activity: any): string[] {
+  return (
+    activity?.responsibles?.map((r: any) => r.userId ?? r.user?.id).filter(Boolean) ?? []
+  )
+}
+
+function buildActivityPayload(activity: any, overrides: Record<string, unknown> = {}) {
+  return {
+    title: activity.title,
+    description: activity.description || '',
+    priorityNumber: Number(activity.priorityNumber) || 1,
+    dueDate: activity.dueDate || undefined,
+    monthId: getActivityMonthId(activity),
+    responsibleUserIds: getResponsibleUserIds(activity),
+    ...overrides,
+  }
+}
+
+function buildActivityMovePayload(
+  activity: any,
+  monthId: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    title: activity.title,
+    description: activity.description || '',
+    priorityNumber: Number(activity.priorityNumber) || 1,
+    monthId,
+    responsibleUserIds: getResponsibleUserIds(activity),
+    ...overrides,
+  }
+}
+
+type PlanningMonth = { number: number }
+
+function findMonthInQuarters(monthId: string, quarters: any[]): PlanningMonth | null {
+  for (const quarter of quarters) {
+    const found = quarter.months?.find((m: any) => m.id === monthId)
+    if (found) return found
+  }
+  return null
+}
+
+/** Ajusta só o mês da data de entrega para o mês de planejamento (mantém dia e ano). */
+function dueDateForPlanningMonth(
+  currentDueDate: string,
+  targetMonth: PlanningMonth,
+): string {
+  const current = new Date(currentDueDate)
+  const year = current.getFullYear()
+  const day = current.getDate()
+  const monthIndex = targetMonth.number - 1
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate()
+  const safeDay = Math.min(day, lastDay)
+  return new Date(year, monthIndex, safeDay, 12, 0, 0, 0).toISOString()
+}
+
+function moveExtrasForMonth(
+  activity: any,
+  newMonthId: string,
+  quarters: any[],
+  overrides: Record<string, unknown> = {},
+) {
+  const targetMonth = findMonthInQuarters(newMonthId, quarters)
+  const extras = { ...overrides }
+  if (activity.dueDate && targetMonth) {
+    extras.dueDate = dueDateForPlanningMonth(activity.dueDate, targetMonth)
+  }
+  return extras
+}
 
 const route = useRoute()
 const router = useRouter()
+const queryClient = useQueryClient()
 const { companies } = useTasks()
 const workspaceStore = useWorkspaceStore()
 
 const taskId = computed(() => route.params.taskId as string)
 const month = computed(() => route.params.month as string)
+
+const companyId = computed(
+  () => workspaceStore.activeCompanyId ?? localStorage.getItem('activeCompany') ?? '',
+)
+const { data: quartersData } = useCompanyQuarters(companyId)
 
 const showSubtaskModal = ref(false)
 const selectedSubtask = ref<any>(null)
@@ -74,7 +187,7 @@ const createQuickSubtask = async () => {
       description: '',
       priorityNumber: 1,
       dueDate: new Date().toISOString(),
-      monthId: month.value,
+      monthId: activeMonthId.value,
       parentId: taskId.value,
       responsibleUserIds: [],
     })
@@ -97,6 +210,49 @@ const isSubtaskCreated = (suggestedTitle: string) => {
 
 const activityInfo = ref<any>(null)
 const loading = ref(true)
+
+const activeMonthId = computed(() => getActivityMonthId(activityInfo.value) ?? month.value)
+
+const quartersList = computed(() => {
+  const raw = quartersData.value as any
+  return raw?.data ?? (Array.isArray(raw) ? raw : [])
+})
+
+const quarterOptions = computed(() =>
+  quartersList.value.map((q: any) => ({
+    id: q.id,
+    label: q.label,
+    months: q.months ?? [],
+  })),
+)
+
+const placementSelection = ref({ quarterId: '', monthId: '' })
+
+const selectedQuarterMonths = computed(() => {
+  const quarter = quartersList.value.find((q: any) => q.id === placementSelection.value.quarterId)
+  return quarter?.months ?? []
+})
+
+const currentMonthData = computed(() => {
+  const monthId = activeMonthId.value
+  for (const quarter of quartersList.value) {
+    const found = quarter.months?.find((m: any) => m.id === monthId)
+    if (found) return found
+  }
+  return null
+})
+
+const syncPlacementSelection = () => {
+  const monthId = activeMonthId.value
+  const quarter =
+    quartersList.value.find((q: any) => q.months?.some((m: any) => m.id === monthId)) ?? null
+  placementSelection.value = {
+    quarterId: quarter?.id ?? placementSelection.value.quarterId,
+    monthId,
+  }
+}
+
+watch([activityInfo, quartersList], syncPlacementSelection, { immediate: true })
 
 const InfoActivity = async () => {
   try {
@@ -128,7 +284,7 @@ const createSubtask = async () => {
       dueDate: formSubtask.value.dueDate
         ? new Date(formSubtask.value.dueDate).toISOString()
         : new Date().toISOString(),
-      monthId: month.value,
+      monthId: activeMonthId.value,
       parentId: taskId.value,
       responsibleUserIds: formSubtask.value.responsibleUserIds,
     })
@@ -176,17 +332,118 @@ const formActivity = ref({
   description: '',
   priorityNumber: 1,
   dueDate: '',
+  quarterId: '',
+  monthId: '',
   responsibleUserIds: [] as string[],
   attachment: null as File | null,
 })
 
+const formQuarterMonths = computed(() => {
+  const quarter = quartersList.value.find((q: any) => q.id === formActivity.value.quarterId)
+  return quarter?.months ?? []
+})
+
+const changingMonth = ref(false)
+
+const invalidateBoards = (monthIds: string[]) => {
+  for (const id of monthIds) {
+    if (id) queryClient.invalidateQueries({ queryKey: ['boards', id] })
+  }
+  queryClient.invalidateQueries({ queryKey: ['dashboard', 'workspace'] })
+}
+
+const applyActivityResponse = (updated: any, monthId: string) => {
+  activityInfo.value = {
+    ...activityInfo.value,
+    ...updated,
+    monthId: getActivityMonthId(updated) ?? monthId,
+    month: updated?.month ?? { id: monthId, name: currentMonthData.value?.name },
+  }
+}
+
+const navigateToMonth = async (newMonthId: string) => {
+  if (newMonthId === month.value) return
+  await router.replace({
+    name: 'task-details',
+    params: { month: newMonthId, taskId: taskId.value },
+    query: route.query,
+  })
+}
+
+const changeActivityMonth = async (newMonthId: string) => {
+  if (!newMonthId || newMonthId === activeMonthId.value || !activityInfo.value) return
+  const previousMonthId = activeMonthId.value
+  changingMonth.value = true
+  try {
+    const updated = await activityService.patchActivity(
+      taskId.value,
+      buildActivityMovePayload(
+        activityInfo.value,
+        newMonthId,
+        moveExtrasForMonth(activityInfo.value, newMonthId, quartersList.value),
+      ),
+    )
+    applyActivityResponse(updated, newMonthId)
+    await navigateToMonth(newMonthId)
+    syncPlacementSelection()
+    invalidateBoards([previousMonthId, newMonthId])
+    showSuccess('Mês atualizado com sucesso')
+  } catch (error: any) {
+    syncPlacementSelection()
+    showError(error.response?.data?.message || 'Erro ao alterar mês')
+  } finally {
+    changingMonth.value = false
+  }
+}
+
+const onPlacementQuarterChange = (quarterId: string) => {
+  const months = quartersList.value.find((q: any) => q.id === quarterId)?.months ?? []
+  const keepMonth = months.some((m: any) => m.id === placementSelection.value.monthId)
+  const newMonthId = keepMonth ? placementSelection.value.monthId : (months[0]?.id ?? '')
+  placementSelection.value = { quarterId, monthId: newMonthId }
+  if (newMonthId && newMonthId !== activeMonthId.value) {
+    changeActivityMonth(newMonthId)
+  }
+}
+
+const onFormMonthChange = (newMonthId: string) => {
+  formActivity.value.monthId = newMonthId
+  const targetMonth = findMonthInQuarters(newMonthId, quartersList.value)
+  if (!targetMonth) return
+
+  const sourceDueDate = formActivity.value.dueDate
+    ? new Date(`${formActivity.value.dueDate}T12:00:00`).toISOString()
+    : activityInfo.value?.dueDate
+
+  if (!sourceDueDate) return
+
+  formActivity.value.dueDate =
+    dueDateForPlanningMonth(sourceDueDate, targetMonth).split('T')[0] ?? ''
+}
+
+const onFormQuarterChange = (quarterId: string) => {
+  const months = quartersList.value.find((q: any) => q.id === quarterId)?.months ?? []
+  const keepMonth = months.some((m: any) => m.id === formActivity.value.monthId)
+  formActivity.value.quarterId = quarterId
+  if (!keepMonth) {
+    const newMonthId = months[0]?.id ?? ''
+    formActivity.value.monthId = newMonthId
+    if (newMonthId) onFormMonthChange(newMonthId)
+  }
+}
+
 const openEditActivityModal = () => {
+  const monthId = getActivityMonthId(activityInfo.value) ?? month.value
+  const quarter =
+    quartersList.value.find((q: any) => q.months?.some((m: any) => m.id === monthId)) ?? null
   formActivity.value = {
     title: activityInfo.value.title,
     description: activityInfo.value.description || '',
     priorityNumber: activityInfo.value.priorityNumber ?? 1,
     dueDate: activityInfo.value.dueDate ? activityInfo.value.dueDate.split('T')[0] : '',
-    responsibleUserIds: activityInfo.value.responsibles?.map((r: any) => r.userId) ?? [],
+    quarterId: quarter?.id ?? '',
+    monthId,
+    responsibleUserIds: getResponsibleUserIds(activityInfo.value),
     attachment: null,
   }
   suggest.value = null
@@ -194,25 +451,56 @@ const openEditActivityModal = () => {
 }
 
 const updateActivity = async () => {
-  if (!formActivity.value.title) return
+  if (!formActivity.value.title || !activityInfo.value) return
   saving.value = true
+  const previousMonthId = activeMonthId.value
+  const newMonthId = formActivity.value.monthId || previousMonthId
+  const monthChanged = newMonthId !== previousMonthId
   try {
-    await activityService.patchActivity(taskId.value, {
-      title: formActivity.value.title,
-      description: formActivity.value.description || '',
-      priorityNumber: Number(formActivity.value.priorityNumber) || 1,
-      dueDate: formActivity.value.dueDate
-        ? new Date(formActivity.value.dueDate).toISOString()
-        : undefined,
-      monthId: month.value,
-      responsibleUserIds: formActivity.value.responsibleUserIds,
-    })
+    const sourceDueDate = formActivity.value.dueDate
+      ? new Date(`${formActivity.value.dueDate}T12:00:00`).toISOString()
+      : activityInfo.value.dueDate
+    const activityForMove = sourceDueDate
+      ? { ...activityInfo.value, dueDate: sourceDueDate }
+      : activityInfo.value
+
+    const updated = await activityService.patchActivity(
+      taskId.value,
+      monthChanged
+        ? buildActivityMovePayload(
+            activityForMove,
+            newMonthId,
+            moveExtrasForMonth(activityForMove, newMonthId, quartersList.value, {
+              title: formActivity.value.title,
+              description: formActivity.value.description || '',
+              priorityNumber: Number(formActivity.value.priorityNumber) || 1,
+              responsibleUserIds: formActivity.value.responsibleUserIds,
+            }),
+          )
+        : buildActivityPayload(activityInfo.value, {
+            title: formActivity.value.title,
+            description: formActivity.value.description || '',
+            priorityNumber: Number(formActivity.value.priorityNumber) || 1,
+            dueDate: formActivity.value.dueDate
+              ? new Date(formActivity.value.dueDate).toISOString()
+              : undefined,
+            responsibleUserIds: formActivity.value.responsibleUserIds,
+          }),
+    )
     if (formActivity.value.attachment) {
       const fd = new FormData()
       fd.append('file', formActivity.value.attachment)
       await activityService.postActivityAttachment(taskId.value, fd)
     }
-    await InfoActivity()
+    applyActivityResponse(updated, newMonthId)
+    if (monthChanged) {
+      await navigateToMonth(newMonthId)
+      invalidateBoards([previousMonthId, newMonthId])
+    }
+    syncPlacementSelection()
+    if (formActivity.value.attachment) {
+      await InfoActivity()
+    }
     showEditActivityModal.value = false
     showSuccess('Atividade atualizada com sucesso')
   } catch (error: any) {
@@ -261,7 +549,7 @@ const updateSubtask = async () => {
       dueDate: formSubtask.value.dueDate
         ? new Date(formSubtask.value.dueDate).toISOString()
         : undefined,
-      monthId: month.value,
+      monthId: activeMonthId.value,
       parentId: taskId.value,
       responsibleUserIds: formSubtask.value.responsibleUserIds,
     })
@@ -291,39 +579,54 @@ const getUserInitials = (name: string) => {
     .slice(0, 2)
 }
 
-const getUserColor = (name: string) => {
-  const colors = [
-    '#1976D2',
-    '#388E3C',
-    '#6D4C9F',
-    '#7B1FA2',
-    '#F57C00',
-    '#0097A7',
-    '#546E7A',
-    '#5D4037',
-  ]
-  const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
-  return colors[index]
-}
-
 const goBack = () => {
-  router.push(`/tasks/${month.value}`)
+  router.push(`/tasks/${activeMonthId.value}`)
 }
 
 const subtasks = computed(() => activityInfo.value?.subtasks ?? [])
 const responsibles = computed(() => activityInfo.value?.responsibles ?? [])
 
-const statusMap: Record<string, { color: string; label: string; icon: string }> = {
-  TODO: { color: '#3B82F6', label: 'A Fazer', icon: 'mdi-clipboard-text-outline' },
-  IN_PROGRESS: { color: '#F59E0B', label: 'Em Andamento', icon: 'mdi-progress-clock' },
-  TESTING: { color: '#8B5CF6', label: 'Em Teste', icon: 'mdi-flask-outline' },
-  DONE: { color: '#10B981', label: 'Concluído', icon: 'mdi-check-circle-outline' },
-}
+const pageMonthLabel = computed(() => currentMonthData.value?.name ?? 'Mês')
 
-const getStatusConfig = (status: string): { color: string; label: string; icon: string } =>
-  statusMap[status] ?? statusMap['TODO']!
+type StatusSpec = { token: string; label: string; icon: LucideIcon }
+const STATUS_MAP: Record<string, StatusSpec> = {
+  TODO: { token: 'var(--status-todo)', label: 'A fazer', icon: Circle },
+  IN_PROGRESS: { token: 'var(--status-prog)', label: 'Em andamento', icon: Clock },
+  IN_TESTING: { token: 'var(--status-test)', label: 'Em teste', icon: FlaskConical },
+  TESTING: { token: 'var(--status-test)', label: 'Em teste', icon: FlaskConical },
+  DONE: { token: 'var(--status-done)', label: 'Concluído', icon: CheckCircle2 },
+}
+const STATUS_FALLBACK: StatusSpec = STATUS_MAP.TODO!
+
+const getStatusConfig = (status: string): StatusSpec => STATUS_MAP[status] ?? STATUS_FALLBACK
 
 const statusConfig = computed(() => getStatusConfig(activityInfo.value?.status ?? 'TODO'))
+
+const PRIORITY_META: Record<number, { label: string; token: string }> = {
+  0: { label: 'P0', token: 'var(--err)' },
+  1: { label: 'P1', token: 'var(--warn)' },
+  2: { label: 'P2', token: 'var(--info)' },
+  3: { label: 'P3', token: 'var(--text-3)' },
+  4: { label: 'P4', token: 'var(--text-3)' },
+  5: { label: 'P5', token: 'var(--text-3)' },
+}
+const PRIORITY_FALLBACK = { label: 'P?', token: 'var(--text-3)' }
+
+const getPriorityMeta = (priority: number) => PRIORITY_META[priority] ?? PRIORITY_FALLBACK
+
+const USER_TONES = [
+  'var(--info)',
+  'var(--success)',
+  'var(--status-test)',
+  'var(--warn)',
+  'var(--accent)',
+] as const
+
+const getUserTone = (name: string) => {
+  const index =
+    name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % USER_TONES.length
+  return USER_TONES[index]!
+}
 
 const toggleSubtaskStatus = async (task: any) => {
   const newStatus = task.status === 'DONE' ? 'TODO' : 'DONE'
@@ -334,18 +637,6 @@ const toggleSubtaskStatus = async (task: any) => {
   } catch (error: any) {
     showError(error.response?.data?.message || 'Erro ao atualizar status')
   }
-}
-
-const getPriorityColor = (priority: number) => {
-  const colors: Record<number, string> = {
-    0: '#10B981',
-    1: '#3B82F6',
-    2: '#F59E0B',
-    3: '#EF4444',
-    4: '#DC2626',
-    5: '#991B1B',
-  }
-  return colors[priority] || '#6B7280'
 }
 
 const formatDate = (date: string | null) => {
@@ -392,351 +683,295 @@ const deleteAttachment = async (attachmentId: string) => {
 </script>
 
 <template>
-  <v-container v-if="activityInfo" fluid class="pa-4 bg-background">
-    <div class="d-flex align-center justify-space-between mb-4">
-      <v-btn
-        variant="text"
-        prepend-icon="mdi-arrow-left"
-        color="Secundary"
-        size="small"
-        class="text-none"
-        @click="goBack"
-      >
+  <div v-if="activityInfo" class="detail-page">
+    <header class="page-top">
+      <button type="button" class="back-btn press" @click="goBack">
+        <ArrowLeft :size="15" />
         Voltar
-      </v-btn>
-    </div>
+      </button>
+      <nav class="breadcrumb" aria-label="Navegação">
+        <span>Tarefas</span>
+        <ChevronRight :size="12" class="breadcrumb-sep" />
+        <span>{{ pageMonthLabel }}</span>
+      </nav>
+    </header>
 
-    <v-row>
-      <v-col cols="12" md="8">
-        <v-card elevation="2" rounded="lg" class="mb-3">
-          <v-card-text class="pa-4">
-            <div class="d-flex align-center ga-2 mb-3">
-              <v-icon color="Secundary" size="20">mdi-text-box-outline</v-icon>
-              <h1 style="font-size: 20px" class="font-weight-bold text-secondary flex-grow-1">
-                {{ activityInfo.title }}
-              </h1>
-              <v-btn
-                icon="mdi-pencil-outline"
-                variant="text"
-                size="x-small"
-                color="Secundary"
-                @click="openEditActivityModal"
-              />
-            </div>
-
-            <v-divider class="mb-3" />
-
-            <div
-              v-if="activityInfo.description"
-              style="font-size: 15px"
-              class="text-secondary"
-              v-html="activityInfo.description"
-            ></div>
-            <div v-else style="font-size: 15px" class="text-primary-lighten font-italic">
-              Sem descrição
-            </div>
-          </v-card-text>
-        </v-card>
-
-        <v-card v-if="subtasks.length" elevation="2" rounded="lg">
-          <div
-            class="d-flex justify-space-between align-center pa-3 bg-surface"
-            style="border-radius: 8px 8px 0 0"
-          >
-            <div class="d-flex align-center ga-2">
-              <v-icon color="Secundary" size="18">mdi-format-list-checks</v-icon>
-              <span style="font-size: 16px" class="font-weight-bold text-secondary">
-                Subtarefas
+    <div class="detail-grid">
+      <div class="main-col">
+        <section class="panel">
+          <div class="title-row">
+            <div class="title-main">
+              <span class="eyebrow">
+                <FileText :size="11" />
+                Atividade
               </span>
-              <v-chip size="x-small" color="primary" variant="tonal">
-                {{ subtasks.length }}
-              </v-chip>
+              <h1 class="task-title">{{ activityInfo.title }}</h1>
             </div>
-            <v-btn
-              size="x-small"
-              color="Secundary"
-              variant="tonal"
-              prepend-icon="mdi-plus"
-              class="text-none px-5 py-3"
-              @click="showCreateSubtaskModal = true"
+            <button
+              type="button"
+              class="icon-btn press"
+              aria-label="Editar atividade"
+              @click="openEditActivityModal"
             >
-              Nova Tarefa
-            </v-btn>
+              <Pencil :size="15" />
+            </button>
           </div>
+          <div
+            v-if="activityInfo.description"
+            class="desc-body"
+            v-html="activityInfo.description"
+          />
+          <p v-else class="desc-empty">Sem descrição</p>
+        </section>
 
-          <v-card-text class="pa-2">
-            <div v-for="task in subtasks" :key="task.id" class="subtask-item pa-2 mb-1">
-              <div class="d-flex align-center ga-2">
-                <v-checkbox
-                  :model-value="task.status === 'DONE'"
-                  color="secondary"
-                  hide-details
-                  density="compact"
-                  class="flex-shrink-0"
-                  @update:model-value="toggleSubtaskStatus(task)"
-                  @click.stop
-                />
-                <div class="flex-grow-1 clickable" @click="openSubtaskModal(task)">
-                  <div class="d-flex align-center justify-space-between ga-2">
-                    <div
-                      style="font-size: 14px; line-height: 1.4"
-                      class="font-weight-medium text-secondary"
-                      :class="{
-                        'text-decoration-line-through text-primary-lighten': task.completed,
-                      }"
-                    >
-                      {{ task.title }}
-                    </div>
-                    <v-chip
-                      size="x-small"
-                      class="px-2 flex-shrink-0"
-                      style="height: 20px; font-size: 11px"
-                      :style="{
-                        backgroundColor: getPriorityColor(task.priorityNumber) + '20',
-                        color: getPriorityColor(task.priorityNumber),
-                      }"
-                    >
-                      P{{ task.priorityNumber }}
-                    </v-chip>
-                  </div>
-                  <div
-                    v-if="task.description"
-                    style="font-size: 13px; line-height: 1.3"
-                    class="text-primary-lighten mt-1"
-                    :class="{ 'text-decoration-line-through': task.completed }"
-                  >
-                    {{ task.description }}
-                  </div>
-
-                  <div class="d-flex ga-2 flex-wrap mt-1">
-                    <v-chip
-                      size="x-small"
-                      variant="tonal"
-                      :color="getStatusConfig(task.status).color"
-                      class="px-2"
-                      style="height: 20px; font-size: 11px"
-                    >
-                      <v-icon size="9" start>{{ getStatusConfig(task.status).icon }}</v-icon>
-                      {{ getStatusConfig(task.status).label }}
-                    </v-chip>
-                    <v-chip
-                      v-if="task.dueDate"
-                      size="x-small"
-                      variant="tonal"
-                      color="Secundary"
-                      class="px-2"
-                      style="height: 20px; font-size: 11px"
-                    >
-                      <v-icon size="9" start>mdi-calendar-outline</v-icon>
-                      {{ formatDate(task.dueDate) }}
-                    </v-chip>
-                  </div>
-                  <div v-if="task.responsibles?.length" class="d-flex ga-1 mt-1">
-                    <v-tooltip v-for="r in task.responsibles" :key="r.userId" location="top">
-                      <template #activator="{ props }">
-                        <v-avatar
-                          v-bind="props"
-                          :color="getUserColor(r.user.name)"
-                          size="20"
-                          style="cursor: pointer"
-                        >
-                          <span style="font-size: 10px; font-weight: 600; color: white">{{
-                            getUserInitials(r.user.name)
-                          }}</span>
-                        </v-avatar>
-                      </template>
-                      <span style="font-size: 13px">{{ r.user.name }}</span>
-                    </v-tooltip>
-                  </div>
-                </div>
-                <v-btn
-                  icon="mdi-delete-outline"
-                  variant="text"
-                  size="x-small"
-                  color="error"
-                  class="flex-shrink-0"
-                  :loading="deleting === task.id"
-                  @click.stop="deleteSubtask(task)"
-                />
-              </div>
+        <section class="panel">
+          <header class="panel-head">
+            <div class="panel-head-left">
+              <ListChecks :size="16" />
+              <h2 class="panel-title">Subtarefas</h2>
+              <span class="count-badge">{{ subtasks.length }}</span>
             </div>
-          </v-card-text>
-        </v-card>
+            <button type="button" class="btn-secondary press" @click="showCreateSubtaskModal = true">
+              <Plus :size="14" />
+              Nova subtarefa
+            </button>
+          </header>
 
-        <v-card v-else elevation="2" rounded="lg" class="pa-6 text-center">
-          <v-icon size="40" color="primary-lighten" class="mb-2"
-            >mdi-clipboard-text-off-outline</v-icon
-          >
-          <div style="font-size: 15px" class="text-primary-lighten mb-3">
-            Nenhuma subtarefa cadastrada
-          </div>
-          <v-btn
-            color="Secundary"
-            variant="tonal"
-            prepend-icon="mdi-plus"
-            @click="showCreateSubtaskModal = true"
-          >
-            Nova Subtarefa
-          </v-btn>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" md="4">
-        <v-card elevation="2" rounded="lg" class="mb-3">
-          <v-card-text class="pa-3">
-            <div class="d-flex align-center ga-2 mb-3">
-              <v-icon color="Secundary" size="16">mdi-information-outline</v-icon>
-              <span style="font-size: 15px" class="font-weight-bold text-secondary"
-                >Informações</span
+          <div v-if="subtasks.length" class="subtask-list">
+            <div
+              v-for="task in subtasks"
+              :key="task.id"
+              class="subtask-item"
+              :class="{ done: task.status === 'DONE' }"
+            >
+              <button
+                type="button"
+                class="check-btn press"
+                :aria-label="task.status === 'DONE' ? 'Marcar como pendente' : 'Marcar como concluída'"
+                @click.stop="toggleSubtaskStatus(task)"
               >
+                <CheckCircle2 v-if="task.status === 'DONE'" :size="18" class="check-on" />
+                <Circle v-else :size="18" class="check-off" />
+              </button>
+
+              <div class="subtask-body clickable" @click="openSubtaskModal(task)">
+                <div class="subtask-top">
+                  <span class="subtask-title">{{ task.title }}</span>
+                  <Pill :color="getPriorityMeta(task.priorityNumber).token" size="sm">
+                    {{ getPriorityMeta(task.priorityNumber).label }}
+                  </Pill>
+                </div>
+                <p v-if="task.description" class="subtask-desc">{{ task.description }}</p>
+                <div class="subtask-meta">
+                  <Pill :icon="getStatusConfig(task.status).icon" :color="getStatusConfig(task.status).token">
+                    {{ getStatusConfig(task.status).label }}
+                  </Pill>
+                  <Pill v-if="task.dueDate" :icon="Calendar" color="var(--text-3)">
+                    {{ formatDate(task.dueDate) }}
+                  </Pill>
+                </div>
+                <div v-if="task.responsibles?.length" class="avatar-row">
+                  <span
+                    v-for="r in task.responsibles"
+                    :key="r.userId"
+                    class="avatar"
+                    :title="r.user.name"
+                    :style="{
+                      background: `color-mix(in srgb, ${getUserTone(r.user.name)} 18%, var(--surface-2))`,
+                      color: getUserTone(r.user.name),
+                    }"
+                  >
+                    {{ getUserInitials(r.user.name) }}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="icon-btn icon-btn--danger press"
+                aria-label="Excluir subtarefa"
+                :disabled="deleting === task.id"
+                @click.stop="deleteSubtask(task)"
+              >
+                <Loader2 v-if="deleting === task.id" :size="15" class="spin" />
+                <Trash2 v-else :size="15" />
+              </button>
+            </div>
+          </div>
+
+          <EmptyState
+            v-else
+            :icon="ListChecks"
+            title="Nenhuma subtarefa"
+            description="Quebre o trabalho em passos menores para acompanhar o progresso."
+          >
+            <template #action>
+              <button type="button" class="btn-primary press" @click="showCreateSubtaskModal = true">
+                <Plus :size="14" />
+                Nova subtarefa
+              </button>
+            </template>
+          </EmptyState>
+        </section>
+      </div>
+
+      <aside class="side-col">
+        <section class="panel meta-panel">
+          <header class="panel-head panel-head--compact">
+            <Info :size="15" />
+            <h2 class="panel-title">Informações</h2>
+          </header>
+
+          <dl class="meta-list">
+            <div class="meta-row">
+              <dt>Status</dt>
+              <dd>
+                <Pill :icon="statusConfig.icon" :color="statusConfig.token">
+                  {{ statusConfig.label }}
+                </Pill>
+              </dd>
             </div>
 
-            <div class="mb-3">
-              <div style="font-size: 13px" class="text-primary-lighten mb-1">Status</div>
-              <v-chip size="small" variant="tonal" :color="statusConfig.color">
-                <v-icon size="12" start>{{ statusConfig.icon }}</v-icon>
-                {{ statusConfig.label }}
-              </v-chip>
+            <div v-if="quarterOptions.length" class="meta-row">
+              <dt>Trimestre</dt>
+              <dd>
+                <select
+                  class="meta-select"
+                  :value="placementSelection.quarterId"
+                  :disabled="changingMonth"
+                  @change="onPlacementQuarterChange(($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="q in quarterOptions" :key="q.id" :value="q.id">{{ q.label }}</option>
+                </select>
+              </dd>
             </div>
 
-            <div class="mb-3">
-              <div style="font-size: 13px" class="text-primary-lighten mb-1">Prioridade</div>
-              <v-chip size="small" variant="tonal" color="secondary">
-                <v-icon size="12" start>mdi-flag-outline</v-icon>
-                {{ activityInfo.priorityNumber }}
-              </v-chip>
+            <div v-if="selectedQuarterMonths.length" class="meta-row">
+              <dt>Mês</dt>
+              <dd>
+                <select
+                  class="meta-select"
+                  :value="placementSelection.monthId"
+                  :disabled="changingMonth || selectedQuarterMonths.length <= 1"
+                  @change="changeActivityMonth(($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="m in selectedQuarterMonths" :key="m.id" :value="m.id">
+                    {{ m.name }}
+                  </option>
+                </select>
+                <Loader2 v-if="changingMonth" :size="14" class="spin meta-loading" />
+              </dd>
             </div>
 
-            <div class="mb-3">
-              <div style="font-size: 13px" class="text-primary-lighten mb-1">Criado em</div>
-              <v-chip size="small" variant="tonal" color="secondary">
-                <v-icon size="12" start>mdi-clock-outline</v-icon>
+            <div class="meta-row">
+              <dt>Prioridade</dt>
+              <dd>
+                <Pill :icon="Flag" :color="getPriorityMeta(activityInfo.priorityNumber).token">
+                  {{ getPriorityMeta(activityInfo.priorityNumber).label }}
+                </Pill>
+              </dd>
+            </div>
+
+            <div class="meta-row">
+              <dt>Criado em</dt>
+              <dd class="meta-value">
+                <Clock :size="13" />
                 {{ formatDate(activityInfo.createdAt) }}
-              </v-chip>
+              </dd>
             </div>
 
-            <div v-if="activityInfo.dueDate" class="mb-3">
-              <div style="font-size: 13px" class="text-primary-lighten mb-1">Data de Entrega</div>
-              <v-chip size="small" variant="tonal" color="secondary" class="text-primary">
-                <v-icon size="12" start>mdi-calendar-clock</v-icon>
+            <div v-if="activityInfo.dueDate" class="meta-row">
+              <dt>Entrega</dt>
+              <dd class="meta-value">
+                <CalendarClock :size="13" />
                 {{ formatDate(activityInfo.dueDate) }}
-              </v-chip>
+              </dd>
             </div>
 
-            <div v-if="responsibles.length">
-              <div style="font-size: 13px" class="text-primary-lighten mb-2">Responsáveis</div>
-              <div class="d-flex flex-column ga-1">
-                <v-chip
+            <div v-if="responsibles.length" class="meta-row meta-row--stack">
+              <dt>Responsáveis</dt>
+              <dd class="responsible-list">
+                <span
                   v-for="r in responsibles"
                   :key="r.userId"
-                  size="small"
-                  variant="flat"
-                  :color="getUserColor(r.user.name)"
-                  class="justify-start"
+                  class="responsible-chip"
+                  :style="{
+                    background: `color-mix(in srgb, ${getUserTone(r.user.name)} 14%, var(--surface-2))`,
+                    color: getUserTone(r.user.name),
+                    borderColor: `color-mix(in srgb, ${getUserTone(r.user.name)} 28%, var(--border))`,
+                  }"
                 >
-                  <v-avatar start size="20">
-                    <span style="font-size: 9px">{{ getUserInitials(r.user.name) }}</span>
-                  </v-avatar>
-                  <span style="font-size: 13px">{{ r.user.name }}</span>
-                </v-chip>
+                  <span class="avatar avatar--sm">{{ getUserInitials(r.user.name) }}</span>
+                  {{ r.user.name }}
+                </span>
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section v-if="activityInfo.attachments?.length" class="panel">
+          <header class="panel-head panel-head--compact">
+            <Paperclip :size="15" />
+            <h2 class="panel-title">Anexos</h2>
+          </header>
+          <div class="attachment-grid">
+            <a
+              v-for="att in activityInfo.attachments"
+              :key="att.id"
+              :href="att.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="attachment-item hover-lift"
+            >
+              <img
+                v-if="isImage(att.filename)"
+                :src="att.url"
+                :alt="att.filename"
+                class="attachment-img"
+              />
+              <div v-else class="attachment-file">
+                <File :size="22" />
+                <span>{{ att.filename }}</span>
               </div>
-            </div>
-          </v-card-text>
-        </v-card>
+            </a>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
 
-        <v-card v-if="activityInfo.attachments?.length" elevation="2" rounded="lg">
-          <v-card-text class="pa-3">
-            <div class="d-flex align-center ga-2 mb-2">
-              <v-icon color="Secundary" size="16">mdi-paperclip</v-icon>
-              <span style="font-size: 15px" class="font-weight-bold text-secondary">Anexos</span>
-            </div>
-            <div class="d-flex flex-wrap ga-2">
-              <a
-                v-for="att in activityInfo.attachments"
-                :key="att.id"
-                :href="att.url"
-                target="_blank"
-                style="text-decoration: none"
-              >
-                <v-img
-                  v-if="isImage(att.filename)"
-                  :src="att.url"
-                  width="80"
-                  height="80"
-                  cover
-                  rounded="lg"
-                  style="cursor: pointer"
-                />
-                <div
-                  v-else
-                  class="d-flex flex-column align-center justify-center rounded-lg"
-                  style="
-                    width: 80px;
-                    height: 80px;
-                    background: rgba(var(--text), 0.08);
-                    cursor: pointer;
-                  "
-                >
-                  <v-icon size="28" color="secondary">mdi-file-outline</v-icon>
-                  <span
-                    style="
-                      font-size: 9px;
-                      color: var(--text);
-                      text-align: center;
-                      padding: 0 4px;
-                      overflow: hidden;
-                      text-overflow: ellipsis;
-                      white-space: nowrap;
-                      max-width: 76px;
-                    "
-                    >{{ att.filename }}</span
-                  >
-                </div>
-              </a>
-            </div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+  <div v-else-if="loading" class="detail-page detail-page--center">
+    <div class="loading-wrap">
+      <Skeleton type="text" />
+      <Skeleton type="block" />
+      <Skeleton type="card" />
+    </div>
+  </div>
 
-  <v-container
-    v-else-if="loading"
-    fluid
-    class="pa-4 bg-background d-flex align-center justify-center"
-    style="min-height: 60vh"
-  >
-    <v-progress-circular indeterminate color="secondary" size="48" />
-  </v-container>
-
-  <v-container v-else fluid class="pa-4 bg-background">
-    <v-card elevation="2" rounded="lg" class="pa-8 text-center">
-      <v-icon size="48" color="primary-lighten" class="mb-2">mdi-alert-circle-outline</v-icon>
-      <div style="font-size: 16px" class="text-primary-lighten">Tarefa não encontrada</div>
-      <v-btn variant="tonal" color="primary" size="small" class="mt-4 text-none" @click="goBack">
-        Voltar
-      </v-btn>
-    </v-card>
-  </v-container>
+  <div v-else class="detail-page detail-page--center">
+    <EmptyState :icon="AlertCircle" title="Tarefa não encontrada" description="Ela pode ter sido removida ou o link está incorreto.">
+      <template #action>
+        <button type="button" class="btn-secondary press" @click="goBack">
+          <ArrowLeft :size="14" />
+          Voltar
+        </button>
+      </template>
+    </EmptyState>
+  </div>
 
   <v-dialog v-model="showEditActivityModal" max-width="900px">
-    <v-card rounded="lg">
-      <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
-        <div class="d-flex align-center ga-2">
-          <v-icon color="Secundary" size="20">mdi-pencil-outline</v-icon>
-          <span class="text-subtitle-1 font-weight-bold text-secondary">Editar Atividade</span>
+    <v-card class="dialog-card" rounded="xl">
+      <div class="dialog-header">
+        <div class="dialog-head-main">
+          <span class="dialog-head-icon"><Pencil :size="16" /></span>
+          <span class="dialog-title-text">Editar atividade</span>
         </div>
-        <v-btn
-          icon="mdi-close"
-          variant="text"
-          size="small"
-          @click="showEditActivityModal = false"
-        />
-      </v-card-title>
+        <button type="button" class="icon-btn press" aria-label="Fechar" @click="showEditActivityModal = false">
+          <X :size="16" />
+        </button>
+      </div>
 
-      <v-divider />
-
-      <v-card-text class="pa-4">
+      <div class="dialog-body">
         <div class="d-flex ga-2 align-center">
           <v-text-field
             v-model="formActivity.title"
@@ -747,30 +982,21 @@ const deleteAttachment = async (attachmentId: string) => {
             hide-details
           />
           <v-btn
+            variant="tonal"
             color="secondary"
-            prepend-icon="mdi-lightbulb-variant-outline"
-            class="text-none"
+            class="text-none ai-btn"
             :loading="loadingSuggest"
             @click="improveWithAI"
           >
+            <template #prepend><Lightbulb :size="15" /></template>
             Aprimorar com IA
           </v-btn>
         </div>
 
-        <v-card
-          v-if="suggest"
-          elevation="0"
-          class="mt-3 mb-3 pa-3"
-          style="
-            border: 2px solid rgba(var(--text), 0.3);
-            background: rgba(var(--text), 0.05);
-          "
-        >
-          <div class="d-flex align-center ga-2 mb-2">
-            <v-icon color="secondary" size="18">mdi-sparkles</v-icon>
-            <span style="font-size: 12px" class="font-weight-bold text-secondary"
-              >Sugestões de IA</span
-            >
+        <div v-if="suggest" class="suggest-card">
+          <div class="suggest-head">
+            <Sparkles :size="16" />
+            <span>Sugestões de IA</span>
           </div>
 
           <div v-if="suggest.improvedDescription" class="mb-2">
@@ -790,21 +1016,11 @@ const deleteAttachment = async (attachmentId: string) => {
               <div
                 v-for="(task, i) in suggest.suggestedSubtasks"
                 :key="i"
-                class="d-flex align-center justify-space-between pa-2 rounded"
-                :style="{
-                  background: isSubtaskCreated(task)
-                    ? 'color-mix(in srgb, #10b981 12%, var(--surface-2))'
-                    : 'var(--surface-2)',
-                  border: isSubtaskCreated(task)
-                    ? '1px solid color-mix(in srgb, #10b981 30%, var(--border))'
-                    : '1px solid var(--border)',
-                  opacity: isSubtaskCreated(task) ? 0.7 : 1,
-                }"
+                class="suggest-task"
+                :class="{ 'suggest-task--done': isSubtaskCreated(task) }"
               >
                 <div class="d-flex align-center ga-2 flex-grow-1">
-                  <v-icon v-if="isSubtaskCreated(task)" size="16" color="success">
-                    mdi-check-circle
-                  </v-icon>
+                  <CheckCircle2 v-if="isSubtaskCreated(task)" :size="15" class="suggest-check" />
                   <span
                     style="font-size: 11px"
                     class="text-secondary"
@@ -813,14 +1029,14 @@ const deleteAttachment = async (attachmentId: string) => {
                     {{ task }}
                   </span>
                 </div>
-                <v-btn
-                  size="x-small"
-                  color="secondary"
-                  variant="tonal"
-                  icon="mdi-plus"
+                <button
+                  type="button"
+                  class="icon-btn press"
                   :disabled="isSubtaskCreated(task)"
                   @click="openQuickSubtask(task)"
-                />
+                >
+                  <Plus :size="14" />
+                </button>
               </div>
             </div>
           </div>
@@ -829,37 +1045,26 @@ const deleteAttachment = async (attachmentId: string) => {
             <div style="font-size: 10px" class="text-primary-lighten mb-1">
               Prioridade Sugerida:
             </div>
-            <v-chip
-              size="x-small"
-              :color="getPriorityColor(suggest.suggestedPriority)"
-              variant="tonal"
-            >
-              P{{ suggest.suggestedPriority }}
-            </v-chip>
+            <Pill :color="getPriorityMeta(suggest.suggestedPriority).token">
+              {{ getPriorityMeta(suggest.suggestedPriority).label }}
+            </Pill>
           </div>
 
           <div class="d-flex ga-2">
-            <v-btn
+            <button
               v-if="suggest.improvedDescription || suggest.suggestedPriority"
-              size="small"
-              color="success"
-              prepend-icon="mdi-check"
-              class="text-none"
+              type="button"
+              class="btn-primary press"
               @click="applySuggestion"
             >
-              Aplicar Sugestão
-            </v-btn>
-            <v-btn
-              size="small"
-              variant="tonal"
-              color="error"
-              class="text-none"
-              @click="dismissSuggestion"
-            >
-              Descartar Tudo
-            </v-btn>
+              <Check :size="14" />
+              Aplicar sugestão
+            </button>
+            <button type="button" class="btn-ghost press" @click="dismissSuggestion">
+              Descartar
+            </button>
           </div>
-        </v-card>
+        </div>
 
         <v-textarea
           v-model="formActivity.description"
@@ -895,6 +1100,36 @@ const deleteAttachment = async (attachmentId: string) => {
             />
           </v-col>
         </v-row>
+        <v-row v-if="quarterOptions.length" class="mt-3">
+          <v-col cols="6">
+            <v-select
+              :model-value="formActivity.quarterId"
+              :items="quarterOptions"
+              item-title="label"
+              item-value="id"
+              label="Trimestre"
+              density="compact"
+              variant="outlined"
+              color="secondary"
+              hide-details
+              @update:model-value="onFormQuarterChange"
+            />
+          </v-col>
+          <v-col cols="6">
+            <v-select
+              :model-value="formActivity.monthId"
+              :items="formQuarterMonths"
+              item-title="name"
+              item-value="id"
+              label="Mês"
+              density="compact"
+              variant="outlined"
+              color="secondary"
+              hide-details
+              @update:model-value="onFormMonthChange"
+            />
+          </v-col>
+        </v-row>
         <v-select
           v-model="formActivity.responsibleUserIds"
           :items="members"
@@ -910,55 +1145,26 @@ const deleteAttachment = async (attachmentId: string) => {
           class="mt-3"
           hide-details
         />
-        <div v-if="activityInfo.attachments?.length" class="mt-3 mb-1">
-          <div style="font-size: 10px" class="text-primary-lighten mb-2">Anexos atuais</div>
-          <div class="d-flex flex-wrap ga-2">
-            <div v-for="att in activityInfo.attachments" :key="att.id" class="position-relative">
-              <a :href="att.url" target="_blank" style="text-decoration: none">
-                <v-img
-                  v-if="isImage(att.filename)"
-                  :src="att.url"
-                  width="100"
-                  height="100"
-                  cover
-                  rounded="lg"
-                  style="cursor: pointer"
-                />
-                <div
-                  v-else
-                  class="d-flex flex-column align-center justify-center rounded-lg"
-                  style="
-                    width: 100px;
-                    height: 100px;
-                    background: rgba(var(--text), 0.08);
-                    cursor: pointer;
-                  "
-                >
-                  <v-icon size="32" color="secondary">mdi-file-outline</v-icon>
-                  <span
-                    style="
-                      font-size: 9px;
-                      color: var(--text);
-                      text-align: center;
-                      padding: 0 4px;
-                      overflow: hidden;
-                      text-overflow: ellipsis;
-                      white-space: nowrap;
-                      max-width: 96px;
-                    "
-                    >{{ att.filename }}</span
-                  >
+        <div v-if="activityInfo.attachments?.length" class="view-field">
+          <span class="view-label">Anexos atuais</span>
+          <div class="attachment-grid" style="padding: 0">
+            <div v-for="att in activityInfo.attachments" :key="att.id" class="attachment-wrap">
+              <a :href="att.url" target="_blank" rel="noopener noreferrer" class="attachment-item hover-lift">
+                <img v-if="isImage(att.filename)" :src="att.url" :alt="att.filename" class="attachment-img" style="width: 100px; height: 100px" />
+                <div v-else class="attachment-file" style="width: 100px; height: 100px">
+                  <File :size="26" />
+                  <span>{{ att.filename }}</span>
                 </div>
               </a>
-              <v-btn
-                icon="mdi-close"
-                size="x-small"
-                color="error"
-                variant="flat"
-                style="position: absolute; top: -8px; right: -8px"
-                :loading="deletingAttachment === att.id"
+              <button
+                type="button"
+                class="attachment-remove press"
+                :disabled="deletingAttachment === att.id"
                 @click.stop="deleteAttachment(att.id)"
-              />
+              >
+                <Loader2 v-if="deletingAttachment === att.id" :size="12" class="spin" />
+                <X v-else :size="12" />
+              </button>
             </div>
           </div>
         </div>
@@ -968,56 +1174,45 @@ const deleteAttachment = async (attachmentId: string) => {
           variant="outlined"
           color="secondary"
           prepend-icon=""
-          prepend-inner-icon="mdi-paperclip"
           accept="*/*"
           hide-details
           class="mt-3"
           @update:model-value="onActivityFileChange"
-        />
-      </v-card-text>
-
-      <v-divider />
-
-      <v-card-actions class="pa-4">
-        <v-spacer />
-        <v-btn
-          variant="text"
-          color="secondary"
-          class="text-none"
-          @click="showEditActivityModal = false"
-          >Cancelar</v-btn
         >
-        <v-btn
-          variant="tonal"
-          color="Secundary"
-          class="text-none"
+          <template #prepend-inner><Paperclip :size="16" /></template>
+        </v-file-input>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn-ghost press" @click="showEditActivityModal = false">
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary press"
           :disabled="!formActivity.title"
-          :loading="saving"
           @click="updateActivity"
-          >Salvar</v-btn
         >
-      </v-card-actions>
+          <Loader2 v-if="saving" :size="14" class="spin" />
+          Salvar
+        </button>
+      </div>
     </v-card>
   </v-dialog>
 
   <v-dialog v-model="showCreateSubtaskModal" max-width="500px">
-    <v-card rounded="lg">
-      <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
-        <div class="d-flex align-center ga-2">
-          <v-icon color="Secundary" size="20">mdi-plus-circle-outline</v-icon>
-          <span class="text-subtitle-1 font-weight-bold text-secondary">Nova Subtarefa</span>
+    <v-card class="dialog-card" rounded="xl">
+      <div class="dialog-header">
+        <div class="dialog-head-main">
+          <span class="dialog-head-icon"><Plus :size="16" /></span>
+          <span class="dialog-title-text">Nova subtarefa</span>
         </div>
-        <v-btn
-          icon="mdi-close"
-          variant="text"
-          size="small"
-          @click="showCreateSubtaskModal = false"
-        />
-      </v-card-title>
+        <button type="button" class="icon-btn press" aria-label="Fechar" @click="showCreateSubtaskModal = false">
+          <X :size="16" />
+        </button>
+      </div>
 
-      <v-divider />
-
-      <v-card-text class="pa-4">
+      <div class="dialog-body">
         <v-text-field
           v-model="formSubtask.title"
           label="Título *"
@@ -1082,183 +1277,137 @@ const deleteAttachment = async (attachmentId: string) => {
           variant="outlined"
           color="secondary"
           prepend-icon=""
-          prepend-inner-icon="mdi-paperclip"
           accept="*/*"
           hide-details
           class="mt-3"
           @update:model-value="onSubtaskFileChange"
-        />
-      </v-card-text>
-
-      <v-divider />
-
-      <v-card-actions class="pa-4">
-        <v-spacer />
-        <v-btn
-          variant="text"
-          color="secondary"
-          class="text-none"
-          @click="showCreateSubtaskModal = false"
-          >Cancelar</v-btn
         >
-        <v-btn
-          variant="tonal"
-          color="Secundary"
-          class="text-none"
+          <template #prepend-inner><Paperclip :size="16" /></template>
+        </v-file-input>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn-ghost press" @click="showCreateSubtaskModal = false">
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="btn-primary press"
           :disabled="!formSubtask.title"
           @click="createSubtask"
-          :loading="saving"
-          >Criar</v-btn
         >
-      </v-card-actions>
+          <Loader2 v-if="saving" :size="14" class="spin" />
+          Criar
+        </button>
+      </div>
     </v-card>
   </v-dialog>
 
   <v-dialog v-model="showSubtaskModal" max-width="900px">
-    <v-card v-if="selectedSubtask" rounded="lg">
-      <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
-        <div class="d-flex align-center ga-2">
-          <v-icon color="Secundary" size="20">mdi-checkbox-marked-circle-outline</v-icon>
-          <span class="text-subtitle-1 font-weight-bold text-secondary">Detalhes da Subtarefa</span>
+    <v-card v-if="selectedSubtask" class="dialog-card" rounded="xl">
+      <div class="dialog-header">
+        <div class="dialog-head-main">
+          <span class="dialog-head-icon"><CheckCircle2 :size="16" /></span>
+          <span class="dialog-title-text">Detalhes da subtarefa</span>
         </div>
-        <div class="d-flex align-center ga-1 flex-shrink-0">
-          <v-btn
-            :icon="editingSubtask ? 'mdi-close' : 'mdi-pencil-outline'"
-            variant="text"
-            size="small"
+        <div class="dialog-head-actions">
+          <button
+            type="button"
+            class="icon-btn press"
+            :aria-label="editingSubtask ? 'Cancelar edição' : 'Editar'"
             @click="editingSubtask = !editingSubtask"
-          />
-          <v-btn
-            icon="mdi-delete-outline"
-            variant="text"
-            size="small"
-            color="error"
-            :loading="deleting === selectedSubtask?.id"
+          >
+            <X v-if="editingSubtask" :size="16" />
+            <Pencil v-else :size="16" />
+          </button>
+          <button
+            type="button"
+            class="icon-btn icon-btn--danger press"
+            aria-label="Excluir subtarefa"
+            :disabled="deleting === selectedSubtask?.id"
             @click="deleteSubtask(selectedSubtask)"
-          />
-          <v-btn icon="mdi-close" variant="text" size="small" @click="showSubtaskModal = false" />
+          >
+            <Loader2 v-if="deleting === selectedSubtask?.id" :size="15" class="spin" />
+            <Trash2 v-else :size="15" />
+          </button>
+          <button type="button" class="icon-btn press" aria-label="Fechar" @click="showSubtaskModal = false">
+            <X :size="16" />
+          </button>
         </div>
-      </v-card-title>
+      </div>
 
-      <v-divider />
-
-      <v-card-text class="pa-4">
+      <div class="dialog-body">
         <template v-if="!editingSubtask">
-          <div class="mb-3">
-            <div style="font-size: 10px" class="text-primary-lighten mb-1">Título</div>
-            <div style="font-size: 14px" class="font-weight-bold text-secondary">
-              {{ selectedSubtask.title }}
-            </div>
+          <div class="view-field">
+            <span class="view-label">Título</span>
+            <p class="view-value view-value--title">{{ selectedSubtask.title }}</p>
           </div>
 
-          <div class="d-flex ga-2 mb-3">
-            <v-chip
-              size="small"
-              :color="getStatusConfig(selectedSubtask.status).color"
-              variant="tonal"
-            >
-              <v-icon size="14" start>{{ getStatusConfig(selectedSubtask.status).icon }}</v-icon>
+          <div class="view-pills">
+            <Pill :icon="getStatusConfig(selectedSubtask.status).icon" :color="getStatusConfig(selectedSubtask.status).token">
               {{ getStatusConfig(selectedSubtask.status).label }}
-            </v-chip>
-            <v-chip size="small" variant="tonal" color="secondary">
-              <v-icon size="12" start>mdi-flag-outline</v-icon>
-              {{ selectedSubtask.priorityNumber }}
-            </v-chip>
+            </Pill>
+            <Pill :icon="Flag" :color="getPriorityMeta(selectedSubtask.priorityNumber).token">
+              {{ getPriorityMeta(selectedSubtask.priorityNumber).label }}
+            </Pill>
           </div>
 
-          <div v-if="selectedSubtask.description" class="mb-4">
-            <div style="font-size: 10px" class="text-primary-lighten mb-1">Descrição</div>
-            <div
-              style="font-size: 12px"
-              class="text-secondary"
-              v-html="selectedSubtask.description"
-            />
+          <div v-if="selectedSubtask.description" class="view-field">
+            <span class="view-label">Descrição</span>
+            <div class="view-value desc-body" v-html="selectedSubtask.description" />
           </div>
 
-          <div v-if="selectedSubtask.attachments?.length" class="mb-4">
-            <div style="font-size: 10px" class="text-primary-lighten mb-2">Anexos</div>
-            <div class="d-flex flex-wrap ga-2">
-              <div
-                v-for="att in selectedSubtask.attachments"
-                :key="att.id"
-                class="position-relative"
-              >
-                <a :href="att.url" target="_blank" style="text-decoration: none">
-                  <v-img
-                    v-if="isImage(att.filename)"
-                    :src="att.url"
-                    width="100"
-                    height="100"
-                    cover
-                    rounded="lg"
-                    style="cursor: pointer"
-                  />
-                  <div
-                    v-else
-                    class="d-flex flex-column align-center justify-center rounded-lg"
-                    style="
-                      width: 100px;
-                      height: 100px;
-                      background: rgba(var(--text), 0.08);
-                      cursor: pointer;
-                    "
-                  >
-                    <v-icon size="32" color="secondary">mdi-file-outline</v-icon>
-                    <span
-                      style="
-                        font-size: 9px;
-                        color: var(--text);
-                        text-align: center;
-                        padding: 0 4px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                        max-width: 96px;
-                      "
-                      >{{ att.filename }}</span
-                    >
+          <div v-if="selectedSubtask.attachments?.length" class="view-field">
+            <span class="view-label">Anexos</span>
+            <div class="attachment-grid">
+              <div v-for="att in selectedSubtask.attachments" :key="att.id" class="attachment-wrap">
+                <a :href="att.url" target="_blank" rel="noopener noreferrer" class="attachment-item hover-lift">
+                  <img v-if="isImage(att.filename)" :src="att.url" :alt="att.filename" class="attachment-img" />
+                  <div v-else class="attachment-file">
+                    <File :size="22" />
+                    <span>{{ att.filename }}</span>
                   </div>
                 </a>
-                <v-btn
-                  icon="mdi-close"
-                  size="x-small"
-                  color="error"
-                  variant="flat"
-                  style="position: absolute; top: -8px; right: -8px"
-                  :loading="deletingAttachment === att.id"
+                <button
+                  type="button"
+                  class="attachment-remove press"
+                  :disabled="deletingAttachment === att.id"
                   @click.stop="deleteAttachment(att.id)"
-                />
+                >
+                  <Loader2 v-if="deletingAttachment === att.id" :size="12" class="spin" />
+                  <X v-else :size="12" />
+                </button>
               </div>
             </div>
           </div>
 
-          <v-row>
-            <v-col v-if="selectedSubtask.responsibles?.length" cols="12" md="6">
-              <div style="font-size: 10px" class="text-primary-lighten mb-2">Responsáveis</div>
-              <div class="d-flex flex-column ga-1">
-                <v-chip
+          <div class="view-grid">
+            <div v-if="selectedSubtask.responsibles?.length" class="view-field">
+              <span class="view-label">Responsáveis</span>
+              <div class="responsible-list">
+                <span
                   v-for="r in selectedSubtask.responsibles"
                   :key="r.userId"
-                  size="small"
-                  variant="flat"
-                  :color="getUserColor(r.user.name)"
-                  class="justify-start"
+                  class="responsible-chip"
+                  :style="{
+                    background: `color-mix(in srgb, ${getUserTone(r.user.name)} 14%, var(--surface-2))`,
+                    color: getUserTone(r.user.name),
+                    borderColor: `color-mix(in srgb, ${getUserTone(r.user.name)} 28%, var(--border))`,
+                  }"
                 >
-                  <v-avatar start size="20">
-                    <span style="font-size: 9px">{{ getUserInitials(r.user.name) }}</span>
-                  </v-avatar>
-                  <span style="font-size: 11px">{{ r.user.name }}</span>
-                </v-chip>
+                  <span class="avatar avatar--sm">{{ getUserInitials(r.user.name) }}</span>
+                  {{ r.user.name }}
+                </span>
               </div>
-            </v-col>
-            <v-col v-if="selectedSubtask.dueDate" cols="12" md="6">
-              <div style="font-size: 10px" class="text-primary-lighten mb-1">Data de Entrega</div>
-              <v-chip size="small" variant="tonal" color="secondary">
-                <v-icon size="12" start>mdi-calendar-outline</v-icon>
+            </div>
+            <div v-if="selectedSubtask.dueDate" class="view-field">
+              <span class="view-label">Entrega</span>
+              <span class="meta-value">
+                <Calendar :size="13" />
                 {{ formatDate(selectedSubtask.dueDate) }}
-              </v-chip>
-            </v-col>
-          </v-row>
+              </span>
+            </div>
+          </div>
         </template>
 
         <template v-else>
@@ -1320,59 +1469,36 @@ const deleteAttachment = async (attachmentId: string) => {
             class="mt-3"
             hide-details
           />
-          <div v-if="selectedSubtask.attachments?.length" class="mt-3 mb-1">
-            <div style="font-size: 10px" class="text-primary-lighten mb-2">Anexos atuais</div>
-            <div class="d-flex flex-wrap ga-2">
+          <div v-if="selectedSubtask.attachments?.length" class="view-field">
+            <span class="view-label">Anexos atuais</span>
+            <div class="attachment-grid" style="padding: 0">
               <div
                 v-for="att in selectedSubtask.attachments"
                 :key="att.id"
-                class="position-relative"
+                class="attachment-wrap"
               >
-                <a :href="att.url" target="_blank" style="text-decoration: none">
-                  <v-img
+                <a :href="att.url" target="_blank" rel="noopener noreferrer" class="attachment-item hover-lift">
+                  <img
                     v-if="isImage(att.filename)"
                     :src="att.url"
-                    width="100"
-                    height="100"
-                    cover
-                    rounded="lg"
-                    style="cursor: pointer"
+                    :alt="att.filename"
+                    class="attachment-img"
+                    style="width: 100px; height: 100px"
                   />
-                  <div
-                    v-else
-                    class="d-flex flex-column align-center justify-center rounded-lg"
-                    style="
-                      width: 100px;
-                      height: 100px;
-                      background: rgba(var(--text), 0.08);
-                      cursor: pointer;
-                    "
-                  >
-                    <v-icon size="32" color="secondary">mdi-file-outline</v-icon>
-                    <span
-                      style="
-                        font-size: 9px;
-                        color: var(--text);
-                        text-align: center;
-                        padding: 0 4px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                        max-width: 96px;
-                      "
-                      >{{ att.filename }}</span
-                    >
+                  <div v-else class="attachment-file" style="width: 100px; height: 100px">
+                    <File :size="26" />
+                    <span>{{ att.filename }}</span>
                   </div>
                 </a>
-                <v-btn
-                  icon="mdi-close"
-                  size="x-small"
-                  color="error"
-                  variant="flat"
-                  style="position: absolute; top: -8px; right: -8px"
-                  :loading="deletingAttachment === att.id"
+                <button
+                  type="button"
+                  class="attachment-remove press"
+                  :disabled="deletingAttachment === att.id"
                   @click.stop="deleteAttachment(att.id)"
-                />
+                >
+                  <Loader2 v-if="deletingAttachment === att.id" :size="12" class="spin" />
+                  <X v-else :size="12" />
+                </button>
               </div>
             </div>
           </div>
@@ -1382,130 +1508,757 @@ const deleteAttachment = async (attachmentId: string) => {
             variant="outlined"
             color="secondary"
             prepend-icon=""
-            prepend-inner-icon="mdi-paperclip"
             accept="*/*"
             hide-details
             class="mt-3"
             @update:model-value="onSubtaskFileChange"
-          />
+          >
+            <template #prepend-inner><Paperclip :size="16" /></template>
+          </v-file-input>
         </template>
-      </v-card-text>
+      </div>
 
-      <v-divider />
-
-      <v-card-actions class="pa-4">
-        <v-spacer />
+      <div class="dialog-actions">
         <template v-if="editingSubtask">
-          <v-btn variant="text" color="secondary" class="text-none" @click="editingSubtask = false"
-            >Cancelar</v-btn
-          >
-          <v-btn
-            variant="tonal"
-            color="Secundary"
-            class="text-none"
+          <button type="button" class="btn-ghost press" @click="editingSubtask = false">Cancelar</button>
+          <button
+            type="button"
+            class="btn-primary press"
             :disabled="!formSubtask.title"
-            :loading="saving"
             @click="updateSubtask"
-            >Salvar</v-btn
           >
+            <Loader2 v-if="saving" :size="14" class="spin" />
+            Salvar
+          </button>
         </template>
-        <v-btn
-          v-else
-          variant="tonal"
-          color="secondary"
-          class="text-none"
-          @click="showSubtaskModal = false"
-          >Fechar</v-btn
-        >
-      </v-card-actions>
+        <button v-else type="button" class="btn-secondary press" @click="showSubtaskModal = false">
+          Fechar
+        </button>
+      </div>
     </v-card>
   </v-dialog>
 
   <v-dialog v-model="showQuickSubtaskModal" max-width="400px">
-    <v-card rounded="lg">
-      <v-card-title class="d-flex justify-space-between align-center pa-4 bg-surface">
-        <div class="d-flex align-center ga-2">
-          <v-icon color="secondary" size="18">mdi-sparkles</v-icon>
-          <span style="font-size: 13px" class="font-weight-bold text-secondary"
-            >Criar Subtarefa</span
-          >
+    <v-card class="dialog-card" rounded="xl">
+      <div class="dialog-header">
+        <div class="dialog-head-main">
+          <span class="dialog-head-icon"><Sparkles :size="16" /></span>
+          <span class="dialog-title-text">Criar subtarefa</span>
         </div>
-        <v-btn
-          icon="mdi-close"
-          variant="text"
-          size="small"
-          @click="showQuickSubtaskModal = false"
-        />
-      </v-card-title>
+        <button type="button" class="icon-btn press" aria-label="Fechar" @click="showQuickSubtaskModal = false">
+          <X :size="16" />
+        </button>
+      </div>
 
-      <v-divider />
-
-      <v-card-text class="pa-4">
+      <div class="dialog-body">
         <v-text-field
           v-model="quickSubtaskTitle"
-          label="Título da Subtarefa"
+          label="Título da subtarefa"
           density="compact"
           variant="outlined"
           color="secondary"
           hide-details
           autofocus
         />
-        <div style="font-size: 10px" class="text-primary-lighten mt-2">
-          Você poderá editar mais detalhes após criar
-        </div>
-      </v-card-text>
+        <p class="field-hint">Você poderá editar mais detalhes após criar.</p>
+      </div>
 
-      <v-divider />
-
-      <v-card-actions class="pa-4">
-        <v-spacer />
-        <v-btn
-          variant="text"
-          color="secondary"
-          class="text-none"
-          @click="showQuickSubtaskModal = false"
-        >
+      <div class="dialog-actions">
+        <button type="button" class="btn-ghost press" @click="showQuickSubtaskModal = false">
           Cancelar
-        </v-btn>
-        <v-btn
-          variant="tonal"
-          color="secondary"
-          class="text-none"
-          prepend-icon="mdi-plus"
+        </button>
+        <button
+          type="button"
+          class="btn-primary press"
           :disabled="!quickSubtaskTitle"
-          :loading="saving"
           @click="createQuickSubtask"
         >
+          <Loader2 v-if="saving" :size="14" class="spin" />
+          <Plus v-else :size="14" />
           Criar
-        </v-btn>
-      </v-card-actions>
+        </button>
+      </div>
     </v-card>
   </v-dialog>
 
 </template>
 
 <style scoped>
-.v-checkbox :deep(.v-selection-control) {
-  min-height: 20px;
+.detail-page {
+  padding: 24px 28px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.detail-page--center {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.page-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+
+.back-btn:hover {
+  color: var(--text);
+}
+
+.breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.breadcrumb-sep {
+  opacity: 0.5;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.main-col,
+.side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.panel-head--compact {
+  padding: 12px 14px;
+  gap: 8px;
+}
+
+.panel-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.count-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 0;
+}
+
+.title-main {
+  min-width: 0;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+
+.task-title {
+  margin: 0 0 14px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.desc-body {
+  padding: 0 16px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.desc-body :deep(p) {
+  margin: 0 0 0.75em;
+}
+
+.desc-empty {
+  margin: 0;
+  padding: 0 16px 16px;
+  font-size: 14px;
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.subtask-list {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .subtask-item {
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  background: transparent;
-  border: 1px solid rgba(var(--text), 0.2);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
 }
 
 .subtask-item:hover {
-  background: rgba(var(--text), 0.05);
-  border-color: rgba(var(--text), 0.3);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.subtask-item.done .subtask-title,
+.subtask-item.done .subtask-desc {
+  text-decoration: line-through;
+  color: var(--text-3);
+}
+
+.check-btn {
+  flex-shrink: 0;
+  margin-top: 1px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.check-off {
+  color: var(--text-4);
+}
+
+.check-on {
+  color: var(--status-done);
+}
+
+.subtask-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.subtask-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.subtask-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.subtask-desc {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+
+.subtask-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.avatar-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.avatar--sm {
+  width: 18px;
+  height: 18px;
+  font-size: 8px;
+}
+
+.meta-panel {
+  padding-bottom: 4px;
+}
+
+.meta-list {
+  margin: 0;
+  padding: 8px 14px 12px;
+}
+
+.meta-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.meta-row:last-child {
+  border-bottom: none;
+}
+
+.meta-row--stack {
+  align-items: start;
+}
+
+.meta-row dt {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.meta-row dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meta-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.meta-select {
+  width: 100%;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  outline: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.meta-select:focus {
+  border-color: var(--accent);
+}
+
+.meta-loading {
+  color: var(--text-3);
+}
+
+.responsible-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.responsible-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.attachment-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.attachment-wrap {
+  position: relative;
+}
+
+.attachment-item {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.attachment-img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.attachment-file {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  color: var(--text-3);
+}
+
+.attachment-file span {
+  font-size: 9px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 72px;
+  color: var(--text-2);
+}
+
+.attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: var(--err);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.icon-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.icon-btn--danger:hover {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 35%, var(--border));
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  padding: 7px 12px;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
 }
 
 .clickable {
   cursor: pointer;
 }
 
-.subtask-item.completed {
+.loading-wrap {
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dialogs */
+.dialog-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+
+.dialog-head-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dialog-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dialog-head-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dialog-title-text {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.dialog-body {
+  padding: 16px 18px;
+}
+
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.suggest-card {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.suggest-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.suggest-task {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.suggest-task--done {
   opacity: 0.7;
+  background: color-mix(in srgb, var(--success) 10%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--success) 28%, var(--border));
+}
+
+.suggest-check {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.ai-btn {
+  flex-shrink: 0;
+}
+
+.field-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-4);
+}
+
+.view-field {
+  margin-bottom: 14px;
+}
+
+.view-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+
+.view-value {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.view-value--title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.view-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.view-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .view-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .detail-page {
+    padding: 16px;
+  }
+
+  .meta-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
 }
 </style>

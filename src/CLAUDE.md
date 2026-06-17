@@ -115,6 +115,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 |---|---|---|---|
 | Dashboard | [`features/dashboard/DashboardView.vue`](./features/dashboard/DashboardView.vue) | `/` e `/dashboard` | Usa Vue Query |
 | Board | [`features/board/BoardView.vue`](./features/board/BoardView.vue) | `/board` | Kanban |
+| Roadmap | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue) | `/roadmap` | Mock local de eventos/atividades |
 | Tarefas | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue) | `/tasks/:month` | Por trimestre → mês |
 | Tickets | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue) | `/tickets` | |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables` | Refatorada em F3 — sub-components em `features/companies/components/` |

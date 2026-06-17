@@ -1,0 +1,252 @@
+# API e serviços
+
+Camada HTTP do frontend. Todos os serviços usam a instância Axios central em `src/service/api.ts`.
+
+## Cliente HTTP
+
+```typescript
+// src/service/api.ts
+baseURL: import.meta.env.VITE_API_URL
+
+// Headers automáticos (interceptor):
+Authorization: Bearer <token>        // localStorage.token
+x-company-id: <companyId>            // localStorage.activeCompany
+Content-Type: application/json
+```
+
+## Mapa de serviços
+
+| Serviço | Arquivo | Domínio |
+|---|---|---|
+| Auth | `service/auth/auth-service.ts` | Login e signup |
+| User | `service/user/user-service.ts` | CRUD de usuários |
+| Companies | `service/companies/companies-services.ts` | Empresas e membros |
+| Variables | `service/companies/variables/variables-services.ts` | Variáveis de ambiente |
+| Quarters | `service/quarters/quarters-service.ts` | Trimestres, boards, relatórios |
+| Activities | `service/activities/activity-service.ts` | Tarefas/atividades |
+| Backlog | `service/backlog/backlog-service.ts` | Backlog por empresa |
+| Dashboard | `service/dashboard/dashboard-service.ts` | Métricas e workspace |
+| Events | `service/events/events-service.ts` | Calendário e Google |
+| Notes | `service/notes/notes-service.ts` | Notas e pastas |
+| Bug Report | `service/bug-report/bug-report-service.ts` | Reports públicos e internos |
+| Repository | `service/repository/repository-service.ts` | Git browser |
+| GitHub Connection | `service/github-connection/github-connection-service.ts` | OAuth GitHub |
+| Tickets | `service/tickets/ticket-service.ts` | Tickets internos |
+| Notifications | `service/notifications/notifications-service.ts` | Webhooks Discord |
+| Import | `service/import/import-service.ts` | Importação Jira XML |
+
+---
+
+## Endpoints por domínio
+
+### Auth
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| POST | `/auth/login` | Login (retorna `accessToken`) |
+| POST | `/user` | Criar conta (signup) |
+
+### User
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/user/me` | Perfil do usuário logado |
+| GET | `/user` | Listar usuários |
+| POST | `/user` | Criar usuário |
+
+### Company
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/company` | Empresas do usuário |
+| GET | `/company/all` | Todas as empresas (admin) |
+| GET | `/company/with-metrics` | Empresas com métricas |
+| POST | `/company` | Criar empresa |
+| GET | `/company/:id/members` | Membros da empresa |
+| POST | `/company/:id/member` | Adicionar membro |
+| POST | `/company/:id/member/lote` | Adicionar membros em lote |
+| POST | `/company/:id/admin` | Promover admin |
+
+### Company Variables
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/company-variable` | Listar variáveis da empresa |
+| POST | `/company-variable` | Criar variável |
+| PATCH | `/company-variable/:id` | Atualizar variável |
+| DELETE | `/company-variable/:id` | Remover variável |
+| POST | `/company-variable/:id/image` | Upload de imagem |
+
+**Modelo de campo:** `{ key, value, type: 'TEXT' | 'URL' | 'SECRET' }`
+
+### Quarters & Boards
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/company/:companyId/quarters` | Trimestres e meses |
+| GET | `/company/:companyId/roadmap` | Roadmap |
+| GET | `/month/:monthId/board` | Board Kanban do mês |
+| GET | `/quarter/:id/report` | Obter relatório |
+| POST | `/quarter/:id/report` | Salvar relatório |
+| POST | `/quarter/:id/report/improve` | Melhorar relatório com IA |
+
+### Activities
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| POST | `/activity` | Criar atividade |
+| GET | `/activity/:id` | Detalhe da atividade |
+| PATCH | `/activity/:id` | Atualizar atividade (inclui `monthId` para mover entre meses/trimestres) |
+| DELETE | `/activity/:id` | Remover atividade |
+| POST | `/activity/:id/attachment` | Upload de anexo |
+| POST | `/activity/:id/suggest` | Sugestão com IA |
+
+### Backlog
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/backlog/company/:companyId/` | Itens do backlog |
+
+### Dashboard
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/dashboard/workspace` | Dados agregados do workspace |
+| GET | `/dashboard/company/:companyId` | Métricas da empresa |
+| GET | `/dashboard/company/:companyId/weekly-trend` | Tendência semanal |
+
+### Events
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/events` | Listar eventos (filtro start/end) |
+| GET | `/events/upcoming?limit=N` | Próximos eventos |
+| GET | `/events/:id` | Detalhe |
+| POST | `/events` | Criar evento |
+| PATCH | `/events/:id` | Atualizar |
+| DELETE | `/events/:id` | Remover |
+| GET | `/auth/google/link` | URL OAuth Google Calendar |
+
+### Notes
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/notes` | Listar (folderId, search, tag) |
+| GET | `/notes/folders` | Pastas |
+| GET | `/notes/:id` | Detalhe |
+| POST | `/notes` | Criar |
+| PATCH | `/notes/:id` | Atualizar |
+| DELETE | `/notes/:id` | Remover |
+| POST | `/notes/:id/pin` | Fixar/desfixar |
+
+### Bug Report
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/bug-report/public/company/:companyId` | Info pública da empresa |
+| POST | `/bug-report/upload` | Enviar report (multipart) |
+| GET | `/bug-report/:reportId/status` | Status público |
+| GET | `/bug-report/by-company` | Lista interna |
+| GET | `/bug-report/:reportId/messages` | Mensagens |
+| POST | `/bug-report/:reportId/messages` | Enviar mensagem |
+
+### Repository
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/repository` | Listar repositórios |
+| POST | `/repository` | Criar/vincular |
+| GET | `/repository/:id/access` | Permissões |
+| POST | `/repository/:id/access` | Conceder acesso |
+| GET | `/repository/:id/branches` | Branches |
+| GET | `/repository/:id/tree` | Árvore de arquivos |
+| GET | `/repository/:id/file` | Conteúdo de arquivo |
+| GET | `/repository/:id/pulls` | Pull requests |
+| POST | `/repository/:id/pulls` | Criar PR |
+| GET | `/repository/:id/clone` | URL de clone |
+
+### GitHub Connection
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/github-connection` | Conexões existentes |
+| POST | `/github-connection` | Nova conexão |
+| GET | `/github-connection/:id/available-repos` | Repos disponíveis |
+
+### Tickets
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/ticket` | Listar tickets |
+| POST | `/ticket` | Criar ticket |
+
+### Notifications
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| GET | `/notifications/companies` | Config por empresa |
+| POST | `/notifications/companies/:id/discord` | Configurar webhook Discord |
+| POST | `/notifications/companies/:id/discord/test` | Testar webhook |
+| POST | `/notifications/companies/:id/discord/toggle` | Ativar/desativar |
+
+### Import
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| POST | `/import/jira-xml` | Importar XML do Jira (multipart) |
+
+---
+
+## Composables ↔ Services
+
+Mapeamento entre composables Vue Query e serviços:
+
+| Composable | Service | Query Key |
+|---|---|---|
+| `useDashboardMetrics` | `dashboard-service` | `['metrics', companyId]` |
+| `useWorkspaceDashboard` | `dashboard-service` | `['workspace']` |
+| `useBacklog` | `backlog-service` | `['backlog', companyId]` |
+| `useCompanyBoards` | `quarters-service` | `['boards', monthId]` |
+| `useCompanyQuarters` | `quarters-service` | `['quarters', companyId]` |
+| `useNavQuarters` | `quarters-service` | `['navQuarters', companyId]` |
+| `useUpcomingEvents` | `events-service` | `['upcomingEvents']` |
+
+## Stores ↔ Services
+
+| Store | Services usados |
+|---|---|
+| `workspaceStores` | `dashboard-service`, `companies-services` |
+| `authStores` | — (apenas `companyId` em memória) |
+| `uiStores` | — (preferências locais) |
+
+## Tratamento de erros
+
+Padrão nos services com `handleRequest`:
+
+```typescript
+try {
+  const response = await api.get(...)
+  return response.data
+} catch (error) {
+  throw new Error(errorMessage)
+}
+```
+
+Nas views, erros são exibidos via `useToast()`:
+
+```typescript
+const { success, error } = useToast()
+error(error.response?.data?.message || 'Mensagem fallback')
+```
+
+## Autenticação nos requests
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│ localStorage│────▶│  Interceptor │────▶│  API Backend│
+│ token       │     │  Axios       │     │             │
+│ activeCompany│    │              │     │             │
+└─────────────┘     └──────────────┘     └─────────────┘
+```
+
+Rotas públicas de bug report **não** enviam token (formulário externo), mas a instância Axios ainda injeta headers se existirem.

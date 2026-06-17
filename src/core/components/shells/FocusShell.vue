@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   LayoutDashboard,
   Columns3,
+  Milestone,
   Ticket,
   KeyRound,
   Users,
@@ -35,6 +36,7 @@ const railItems = computed(() => {
   const items: Array<{ to: string; icon: any; label: string }> = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/board', icon: Columns3, label: 'Board' },
+    { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
   ]
   if (firstMonth.value) {
     items.push({ to: `/tasks/${firstMonth.value.id}`, icon: ListTodo, label: 'Tarefas' })
@@ -168,6 +170,10 @@ const showTasks = computed(() =>
             <button class="quick-item" @click="router.push('/board')">
               <Columns3 :size="12" class="quick-icon" />
               <span class="quick-label">Board</span>
+            </button>
+            <button class="quick-item" @click="router.push('/roadmap')">
+              <Milestone :size="12" class="quick-icon" />
+              <span class="quick-label">Roadmap</span>
             </button>
             <button
               v-if="firstMonth"

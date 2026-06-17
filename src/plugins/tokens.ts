@@ -164,7 +164,7 @@ export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral
   // Vuetify's reactive setter (theme.global.name.value) normally handles this,
   // but if it fails to propagate (timing / HMR / multiple instances), this
   // guarantees .v-theme--X matches the active theme so Vuetify components
-  // repaint immediately.
+  // repaint immediately...
   const apps = document.querySelectorAll('.v-application')
   apps.forEach((el) => {
     el.classList.remove('v-theme--dark', 'v-theme--light')

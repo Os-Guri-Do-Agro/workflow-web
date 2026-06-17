@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   Search,
   LayoutDashboard,
+  Milestone,
   Ticket,
   KeyRound,
   Users,
@@ -71,6 +72,7 @@ interface Command {
 
 const staticCommands = computed<Command[]>(() => [
   { id: 'nav-dash', label: 'Dashboard', hint: 'Visão geral', icon: LayoutDashboard, section: 'Navegação', keywords: 'home inicio painel', action: () => go('/') },
+  { id: 'nav-roadmap', label: 'Roadmap', hint: 'Eventos e atividades', icon: Milestone, section: 'Navegação', keywords: 'planejamento timeline estrategia entregas', action: () => go('/roadmap') },
   { id: 'nav-tickets', label: 'Tickets', hint: 'Gerenciar tickets', icon: Ticket, section: 'Navegação', keywords: 'suporte', action: () => go('/tickets') },
   { id: 'nav-vars', label: 'Variáveis', hint: 'Credenciais e URLs', icon: KeyRound, section: 'Navegação', keywords: 'senhas secrets env aws', action: () => go('/variables') },
   { id: 'nav-users', label: 'Usuários / Empresas', hint: 'Gestão de acesso', icon: Users, section: 'Navegação', keywords: 'pessoas time membros', action: () => go('/company-users') },

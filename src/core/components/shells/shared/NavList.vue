@@ -11,6 +11,7 @@ import {
   BarChart3,
   CalendarRange,
   Bug,
+  Milestone,
   type LucideIcon,
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
@@ -46,6 +47,7 @@ function userMeetsRole(required?: string): boolean {
 const mainItems = computed<NavItem[]>(() => [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/dashboard', section: 'Trabalho' },
   { title: 'Board', icon: Columns3, to: '/board', section: 'Trabalho' },
+  { title: 'Roadmap', icon: Milestone, to: '/roadmap', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
