@@ -20,6 +20,7 @@ const breadcrumbs = computed(() => {
     '/': 'Dashboard',
     '/dashboard': 'Dashboard',
     '/board': 'Board',
+    '/roadmap': 'Roadmap',
     '/settings': 'Configurações',
     '/variables': 'Variáveis',
     '/company-users': 'Usuários',

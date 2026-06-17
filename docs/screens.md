@@ -17,6 +17,7 @@ flowchart LR
   subgraph work [Trabalho — requer auth]
     Dash["/ · /dashboard"]
     Board["/board"]
+    Roadmap["/roadmap"]
     Tasks["/tasks/:month"]
     TaskDet["/tasks/:month/:taskId"]
     Report["/relatorio/:quarterId"]
@@ -53,6 +54,7 @@ flowchart LR
 | `/` | home | `DashboardView` | ✅ | JWT | — |
 | `/dashboard` | dashboard | `DashboardView` | ✅ | JWT | — |
 | `/board` | board | `BoardView` | ✅ | JWT | — |
+| `/roadmap` | roadmap | `RoadmapView` | ✅ | JWT | — |
 | `/tasks/:month` | tasks | `TasksView` | ✅ | JWT | — |
 | `/tasks/:month/:taskId` | task-details | `TaskDetailsView` | ✅ | JWT | — |
 | `/relatorio/:quarterId` | report | `ReportView` | ✅ | JWT | — |
@@ -78,6 +80,7 @@ A sidebar (`NavList.vue`) organiza itens em duas seções:
 |---|---|---|
 | Dashboard | `/dashboard` | Home alternativa |
 | Board | `/board` | Kanban cross-company |
+| Roadmap | `/roadmap` | Timeline mockada de eventos e atividades |
 | Bug reports | `/bug-reports` | Lista interna |
 | Tarefas | dinâmico | Submenu por trimestre → mês |
 | ↳ Relatório Q* | `/relatorio/:quarterId` | Editor TipTap por trimestre |
@@ -148,6 +151,20 @@ Kanban **cross-company** com todas as atividades do workspace.
 **Filtros:** busca textual, empresa, prioridade (P0–P3)
 
 **Interações:** drag-and-drop entre colunas, click abre detalhe da tarefa
+
+---
+
+### Roadmap (`/roadmap`)
+
+Timeline anual de eventos, atividades e marcos por área, inspirada em roadmap trimestral.
+
+**Estado atual:** dados mockados no frontend até o backend expor rotas próprias.
+
+**Blocos principais:**
+- Trilhas por área (Planejamento, Estratégia, Desenvolvimento, Business Intelligence)
+- Q1–Q4 no topo, com reviews trimestrais
+- Barras de atividades por período, progresso e status
+- Marcos pontuais com data e label
 
 ---
 

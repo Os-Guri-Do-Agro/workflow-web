@@ -18,6 +18,7 @@ Documentos de especificação e migração em [`specs/`](./specs/):
 - [design-system-evolution.md](./specs/design-system-evolution.md) — evolução do design system (F1–F4 + Fase P)
 - [shell-nav-unification.md](./specs/shell-nav-unification.md) — unificação de navegação nos shells
 - [legacy-views-migration.md](./specs/legacy-views-migration.md) — migração mdi → lucide e tokens
+- [roadmap-backend-contract.md](./specs/roadmap-backend-contract.md) — contrato esperado para backend da tela Roadmap
 
 ## Setup rápido
 
