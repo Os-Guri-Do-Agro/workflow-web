@@ -228,169 +228,170 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
       </div>
 
       <!-- Drop zone -->
-      <VueDraggable
-        v-model="columnActivities[column.status]"
-        class="column-content"
-        :class="{
-          'column-drop-active': isDragging && dragOverColumn === column.status,
-        }"
-        group="activities"
-        draggable=".task-card"
-        :animation="180"
-        :disabled="props.readonly"
-        ghost-class="drag-ghost"
-        chosen-class="drag-chosen"
-        drag-class="drag-moving"
-        @start="onStart"
-        @end="onEnd"
-        @add="(evt) => onAdd(evt, column.apiStatus)"
-        @dragenter="onEnterColumn(column.status)"
-        @dragleave="onLeaveColumn"
-      >
-        <!-- Empty -->
-        <div
-          v-if="(columnActivities[column.status]?.length || 0) === 0 && !isDragging"
-          class="empty-column"
+      <div class="column-drop-zone">
+        <VueDraggable
+          v-model="columnActivities[column.status]"
+          class="column-content"
+          :class="{
+            'column-drop-active': isDragging && dragOverColumn === column.status,
+          }"
+          group="activities"
+          :animation="180"
+          :disabled="props.readonly"
+          ghost-class="drag-ghost"
+          chosen-class="drag-chosen"
+          drag-class="drag-moving"
+          @start="onStart"
+          @end="onEnd"
+          @add="(evt) => onAdd(evt, column.apiStatus)"
+          @dragenter="onEnterColumn(column.status)"
+          @dragleave="onLeaveColumn"
         >
-          <Plus :size="14" />
-          <span>Vazio</span>
-        </div>
-
-        <!-- Task card -->
-        <div
-          v-for="task in columnActivities[column.status]"
-          :key="task.id"
-          :data-id="task.id"
-          class="task-card"
-          :style="{ '--priority-color': getPriorityColor(task.priorityNumber) }"
-          @click="emit('open-details', task)"
-        >
-          <!-- cover image -->
-          <div v-if="getImageAttachment(task)" class="card-image">
-            <img :src="getImageAttachment(task)" alt="" loading="lazy" />
-          </div>
-
-          <div class="card-body">
-            <!-- top row -->
-            <div class="card-top">
-              <input
-                v-if="editingTaskId === task.id"
-                v-model="editingTitle"
-                class="card-title-input"
-                @keydown.enter="commitEdit(task)"
-                @keydown.esc="cancelEdit"
-                @blur="commitEdit(task)"
-                @click.stop
-                autofocus
-              />
-              <span
-                v-else
-                class="card-title"
-                @dblclick="startEditing(task, $event)"
-              >
-                {{ task.title }}
-              </span>
-              <button
-                v-if="!props.readonly"
-                class="card-action"
-                aria-label="Excluir"
-                @click.stop="openDeleteConfirm(task)"
-              >
-                <Trash2 :size="12" />
-              </button>
+          <!-- Task card -->
+          <div
+            v-for="task in columnActivities[column.status]"
+            :key="task.id"
+            :data-id="task.id"
+            class="task-card"
+            :style="{ '--priority-color': getPriorityColor(task.priorityNumber) }"
+            @click="emit('open-details', task)"
+          >
+            <!-- cover image -->
+            <div v-if="getImageAttachment(task)" class="card-image">
+              <img :src="getImageAttachment(task)" alt="" loading="lazy" />
             </div>
 
-            <!-- meta -->
-            <div class="card-meta">
-              <span
-                v-if="task.priorityNumber !== undefined"
-                class="meta-pill priority-pill"
-                :title="getPriorityLabel(task.priorityNumber)"
-                :style="{
-                  color: getPriorityColor(task.priorityNumber),
-                  background: `color-mix(in srgb, ${getPriorityColor(task.priorityNumber)} 14%, var(--surface-2))`,
-                  borderColor: `color-mix(in srgb, ${getPriorityColor(task.priorityNumber)} 30%, var(--border))`,
-                }"
-              >
-                P{{ task.priorityNumber }}
-              </span>
-
-              <span
-                v-if="task.dueDate"
-                class="meta-pill"
-                :class="{ 'meta-pill--overdue': isOverdue(task.dueDate) }"
-              >
-                <Calendar :size="10" />
-                {{
-                  new Date(task.dueDate).toLocaleDateString('pt-BR', {
-                    day: '2-digit',
-                    month: 'short',
-                  })
-                }}
-              </span>
-            </div>
-
-            <!-- subtasks -->
-            <div v-if="task.subtasks?.length" class="subtasks-section" @click.stop>
-              <button class="subtasks-toggle" @click="toggleExpand(task.id)">
-                <ChevronUp v-if="isExpanded(task.id)" :size="11" />
-                <ChevronDown v-else :size="11" />
-                <span>
-                  {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
-                  subtarefas
-                </span>
-              </button>
-
-              <div v-if="isExpanded(task.id)" class="subtasks-list">
-                <div
-                  v-for="subtask in task.subtasks"
-                  :key="subtask.id"
-                  class="subtask-item"
-                  :class="{ 'subtask-done': subtask.status === 'DONE' }"
+            <div class="card-body">
+              <!-- top row -->
+              <div class="card-top">
+                <input
+                  v-if="editingTaskId === task.id"
+                  v-model="editingTitle"
+                  class="card-title-input"
+                  @keydown.enter="commitEdit(task)"
+                  @keydown.esc="cancelEdit"
+                  @blur="commitEdit(task)"
+                  @click.stop
+                  autofocus
+                />
+                <span
+                  v-else
+                  class="card-title"
+                  @dblclick="startEditing(task, $event)"
                 >
-                  <CheckCircle2
-                    v-if="subtask.status === 'DONE'"
-                    :size="11"
-                    color="#10B981"
-                  />
-                  <Circle v-else :size="11" />
-                  <span class="subtask-title">{{ subtask.title }}</span>
+                  {{ task.title }}
+                </span>
+                <button
+                  v-if="!props.readonly"
+                  class="card-action"
+                  aria-label="Excluir"
+                  @click.stop="openDeleteConfirm(task)"
+                >
+                  <Trash2 :size="12" />
+                </button>
+              </div>
+
+              <!-- meta -->
+              <div class="card-meta">
+                <span
+                  v-if="task.priorityNumber !== undefined"
+                  class="meta-pill priority-pill"
+                  :title="getPriorityLabel(task.priorityNumber)"
+                  :style="{
+                    color: getPriorityColor(task.priorityNumber),
+                    background: `color-mix(in srgb, ${getPriorityColor(task.priorityNumber)} 14%, var(--surface-2))`,
+                    borderColor: `color-mix(in srgb, ${getPriorityColor(task.priorityNumber)} 30%, var(--border))`,
+                  }"
+                >
+                  P{{ task.priorityNumber }}
+                </span>
+
+                <span
+                  v-if="task.dueDate"
+                  class="meta-pill"
+                  :class="{ 'meta-pill--overdue': isOverdue(task.dueDate) }"
+                >
+                  <Calendar :size="10" />
+                  {{
+                    new Date(task.dueDate).toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'short',
+                    })
+                  }}
+                </span>
+              </div>
+
+              <!-- subtasks -->
+              <div v-if="task.subtasks?.length" class="subtasks-section" @click.stop>
+                <button class="subtasks-toggle" @click="toggleExpand(task.id)">
+                  <ChevronUp v-if="isExpanded(task.id)" :size="11" />
+                  <ChevronDown v-else :size="11" />
+                  <span>
+                    {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
+                    subtarefas
+                  </span>
+                </button>
+
+                <div v-if="isExpanded(task.id)" class="subtasks-list">
+                  <div
+                    v-for="subtask in task.subtasks"
+                    :key="subtask.id"
+                    class="subtask-item"
+                    :class="{ 'subtask-done': subtask.status === 'DONE' }"
+                  >
+                    <CheckCircle2
+                      v-if="subtask.status === 'DONE'"
+                      :size="11"
+                      color="#10B981"
+                    />
+                    <Circle v-else :size="11" />
+                    <span class="subtask-title">{{ subtask.title }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- avatars -->
+              <div v-if="task.responsibles?.length" class="card-avatars">
+                <div
+                  v-for="(responsible, i) in task.responsibles.slice(0, 4)"
+                  :key="responsible.userId"
+                  class="avatar-chip"
+                  :title="responsible.user.name"
+                  :style="{
+                    background: getUserColor(responsible.user.name),
+                    marginLeft: (i as number) > 0 ? '-6px' : '0',
+                    zIndex: 4 - (i as number),
+                  }"
+                >
+                  {{ getUserInitials(responsible.user.name) }}
+                </div>
+                <div
+                  v-if="task.responsibles.length > 4"
+                  class="avatar-chip avatar-extra"
+                  style="margin-left: -6px"
+                >
+                  +{{ task.responsibles.length - 4 }}
                 </div>
               </div>
             </div>
 
-            <!-- avatars -->
-            <div v-if="task.responsibles?.length" class="card-avatars">
-              <div
-                v-for="(responsible, i) in task.responsibles.slice(0, 4)"
-                :key="responsible.userId"
-                class="avatar-chip"
-                :title="responsible.user.name"
-                :style="{
-                  background: getUserColor(responsible.user.name),
-                  marginLeft: (i as number) > 0 ? '-6px' : '0',
-                  zIndex: 4 - (i as number),
-                }"
-              >
-                {{ getUserInitials(responsible.user.name) }}
-              </div>
-              <div
-                v-if="task.responsibles.length > 4"
-                class="avatar-chip avatar-extra"
-                style="margin-left: -6px"
-              >
-                +{{ task.responsibles.length - 4 }}
-              </div>
-            </div>
+            <!-- priority bar -->
+            <div
+              class="card-priority-bar"
+              :style="{ background: getPriorityColor(task.priorityNumber) }"
+            />
           </div>
+        </VueDraggable>
 
-          <!-- priority bar -->
-          <div
-            class="card-priority-bar"
-            :style="{ background: getPriorityColor(task.priorityNumber) }"
-          />
+        <div
+          v-if="(columnActivities[column.status]?.length || 0) === 0 && !isDragging"
+          class="empty-column"
+          aria-hidden="true"
+        >
+          <Plus :size="14" />
+          <span>Vazio</span>
         </div>
-      </VueDraggable>
+      </div>
     </div>
   </div>
 </template>
@@ -474,6 +475,10 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 }
 
 /* ── Drop zone ──────────────────────────────────────────────── */
+.column-drop-zone {
+  position: relative;
+}
+
 .column-content {
   min-height: 80px;
   border-radius: var(--radius);
@@ -497,6 +502,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 }
 
 .empty-column {
+  position: absolute;
+  inset: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -506,6 +513,7 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   border: 1.5px dashed var(--border);
   color: var(--text-4);
   font-size: 11.5px;
+  pointer-events: none;
 }
 
 /* ── Task card ──────────────────────────────────────────────── */
