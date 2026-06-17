@@ -235,6 +235,7 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
           'column-drop-active': isDragging && dragOverColumn === column.status,
         }"
         group="activities"
+        draggable=".task-card"
         :animation="180"
         :disabled="props.readonly"
         ghost-class="drag-ghost"
