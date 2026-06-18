@@ -1,24 +1,26 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
-  Plus,
+  Bell,
+  CalendarDays,
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
-  CalendarDays,
-  Link2,
-  Loader2,
-  Video,
+  CircleDot,
+  Clock3,
   Flag,
-  Bell,
-  Zap,
+  ListTodo,
+  Loader2,
+  Plus,
   RotateCcw,
-  CheckSquare,
   User as UserIcon,
+  Video,
+  Zap,
   type LucideIcon,
 } from 'lucide-vue-next'
-import eventsService from '@/service/events/events-service'
 import EventModal from '@/components/modals/EventModal.vue'
 import { useToast } from '@/composables/useToast'
+import eventsService from '@/service/events/events-service'
 
 const { success, error: showError } = useToast()
 
@@ -31,6 +33,16 @@ type EventType =
   | 'TASK'
   | 'PERSONAL'
 
+type CalendarEvent = {
+  id?: string
+  title: string
+  description?: string
+  startDate: string
+  endDate?: string | null
+  type: EventType | string
+  recurrence?: string
+}
+
 const EVENT_META: Record<EventType, { label: string; token: string; icon: LucideIcon }> = {
   MEETING: { label: 'Reunião', token: 'var(--info)', icon: Video },
   DEADLINE: { label: 'Prazo', token: 'var(--err)', icon: Flag },
@@ -41,19 +53,7 @@ const EVENT_META: Record<EventType, { label: string; token: string; icon: Lucide
   PERSONAL: { label: 'Pessoal', token: 'var(--status-todo)', icon: UserIcon },
 }
 
-const EVENT_FALLBACK = { label: '—', token: 'var(--text-3)', icon: CalendarDays }
-
-function eventMeta(type: string) {
-  return EVENT_META[type as EventType] ?? EVENT_FALLBACK
-}
-
-const currentDate = ref(new Date())
-const events = ref<any[]>([])
-const loading = ref(true)
-const linking = ref(false)
-const showEventModal = ref(false)
-const selectedEvent = ref<any>(null)
-
+const EVENT_FALLBACK = { label: 'Evento', token: 'var(--text-3)', icon: CalendarDays }
 const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const monthNames = [
   'Janeiro',
@@ -70,6 +70,65 @@ const monthNames = [
   'Dezembro',
 ]
 
+function buildMockEvents(baseDate = new Date()): CalendarEvent[] {
+  const year = baseDate.getFullYear()
+  const month = baseDate.getMonth()
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const at = (day: number, time: string) =>
+    `${year}-${String(month + 1).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}T${time}:00`
+
+  return [
+    {
+      id: 'mock-daily',
+      title: 'Daily do time',
+      description: 'Alinhamento rápido de prioridades e impedimentos.',
+      startDate: at(18, '09:00'),
+      endDate: at(18, '09:30'),
+      type: 'MEETING',
+    },
+    {
+      id: 'mock-qa',
+      title: 'Entrega QA + RC',
+      description: 'Pacote de testes para a release candidate.',
+      startDate: at(18, '14:00'),
+      endDate: at(18, '16:00'),
+      type: 'DEADLINE',
+    },
+    {
+      id: 'mock-review',
+      title: 'Review do trimestre',
+      description: 'Revisão dos objetivos e próximos passos.',
+      startDate: at(26, '10:00'),
+      endDate: at(26, '11:30'),
+      type: 'RETROSPECTIVE',
+    },
+    {
+      id: 'mock-sprint',
+      title: 'Sprint de notificações',
+      description: 'Implementação e validação das notificações reais.',
+      startDate: at(21, '08:30'),
+      endDate: at(21, '17:30'),
+      type: 'SPRINT',
+    },
+    {
+      id: 'mock-care',
+      title: 'Cuidadores e veterinários',
+      description: 'Marco para liberar permissões por perfil.',
+      startDate: at(29, '13:30'),
+      endDate: at(29, '15:00'),
+      type: 'TASK',
+    },
+  ]
+}
+
+const currentDate = ref(new Date())
+const selectedDate = ref(new Date())
+const events = ref<CalendarEvent[]>([])
+const loading = ref(false)
+const usingMockData = ref(true)
+const showEventModal = ref(false)
+const selectedEvent = ref<CalendarEvent | null>(null)
+
 const daysInMonth = computed(() => {
   const year = currentDate.value.getFullYear()
   const month = currentDate.value.getMonth()
@@ -77,186 +136,267 @@ const daysInMonth = computed(() => {
   const lastDay = new Date(year, month + 1, 0)
   const days: Date[] = []
 
-  const firstDayOfWeek = firstDay.getDay()
-  for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+  for (let i = firstDay.getDay() - 1; i >= 0; i--) {
     days.push(new Date(year, month, -i))
   }
 
-  for (let i = 1; i <= lastDay.getDate(); i++) {
-    days.push(new Date(year, month, i))
+  for (let day = 1; day <= lastDay.getDate(); day++) {
+    days.push(new Date(year, month, day))
   }
 
-  const lastDayOfWeek = lastDay.getDay()
-  for (let i = 1; i < 7 - lastDayOfWeek; i++) {
-    days.push(new Date(year, month + 1, i))
+  for (let day = 1; day < 7 - lastDay.getDay(); day++) {
+    days.push(new Date(year, month + 1, day))
   }
 
   return days
 })
 
-const monthLabel = computed(
-  () => `${monthNames[currentDate.value.getMonth()]} ${currentDate.value.getFullYear()}`,
-)
+const monthLabel = computed(() => `${monthNames[currentDate.value.getMonth()]} ${currentDate.value.getFullYear()}`)
 
+const selectedDayEvents = computed(() => getDayEvents(selectedDate.value))
+const selectedDayDeliverables = computed(() =>
+  selectedDayEvents.value.filter((event) => event.type === 'DEADLINE' || event.type === 'TASK'),
+)
+const monthEvents = computed(() =>
+  events.value.filter((event) => {
+    const eventDate = new Date(event.startDate)
+    return eventDate.getMonth() === currentDate.value.getMonth() && eventDate.getFullYear() === currentDate.value.getFullYear()
+  }),
+)
 const upcomingEvents = computed(() => {
-  const now = Date.now()
+  const selectedTime = startOfDay(selectedDate.value).getTime()
   return [...events.value]
-    .filter((e) => new Date(e.startDate).getTime() >= now)
-    .sort(
-      (a, b) =>
-        new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
-    )
+    .filter((event) => startOfDay(new Date(event.startDate)).getTime() >= selectedTime)
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
     .slice(0, 6)
 })
+const dataSourceLabel = computed(() => (usingMockData.value ? 'Exemplos locais' : 'Eventos da API'))
 
-onMounted(async () => {
-  await fetchEvents()
-  loading.value = false
-})
+onMounted(fetchEvents)
+watch(currentDate, fetchEvents)
+
+function currentRange() {
+  const first = daysInMonth.value[0] ?? currentDate.value
+  const last = daysInMonth.value[daysInMonth.value.length - 1] ?? currentDate.value
+  return {
+    start: startOfDay(first).toISOString(),
+    end: endOfDay(last).toISOString(),
+  }
+}
 
 async function fetchEvents() {
+  loading.value = true
   try {
-    const response = await eventsService.getEvents()
-    events.value = Array.isArray(response) ? response : []
+    const response = await eventsService.getEvents(currentRange())
+    const apiEvents = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : []
+    if (!apiEvents.length) throw new Error('Eventos da API vazios ou indisponíveis')
+    events.value = apiEvents
+    usingMockData.value = false
   } catch {
-    showError('Erro ao carregar eventos')
+    events.value = buildMockEvents(currentDate.value)
+    usingMockData.value = true
+    showError('API de calendário indisponível. Mostrando eventos de exemplo.')
+  } finally {
+    loading.value = false
   }
 }
 
 function previousMonth() {
-  currentDate.value = new Date(
-    currentDate.value.getFullYear(),
-    currentDate.value.getMonth() - 1,
-    1,
-  )
+  currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() - 1, 1)
+  selectedDate.value = new Date(currentDate.value)
 }
 
 function nextMonth() {
-  currentDate.value = new Date(
-    currentDate.value.getFullYear(),
-    currentDate.value.getMonth() + 1,
-    1,
-  )
+  currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 1)
+  selectedDate.value = new Date(currentDate.value)
 }
 
 function goToToday() {
-  currentDate.value = new Date()
+  const today = new Date()
+  currentDate.value = today
+  selectedDate.value = today
 }
 
-async function linkGoogle() {
-  linking.value = true
-  try {
-    const response: any = await eventsService.getGoogleAuthUrl()
-    const url = response?.data?.url || response?.url
-    if (url) {
-      window.location.href = url
-    } else {
-      showError('URL de autorização não recebida')
-    }
-  } catch {
-    showError('Erro ao iniciar a vinculação com o Google')
-  } finally {
-    linking.value = false
-  }
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
+}
+
+function endOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
 }
 
 function isToday(date: Date): boolean {
-  const today = new Date()
-  return date.toDateString() === today.toDateString()
+  return date.toDateString() === new Date().toDateString()
+}
+
+function isSelectedDate(date: Date): boolean {
+  return date.toDateString() === selectedDate.value.toDateString()
 }
 
 function isCurrentMonth(date: Date): boolean {
   return date.getMonth() === currentDate.value.getMonth()
 }
 
-function getDayEvents(date: Date): any[] {
-  return events.value.filter((event) => {
-    const eventDate = new Date(event.startDate)
-    return eventDate.toDateString() === date.toDateString()
-  })
+function selectDate(date: Date) {
+  selectedDate.value = date
+  if (date.getMonth() !== currentDate.value.getMonth()) {
+    currentDate.value = new Date(date.getFullYear(), date.getMonth(), 1)
+  }
 }
 
-function openEventModal(event?: any, date?: Date) {
+function getDayEvents(date: Date): CalendarEvent[] {
+  return events.value
+    .filter((event) => new Date(event.startDate).toDateString() === date.toDateString())
+    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+}
+
+function openEventModal(event?: CalendarEvent, date?: Date) {
   if (date && !event) {
-    const iso = `${date.toISOString().slice(0, 10)}T09:00`
-    selectedEvent.value = { startDate: iso }
+    selectedEvent.value = { title: '', startDate: `${toDateInputValue(date)}T09:00`, type: 'MEETING' }
   } else {
-    selectedEvent.value = event || null
+    selectedEvent.value = event ?? null
   }
   showEventModal.value = true
 }
 
-async function handleSave(eventData: any) {
+function openSelectedDayEventModal() {
+  openEventModal(undefined, selectedDate.value)
+}
+
+async function handleSave(eventData: CalendarEvent) {
+  const payload = { ...eventData, endDate: eventData.endDate ?? undefined }
+
+  if (usingMockData.value || payload.id?.startsWith('mock-') || payload.id?.startsWith('local-')) {
+    applyLocalSave(payload)
+    success(payload.id ? 'Evento atualizado localmente' : 'Evento criado localmente')
+    return
+  }
+
   try {
-    if (eventData.id) {
-      await eventsService.updateEvent(eventData.id, eventData)
+    if (payload.id) {
+      await eventsService.updateEvent(payload.id, payload)
       success('Evento atualizado')
     } else {
-      await eventsService.createEvent(eventData)
+      await eventsService.createEvent(payload)
       success('Evento criado')
     }
     await fetchEvents()
   } catch {
-    showError('Erro ao salvar evento')
+    applyLocalSave(payload)
+    usingMockData.value = true
+    showError('API não salvou o evento. Mantive a alteração localmente.')
   }
 }
 
 async function handleDelete(id: string) {
+  if (usingMockData.value || id.startsWith('mock-') || id.startsWith('local-')) {
+    events.value = events.value.filter((event) => event.id !== id)
+    success('Evento excluído localmente')
+    return
+  }
+
   try {
     await eventsService.deleteEvent(id)
     await fetchEvents()
     success('Evento excluído')
   } catch {
-    showError('Erro ao excluir evento')
+    events.value = events.value.filter((event) => event.id !== id)
+    usingMockData.value = true
+    showError('API não removeu o evento. Removi apenas localmente.')
   }
 }
 
+function applyLocalSave(eventData: CalendarEvent) {
+  const id = eventData.id ?? `local-${Date.now()}`
+  const nextEvent = { ...eventData, id }
+  const index = events.value.findIndex((event) => event.id === id)
+
+  if (index >= 0) {
+    events.value.splice(index, 1, nextEvent)
+  } else {
+    events.value.push(nextEvent)
+  }
+}
+
+function eventMeta(type: string) {
+  return EVENT_META[type as EventType] ?? EVENT_FALLBACK
+}
+
+function eventStyle(event: CalendarEvent) {
+  return { '--ev-c': eventMeta(event.type).token }
+}
+
+function toDateInputValue(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 function formatShort(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: 'short',
-  })
+  return new Date(dateString).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+}
+
+function formatLong(date: Date): string {
+  return date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
 }
 
 function formatTime(dateString: string): string {
-  return new Date(dateString).toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return new Date(dateString).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatTimeRange(event: CalendarEvent): string {
+  const start = formatTime(event.startDate)
+  if (!event.endDate) return start
+  return `${start} - ${formatTime(event.endDate)}`
 }
 </script>
 
 <template>
   <div class="cal-page">
-    <!-- Header -->
     <header class="page-header">
       <div class="header-main">
         <span class="eyebrow">
           <CalendarDays :size="11" />
           Agenda
+          <span class="source-pill" :class="{ 'source-pill--mock': usingMockData }">
+            <Loader2 v-if="loading" :size="11" class="spin" />
+            {{ loading ? 'Sincronizando...' : dataSourceLabel }}
+          </span>
         </span>
         <h1 class="page-title">Calendário</h1>
-        <p class="page-sub">Eventos, prazos e integração com o Google Agenda</p>
+        <p class="page-sub">Eventos, prazos e atividades do dia em uma agenda clicável</p>
       </div>
 
       <div class="header-actions">
-        <!-- Vincular Google oculto por enquanto -->
-        <!-- <button class="btn-ghost press" :disabled="linking" @click="linkGoogle">
-          <Loader2 v-if="linking" :size="13" class="spin" />
-          <Link2 v-else :size="13" />
-          Vincular Google
-        </button> -->
-        <button class="btn-ghost press" @click="goToToday">
-          Hoje
-        </button>
-        <button class="btn-primary press" @click="openEventModal()">
+        <button class="btn-ghost press" @click="goToToday">Hoje</button>
+        <button class="btn-primary press" @click="openSelectedDayEventModal">
           <Plus :size="13" />
           Novo evento
         </button>
       </div>
     </header>
 
-    <!-- Toolbar -->
+    <section class="summary-grid" aria-label="Resumo do calendário">
+      <article class="summary-card">
+        <CalendarDays :size="17" />
+        <span>Eventos no mês</span>
+        <strong>{{ monthEvents.length }}</strong>
+      </article>
+      <article class="summary-card">
+        <Clock3 :size="17" />
+        <span>Agenda do dia</span>
+        <strong>{{ selectedDayEvents.length }}</strong>
+      </article>
+      <article class="summary-card">
+        <ListTodo :size="17" />
+        <span>Entregas</span>
+        <strong>{{ selectedDayDeliverables.length }}</strong>
+      </article>
+      <article class="summary-card">
+        <CircleDot :size="17" />
+        <span>Próximos</span>
+        <strong>{{ upcomingEvents.length }}</strong>
+      </article>
+    </section>
+
     <div class="toolbar">
       <div class="month-nav">
         <button class="nav-btn" aria-label="Mês anterior" @click="previousMonth">
@@ -269,142 +409,162 @@ function formatTime(dateString: string): string {
       </div>
 
       <div class="toolbar-meta">
-        <span class="meta-item">
-          <span class="meta-dot" style="background: var(--info)" />
-          Reunião
-        </span>
-        <span class="meta-item">
-          <span class="meta-dot" style="background: var(--err)" />
-          Prazo
-        </span>
-        <span class="meta-item">
-          <span class="meta-dot" style="background: var(--warn)" />
-          Lembrete
-        </span>
-        <span class="meta-item">
-          <span class="meta-dot" style="background: var(--success)" />
-          Sprint
+        <span v-for="(meta, type) in EVENT_META" :key="type" class="meta-item">
+          <span class="meta-dot" :style="{ background: meta.token }" />
+          {{ meta.label }}
         </span>
       </div>
     </div>
 
-    <!-- Layout -->
     <div class="layout">
-      <!-- Calendar grid -->
-      <section class="grid-wrap">
+      <section class="grid-wrap" aria-label="Calendário mensal">
         <div class="weekdays">
-          <div v-for="d in weekDays" :key="d" class="weekday">{{ d }}</div>
+          <div v-for="day in weekDays" :key="day" class="weekday">{{ day }}</div>
         </div>
 
         <div v-if="loading" class="loading">
           <Loader2 :size="16" class="spin" />
-          Carregando eventos…
+          Carregando eventos...
         </div>
 
         <div v-else class="days-grid">
-          <div
+          <button
             v-for="date in daysInMonth"
             :key="date.toISOString()"
             class="day"
             :class="{
               'day--today': isToday(date),
               'day--other': !isCurrentMonth(date),
+              'day--selected': isSelectedDate(date),
             }"
-            @click="openEventModal(undefined, date)"
+            @click="selectDate(date)"
+            @dblclick="openEventModal(undefined, date)"
           >
-            <span class="day-num">{{ date.getDate() }}</span>
+            <span class="day-head">
+              <span class="day-num">{{ date.getDate() }}</span>
+              <span v-if="getDayEvents(date).length" class="day-count">{{ getDayEvents(date).length }}</span>
+            </span>
 
-            <div class="day-events">
-              <div
+            <span class="day-events">
+              <span
                 v-for="event in getDayEvents(date).slice(0, 3)"
                 :key="event.id"
                 class="ev-pill"
-                :style="{
-                  '--ev-c': eventMeta(event.type).token,
-                }"
+                :style="eventStyle(event)"
                 @click.stop="openEventModal(event)"
               >
-                <span class="ev-dot" />
+                <span class="ev-time">{{ formatTime(event.startDate) }}</span>
                 <span class="ev-title">{{ event.title }}</span>
-              </div>
-              <div v-if="getDayEvents(date).length > 3" class="ev-more">
-                +{{ getDayEvents(date).length - 3 }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Upcoming events sidebar -->
-      <aside class="sidebar">
-        <div class="side-head">
-          <span class="eyebrow">
-            <CalendarDays :size="11" />
-            Próximos
-          </span>
-          <h3 class="side-title">Agenda da semana</h3>
-        </div>
-
-        <div v-if="!upcomingEvents.length" class="side-empty">
-          Nenhum evento programado.
-        </div>
-
-        <div v-else class="side-list">
-          <button
-            v-for="event in upcomingEvents"
-            :key="event.id"
-            class="side-item"
-            @click="openEventModal(event)"
-          >
-            <span
-              class="side-icon"
-              :style="{
-                color: eventMeta(event.type).token,
-                background: `color-mix(in srgb, ${eventMeta(event.type).token} 14%, transparent)`,
-              }"
-            >
-              <component :is="eventMeta(event.type).icon" :size="13" />
-            </span>
-            <div class="side-info">
-              <span class="side-item-title">{{ event.title }}</span>
-              <span class="side-item-meta">
-                {{ formatShort(event.startDate) }} · {{ formatTime(event.startDate) }}
               </span>
-            </div>
-            <span
-              class="side-badge"
-              :style="{
-                color: eventMeta(event.type).token,
-                background: `color-mix(in srgb, ${eventMeta(event.type).token} 12%, transparent)`,
-              }"
-            >
-              {{ eventMeta(event.type).label }}
+              <span v-if="getDayEvents(date).length > 3" class="ev-more">
+                +{{ getDayEvents(date).length - 3 }}
+              </span>
             </span>
           </button>
         </div>
+      </section>
+
+      <aside class="sidebar">
+        <div class="side-head">
+          <span class="eyebrow">
+            <Clock3 :size="11" />
+            {{ formatLong(selectedDate) }}
+          </span>
+          <h3 class="side-title">Agenda do dia</h3>
+        </div>
+
+        <section class="agenda-section">
+          <div class="section-head">
+            <span>Eventos</span>
+            <button class="side-new" @click="openSelectedDayEventModal">
+              <Plus :size="12" />
+              Adicionar
+            </button>
+          </div>
+
+          <div v-if="!selectedDayEvents.length" class="side-empty">
+            Nenhum evento neste dia.
+          </div>
+
+          <div v-else class="side-list">
+            <button
+              v-for="event in selectedDayEvents"
+              :key="event.id"
+              class="side-item"
+              @click="openEventModal(event)"
+            >
+              <span class="side-icon" :style="eventStyle(event)">
+                <component :is="eventMeta(event.type).icon" :size="13" />
+              </span>
+              <span class="side-info">
+                <span class="side-item-title">{{ event.title }}</span>
+                <span class="side-item-meta">{{ formatTimeRange(event) }}</span>
+              </span>
+              <span class="side-badge" :style="eventStyle(event)">
+                {{ eventMeta(event.type).label }}
+              </span>
+            </button>
+          </div>
+        </section>
+
+        <section class="agenda-section">
+          <div class="section-head">
+            <span>Entregas e prazos</span>
+          </div>
+
+          <div v-if="!selectedDayDeliverables.length" class="side-empty compact">
+            Sem entregas marcadas.
+          </div>
+
+          <div v-else class="deliverable-list">
+            <button
+              v-for="event in selectedDayDeliverables"
+              :key="event.id"
+              class="deliverable-item"
+              @click="openEventModal(event)"
+            >
+              <Flag :size="12" />
+              <span>{{ event.title }}</span>
+              <small>{{ formatTimeRange(event) }}</small>
+            </button>
+          </div>
+        </section>
+
+        <section class="agenda-section">
+          <div class="section-head">
+            <span>Próximos eventos</span>
+          </div>
+
+          <div class="compact-list">
+            <button
+              v-for="event in upcomingEvents"
+              :key="event.id"
+              class="compact-item"
+              @click="openEventModal(event)"
+            >
+              <span>{{ formatShort(event.startDate) }}</span>
+              <strong>{{ event.title }}</strong>
+              <small>{{ formatTimeRange(event) }}</small>
+            </button>
+          </div>
+        </section>
       </aside>
     </div>
 
-    <EventModal
-      v-model="showEventModal"
-      :event="selectedEvent"
-      @save="handleSave"
-      @delete="handleDelete"
-    />
+    <EventModal v-model="showEventModal" :event="selectedEvent" @save="handleSave" @delete="handleDelete" />
   </div>
 </template>
 
 <style scoped>
 .cal-page {
-  padding: 24px;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding: 24px;
   color: var(--text);
-  min-height: 100%;
 }
 
-/* ---- Header ---- */
 .page-header {
   display: flex;
   align-items: flex-end;
@@ -422,29 +582,49 @@ function formatTime(dateString: string): string {
 .eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  font-weight: 700;
+  gap: 6px;
   color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .page-title {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  color: var(--text);
   margin: 0;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
 }
 
 .page-sub {
-  font-size: 12.5px;
-  color: var(--text-3);
   margin: 0;
+  color: var(--text-3);
+  font-size: 12.5px;
 }
 
-.header-actions {
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 22%, transparent);
+  font-size: 10px;
+}
+
+.source-pill--mock {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 22%, transparent);
+}
+
+.header-actions,
+.month-nav,
+.toolbar-meta {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -452,51 +632,72 @@ function formatTime(dateString: string): string {
 }
 
 .btn-primary,
-.btn-ghost {
+.btn-ghost,
+.nav-btn,
+.side-new {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 7px 12px;
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition:
-    background var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    filter var(--motion-fast) var(--motion-ease);
+}
+
+.btn-primary,
+.btn-ghost {
+  height: 34px;
+  padding: 0 12px;
 }
 
 .btn-primary {
-  background: var(--accent);
   color: var(--accent-fg);
-  border: 1px solid color-mix(in srgb, var(--accent) 80%, black);
+  background: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 80%, var(--text));
 }
 
-.btn-primary:hover:not(:disabled) {
-  filter: brightness(1.06);
-}
-
-.btn-ghost {
-  background: var(--surface);
+.btn-ghost,
+.nav-btn,
+.side-new {
   color: var(--text);
+  background: var(--surface);
   border: 1px solid var(--border);
 }
 
-.btn-ghost:hover:not(:disabled) {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.btn-ghost:disabled,
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: progress;
+.summary-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
 
-/* ---- Toolbar ---- */
+.summary-card svg {
+  color: var(--accent);
+}
+
+.summary-card span {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.summary-card strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -506,342 +707,345 @@ function formatTime(dateString: string): string {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  flex-wrap: wrap;
-}
-
-.month-nav {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 .nav-btn {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-2);
-  cursor: pointer;
-  transition:
-    background var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
-}
-
-.nav-btn:hover {
-  background: var(--surface-3);
-  color: var(--text);
+  width: 30px;
+  height: 30px;
 }
 
 .month-label {
   min-width: 170px;
   text-align: center;
-  font-size: 13.5px;
-  font-weight: 600;
   color: var(--text);
-  letter-spacing: -0.01em;
-}
-
-.toolbar-meta {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
+  font-weight: 800;
 }
 
 .meta-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: 5px;
   color: var(--text-3);
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .meta-dot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
+  border-radius: 999px;
 }
 
-/* ---- Layout ---- */
 .layout {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 16px;
-  flex: 1;
-  min-height: 0;
+  align-items: start;
 }
 
-@media (max-width: 1100px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* ---- Calendar grid ---- */
-.grid-wrap {
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.grid-wrap,
+.sidebar {
   overflow: hidden;
-  min-height: 0;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
 }
 
-.weekdays {
+.weekdays,
+.days-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-2);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .weekday {
-  padding: 8px 10px;
-  text-align: center;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 60px;
-  color: var(--text-3);
-  font-size: 13px;
-}
-
-.days-grid {
+  min-height: 38px;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: minmax(110px, 1fr);
-  flex: 1;
+  place-items: center;
+  color: var(--text-4);
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.weekday:nth-child(7n) {
+  border-right: none;
 }
 
 .day {
-  position: relative;
-  padding: 8px;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  cursor: pointer;
+  min-height: 132px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  transition: background var(--motion-fast) var(--motion-ease);
-  min-height: 0;
-  overflow: hidden;
-}
-
-.day:hover {
-  background: var(--surface-2);
+  gap: 8px;
+  padding: 9px;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
 }
 
 .day:nth-child(7n) {
   border-right: none;
 }
 
+.day:hover {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
 .day--other {
-  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
-}
-
-.day--other .day-num {
   color: var(--text-4);
+  background: color-mix(in srgb, var(--surface-2) 42%, transparent);
 }
 
-.day--today {
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+.day--today .day-num,
+.day--selected .day-num {
+  color: var(--accent-fg);
+  background: var(--accent);
+}
+
+.day--selected {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 58%, transparent);
+}
+
+.day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .day-num {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-2);
-  align-self: flex-start;
-  padding: 0 4px;
+  width: 25px;
+  height: 25px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
 }
 
-.day--today .day-num {
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 700;
+.day-count {
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .day-events {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-height: 0;
+  gap: 5px;
 }
 
 .ev-pill {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
   align-items: center;
-  gap: 5px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10.5px;
-  font-weight: 500;
+  min-height: 23px;
+  padding: 0 7px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: color-mix(in srgb, var(--ev-c) 18%, transparent);
+  border-left: 3px solid var(--ev-c);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ev-time {
   color: var(--ev-c);
-  background: color-mix(in srgb, var(--ev-c) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ev-c) 20%, transparent);
-  cursor: pointer;
-  overflow: hidden;
-  transition: background var(--motion-fast) var(--motion-ease);
-}
-
-.ev-pill:hover {
-  background: color-mix(in srgb, var(--ev-c) 22%, transparent);
-}
-
-.ev-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ev-c);
-  flex-shrink: 0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .ev-title {
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
+  white-space: nowrap;
 }
 
 .ev-more {
+  color: var(--text-4);
   font-size: 10.5px;
-  color: var(--text-3);
-  padding: 1px 6px;
-  font-weight: 500;
+  font-weight: 800;
 }
 
-/* ---- Sidebar ---- */
+.loading {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
 .sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  min-height: 0;
+  padding: 16px;
 }
 
 .side-head {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-bottom: 4px;
+  margin-bottom: 14px;
 }
 
 .side-title {
-  font-size: 14px;
-  font-weight: 600;
+  margin: 6px 0 0;
   color: var(--text);
-  margin: 0;
-  letter-spacing: -0.005em;
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.agenda-section + .agenda-section {
+  margin-top: 18px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.side-new {
+  height: 28px;
+  padding: 0 8px;
+  color: var(--text-2);
+  font-size: 11px;
 }
 
 .side-empty {
-  padding: 24px 8px;
-  text-align: center;
+  padding: 18px;
   color: var(--text-3);
-  font-size: 12.5px;
   background: var(--surface-2);
   border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  text-align: center;
 }
 
-.side-list {
+.side-empty.compact {
+  padding: 12px;
+}
+
+.side-list,
+.deliverable-list,
+.compact-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  overflow-y: auto;
-  min-height: 0;
+  gap: 8px;
+}
+
+.side-item,
+.deliverable-item,
+.compact-item {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
 }
 
 .side-item {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition:
-    background var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
-}
-
-.side-item:hover {
-  background: var(--surface-2);
-  border-color: var(--border);
+  padding: 10px;
 }
 
 .side-icon {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--ev-c);
+  background: color-mix(in srgb, var(--ev-c) 14%, transparent);
 }
 
 .side-info {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  min-width: 0;
+  gap: 3px;
 }
 
-.side-item-title {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
+.side-item-title,
+.compact-item strong {
   overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 800;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.side-item-meta {
-  font-size: 10.5px;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
+.side-item-meta,
+.compact-item small,
+.deliverable-item small {
+  color: var(--text-4);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .side-badge {
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 3px 6px;
-  border-radius: 4px;
-  flex-shrink: 0;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: var(--ev-c);
+  background: color-mix(in srgb, var(--ev-c) 12%, transparent);
+  font-size: 10.5px;
+  font-weight: 800;
 }
 
-/* ---- Animations ---- */
-.spin {
-  animation: spin 0.85s linear infinite;
+.deliverable-item,
+.compact-item {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+}
+
+.deliverable-item {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.deliverable-item svg {
+  color: var(--err);
+}
+
+.compact-item {
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.compact-item > span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes spin {
@@ -850,17 +1054,41 @@ function formatTime(dateString: string): string {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .spin {
-    animation-duration: 1.8s;
+@media (max-width: 1040px) {
+  .layout {
+    grid-template-columns: 1fr;
   }
-  .day,
-  .ev-pill,
-  .side-item,
-  .nav-btn,
-  .btn-primary,
-  .btn-ghost {
-    transition-duration: 1ms;
+
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .cal-page {
+    padding: 16px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-wrap {
+    overflow-x: auto;
+  }
+
+  .weekdays,
+  .days-grid {
+    min-width: 760px;
+  }
+
+  .day {
+    min-height: 120px;
+  }
+
+  .toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>
