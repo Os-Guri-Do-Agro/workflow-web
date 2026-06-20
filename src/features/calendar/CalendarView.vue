@@ -20,27 +20,18 @@ import {
 } from 'lucide-vue-next'
 import EventModal from '@/components/modals/EventModal.vue'
 import { useToast } from '@/composables/useToast'
-import eventsService from '@/service/events/events-service'
+import eventsService, { type CreateEventInput, type EventType } from '@/service/events/events-service'
 
 const { success, error: showError } = useToast()
-
-type EventType =
-  | 'MEETING'
-  | 'DEADLINE'
-  | 'REMINDER'
-  | 'SPRINT'
-  | 'RETROSPECTIVE'
-  | 'TASK'
-  | 'PERSONAL'
 
 type CalendarEvent = {
   id?: string
   title: string
-  description?: string
+  description?: string | null
   startDate: string
   endDate?: string | null
   type: EventType | string
-  recurrence?: string
+  recurrence?: string | null
 }
 
 const EVENT_META: Record<EventType, { label: string; token: string; icon: LucideIcon }> = {
@@ -70,62 +61,11 @@ const monthNames = [
   'Dezembro',
 ]
 
-function buildMockEvents(baseDate = new Date()): CalendarEvent[] {
-  const year = baseDate.getFullYear()
-  const month = baseDate.getMonth()
-  const lastDay = new Date(year, month + 1, 0).getDate()
-  const at = (day: number, time: string) =>
-    `${year}-${String(month + 1).padStart(2, '0')}-${String(Math.min(day, lastDay)).padStart(2, '0')}T${time}:00`
-
-  return [
-    {
-      id: 'mock-daily',
-      title: 'Daily do time',
-      description: 'Alinhamento rápido de prioridades e impedimentos.',
-      startDate: at(18, '09:00'),
-      endDate: at(18, '09:30'),
-      type: 'MEETING',
-    },
-    {
-      id: 'mock-qa',
-      title: 'Entrega QA + RC',
-      description: 'Pacote de testes para a release candidate.',
-      startDate: at(18, '14:00'),
-      endDate: at(18, '16:00'),
-      type: 'DEADLINE',
-    },
-    {
-      id: 'mock-review',
-      title: 'Review do trimestre',
-      description: 'Revisão dos objetivos e próximos passos.',
-      startDate: at(26, '10:00'),
-      endDate: at(26, '11:30'),
-      type: 'RETROSPECTIVE',
-    },
-    {
-      id: 'mock-sprint',
-      title: 'Sprint de notificações',
-      description: 'Implementação e validação das notificações reais.',
-      startDate: at(21, '08:30'),
-      endDate: at(21, '17:30'),
-      type: 'SPRINT',
-    },
-    {
-      id: 'mock-care',
-      title: 'Cuidadores e veterinários',
-      description: 'Marco para liberar permissões por perfil.',
-      startDate: at(29, '13:30'),
-      endDate: at(29, '15:00'),
-      type: 'TASK',
-    },
-  ]
-}
-
 const currentDate = ref(new Date())
 const selectedDate = ref(new Date())
 const events = ref<CalendarEvent[]>([])
 const loading = ref(false)
-const usingMockData = ref(true)
+const apiUnavailable = ref(false)
 const showEventModal = ref(false)
 const selectedEvent = ref<CalendarEvent | null>(null)
 
@@ -170,7 +110,7 @@ const upcomingEvents = computed(() => {
     .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
     .slice(0, 6)
 })
-const dataSourceLabel = computed(() => (usingMockData.value ? 'Exemplos locais' : 'Eventos da API'))
+const dataSourceLabel = computed(() => (apiUnavailable.value ? 'API indisponível' : 'Eventos da API'))
 
 onMounted(fetchEvents)
 watch(currentDate, fetchEvents)
@@ -187,15 +127,13 @@ function currentRange() {
 async function fetchEvents() {
   loading.value = true
   try {
-    const response = await eventsService.getEvents(currentRange())
-    const apiEvents = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : []
-    if (!apiEvents.length) throw new Error('Eventos da API vazios ou indisponíveis')
+    const apiEvents = await eventsService.getEvents(currentRange())
     events.value = apiEvents
-    usingMockData.value = false
-  } catch {
-    events.value = buildMockEvents(currentDate.value)
-    usingMockData.value = true
-    showError('API de calendário indisponível. Mostrando eventos de exemplo.')
+    apiUnavailable.value = false
+  } catch (err) {
+    events.value = []
+    apiUnavailable.value = true
+    showError(apiErrorMessage(err, 'API de calendário indisponível'))
   } finally {
     loading.value = false
   }
@@ -264,12 +202,14 @@ function openSelectedDayEventModal() {
 }
 
 async function handleSave(eventData: CalendarEvent) {
-  const payload = { ...eventData, endDate: eventData.endDate ?? undefined }
-
-  if (usingMockData.value || payload.id?.startsWith('mock-') || payload.id?.startsWith('local-')) {
-    applyLocalSave(payload)
-    success(payload.id ? 'Evento atualizado localmente' : 'Evento criado localmente')
-    return
+  const payload: CreateEventInput & { id?: string } = {
+    id: eventData.id,
+    title: eventData.title,
+    description: eventData.description ?? null,
+    startDate: eventData.startDate,
+    endDate: eventData.endDate ?? null,
+    type: (EVENT_META[eventData.type as EventType] ? eventData.type : 'MEETING') as EventType,
+    recurrence: eventData.recurrence ?? null,
   }
 
   try {
@@ -281,40 +221,20 @@ async function handleSave(eventData: CalendarEvent) {
       success('Evento criado')
     }
     await fetchEvents()
-  } catch {
-    applyLocalSave(payload)
-    usingMockData.value = true
-    showError('API não salvou o evento. Mantive a alteração localmente.')
+  } catch (err) {
+    apiUnavailable.value = true
+    showError(apiErrorMessage(err, 'API não salvou o evento'))
   }
 }
 
 async function handleDelete(id: string) {
-  if (usingMockData.value || id.startsWith('mock-') || id.startsWith('local-')) {
-    events.value = events.value.filter((event) => event.id !== id)
-    success('Evento excluído localmente')
-    return
-  }
-
   try {
     await eventsService.deleteEvent(id)
     await fetchEvents()
     success('Evento excluído')
-  } catch {
-    events.value = events.value.filter((event) => event.id !== id)
-    usingMockData.value = true
-    showError('API não removeu o evento. Removi apenas localmente.')
-  }
-}
-
-function applyLocalSave(eventData: CalendarEvent) {
-  const id = eventData.id ?? `local-${Date.now()}`
-  const nextEvent = { ...eventData, id }
-  const index = events.value.findIndex((event) => event.id === id)
-
-  if (index >= 0) {
-    events.value.splice(index, 1, nextEvent)
-  } else {
-    events.value.push(nextEvent)
+  } catch (err) {
+    apiUnavailable.value = true
+    showError(apiErrorMessage(err, 'API não removeu o evento'))
   }
 }
 
@@ -347,6 +267,12 @@ function formatTimeRange(event: CalendarEvent): string {
   if (!event.endDate) return start
   return `${start} - ${formatTime(event.endDate)}`
 }
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const message = (err as any)?.response?.data?.message
+  if (Array.isArray(message)) return message.join(', ')
+  return message || fallback
+}
 </script>
 
 <template>
@@ -356,7 +282,7 @@ function formatTimeRange(event: CalendarEvent): string {
         <span class="eyebrow">
           <CalendarDays :size="11" />
           Agenda
-          <span class="source-pill" :class="{ 'source-pill--mock': usingMockData }">
+          <span class="source-pill" :class="{ 'source-pill--error': apiUnavailable }">
             <Loader2 v-if="loading" :size="11" class="spin" />
             {{ loading ? 'Sincronizando...' : dataSourceLabel }}
           </span>
@@ -616,7 +542,7 @@ function formatTimeRange(event: CalendarEvent): string {
   font-size: 10px;
 }
 
-.source-pill--mock {
+.source-pill--error {
   color: var(--warn);
   background: color-mix(in srgb, var(--warn) 12%, transparent);
   border-color: color-mix(in srgb, var(--warn) 22%, transparent);

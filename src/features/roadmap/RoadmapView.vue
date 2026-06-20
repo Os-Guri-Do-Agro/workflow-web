@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import {
   Activity,
   BarChart3,
@@ -22,6 +22,18 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-vue-next'
+import { useToast } from '@/composables/useToast'
+import roadmapMonthlyService, {
+  type RoadmapCategory,
+  type RoadmapEntry,
+  type RoadmapMonth,
+  type RoadmapPhoto,
+} from '@/service/roadmap/roadmap-monthly-service'
+import quarterService from '@/service/quarters/quarters-service'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
+
+const { success, error: showError, info } = useToast()
+const workspace = useWorkspaceStore()
 
 type RoadmapStatus = 'done' | 'active' | 'planned' | 'risk'
 
@@ -39,6 +51,7 @@ type RoadmapItem = {
   id: string
   laneId: string
   title: string
+  shortTitle?: string
   start: string
   end: string
   progress: number
@@ -72,6 +85,7 @@ type CalendarEntry = {
 }
 
 type MonthlyPlan = {
+  id?: string
   key: string
   year: number
   month: number
@@ -406,123 +420,31 @@ const noteMonthKey = ref('2026-05')
 const noteDate = ref('2026-05-03')
 const exportMonthKey = ref<'all' | string>('all')
 const selectedMonthDetailsKey = ref<string | null>(null)
+const annualRoadmapLoading = ref(false)
+const annualRoadmapUnavailable = ref(false)
+const roadmapMonthlyLoading = ref(false)
+const usingRoadmapMonthlyApi = ref(false)
+const annualLanes = ref<RoadmapLane[]>([])
+const annualItems = ref<RoadmapItem[]>([])
+const annualMilestones = ref<RoadmapMilestone[]>([])
 const focusDrafts = ref<Record<string, string>>({})
 const extraFocusItems = ref<Record<string, string[]>>({})
 const focusPhotos = ref<Record<string, string[]>>({})
+const focusIds = ref<Record<string, string[]>>({})
+const focusPhotoIds = ref<Record<string, string[]>>({})
 const monthEntryPreviewLimit = 8
 
-const monthlyPlans = ref<MonthlyPlan[]>([
-  {
-    key: '2026-05',
-    year: 2026,
-    month: 4,
-    title: 'Maio 2026',
-    main: 'Consolidar estrat\u00e9gia, conte\u00fado e timeline de sa\u00fade.',
-    bullets: [
-      'Datas-chave: di\u00e1rio pet, carteirinha estruturada e timeline de sa\u00fade.',
-      'Parcerias: apresenta\u00e7\u00e3o em cl\u00ednicas e grava\u00e7\u00e3o com veterin\u00e1ria.',
-      'Meta do m\u00eas: 100 tutores ativados.',
-    ],
-    entries: [
-      { id: 'may-meeting', date: '2026-05-19', title: 'Reuni\u00e3o time', description: 'Alinhar prioridades e respons\u00e1veis.', category: 'meeting' },
-      { id: 'may-recording', date: '2026-05-20', title: 'Semana de grava\u00e7\u00e3o', description: 'Conte\u00fado com veterin\u00e1ria.', category: 'recording' },
-      { id: 'may-diary', date: '2026-05-25', title: 'Di\u00e1rio Pet', description: 'Entrega do fluxo inicial.', category: 'delivery' },
-      { id: 'may-health', date: '2026-05-26', title: 'Timeline de sa\u00fade', description: 'Primeira vers\u00e3o estruturada.', category: 'milestone' },
-      { id: 'may-card', date: '2026-05-28', title: 'Carteirinha consolidada', description: 'Estrutura completa da carteirinha.', category: 'delivery' },
-    ],
-  },
-  {
-    key: '2026-06',
-    year: 2026,
-    month: 5,
-    title: 'Junho 2026',
-    main: 'Compartilhamento de pets entre fam\u00edlia/cuidadores, trilhas e benef\u00edcios.',
-    bullets: [
-      'Finaliza\u00e7\u00e3o Q2.3 com notifica\u00e7\u00e3o e compartilhamento.',
-      'Benef\u00edcios: plano Pro e cupons exclusivos.',
-      'Validar comunica\u00e7\u00e3o com cuidadores e veterin\u00e1rios.',
-    ],
-    entries: [
-      { id: 'jun-clinic', date: '2026-06-03', title: 'Apresenta\u00e7\u00e3o cl\u00ednica', description: 'Poss\u00edvel parceria local.', category: 'meeting' },
-      { id: 'jun-share', date: '2026-06-15', title: 'Compartilhamento de pets', description: 'Fluxo entre perfis.', category: 'delivery' },
-      { id: 'jun-notify', date: '2026-06-21', title: 'Notifica\u00e7\u00f5es reais', description: 'Base de ajuda dentro do app.', category: 'delivery' },
-      { id: 'jun-care', date: '2026-06-29', title: 'Cuidadores/veterin\u00e1rios', description: 'Permiss\u00f5es e visibilidade inicial.', category: 'milestone' },
-      { id: 'jun-coupons', date: '2026-06-30', title: 'Cupons exclusivos', description: 'Benef\u00edcios de lan\u00e7amento.', category: 'note' },
-    ],
-  },
-  {
-    key: '2026-07',
-    year: 2026,
-    month: 6,
-    title: 'Julho 2026',
-    main: 'Traduzir features novas e ajustar telas para internacionaliza\u00e7\u00e3o.',
-    bullets: [
-      'Iniciar Q3 com foco em tradu\u00e7\u00e3o.',
-      'Oficina em reuni\u00e3o para revisar escopo.',
-      'Definir estrat\u00e9gia para 3 idiomas.',
-    ],
-    entries: [
-      { id: 'jul-start', date: '2026-07-01', title: 'In\u00edcio Q3', description: 'Foco em tradu\u00e7\u00e3o e nomenclaturas.', category: 'milestone' },
-      { id: 'jul-workshop', date: '2026-07-05', title: 'Oficina em reuni\u00e3o', description: 'Planejamento de tradu\u00e7\u00e3o.', category: 'meeting' },
-      { id: 'jul-risk', date: '2026-07-12', title: 'Defini\u00e7\u00e3o de idiomas', description: 'Estrat\u00e9gia de adapta\u00e7\u00e3o.', category: 'risk' },
-      { id: 'jul-copy', date: '2026-07-26', title: 'Revis\u00e3o de textos', description: 'Ajustar telas novas.', category: 'delivery' },
-    ],
-  },
-  {
-    key: '2026-08',
-    year: 2026,
-    month: 7,
-    title: 'Agosto 2026',
-    main: 'Rodar beta controlado e consolidar aprendizados.',
-    bullets: [
-      'Validar jornada completa com usu\u00e1rios beta.',
-      'Testes de ativa\u00e7\u00e3o e revis\u00e3o de reten\u00e7\u00e3o.',
-      'Consolidar bugs recorrentes e melhorias.',
-    ],
-    entries: [
-      { id: 'aug-beta', date: '2026-08-03', title: 'In\u00edcio beta', description: 'Grupo controlado de tutores.', category: 'milestone' },
-      { id: 'aug-feedback', date: '2026-08-11', title: 'Rodada de feedback', description: 'Reuni\u00f5es r\u00e1pidas com usu\u00e1rios.', category: 'meeting' },
-      { id: 'aug-onboarding', date: '2026-08-19', title: 'Ajustes de onboarding', description: 'Melhorias com base nos testes.', category: 'delivery' },
-      { id: 'aug-launch', date: '2026-08-28', title: 'Plano de lan\u00e7amento', description: 'Checklist de comunica\u00e7\u00e3o.', category: 'note' },
-    ],
-  },
-  {
-    key: '2026-09',
-    year: 2026,
-    month: 8,
-    title: 'Setembro 2026',
-    main: 'Preparar lan\u00e7amento p\u00fablico, campanha e suporte.',
-    bullets: [
-      'Fechar assets de campanha e checklist operacional.',
-      'Revis\u00e3o final do app e monitoramento.',
-      'Garantir suporte para d\u00favidas p\u00f3s-lan\u00e7amento.',
-    ],
-    entries: [
-      { id: 'sep-assets', date: '2026-09-04', title: 'Assets de campanha', description: 'Materiais finais.', category: 'delivery' },
-      { id: 'sep-ops', date: '2026-09-10', title: 'Rotina de suporte', description: 'Respons\u00e1veis e respostas padr\u00e3o.', category: 'meeting' },
-      { id: 'sep-launch', date: '2026-09-18', title: 'Lan\u00e7amento p\u00fablico', description: 'Publica\u00e7\u00e3o e acompanhamento.', category: 'milestone' },
-      { id: 'sep-risk', date: '2026-09-25', title: 'Monitoramento', description: 'Gargalos, d\u00favidas e bugs.', category: 'risk' },
-    ],
-  },
-  {
-    key: '2026-10',
-    year: 2026,
-    month: 9,
-    title: 'Outubro 2026',
-    main: 'Otimizar aquisi\u00e7\u00e3o, parcerias e cad\u00eancia de produto.',
-    bullets: [
-      'Priorizar campanhas com melhor convers\u00e3o.',
-      'An\u00e1lise de m\u00e9tricas, parcerias e reten\u00e7\u00e3o.',
-      'Revisar aprendizados de Q3 para planejar Q4.',
-    ],
-    entries: [
-      { id: 'oct-metrics', date: '2026-10-02', title: 'An\u00e1lise de m\u00e9tricas', description: 'Aquisi\u00e7\u00e3o, ativa\u00e7\u00e3o e reten\u00e7\u00e3o.', category: 'milestone' },
-      { id: 'oct-partners', date: '2026-10-09', title: 'Novas parcerias', description: 'Cl\u00ednicas e petshops.', category: 'meeting' },
-      { id: 'oct-retention', date: '2026-10-17', title: 'Melhorias de reten\u00e7\u00e3o', description: 'Recorr\u00eancia e notifica\u00e7\u00f5es.', category: 'delivery' },
-      { id: 'oct-q4', date: '2026-10-26', title: 'Planejamento Q4', description: 'Pr\u00f3ximo ciclo e prioridades.', category: 'note' },
-    ],
-  },
-])
+const monthlyPlans = ref<MonthlyPlan[]>([])
+
+const canEditMonthlyRoadmap = computed(() => {
+  if (!workspace.activeRole) return true
+  return workspace.canEdit
+})
+
+onMounted(() => {
+  void fetchMonthlyRoadmap()
+  void fetchAnnualRoadmap()
+})
 
 const viewport = computed(() => {
   if (activeQuarter.value === 'all') {
@@ -536,8 +458,8 @@ const viewport = computed(() => {
 })
 
 const visibleLanes = computed(() => {
-  if (activeLaneId.value === 'all') return lanes
-  return lanes.filter((lane) => lane.id === activeLaneId.value)
+  if (activeLaneId.value === 'all') return annualLanes.value
+  return annualLanes.value.filter((lane) => lane.id === activeLaneId.value)
 })
 
 const visibleQuarters = computed(() => {
@@ -546,26 +468,26 @@ const visibleQuarters = computed(() => {
 })
 
 const visibleReviewMarkers = computed(() =>
-  reviewMarkers.filter((review) => overlapsDate(review.date, review.date)),
+  reviewMarkers.filter((review) => annualItems.value.length && overlapsDate(review.date, review.date)),
 )
 
 const selectedLane = computed(() => {
   const laneId = selected.value?.value.laneId
-  return lanes.find((lane) => lane.id === laneId) ?? null
+  return annualLanes.value.find((lane) => lane.id === laneId) ?? null
 })
 
 const selectedStatus = computed(() => selected.value ? statusMeta[selected.value.value.status] : null)
 
 const summary = computed(() => {
-  const completed = roadmapItems.filter((item) => item.status === 'done').length
-  const active = roadmapItems.filter((item) => item.status === 'active').length
-  const planned = roadmapItems.filter((item) => item.status === 'planned').length
-  const totalProgress = roadmapItems.reduce((sum, item) => sum + item.progress, 0)
+  const completed = annualItems.value.filter((item) => item.status === 'done').length
+  const active = annualItems.value.filter((item) => item.status === 'active').length
+  const planned = annualItems.value.filter((item) => item.status === 'planned').length
+  const totalProgress = annualItems.value.reduce((sum, item) => sum + item.progress, 0)
   return {
     completed,
     active,
     planned,
-    progress: Math.round(totalProgress / roadmapItems.length),
+    progress: annualItems.value.length ? Math.round(totalProgress / annualItems.value.length) : 0,
   }
 })
 
@@ -599,7 +521,7 @@ function markerStyle(date: string) {
 }
 
 function laneItems(laneId: string): RoadmapItem[] {
-  return roadmapItems.filter(
+  return annualItems.value.filter(
     (item) =>
       item.laneId === laneId &&
       (activeStatus.value === 'all' || item.status === activeStatus.value) &&
@@ -608,7 +530,7 @@ function laneItems(laneId: string): RoadmapItem[] {
 }
 
 function laneMilestones(laneId: string): RoadmapMilestone[] {
-  return milestones.filter(
+  return annualMilestones.value.filter(
     (milestone) =>
       milestone.laneId === laneId &&
       (activeStatus.value === 'all' || milestone.status === activeStatus.value) &&
@@ -639,6 +561,234 @@ function isSelected(type: RoadmapSelection['type'], id: string): boolean {
   return selected.value?.type === type && selected.value.value.id === id
 }
 
+async function fetchAnnualRoadmap() {
+  const companyId = workspace.activeCompanyId ?? localStorage.getItem('activeCompany')
+  annualRoadmapLoading.value = true
+
+  if (!companyId) {
+    annualLanes.value = []
+    annualItems.value = []
+    annualMilestones.value = []
+    annualRoadmapUnavailable.value = true
+    annualRoadmapLoading.value = false
+    return
+  }
+
+  try {
+    const response = await quarterService.getCompanyRoadMap(companyId)
+    applyAnnualRoadmapResponse(response)
+    annualRoadmapUnavailable.value = false
+  } catch (err) {
+    annualLanes.value = []
+    annualItems.value = []
+    annualMilestones.value = []
+    selected.value = null
+    annualRoadmapUnavailable.value = true
+    showError(apiErrorMessage(err, 'API da timeline anual indisponível'))
+  } finally {
+    annualRoadmapLoading.value = false
+  }
+}
+
+function applyAnnualRoadmapResponse(response: unknown) {
+  const payload = unwrapApiPayload(response)
+  const quartersPayload = firstArray(payload, ['quarters'])
+
+  if (quartersPayload.length) {
+    applyAnnualQuarterRoadmap(quartersPayload)
+    return
+  }
+
+  const lanesPayload = firstArray(payload, ['lanes', 'areas', 'columns'])
+  const itemsPayload = firstArray(payload, ['items', 'activities', 'tasks', 'entries'])
+  const milestonesPayload = firstArray(payload, ['milestones', 'markers'])
+  annualLanes.value = lanesPayload.map(mapAnnualLane).filter(Boolean) as RoadmapLane[]
+  annualItems.value = itemsPayload.map(mapAnnualItem).filter(Boolean) as RoadmapItem[]
+  annualMilestones.value = milestonesPayload.map(mapAnnualMilestone).filter(Boolean) as RoadmapMilestone[]
+
+  const laneIds = new Set(annualLanes.value.map((lane) => lane.id))
+  annualItems.value = annualItems.value.filter((item) => laneIds.has(item.laneId))
+  annualMilestones.value = annualMilestones.value.filter((milestone) => laneIds.has(milestone.laneId))
+
+  if (selected.value?.type === 'item' && !annualItems.value.some((item) => item.id === selected.value?.value.id)) {
+    selected.value = null
+  }
+  if (selected.value?.type === 'milestone' && !annualMilestones.value.some((item) => item.id === selected.value?.value.id)) {
+    selected.value = null
+  }
+  if (activeLaneId.value !== 'all' && !laneIds.has(activeLaneId.value)) {
+    activeLaneId.value = 'all'
+  }
+}
+
+function applyAnnualQuarterRoadmap(quartersPayload: any[]) {
+  annualLanes.value = quartersPayload.map((quarter, index) => ({
+    id: String(quarter?.id ?? quarter?.label ?? `quarter-${index + 1}`),
+    title: String(quarter?.label ?? `Q${index + 1}`),
+    description: `${Array.isArray(quarter?.months) ? quarter.months.length : 0} meses cadastrados`,
+    owner: 'Empresa',
+    status: normalizeQuarterStatus(quarter),
+    color: fallbackLaneColor(index),
+    icon: fallbackLaneIcon(index),
+  }))
+
+  annualItems.value = quartersPayload.flatMap((quarter, quarterIndex) => {
+    const laneId = String(quarter?.id ?? quarter?.label ?? `quarter-${quarterIndex + 1}`)
+    const months = Array.isArray(quarter?.months) ? quarter.months : []
+
+    return months
+      .map((month: any) => mapQuarterMonthItem(month, laneId))
+      .filter(Boolean) as RoadmapItem[]
+  })
+  annualMilestones.value = []
+
+  const laneIds = new Set(annualLanes.value.map((lane) => lane.id))
+  if (activeLaneId.value !== 'all' && !laneIds.has(activeLaneId.value)) {
+    activeLaneId.value = 'all'
+  }
+  if (selected.value?.type === 'item' && !annualItems.value.some((item) => item.id === selected.value?.value.id)) {
+    selected.value = null
+  }
+}
+
+function mapQuarterMonthItem(month: any, laneId: string): RoadmapItem | null {
+  const monthNumber = Number(month?.number)
+  if (!Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) return null
+
+  const id = String(month?.id ?? `${laneId}-month-${monthNumber}`)
+  const title = String(month?.name ?? monthNameFromNumber(monthNumber))
+  const start = dateKey(roadmapStart.getFullYear(), monthNumber - 1, 1)
+  const end = dateKey(roadmapStart.getFullYear(), monthNumber - 1, new Date(roadmapStart.getFullYear(), monthNumber, 0).getDate())
+  const progress = clamp(Number(month?.progress ?? 0), 0, 100)
+
+  return {
+    id,
+    laneId,
+    title,
+    shortTitle: monthAbbreviation(title),
+    start,
+    end,
+    progress,
+    status: statusFromProgress(progress, Number(month?.totalTasks ?? 0)),
+    kind: 'activity',
+  }
+}
+
+function monthNameFromNumber(monthNumber: number): string {
+  return new Date(roadmapStart.getFullYear(), monthNumber - 1, 1).toLocaleDateString('pt-BR', { month: 'long' })
+}
+
+function monthAbbreviation(monthName: string): string {
+  return monthName.trim().slice(0, 3)
+}
+
+function statusFromProgress(progress: number, totalTasks: number): RoadmapStatus {
+  if (totalTasks === 0) return 'planned'
+  if (progress >= 100) return 'done'
+  if (progress > 0) return 'active'
+  return 'planned'
+}
+
+function normalizeQuarterStatus(quarter: any): RoadmapStatus {
+  const months = Array.isArray(quarter?.months) ? quarter.months : []
+  if (!months.length) return 'planned'
+  const totalTasks = months.reduce((sum: number, month: any) => sum + Number(month?.totalTasks ?? 0), 0)
+  const completedTasks = months.reduce((sum: number, month: any) => sum + Number(month?.completedTasks ?? 0), 0)
+  if (totalTasks > 0 && completedTasks >= totalTasks) return 'done'
+  if (completedTasks > 0) return 'active'
+  return 'planned'
+}
+
+function unwrapApiPayload(response: unknown): any {
+  const raw = response as any
+  return raw?.data?.data ?? raw?.data ?? raw
+}
+
+function firstArray(payload: any, keys: string[]): any[] {
+  if (Array.isArray(payload)) return payload
+  for (const key of keys) {
+    if (Array.isArray(payload?.[key])) return payload[key]
+  }
+  return []
+}
+
+function mapAnnualLane(input: any, index: number): RoadmapLane | null {
+  const id = String(input?.id ?? input?.laneId ?? input?.key ?? input?.name ?? '')
+  const title = String(input?.title ?? input?.name ?? input?.label ?? '')
+  if (!id || !title) return null
+
+  return {
+    id,
+    title,
+    description: String(input?.description ?? input?.summary ?? ''),
+    owner: String(input?.owner ?? input?.responsible ?? input?.responsavel ?? ''),
+    status: normalizeRoadmapStatus(input?.status),
+    color: String(input?.color ?? fallbackLaneColor(index)),
+    icon: fallbackLaneIcon(index),
+  }
+}
+
+function mapAnnualItem(input: any): RoadmapItem | null {
+  const id = String(input?.id ?? input?.activityId ?? '')
+  const laneId = String(input?.laneId ?? input?.areaId ?? input?.columnId ?? input?.lane?.id ?? '')
+  const title = String(input?.title ?? input?.name ?? '')
+  const start = normalizeDateOnly(input?.start ?? input?.startDate ?? input?.startsAt ?? input?.from)
+  const end = normalizeDateOnly(input?.end ?? input?.endDate ?? input?.endsAt ?? input?.to ?? start)
+  if (!id || !laneId || !title || !start || !end) return null
+
+  return {
+    id,
+    laneId,
+    title,
+    start,
+    end,
+    progress: clamp(Number(input?.progress ?? input?.percentage ?? 0), 0, 100),
+    status: normalizeRoadmapStatus(input?.status),
+    kind: input?.kind === 'event' || input?.type === 'event' ? 'event' : 'activity',
+  }
+}
+
+function mapAnnualMilestone(input: any): RoadmapMilestone | null {
+  const id = String(input?.id ?? input?.milestoneId ?? '')
+  const laneId = String(input?.laneId ?? input?.areaId ?? input?.lane?.id ?? '')
+  const title = String(input?.title ?? input?.name ?? '')
+  const date = normalizeDateOnly(input?.date ?? input?.dueDate ?? input?.startsAt)
+  if (!id || !laneId || !title || !date) return null
+
+  return {
+    id,
+    laneId,
+    title,
+    date,
+    status: normalizeRoadmapStatus(input?.status),
+  }
+}
+
+function normalizeRoadmapStatus(status: unknown): RoadmapStatus {
+  const value = String(status ?? '').toLowerCase()
+  if (['done', 'completed', 'complete', 'concluido', 'concluído'].includes(value)) return 'done'
+  if (['active', 'progress', 'in_progress', 'em andamento'].includes(value)) return 'active'
+  if (['risk', 'blocked', 'attention', 'atenção', 'atencao'].includes(value)) return 'risk'
+  return 'planned'
+}
+
+function normalizeDateOnly(value: unknown): string | null {
+  if (!value) return null
+  const date = new Date(String(value))
+  if (Number.isNaN(date.getTime())) return null
+  return date.toISOString().slice(0, 10)
+}
+
+function fallbackLaneColor(index: number): string {
+  const colors = ['var(--accent)', 'var(--err)', 'var(--success)', 'var(--info)', 'var(--warn)']
+  return colors[index % colors.length] ?? 'var(--accent)'
+}
+
+function fallbackLaneIcon(index: number): LucideIcon {
+  const icons = [Target, Flag, Rocket, BarChart3, Activity]
+  return icons[index % icons.length] ?? Target
+}
+
 const monthlySummary = computed(() => {
   const entries = monthlyPlans.value.flatMap((month) => month.entries)
   const uniqueDates = new Set(entries.map((entry) => entry.date))
@@ -651,6 +801,8 @@ const monthlySummary = computed(() => {
   }
 })
 
+const hasMonthlyPlans = computed(() => monthlyPlans.value.length > 0)
+
 const selectedNoteMonth = computed(() =>
   monthlyPlans.value.find((month) => month.key === noteMonthKey.value) ?? monthlyPlans.value[0],
 )
@@ -660,6 +812,105 @@ const printedMonthlyPlans = computed(() =>
     ? monthlyPlans.value
     : monthlyPlans.value.filter((month) => month.key === exportMonthKey.value),
 )
+
+async function fetchMonthlyRoadmap() {
+  roadmapMonthlyLoading.value = true
+  try {
+    const response = await roadmapMonthlyService.getYear(roadmapStart.getFullYear())
+    if (!response.months.length) {
+      monthlyPlans.value = []
+      focusDrafts.value = {}
+      extraFocusItems.value = {}
+      focusPhotos.value = {}
+      focusIds.value = {}
+      focusPhotoIds.value = {}
+      selectedMonthDetailsKey.value = null
+      exportMonthKey.value = 'all'
+      usingRoadmapMonthlyApi.value = true
+      info('Nenhum mês cadastrado no roadmap mensal para este ano.')
+      return
+    }
+
+    applyRoadmapApiMonths(response.months)
+    usingRoadmapMonthlyApi.value = true
+  } catch (err) {
+    monthlyPlans.value = []
+    usingRoadmapMonthlyApi.value = false
+    showError(apiErrorMessage(err, 'API de roadmap mensal indisponível'))
+  } finally {
+    roadmapMonthlyLoading.value = false
+  }
+}
+
+function applyRoadmapApiMonths(months: RoadmapMonth[]) {
+  const nextFocusPhotos: Record<string, string[]> = {}
+  const nextFocusPhotoIds: Record<string, string[]> = {}
+  const nextFocusIds: Record<string, string[]> = {}
+
+  monthlyPlans.value = months.map((month) => {
+    const focusItems = [...month.focusItems].sort((a, b) => a.order - b.order)
+    const photos = orderPhotos(month.photos)
+
+    nextFocusIds[month.key] = focusItems.map((focus) => focus.id)
+    nextFocusPhotos[month.key] = photos.map((photo) => photo.url)
+    nextFocusPhotoIds[month.key] = photos.map((photo) => photo.id)
+
+    return {
+      id: month.id,
+      key: month.key,
+      year: month.year,
+      month: month.month,
+      title: month.title,
+      main: month.main,
+      bullets: focusItems.map((focus) => focus.text),
+      entries: month.entries.map(mapRoadmapEntry),
+    }
+  })
+
+  extraFocusItems.value = {}
+  focusDrafts.value = {}
+  focusIds.value = nextFocusIds
+  focusPhotos.value = nextFocusPhotos
+  focusPhotoIds.value = nextFocusPhotoIds
+
+  if (!monthlyPlans.value.some((month) => month.key === noteMonthKey.value)) {
+    noteMonthKey.value = monthlyPlans.value[0]?.key ?? noteMonthKey.value
+  }
+  if (exportMonthKey.value !== 'all' && !monthlyPlans.value.some((month) => month.key === exportMonthKey.value)) {
+    exportMonthKey.value = 'all'
+  }
+  if (selectedMonthDetailsKey.value && !monthlyPlans.value.some((month) => month.key === selectedMonthDetailsKey.value)) {
+    selectedMonthDetailsKey.value = null
+  }
+}
+
+function mapRoadmapEntry(entry: RoadmapEntry): CalendarEntry {
+  return {
+    id: entry.id,
+    date: entry.date,
+    title: entry.title,
+    description: entry.description ?? undefined,
+    category: normalizeRoadmapCategory(entry.category),
+  }
+}
+
+function normalizeRoadmapCategory(category: RoadmapCategory): CalendarCategory {
+  return calendarCategoryMeta[category] ? category : 'note'
+}
+
+function orderPhotos(photos: RoadmapPhoto[]): RoadmapPhoto[] {
+  return [...photos].sort((a, b) => a.id.localeCompare(b.id))
+}
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const message = (err as any)?.response?.data?.message
+  if (Array.isArray(message)) return message.join(', ')
+  return message || fallback
+}
+
+function monthApiId(monthKey: string): string | null {
+  return monthlyPlans.value.find((month) => month.key === monthKey)?.id ?? null
+}
 
 function monthMarkedDays(month: MonthlyPlan): number {
   return new Set(month.entries.map((entry) => entry.date)).size
@@ -730,27 +981,53 @@ function setFocusDraft(monthKey: string, value: string) {
   }
 }
 
-function addFocusItem(monthKey: string) {
+async function addFocusItem(monthKey: string) {
   const text = focusDraftFor(monthKey).trim()
   if (!text) return
 
-  extraFocusItems.value = {
-    ...extraFocusItems.value,
-    [monthKey]: [...(extraFocusItems.value[monthKey] ?? []), text],
-  }
-  setFocusDraft(monthKey, '')
-}
-
-function removeFocusItem(month: MonthlyPlan, focusIndex: number) {
-  if (focusIndex < month.bullets.length) {
-    month.bullets = month.bullets.filter((_, index) => index !== focusIndex)
+  const apiMonthId = monthApiId(monthKey)
+  const month = monthlyPlans.value.find((item) => item.key === monthKey)
+  if (!apiMonthId || !month) {
+    showError('Não há mês cadastrado na API para receber este foco.')
     return
   }
 
-  const extraIndex = focusIndex - month.bullets.length
-  extraFocusItems.value = {
-    ...extraFocusItems.value,
-    [month.key]: (extraFocusItems.value[month.key] ?? []).filter((_, index) => index !== extraIndex),
+  try {
+    const created = await roadmapMonthlyService.addFocus(apiMonthId, {
+      text,
+      order: focusItemsFor(month).length + 1,
+    })
+    month.bullets.push(created.text)
+    focusIds.value = {
+      ...focusIds.value,
+      [monthKey]: [...(focusIds.value[monthKey] ?? []), created.id],
+    }
+    setFocusDraft(monthKey, '')
+    success('Foco adicionado')
+  } catch (err) {
+    showError(apiErrorMessage(err, 'Não foi possível salvar o foco'))
+  }
+}
+
+async function removeFocusItem(month: MonthlyPlan, focusIndex: number) {
+  const apiMonthId = month.id
+  const apiFocusId = focusIds.value[month.key]?.[focusIndex]
+
+  if (!apiMonthId || !apiFocusId) {
+    showError('Este foco não possui vínculo com a API.')
+    return
+  }
+
+  try {
+    await roadmapMonthlyService.removeFocus(apiMonthId, apiFocusId)
+    month.bullets = month.bullets.filter((_, index) => index !== focusIndex)
+    focusIds.value = {
+      ...focusIds.value,
+      [month.key]: (focusIds.value[month.key] ?? []).filter((_, index) => index !== focusIndex),
+    }
+    success('Foco removido')
+  } catch (err) {
+    showError(apiErrorMessage(err, 'Não foi possível remover o foco'))
   }
 }
 
@@ -766,28 +1043,65 @@ function hiddenFocusPhotosCount(monthKey: string): number {
   return Math.max(focusPhotosFor(monthKey).length - visibleFocusPhotos(monthKey).length, 0)
 }
 
-function handleFocusPhotoUpload(monthKey: string, event: Event) {
+async function handleFocusPhotoUpload(monthKey: string, event: Event) {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   if (!files.length) return
 
-  files.forEach((file) => {
-    if (!file.type.startsWith('image/')) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') return
-      focusPhotos.value = {
-        ...focusPhotos.value,
-        [monthKey]: [...focusPhotosFor(monthKey), reader.result],
-      }
-    }
-    reader.readAsDataURL(file)
-  })
+  const validFiles = files.filter((file) => file.type.startsWith('image/') && file.size <= 5 * 1024 * 1024)
+  const invalidCount = files.length - validFiles.length
+  if (invalidCount) info(`${invalidCount} arquivo(s) ignorado(s). Use imagens de até 5 MB.`)
+  if (!validFiles.length) {
+    input.value = ''
+    return
+  }
 
-  input.value = ''
+  const apiMonthId = monthApiId(monthKey)
+  if (!apiMonthId) {
+    showError('Não há mês cadastrado na API para receber imagens.')
+    input.value = ''
+    return
+  }
+
+  try {
+    const photos = await roadmapMonthlyService.uploadPhotos(apiMonthId, validFiles)
+    focusPhotos.value = {
+      ...focusPhotos.value,
+      [monthKey]: [...focusPhotosFor(monthKey), ...photos.map((photo) => photo.url)],
+    }
+    focusPhotoIds.value = {
+      ...focusPhotoIds.value,
+      [monthKey]: [...(focusPhotoIds.value[monthKey] ?? []), ...photos.map((photo) => photo.id)],
+    }
+    success('Imagem adicionada')
+  } catch (err) {
+    showError(apiErrorMessage(err, 'Não foi possível enviar a imagem'))
+  } finally {
+    input.value = ''
+  }
 }
 
-function removeFocusPhoto(monthKey: string, photoIndex: number) {
+async function removeFocusPhoto(monthKey: string, photoIndex: number) {
+  const apiMonthId = monthApiId(monthKey)
+  const apiPhotoId = focusPhotoIds.value[monthKey]?.[photoIndex]
+
+  if (!apiMonthId || !apiPhotoId) {
+    showError('Esta imagem não possui vínculo com a API.')
+    return
+  }
+
+  try {
+    await roadmapMonthlyService.removePhoto(apiMonthId, apiPhotoId)
+    focusPhotoIds.value = {
+      ...focusPhotoIds.value,
+      [monthKey]: (focusPhotoIds.value[monthKey] ?? []).filter((_, index) => index !== photoIndex),
+    }
+    success('Imagem removida')
+  } catch (err) {
+    showError(apiErrorMessage(err, 'Não foi possível remover a imagem'))
+    return
+  }
+
   focusPhotos.value = {
     ...focusPhotos.value,
     [monthKey]: focusPhotosFor(monthKey).filter((_, index) => index !== photoIndex),
@@ -843,23 +1157,38 @@ function formatDayMonth(date: string): string {
   return `${day}/${month}`
 }
 
-function addMonthlyNote() {
+async function addMonthlyNote() {
   const text = noteDraft.value.trim()
   const month = monthlyPlans.value.find((item) => item.key === noteMonthKey.value)
   if (!text || !month || !noteDate.value) return
 
-  month.entries.push({
-    id: `note-${Date.now()}`,
-    date: noteDate.value,
-    title: text,
-    description: 'Anota\u00e7\u00e3o adicionada manualmente.',
-    category: 'note',
-  })
+  const apiMonthId = month.id
+  if (!apiMonthId) {
+    showError('Não há mês cadastrado na API para receber anotações.')
+    return
+  }
 
-  noteDraft.value = ''
+  try {
+    const created = await roadmapMonthlyService.addQuickNote(
+      apiMonthId,
+      noteDate.value,
+      text,
+      'Anotação adicionada manualmente.',
+    )
+    month.entries.push(mapRoadmapEntry(created))
+    noteDraft.value = ''
+    success('Anotação adicionada')
+  } catch (err) {
+    showError(apiErrorMessage(err, 'Não foi possível salvar a anotação'))
+  }
 }
 
 async function exportMonthlyPdf() {
+  if (!monthlyPlans.value.length) {
+    info('Não há meses do roadmap mensal para exportar.')
+    return
+  }
+
   isRoadmapPrinting.value = true
   document.body.classList.add('roadmap-printing')
   const cleanup = () => {
@@ -953,7 +1282,12 @@ function resetFilters() {
         <div class="monthly-note-panel" aria-label="Adicionar anotacao">
           <div class="monthly-note-head">
             <div class="monthly-note-title">
-              <span class="text-eyebrow">Anota&ccedil;&otilde;es r&aacute;pidas</span>
+              <span class="text-eyebrow">
+                Anota&ccedil;&otilde;es r&aacute;pidas
+                <small class="roadmap-data-source">
+                  {{ roadmapMonthlyLoading ? 'Sincronizando...' : usingRoadmapMonthlyApi ? 'Dados da API' : 'API indispon&iacute;vel' }}
+                </small>
+              </span>
               <h2>Registre uma decis&atilde;o ou lembrete</h2>
               <p>Escolha m&ecirc;s e data para adicionar uma nota diretamente no calend&aacute;rio correspondente.</p>
             </div>
@@ -987,7 +1321,7 @@ function resetFilters() {
               </div>
             </article>
           </div>
-          <div class="monthly-note-form">
+          <div v-if="hasMonthlyPlans && canEditMonthlyRoadmap" class="monthly-note-form">
             <select v-model="noteMonthKey" class="monthly-control" aria-label="Mes da nota">
               <option v-for="month in monthlyPlans" :key="month.key" :value="month.key">
                 {{ month.title }}
@@ -1006,6 +1340,10 @@ function resetFilters() {
               Adicionar
             </button>
           </div>
+          <p v-else-if="!hasMonthlyPlans" class="monthly-readonly-hint">
+            Nenhum m&ecirc;s cadastrado na API para receber anota&ccedil;&otilde;es.
+          </p>
+          <p v-else class="monthly-readonly-hint">Seu perfil pode visualizar o roadmap mensal, mas n&atilde;o pode criar anota&ccedil;&otilde;es.</p>
         </div>
 
         <aside class="monthly-side-panel">
@@ -1021,7 +1359,7 @@ function resetFilters() {
                 {{ month.title }}
               </option>
             </select>
-            <button class="monthly-export-btn press" @click="exportMonthlyPdf">Exportar PDF</button>
+            <button class="monthly-export-btn press" :disabled="!hasMonthlyPlans" @click="exportMonthlyPdf">Exportar PDF</button>
           </div>
 
           <section class="monthly-legend" aria-label="Legenda dos calendarios">
@@ -1039,7 +1377,19 @@ function resetFilters() {
         </aside>
       </section>
 
-      <div class="months-grid">
+      <section v-if="!roadmapMonthlyLoading && !hasMonthlyPlans" class="monthly-empty-state">
+        <CalendarDays :size="22" />
+        <div>
+          <span class="text-eyebrow">Sem dados do roadmap mensal</span>
+          <h2>Nenhum m&ecirc;s cadastrado para {{ roadmapStart.getFullYear() }}</h2>
+          <p>
+            A API respondeu sem meses para a empresa ativa. Assim que o backend cadastrar meses, focos e agenda,
+            esta tela passa a exibir os dados reais.
+          </p>
+        </div>
+      </section>
+
+      <div v-else class="months-grid">
         <article
           v-for="(month, index) in monthlyPlans"
           :key="month.key"
@@ -1190,7 +1540,7 @@ function resetFilters() {
         >
           <header class="print-month-head">
             <div>
-              <span>Roadmap mensal ? etapa {{ monthlyPlans.findIndex((item) => item.key === month.key) + 1 }} de {{ monthlyPlans.length }}</span>
+              <span>Roadmap mensal &middot; etapa {{ monthlyPlans.findIndex((item) => item.key === month.key) + 1 }} de {{ monthlyPlans.length }}</span>
               <h2>{{ month.title }}</h2>
               <p>{{ month.main }}</p>
             </div>
@@ -1257,7 +1607,7 @@ function resetFilters() {
           </section>
 
           <footer class="print-month-footer">
-            <span>Workflow ? Stack Roads</span>
+            <span>Workflow &middot; Stack Roads</span>
             <span v-if="printedMonthlyPlans.length > 1">{{ index + 1 }} / {{ printedMonthlyPlans.length }}</span>
           </footer>
         </article>
@@ -1325,7 +1675,7 @@ function resetFilters() {
               <Target :size="14" />
               Foco do m&ecirc;s
             </div>
-            <div class="drawer-focus-actions">
+            <div v-if="canEditMonthlyRoadmap" class="drawer-focus-actions">
               <div class="focus-add-row">
                 <input
                   class="focus-add-input"
@@ -1358,7 +1708,12 @@ function resetFilters() {
                 :key="`${selectedMonthDetails.key}-focus-${focusIndex}`"
               >
                 <span>{{ bullet }}</span>
-                <button type="button" aria-label="Remover foco" @click="removeFocusItem(selectedMonthDetails, focusIndex)">
+                <button
+                  v-if="canEditMonthlyRoadmap"
+                  type="button"
+                  aria-label="Remover foco"
+                  @click="removeFocusItem(selectedMonthDetails, focusIndex)"
+                >
                   <X :size="12" />
                 </button>
               </li>
@@ -1370,6 +1725,7 @@ function resetFilters() {
               >
                 <img :src="photo" alt="Foto do foco do mes" />
                 <button
+                  v-if="canEditMonthlyRoadmap"
                   type="button"
                   aria-label="Remover foto"
                   @click="removeFocusPhoto(selectedMonthDetails.key, photoIndex)"
@@ -1443,7 +1799,7 @@ function resetFilters() {
       <article class="summary-card">
         <UsersRound :size="18" />
         <span>&Aacute;reas</span>
-        <strong>{{ lanes.length }}</strong>
+        <strong>{{ annualLanes.length }}</strong>
       </article>
     </div>
 
@@ -1487,7 +1843,7 @@ function resetFilters() {
             <span class="control-label">&Aacute;rea</span>
             <select v-model="activeLaneId" class="select-control" aria-label="Filtrar por area">
               <option value="all">Todas as &aacute;reas</option>
-              <option v-for="lane in lanes" :key="lane.id" :value="lane.id">
+              <option v-for="lane in annualLanes" :key="lane.id" :value="lane.id">
                 {{ lane.title }}
               </option>
             </select>
@@ -1534,7 +1890,7 @@ function resetFilters() {
             </div>
             <div>
               <dt>Origem</dt>
-              <dd>Mock local</dd>
+              <dd>Timeline anual</dd>
             </div>
           </dl>
         </template>
@@ -1542,13 +1898,38 @@ function resetFilters() {
           <div class="detail-empty">
             <Milestone :size="22" />
             <h2>Selecione uma atividade</h2>
-            <p>Clique em uma barra ou marco do roadmap para ver mais informa&ccedil;&otilde;es aqui.</p>
+            <p v-if="annualItems.length || annualMilestones.length">Clique em uma barra ou marco do roadmap para ver mais informa&ccedil;&otilde;es aqui.</p>
+            <p v-else>A timeline anual ainda n&atilde;o possui dados para detalhar.</p>
           </div>
         </template>
       </aside>
     </section>
 
-    <div v-if="roadmapMode === 'timeline'" class="roadmap-shell">
+    <section v-if="roadmapMode === 'timeline' && annualRoadmapLoading" class="monthly-empty-state">
+      <CalendarClock :size="22" />
+      <div>
+        <span class="text-eyebrow">Sincronizando timeline</span>
+        <h2>Carregando roadmap anual</h2>
+        <p>Buscando os dados reais da API para montar a timeline anual.</p>
+      </div>
+    </section>
+
+    <section
+      v-else-if="roadmapMode === 'timeline' && (!annualLanes.length || (!annualItems.length && !annualMilestones.length))"
+      class="monthly-empty-state"
+    >
+      <Milestone :size="22" />
+      <div>
+        <span class="text-eyebrow">Sem dados da timeline</span>
+        <h2>Nenhum item cadastrado no roadmap anual</h2>
+        <p>
+          A API da timeline anual n&atilde;o retornou &aacute;reas, atividades ou marcos para a empresa ativa.
+          Assim que o backend cadastrar esses dados, a timeline ser&aacute; exibida aqui.
+        </p>
+      </div>
+    </section>
+
+    <div v-else-if="roadmapMode === 'timeline'" class="roadmap-shell">
       <div class="roadmap-scroll" role="region" aria-label="Linha do tempo do roadmap" tabindex="0">
         <div class="roadmap-board">
           <div class="review-layer" aria-hidden="true">
@@ -1615,7 +1996,7 @@ function resetFilters() {
                   { 'roadmap-bar--selected': isSelected('item', item.id) },
                 ]"
                 :style="itemStyle(item)"
-                :aria-label="`${item.title}: ${formatDate(item.start)} at? ${formatDate(item.end)}`"
+                :aria-label="`${item.title}: ${formatDate(item.start)} até ${formatDate(item.end)}`"
                 role="button"
                 tabindex="0"
                 @click="selectItem(item)"
@@ -1623,7 +2004,7 @@ function resetFilters() {
                 @keydown.space.prevent="selectItem(item)"
               >
                 <span class="bar-progress" :style="{ width: `${item.progress}%` }" />
-                <span class="bar-label">{{ item.title }}</span>
+                <span class="bar-label">{{ item.shortTitle ?? item.title }}</span>
                 <small v-if="item.progress > 0">{{ item.progress }}%</small>
               </article>
 
@@ -1654,7 +2035,7 @@ function resetFilters() {
     <footer v-if="roadmapMode === 'timeline'" class="roadmap-note">
       <CircleDot :size="14" />
       <span>
-        Esta tela ainda n&atilde;o consome backend. Quando as rotas existirem, os arrays mockados podem virar service + Vue Query.
+        {{ annualRoadmapUnavailable ? 'API da timeline anual indisponível.' : 'Timeline anual carregada pela API.' }}
       </span>
     </footer>
   </section>
@@ -2216,7 +2597,7 @@ function resetFilters() {
 .roadmap-bar {
   position: absolute;
   top: 44px;
-  min-width: 34px;
+  min-width: 44px;
   height: 26px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--lane-color) 68%, var(--surface));
@@ -2291,6 +2672,14 @@ function resetFilters() {
   position: relative;
   z-index: 1;
   overflow: hidden;
+}
+
+.bar-label {
+  min-width: 3ch;
+  text-overflow: clip;
+}
+
+.roadmap-bar small {
   text-overflow: ellipsis;
 }
 
@@ -2641,6 +3030,14 @@ function resetFilters() {
   min-width: 0;
 }
 
+.roadmap-data-source {
+  margin-left: 8px;
+  color: var(--text-4);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
 .monthly-note-title p {
   max-width: 720px;
 }
@@ -2665,6 +3062,13 @@ function resetFilters() {
   color: var(--text-3);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.monthly-readonly-hint {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .monthly-action-context {
@@ -2772,7 +3176,8 @@ select.monthly-control {
   font-weight: 800;
 }
 
-.monthly-add-btn:disabled {
+.monthly-add-btn:disabled,
+.monthly-export-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -2837,6 +3242,38 @@ select.monthly-control {
   border: 1px solid color-mix(in srgb, var(--entry-c) 24%, transparent);
   font-size: 11px;
   font-weight: 800;
+}
+
+.monthly-empty-state {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.monthly-empty-state > svg {
+  color: var(--accent);
+}
+
+.monthly-empty-state h2 {
+  margin: 5px 0 6px;
+  color: var(--text);
+  font-size: 20px;
+  letter-spacing: -0.04em;
+}
+
+.monthly-empty-state p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .monthly-legend-item {
