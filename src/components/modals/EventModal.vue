@@ -58,8 +58,10 @@ const isEditing = computed(() => !!props.event?.id)
 
 const title = ref('')
 const description = ref('')
-const startDate = ref('')
-const endDate = ref('')
+const startDateText = ref('')
+const startTimeValue = ref('09:00')
+const endDateText = ref('')
+const endTimeValue = ref('09:00')
 const eventType = ref<EventType>('MEETING')
 const recurrence = ref('')
 
@@ -112,8 +114,10 @@ onBeforeUnmount(() => {
 const resetForm = () => {
   title.value = ''
   description.value = ''
-  startDate.value = ''
-  endDate.value = ''
+  startDateText.value = ''
+  startTimeValue.value = '09:00'
+  endDateText.value = ''
+  endTimeValue.value = '09:00'
   eventType.value = 'MEETING'
   recurrence.value = ''
 }
@@ -123,13 +127,16 @@ const close = () => {
 }
 
 const save = () => {
-  if (!title.value || !startDate.value) return
+  const startDate = combineDateTime(startDateText.value, startTimeValue.value)
+  const endDate = endDateText.value ? combineDateTime(endDateText.value, endTimeValue.value) : null
+
+  if (!title.value || !startDate) return
   emit('save', {
     id: props.event?.id,
     title: title.value,
     description: description.value,
-    startDate: new Date(startDate.value).toISOString(),
-    endDate: endDate.value ? new Date(endDate.value).toISOString() : null,
+    startDate,
+    endDate,
     type: eventType.value,
     recurrence: recurrence.value || undefined,
   })
@@ -154,12 +161,10 @@ watch(
       if (ev) {
         title.value = ev.title || ''
         description.value = ev.description || ''
-        startDate.value = ev.startDate
-          ? new Date(ev.startDate).toISOString().slice(0, 16)
-          : ''
-        endDate.value = ev.endDate
-          ? new Date(ev.endDate).toISOString().slice(0, 16)
-          : ''
+        startDateText.value = formatDateField(ev.startDate)
+        startTimeValue.value = formatTimeField(ev.startDate) || '09:00'
+        endDateText.value = formatDateField(ev.endDate)
+        endTimeValue.value = formatTimeField(ev.endDate) || startTimeValue.value
         eventType.value = (ev.type as EventType) || 'MEETING'
         recurrence.value = ev.recurrence || ''
       } else {
@@ -180,7 +185,70 @@ const cmd = (fn: 'toggleBold' | 'toggleItalic' | 'toggleUnderline' | 'toggleBull
   chain?.[fn]().run()
 }
 
-const canSave = computed(() => !!title.value && !!startDate.value)
+function formatDateField(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`
+}
+
+function formatTimeField(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function parseDateField(value: string): { day: string; month: string; year: string } | null {
+  const trimmed = value.trim()
+  const br = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (br) {
+    return { day: br[1] ?? '', month: br[2] ?? '', year: br[3] ?? '' }
+  }
+
+  const iso = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (iso) {
+    return { day: iso[3] ?? '', month: iso[2] ?? '', year: iso[1] ?? '' }
+  }
+
+  return null
+}
+
+function normalizeTimeField(value: string): string | null {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return null
+
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function combineDateTime(dateValue: string, timeValue: string): string | null {
+  const dateParts = parseDateField(dateValue)
+  const time = normalizeTimeField(timeValue)
+  if (!dateParts || !time) return null
+
+  const day = Number(dateParts.day)
+  const month = Number(dateParts.month)
+  const year = Number(dateParts.year)
+  const [hourText, minuteText] = time.split(':')
+  const date = new Date(year, month - 1, day, Number(hourText), Number(minuteText), 0, 0)
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day ||
+    Number.isNaN(date.getTime())
+  ) {
+    return null
+  }
+
+  return date.toISOString()
+}
+
+const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.value, startTimeValue.value))
 </script>
 
 <template>
@@ -252,14 +320,48 @@ const canSave = computed(() => !!title.value && !!startDate.value)
                   <CalendarRange :size="12" />
                   Início
                 </span>
-                <input v-model="startDate" type="datetime-local" class="input" />
+                <div class="datetime-control">
+                  <input
+                    v-model="startDateText"
+                    type="text"
+                    inputmode="numeric"
+                    class="input date-input"
+                    placeholder="dd/mm/aaaa"
+                    aria-label="Data de início"
+                  />
+                  <input
+                    v-model="startTimeValue"
+                    type="text"
+                    inputmode="numeric"
+                    class="input time-input"
+                    placeholder="09:00"
+                    aria-label="Hora de início"
+                  />
+                </div>
               </label>
               <label class="field flex-1">
                 <span class="label">
                   <CalendarClock :size="12" />
                   Término (opcional)
                 </span>
-                <input v-model="endDate" type="datetime-local" class="input" />
+                <div class="datetime-control">
+                  <input
+                    v-model="endDateText"
+                    type="text"
+                    inputmode="numeric"
+                    class="input date-input"
+                    placeholder="dd/mm/aaaa"
+                    aria-label="Data de término"
+                  />
+                  <input
+                    v-model="endTimeValue"
+                    type="text"
+                    inputmode="numeric"
+                    class="input time-input"
+                    placeholder="10:00"
+                    aria-label="Hora de término"
+                  />
+                </div>
               </label>
             </div>
 
@@ -519,6 +621,21 @@ const canSave = computed(() => !!title.value && !!startDate.value)
 .input--title {
   font-size: 14.5px;
   font-weight: 500;
+}
+
+.datetime-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px;
+  gap: 8px;
+}
+
+.date-input,
+.time-input {
+  font-variant-numeric: tabular-nums;
+}
+
+.time-input {
+  text-align: center;
 }
 
 select.input {

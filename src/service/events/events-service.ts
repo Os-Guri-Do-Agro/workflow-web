@@ -1,12 +1,49 @@
 import api from '../api'
 
+export type EventType =
+  | 'MEETING'
+  | 'DEADLINE'
+  | 'REMINDER'
+  | 'SPRINT'
+  | 'RETROSPECTIVE'
+  | 'TASK'
+  | 'PERSONAL'
+
+export interface CalendarEvent {
+  id: string
+  title: string
+  description: string | null
+  startDate: string
+  endDate: string | null
+  type: EventType
+  recurrence: string | null
+  createdById?: string
+  companyId?: string | null
+  activityId?: string | null
+  attendees?: string[]
+  googleEventId?: string | null
+  meetLink?: string | null
+  createdAt?: string
+  updatedAt?: string
+  activity?: { id: string; title: string } | null
+}
+
+export interface CreateEventInput {
+  title: string
+  description?: string | null
+  startDate: string
+  endDate?: string | null
+  type: EventType
+  recurrence?: string | null
+  activityId?: string | null
+  attendees?: string[]
+}
+
+export type UpdateEventInput = Partial<CreateEventInput>
+
 const eventsService = {
   async getEvents(filters?: { start?: string; end?: string }) {
-    const params = new URLSearchParams()
-    if (filters?.start) params.append('start', filters.start)
-    if (filters?.end) params.append('end', filters.end)
-
-    const response = await api.get(`/events?${params.toString()}`)
+    const response = await api.get<CalendarEvent[]>('/events', { params: filters })
     return response.data
   },
 
@@ -15,40 +52,24 @@ const eventsService = {
   },
 
   async getUpcomingEvents(limit: number = 5) {
-    const response = await api.get(`/events/upcoming?limit=${limit}`)
+    const response = await api.get<Pick<CalendarEvent, 'id' | 'title' | 'startDate' | 'type'>[]>('/events/upcoming', {
+      params: { limit },
+    })
     return response.data
   },
 
   async getEvent(id: string) {
-    const response = await api.get(`/events/${id}`)
+    const response = await api.get<CalendarEvent>(`/events/${id}`)
     return response.data
   },
 
-  async createEvent(data: {
-    title: string
-    description?: string
-    startDate: string
-    endDate?: string
-    type: string
-    activityId?: string
-    attendees?: string[]
-    recurrence?: string
-  }) {
-    const response = await api.post('/events', data)
+  async createEvent(data: CreateEventInput) {
+    const response = await api.post<CalendarEvent>('/events', data)
     return response.data
   },
 
-  async updateEvent(id: string, data: {
-    title?: string
-    description?: string
-    startDate?: string
-    endDate?: string
-    type?: string
-    activityId?: string
-    attendees?: string[]
-    recurrence?: string
-  }) {
-    const response = await api.patch(`/events/${id}`, data)
+  async updateEvent(id: string, data: UpdateEventInput) {
+    const response = await api.patch<CalendarEvent>(`/events/${id}`, data)
     return response.data
   },
 

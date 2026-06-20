@@ -51,7 +51,7 @@ watch(
     if (v) {
       draft.value = {
         ...v,
-        fields: v.fields?.length ? [...v.fields.map((f) => ({ ...f }))] : [],
+        fields: v.fields?.length ? v.fields.map((f) => ({ ...f })) : [],
       }
     } else {
       draft.value = empty()
