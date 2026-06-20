@@ -59,7 +59,7 @@ const router = createRouter({
   ],
 })
 
-const { posthog } = usePostHog()
+const { capturePageview } = usePostHog()
 
 router.beforeEach((to, from) => {
   if (to.path !== from.path) NProgress.start()
@@ -78,7 +78,7 @@ router.beforeEach((to, from) => {
 
 router.afterEach(() => {
   NProgress.done()
-  posthog.capture('$pageview')
+  capturePageview()
 })
 
 export default router
