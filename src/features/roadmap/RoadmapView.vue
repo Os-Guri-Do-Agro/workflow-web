@@ -478,19 +478,6 @@ const selectedLane = computed(() => {
 
 const selectedStatus = computed(() => selected.value ? statusMeta[selected.value.value.status] : null)
 
-const summary = computed(() => {
-  const completed = annualItems.value.filter((item) => item.status === 'done').length
-  const active = annualItems.value.filter((item) => item.status === 'active').length
-  const planned = annualItems.value.filter((item) => item.status === 'planned').length
-  const totalProgress = annualItems.value.reduce((sum, item) => sum + item.progress, 0)
-  return {
-    completed,
-    active,
-    planned,
-    progress: annualItems.value.length ? Math.round(totalProgress / annualItems.value.length) : 0,
-  }
-})
-
 function toTime(date: string | Date): number {
   return date instanceof Date ? date.getTime() : new Date(`${date}T00:00:00`).getTime()
 }
@@ -1779,29 +1766,6 @@ function resetFilters() {
         </aside>
       </div>
     </template>
-
-    <div v-if="roadmapMode === 'timeline'" class="summary-grid" aria-label="Resumo do roadmap">
-      <article class="summary-card">
-        <CheckCircle2 :size="18" />
-        <span>Conclu&iacute;das</span>
-        <strong>{{ summary.completed }}</strong>
-      </article>
-      <article class="summary-card">
-        <Activity :size="18" />
-        <span>Em andamento</span>
-        <strong>{{ summary.active }}</strong>
-      </article>
-      <article class="summary-card">
-        <CalendarClock :size="18" />
-        <span>Planejadas</span>
-        <strong>{{ summary.planned }}</strong>
-      </article>
-      <article class="summary-card">
-        <UsersRound :size="18" />
-        <span>&Aacute;reas</span>
-        <strong>{{ annualLanes.length }}</strong>
-      </article>
-    </div>
 
     <section v-if="roadmapMode === 'timeline'" class="interaction-grid" aria-label="Controles do roadmap">
       <div class="controls-card">
