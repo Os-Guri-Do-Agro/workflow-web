@@ -8,6 +8,13 @@ const api = axios.create({
   },
 })
 
+export const publicApi = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   const companyId = localStorage.getItem('activeCompany')

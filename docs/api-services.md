@@ -27,6 +27,9 @@ Content-Type: application/json
 | Backlog           | `service/backlog/backlog-service.ts`                     | Backlog por empresa            |
 | Dashboard         | `service/dashboard/dashboard-service.ts`                 | Métricas e workspace           |
 | Events            | `service/events/events-service.ts`                       | Calendário e Google            |
+| AI                | `service/ai/ai-service.ts`                               | Busca global e Copilot         |
+| Share             | `service/share/share-service.ts`                         | Links públicos read-only       |
+| Inbox             | `service/inbox/inbox-service.ts`                         | Notificações in-app            |
 | Notes             | `service/notes/notes-service.ts`                         | Notas e pastas                 |
 | Bug Report        | `service/bug-report/bug-report-service.ts`               | Reports públicos e internos    |
 | Repository        | `service/repository/repository-service.ts`               | Git browser                    |
@@ -126,6 +129,41 @@ Content-Type: application/json
 | PATCH  | `/events/:id`              | Atualizar                         |
 | DELETE | `/events/:id`              | Remover                           |
 | GET    | `/auth/google/link`        | URL OAuth Google Calendar         |
+
+### AI / Workspace Intelligence
+
+| Método | Endpoint            | Descrição                              |
+| ------ | ------------------- | -------------------------------------- |
+| GET    | `/search/status`    | Status da indexação da empresa         |
+| POST   | `/search`           | Busca global por embeddings            |
+| POST   | `/search/reindex`   | Reindexação manual (ADMIN)             |
+| POST   | `/copilot/ask`      | Pergunta ao workspace com fontes       |
+| POST   | `/copilot/diagram`  | Gera diagrama estruturado              |
+| POST   | `/copilot/improve`  | Reescreve/melhora texto                |
+| POST   | `/copilot/roadmap`  | Gera e persiste roadmap mensal         |
+
+### Share
+
+| Método | Endpoint                 | Descrição                           |
+| ------ | ------------------------ | ----------------------------------- |
+| GET    | `/share`                 | Listar links ativos                 |
+| POST   | `/share/board/:boardId`  | Criar link público de board         |
+| POST   | `/share/roadmap/:year`   | Criar link público de roadmap anual |
+| DELETE | `/share/:token`          | Revogar link público                |
+| GET    | `/public/board/:token`   | Board público read-only             |
+| GET    | `/public/roadmap/:token` | Roadmap público read-only           |
+
+Rotas `/public/*` usam `publicApi`, sem `Authorization` nem `x-company-id`.
+
+### Inbox
+
+| Método | Endpoint              | Descrição                       |
+| ------ | --------------------- | ------------------------------- |
+| GET    | `/inbox`              | Listar notificações recentes    |
+| GET    | `/inbox/unread-count` | Contador de não lidas           |
+| PATCH  | `/inbox/:id/read`     | Marcar notificação como lida    |
+| POST   | `/inbox/read-all`     | Marcar todas como lidas         |
+| DELETE | `/inbox/:id`          | Dispensar/remover uma notificação |
 
 ### Notes
 
