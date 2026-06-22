@@ -85,12 +85,14 @@ type CalendarEntry = {
 }
 
 type MonthlyPlan = {
-  id?: string
+  id: string | null
   key: string
   year: number
   month: number
   title: string
   main: string
+  order: number
+  persisted: boolean
   bullets: string[]
   entries: CalendarEntry[]
 }
@@ -849,6 +851,8 @@ function applyRoadmapApiMonths(months: RoadmapMonth[]) {
       month: month.month,
       title: month.title,
       main: month.main,
+      order: month.order,
+      persisted: month.persisted,
       bullets: focusItems.map((focus) => focus.text),
       entries: month.entries.map(mapRoadmapEntry),
     }
@@ -897,6 +901,31 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 
 function monthApiId(monthKey: string): string | null {
   return monthlyPlans.value.find((month) => month.key === monthKey)?.id ?? null
+}
+
+async function ensureMonthId(month: MonthlyPlan): Promise<string> {
+  if (month.id) return month.id
+
+  const ensured = await roadmapMonthlyService.ensureMonth({
+    key: month.key,
+    year: month.year,
+    month: month.month,
+    title: month.title,
+    main: month.main,
+    order: month.order,
+  })
+
+  month.id = ensured.id
+  month.persisted = ensured.persisted
+  month.title = ensured.title
+  month.main = ensured.main
+  month.order = ensured.order
+
+  if (!ensured.id) {
+    throw new Error('A API não retornou o id do mês garantido.')
+  }
+
+  return ensured.id
 }
 
 function monthMarkedDays(month: MonthlyPlan): number {
@@ -972,14 +1001,14 @@ async function addFocusItem(monthKey: string) {
   const text = focusDraftFor(monthKey).trim()
   if (!text) return
 
-  const apiMonthId = monthApiId(monthKey)
   const month = monthlyPlans.value.find((item) => item.key === monthKey)
-  if (!apiMonthId || !month) {
-    showError('Não há mês cadastrado na API para receber este foco.')
+  if (!month) {
+    showError('Mês não encontrado para receber este foco.')
     return
   }
 
   try {
+    const apiMonthId = await ensureMonthId(month)
     const created = await roadmapMonthlyService.addFocus(apiMonthId, {
       text,
       order: focusItemsFor(month).length + 1,
@@ -1043,14 +1072,15 @@ async function handleFocusPhotoUpload(monthKey: string, event: Event) {
     return
   }
 
-  const apiMonthId = monthApiId(monthKey)
-  if (!apiMonthId) {
-    showError('Não há mês cadastrado na API para receber imagens.')
+  const month = monthlyPlans.value.find((item) => item.key === monthKey)
+  if (!month) {
+    showError('Mês não encontrado para receber imagens.')
     input.value = ''
     return
   }
 
   try {
+    const apiMonthId = await ensureMonthId(month)
     const photos = await roadmapMonthlyService.uploadPhotos(apiMonthId, validFiles)
     focusPhotos.value = {
       ...focusPhotos.value,
@@ -1149,13 +1179,8 @@ async function addMonthlyNote() {
   const month = monthlyPlans.value.find((item) => item.key === noteMonthKey.value)
   if (!text || !month || !noteDate.value) return
 
-  const apiMonthId = month.id
-  if (!apiMonthId) {
-    showError('Não há mês cadastrado na API para receber anotações.')
-    return
-  }
-
   try {
+    const apiMonthId = await ensureMonthId(month)
     const created = await roadmapMonthlyService.addQuickNote(
       apiMonthId,
       noteDate.value,

@@ -29,16 +29,14 @@ export interface RoadmapEntry {
 }
 
 export interface RoadmapMonth {
-  id: string
-  companyId: string
+  id: string | null
   key: string
   year: number
   month: number
   title: string
   main: string
   order: number
-  createdAt: string
-  updatedAt: string
+  persisted: boolean
   focusItems: RoadmapFocus[]
   photos: RoadmapPhoto[]
   entries: RoadmapEntry[]
@@ -53,8 +51,8 @@ export interface CreateRoadmapMonthInput {
   key: string
   year: number
   month: number
-  title: string
-  main: string
+  title?: string
+  main?: string
   order?: number
 }
 
@@ -75,7 +73,7 @@ const roadmapMonthlyService = {
     return response.data
   },
 
-  async createMonth(input: CreateRoadmapMonthInput) {
+  async ensureMonth(input: CreateRoadmapMonthInput) {
     const response = await api.post<RoadmapMonth>('/roadmap/monthly', input)
     return response.data
   },
