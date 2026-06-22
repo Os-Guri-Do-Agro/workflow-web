@@ -165,16 +165,14 @@ export interface RoadmapEntry {
 }
 
 export interface RoadmapMonth {
-  id: string
-  companyId: string
+  id: string | null // null = mês ainda NÃO persistido (sem conteúdo)
   key: string // "YYYY-MM"
   year: number
   month: number // zero-based (0–11)
-  title: string
-  main: string
+  title: string // default derivado ("Maio 2026") se não persistido
+  main: string // "" se não persistido
   order: number
-  createdAt: string
-  updatedAt: string
+  persisted: boolean // false = sintetizado pelo backend (vazio)
   focusItems: RoadmapFocus[]
   photos: RoadmapPhoto[]
   entries: RoadmapEntry[]
@@ -182,7 +180,7 @@ export interface RoadmapMonth {
 
 export interface RoadmapYearResponse {
   year: number
-  months: RoadmapMonth[]
+  months: RoadmapMonth[] // SEMPRE 12, em ordem cronológica (month 0→11)
 }
 ```
 
@@ -193,12 +191,25 @@ export interface RoadmapYearResponse {
 
 #### Meses
 
-| Método | Rota                         | Role   | Body / retorno                                                                                  |
-| ------ | ---------------------------- | ------ | ----------------------------------------------------------------------------------------------- |
-| GET    | `/roadmap/monthly?year=2026` | membro | → `RoadmapYearResponse`. `year` default = ano atual. Meses ordenados por `order`, depois `key`. |
-| POST   | `/roadmap/monthly`           | WORKER | Body `{ key, year, month, title, main, order? }` → `RoadmapMonth`. `409` se `key` já existir.   |
-| PATCH  | `/roadmap/monthly/:monthId`  | WORKER | Body `{ title?, main?, order? }` → `RoadmapMonth`.                                              |
-| DELETE | `/roadmap/monthly/:monthId`  | WORKER | → `{ message }`. Apaga focos/fotos/entries em cascata (e remove imagens do storage).            |
+| Método | Rota                         | Role   | Body / retorno                                                                                                                                                                                                                                 |
+| ------ | ---------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/roadmap/monthly?year=2026` | membro | → `RoadmapYearResponse`. `year` default = ano atual. Retorna **sempre os 12 meses** em ordem cronológica; os sem conteúdo vêm com `id: null` e `persisted: false`.                                                                             |
+| POST   | `/roadmap/monthly`           | WORKER | **Get-or-create idempotente** (garante o mês). Body `{ key, year, month, title?, main?, order? }` → `RoadmapMonth`. Se já existe, retorna o existente (não sobrescreve). `title`/`main` opcionais (default: "Maio 2026" / ""). **Não dá 409.** |
+| PATCH  | `/roadmap/monthly/:monthId`  | WORKER | Body `{ title?, main?, order? }` → `RoadmapMonth`. (Edita o mês já existente.)                                                                                                                                                                 |
+| DELETE | `/roadmap/monthly/:monthId`  | WORKER | → `{ message }`. Apaga focos/fotos/entries em cascata (e remove imagens do storage).                                                                                                                                                           |
+
+> **⚠️ Não existe "cadastrar mês" como passo manual.** O `GET` já devolve os 12
+> meses prontos para renderizar (os vazios com `id: null`). Ao adicionar o
+> primeiro item num mês `id: null`, faça o padrão **ensure-then-write**:
+>
+> ```typescript
+> // mês veio do GET com id: null → garante a linha e pega o id real
+> const ensured = month.id ?? (await roadmapApi.ensureMonth(month)).id
+> await roadmapApi.addEntry(ensured, { date: '2026-08-12', title: 'Kickoff', category: 'meeting' })
+> ```
+>
+> Pode chamar `ensureMonth` quantas vezes quiser — é seguro/idempotente. Veja o
+> spec dedicado: [`roadmap-monthly-frontend-spec.md`](./roadmap-monthly-frontend-spec.md).
 
 #### Focos
 
@@ -242,12 +253,14 @@ export const roadmapApi = {
   getYear: (year: number) =>
     api.get<RoadmapYearResponse>('/roadmap/monthly', { params: { year } }).then((r) => r.data),
 
-  createMonth: (input: {
+  // Get-or-create idempotente. title/main opcionais. Use antes de adicionar
+  // conteúdo a um mês que ainda não existe no banco.
+  ensureMonth: (input: {
     key: string
     year: number
     month: number
-    title: string
-    main: string
+    title?: string
+    main?: string
     order?: number
   }) => api.post<RoadmapMonth>('/roadmap/monthly', input).then((r) => r.data),
 

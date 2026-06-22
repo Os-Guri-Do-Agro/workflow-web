@@ -14,11 +14,13 @@ import {
   LogOut,
   Building2,
   CornerDownLeft,
+  FileSearch,
   ArrowUp,
   ArrowDown,
   Clock,
   type LucideIcon,
 } from 'lucide-vue-next'
+import aiService, { type SearchHit } from '@/service/ai/ai-service'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
 import { getInfoAuth } from '@/utils/authContent'
@@ -34,6 +36,10 @@ const selectedIndex = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 const companies = ref<{ id: string; name: string }[]>([])
 const recentIds = ref<string[]>(loadRecents())
+const workspaceHits = ref<SearchHit[]>([])
+const workspaceSearchLoading = ref(false)
+let workspaceSearchTimer: number | null = null
+let workspaceSearchSeq = 0
 
 const RECENTS_KEY = 'cmdk.recents'
 function loadRecents(): string[] {
@@ -105,6 +111,18 @@ const companyCommands = computed<Command[]>(() =>
 
 const allCommands = computed(() => [...staticCommands.value, ...companyCommands.value])
 
+const workspaceCommands = computed<Command[]>(() =>
+  workspaceHits.value.map((hit) => ({
+    id: `workspace-${hit.entityType}-${hit.entityId}`,
+    label: hit.title,
+    hint: hit.snippet,
+    icon: FileSearch,
+    section: 'Busca no workspace',
+    keywords: `${hit.entityType} ${hit.snippet}`,
+    action: () => go(hit.link),
+  })),
+)
+
 // Fuzzy subsequence match with score (lower = better)
 function fuzzyScore(text: string, q: string): number | null {
   const t = text.toLowerCase()
@@ -152,6 +170,9 @@ const groups = computed(() => {
     if (!groupsMap.has(cmd.section)) groupsMap.set(cmd.section, [])
     groupsMap.get(cmd.section)!.push(cmd)
   }
+  if (workspaceCommands.value.length) {
+    groupsMap.set('Busca no workspace', workspaceCommands.value)
+  }
   return groupsMap
 })
 
@@ -196,6 +217,9 @@ function open() {
 function close() {
   isOpen.value = false
   query.value = ''
+  workspaceHits.value = []
+  workspaceSearchLoading.value = false
+  if (workspaceSearchTimer) window.clearTimeout(workspaceSearchTimer)
 }
 
 function runSelected() {
@@ -230,9 +254,34 @@ function scrollToSelected() {
   })
 }
 
-watch(query, () => {
+watch(query, (value) => {
   selectedIndex.value = 0
+  scheduleWorkspaceSearch(value)
 })
+
+function scheduleWorkspaceSearch(value: string) {
+  if (workspaceSearchTimer) window.clearTimeout(workspaceSearchTimer)
+
+  const q = value.trim()
+  if (q.length < 2) {
+    workspaceHits.value = []
+    workspaceSearchLoading.value = false
+    return
+  }
+
+  workspaceSearchLoading.value = true
+  const seq = ++workspaceSearchSeq
+  workspaceSearchTimer = window.setTimeout(async () => {
+    try {
+      const hits = await aiService.search(q, 8)
+      if (seq === workspaceSearchSeq) workspaceHits.value = hits
+    } catch {
+      if (seq === workspaceSearchSeq) workspaceHits.value = []
+    } finally {
+      if (seq === workspaceSearchSeq) workspaceSearchLoading.value = false
+    }
+  }, 250)
+}
 
 function globalKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -291,7 +340,7 @@ defineExpose({ open })
           <div class="palette-results">
             <div v-if="flatList.length === 0" class="palette-empty">
               <Search :size="22" class="empty-icon" />
-              <span>Nenhum resultado para "{{ query }}"</span>
+              <span>{{ workspaceSearchLoading ? 'Buscando no workspace...' : `Nenhum resultado para "${query}"` }}</span>
             </div>
 
             <template v-for="[section, commands] in groups" :key="section">
