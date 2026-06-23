@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LayoutDashboard,
@@ -20,6 +20,7 @@ import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
+import InboxBell from './shared/InboxBell.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 
 const emit = defineEmits<{
@@ -42,7 +43,7 @@ const tabs = [
 ]
 
 const dockItems = computed(() => {
-  const items: Array<{ to: string; icon: any }> = [
+  const items: Array<{ to: string; icon: Component }> = [
     { to: '/dashboard', icon: LayoutDashboard },
     { to: '/board', icon: Columns3 },
     { to: '/roadmap', icon: Milestone },
@@ -161,6 +162,7 @@ const handleNew = () => {
           <Plus :size="14" />
           <span>Novo</span>
         </button>
+        <InboxBell />
         <ThemeToggle />
         <UserMenu :show-name="false" />
       </div>

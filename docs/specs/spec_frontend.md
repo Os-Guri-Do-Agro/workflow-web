@@ -410,7 +410,7 @@ Health:    GET /health
 - [ ] **Boards**: lista (cards c/ thumbnail) + canvas Excalidraw via `@hocuspocus/provider` + cursores + duplicar + compartilhar.
 - [ ] **Busca global (Ctrl+K)** + **Pergunte ao workspace** + **texto→diagrama** + **melhorar texto**.
 - [ ] **Compartilhar** board/roadmap + páginas públicas read-only (`/public/*`).
-- [ ] **Inbox** (sininho + dropdown + dispensar).
+- [x] **Inbox** (sininho + dropdown + dispensar).
 - [ ] **Colaboração**: comentários com @menção + reações em atividade/board; **timeline (feed)** no dashboard; botão **"resumo da semana" (digest)**.
 - [ ] Esconder ações WORKER+/ADMIN para CLIENT/VIEWER; tratar `403`/`503` em toasts.
 

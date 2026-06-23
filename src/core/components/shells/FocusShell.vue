@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   LayoutDashboard,
@@ -11,7 +11,6 @@ import {
   StickyNote,
   CalendarDays,
   Settings,
-  Bell,
   ListTodo,
   ChevronRight,
   BarChart3,
@@ -21,6 +20,7 @@ import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
+import InboxBell from './shared/InboxBell.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 
 defineEmits<{
@@ -33,7 +33,7 @@ const router = useRouter()
 const { quarters, firstMonth } = useNavQuarters()
 
 const railItems = computed(() => {
-  const items: Array<{ to: string; icon: any; label: string }> = [
+  const items: Array<{ to: string; icon: Component; label: string }> = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/board', icon: Columns3, label: 'Board' },
     { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
@@ -212,13 +212,7 @@ const showTasks = computed(() =>
       <header class="slim-top">
         <span class="slim-label">{{ currentLabel }}</span>
         <div class="spacer" />
-        <button
-          class="slim-btn"
-          title="Abrir command palette"
-          @click="$emit('open-command-palette')"
-        >
-          <Bell :size="14" />
-        </button>
+        <InboxBell />
         <ThemeToggle />
       </header>
       <div class="main-scroll">
