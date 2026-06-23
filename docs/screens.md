@@ -173,7 +173,9 @@ Boards de desenho colaborativo para rascunhos, fluxos e diagramas rápidos.
 - Lista de boards com criar, duplicar e remover
 - Canvas de desenho livre sincronizado via Yjs/Hocuspocus (`/collab`)
 - Cursores de presença via awareness
-- Controles de cor, espessura, desfazer e limpar
+- Controles de cor, espessura, desfazer, limpar, fullscreen, pan com espaço e resize por handles
+- Ferramentas para fluxos: conectores, setas, decisões em diamante, cards, texto, imagens e painel de propriedades
+- Atalhos: `Espaço` move a tela, `Ctrl+Z` desfaz, `Delete` remove seleção, `Ctrl+D` duplica seleção
 
 ---
 
