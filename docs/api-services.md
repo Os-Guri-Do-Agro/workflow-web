@@ -27,6 +27,7 @@ Content-Type: application/json
 | Backlog           | `service/backlog/backlog-service.ts`                     | Backlog por empresa            |
 | Dashboard         | `service/dashboard/dashboard-service.ts`                 | Métricas e workspace           |
 | Events            | `service/events/events-service.ts`                       | Calendário e Google            |
+| Boards            | `service/boards/boards-service.ts`                       | Canvas colaborativo Yjs        |
 | AI                | `service/ai/ai-service.ts`                               | Busca global e Copilot         |
 | Share             | `service/share/share-service.ts`                         | Links públicos read-only       |
 | Inbox             | `service/inbox/inbox-service.ts`                         | Notificações in-app            |
@@ -129,6 +130,20 @@ Content-Type: application/json
 | PATCH  | `/events/:id`              | Atualizar                         |
 | DELETE | `/events/:id`              | Remover                           |
 | GET    | `/auth/google/link`        | URL OAuth Google Calendar         |
+
+### Boards
+
+| Método | Endpoint                  | Descrição                          |
+| ------ | ------------------------- | ---------------------------------- |
+| GET    | `/boards`                 | Listar metadados dos boards        |
+| POST   | `/boards`                 | Criar board                        |
+| GET    | `/boards/:id`             | Obter metadados                    |
+| GET    | `/boards/:id/snapshot`    | Snapshot read-only do documento    |
+| PATCH  | `/boards/:id`             | Atualizar título/thumbnail         |
+| POST   | `/boards/:id/duplicate`   | Duplicar board e canvas            |
+| DELETE | `/boards/:id`             | Remover board                      |
+| POST   | `/boards/:id/thumbnail`   | Upload de thumbnail                |
+| WS     | `/collab`                 | Documento Yjs (`name = boardId`)   |
 
 ### AI / Workspace Intelligence
 

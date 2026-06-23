@@ -17,6 +17,8 @@ flowchart LR
   subgraph work [Trabalho — requer auth]
     Dash["/ · /dashboard"]
     Board["/board"]
+    CanvasList["/boards"]
+    CanvasDet["/boards/:id"]
     Roadmap["/roadmap"]
     Tasks["/tasks/:month"]
     TaskDet["/tasks/:month/:taskId"]
@@ -54,6 +56,8 @@ flowchart LR
 | `/`                     | home              | `DashboardView`        | ✅    | JWT     | —                       |
 | `/dashboard`            | dashboard         | `DashboardView`        | ✅    | JWT     | —                       |
 | `/board`                | board             | `BoardView`            | ✅    | JWT     | —                       |
+| `/boards`               | boards            | `BoardsListView`       | ✅    | JWT     | —                       |
+| `/boards/:id`           | board-canvas      | `BoardCanvasView`      | ✅    | JWT     | —                       |
 | `/roadmap`              | roadmap           | `RoadmapView`          | ✅    | JWT     | —                       |
 | `/tasks/:month`         | tasks             | `TasksView`            | ✅    | JWT     | —                       |
 | `/tasks/:month/:taskId` | task-details      | `TaskDetailsView`      | ✅    | JWT     | —                       |
@@ -80,6 +84,7 @@ A sidebar (`NavList.vue`) organiza itens em duas seções:
 | --------------- | ----------------------- | ---------------------------------------- |
 | Dashboard       | `/dashboard`            | Home alternativa                         |
 | Board           | `/board`                | Kanban cross-company                     |
+| Canvas          | `/boards`               | Boards de desenho colaborativo via Yjs   |
 | Roadmap         | `/roadmap`              | Timeline mockada de eventos e atividades |
 | Bug reports     | `/bug-reports`          | Lista interna                            |
 | Tarefas         | dinâmico                | Submenu por trimestre → mês              |
@@ -156,6 +161,19 @@ Kanban **cross-company** com todas as atividades do workspace.
 **Filtros:** busca textual, empresa, prioridade (P0–P3)
 
 **Interações:** drag-and-drop entre colunas, click abre detalhe da tarefa
+
+---
+
+### Canvas (`/boards` e `/boards/:id`)
+
+Boards de desenho colaborativo para rascunhos, fluxos e diagramas rápidos.
+
+**Blocos principais:**
+
+- Lista de boards com criar, duplicar e remover
+- Canvas de desenho livre sincronizado via Yjs/Hocuspocus (`/collab`)
+- Cursores de presença via awareness
+- Controles de cor, espessura, desfazer e limpar
 
 ---
 

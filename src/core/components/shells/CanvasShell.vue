@@ -15,6 +15,7 @@ import {
   BarChart3,
   CalendarRange,
   ChevronDown,
+  Paintbrush,
 } from 'lucide-vue-next'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
@@ -35,6 +36,7 @@ const { quarters, firstMonth } = useNavQuarters()
 const tabs = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/board', icon: Columns3, label: 'Board' },
+  { to: '/boards', icon: Paintbrush, label: 'Canvas' },
   { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
   { to: '/tickets', icon: Ticket, label: 'Tickets' },
   { to: '/variables', icon: KeyRound, label: 'Variáveis' },
@@ -46,6 +48,7 @@ const dockItems = computed(() => {
   const items: Array<{ to: string; icon: Component }> = [
     { to: '/dashboard', icon: LayoutDashboard },
     { to: '/board', icon: Columns3 },
+    { to: '/boards', icon: Paintbrush },
     { to: '/roadmap', icon: Milestone },
   ]
   if (firstMonth.value) items.push({ to: `/tasks/${firstMonth.value.id}`, icon: ListTodo })

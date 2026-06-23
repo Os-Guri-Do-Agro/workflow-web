@@ -22,6 +22,8 @@ import NotesView from '@/features/notes/NotesView.vue'
 import NoteEditorView from '@/features/notes/NoteEditorView.vue'
 import CalendarView from '@/features/calendar/CalendarView.vue'
 import RoadmapView from '@/features/roadmap/RoadmapView.vue'
+import BoardsListView from '@/features/boards/BoardsListView.vue'
+import BoardCanvasView from '@/features/boards/BoardCanvasView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
@@ -41,6 +43,8 @@ const router = createRouter({
     { path: '/r/:id', name: 'report-status', component: ReportStatusView },
     { path: '/', name: 'home', component: DashboardView },
     { path: '/board', name: 'board', component: BoardView },
+    { path: '/boards', name: 'boards', component: BoardsListView },
+    { path: '/boards/:id', name: 'board-canvas', component: BoardCanvasView },
     { path: '/dashboard', name: 'dashboard', component: DashboardView },
     { path: '/notes', name: 'notes', component: NotesView },
     { path: '/notes/:id', name: 'note-editor', component: NoteEditorView },

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
+    "@hocuspocus/provider": "^4.3.0",
     "@mdi/font": "^7.4.47",
     "@tanstack/vue-query": "^5.96.0",
     "@tiptap/extension-character-count": "^3.21.0",
@@ -58,7 +59,8 @@
     "vue-draggable-plus": "^0.6.1",
     "vue-echarts": "^8.0.1",
     "vue-router": "^5.0.3",
-    "vue-sonner": "^2.0.9"
+    "vue-sonner": "^2.0.9",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@tsconfig/node24": "^24.0.4",

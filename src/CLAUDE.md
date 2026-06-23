@@ -118,6 +118,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | --------------- | ---------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------- |
 | Dashboard       | [`features/dashboard/DashboardView.vue`](./features/dashboard/DashboardView.vue)               | `/` e `/dashboard` | Usa Vue Query                                                         |
 | Board           | [`features/board/BoardView.vue`](./features/board/BoardView.vue)                               | `/board`           | Kanban                                                                |
+| Canvas          | [`features/boards/BoardsListView.vue`](./features/boards/BoardsListView.vue)                   | `/boards`          | Boards de desenho Yjs; detalhe em `/boards/:id`                      |
 | Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais mockados                         |
 | Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês                                                   |
 | Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         |                                                                       |

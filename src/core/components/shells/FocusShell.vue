@@ -15,6 +15,7 @@ import {
   ChevronRight,
   BarChart3,
   CalendarRange,
+  Paintbrush,
 } from 'lucide-vue-next'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
@@ -36,6 +37,7 @@ const railItems = computed(() => {
   const items: Array<{ to: string; icon: Component; label: string }> = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/board', icon: Columns3, label: 'Board' },
+    { to: '/boards', icon: Paintbrush, label: 'Canvas' },
     { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
   ]
   if (firstMonth.value) {
@@ -170,6 +172,10 @@ const showTasks = computed(() =>
             <button class="quick-item" @click="router.push('/board')">
               <Columns3 :size="12" class="quick-icon" />
               <span class="quick-label">Board</span>
+            </button>
+            <button class="quick-item" @click="router.push('/boards')">
+              <Paintbrush :size="12" class="quick-icon" />
+              <span class="quick-label">Canvas</span>
             </button>
             <button class="quick-item" @click="router.push('/roadmap')">
               <Milestone :size="12" class="quick-icon" />
