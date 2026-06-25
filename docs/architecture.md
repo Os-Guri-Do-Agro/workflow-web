@@ -161,7 +161,7 @@ A role ativa vem da empresa selecionada (`workspaceStores.activeRole`).
 | Arquivo | Situação |
 |---|---|
 | `features/workspace/WorkspaceView.vue` | Implementada, mas **sem rota** — funcionalidade absorvida pelo Dashboard |
-| `features/tickets/TicketsView.vue` | Implementada, referenciada na nav/Command Palette, mas **rota `/tickets` não registrada** no router |
+| `features/tickets/TicketsView.vue` | Implementada e registrada em `/tickets` |
 
 ## Scripts npm
 

@@ -18,6 +18,9 @@ import {
   Calendar,
   Building2,
   Globe2,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
 } from 'lucide-vue-next'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
@@ -28,6 +31,10 @@ import { useWorkspaceDashboard } from '@/composables/useWorkspaceDashboard'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import OverviewChart from '@/components/dashboard/OverviewChart.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import { useCompanyFeed } from '@/composables/useCompanyFeed'
+import collaborationService from '@/service/collaboration/collaboration-service'
+import { useToast } from '@/composables/useToast'
+import aiService, { type SearchHit } from '@/service/ai/ai-service'
 
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent])
 
@@ -36,6 +43,16 @@ const activeCompanyStore = useActiveCompanyId()
 const companies = ref<any[]>([])
 const loadingCompanies = ref(true)
 const { firstMonth } = useNavQuarters()
+const { error: showError, success } = useToast()
+const { feed, loading: loadingFeed, error: feedError, refresh: refreshFeed } = useCompanyFeed(12)
+const digestLoading = ref(false)
+const digestSummary = ref('')
+const workspaceQuestion = ref('')
+const workspaceAnswer = ref('')
+const workspaceSources = ref<SearchHit[]>([])
+const askLoading = ref(false)
+const reindexLoading = ref(false)
+const searchStatus = ref<{ indexed: boolean; lastIndexedAt: string | null } | null>(null)
 
 const mode = ref<'company' | 'workspace'>(
   (localStorage.getItem('dashboard.mode') as 'company' | 'workspace') || 'company',
@@ -117,6 +134,7 @@ const ensureActiveCompany = async () => {
 onMounted(async () => {
   await ensureActiveCompany()
   findCompanies()
+  void loadSearchStatus()
 })
 
 const greeting = computed(() => {
@@ -345,6 +363,66 @@ const handleNewTask = () => {
 }
 
 const openCalendar = () => router.push('/calendar')
+
+async function loadSearchStatus() {
+  try {
+    searchStatus.value = await aiService.searchStatus()
+  } catch {
+    searchStatus.value = null
+  }
+}
+
+async function askWorkspace() {
+  const question = workspaceQuestion.value.trim()
+  if (!question) return
+
+  askLoading.value = true
+  try {
+    const response = await aiService.ask(question)
+    workspaceAnswer.value = response.answer
+    workspaceSources.value = response.sources
+  } catch {
+    showError('Não foi possível perguntar ao workspace')
+  } finally {
+    askLoading.value = false
+  }
+}
+
+async function forceReindex() {
+  reindexLoading.value = true
+  try {
+    await aiService.reindex()
+    await loadSearchStatus()
+    success('Reindexação solicitada')
+  } catch {
+    showError('Não foi possível reindexar o workspace')
+  } finally {
+    reindexLoading.value = false
+  }
+}
+
+const formatFeedDate = (value: string) =>
+  new Date(value).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+const feedActorName = (event: any) => event.actor?.name || event.actor?.email || 'Sistema'
+
+async function generateDigest() {
+  digestLoading.value = true
+  try {
+    const digest = await collaborationService.digest(7)
+    digestSummary.value = digest.summary
+    success('Digest gerado')
+  } catch {
+    showError('Não foi possível gerar o digest')
+  } finally {
+    digestLoading.value = false
+  }
+}
 
 // hero sparkline big (aggregate)
 const heroSpark = computed(() => {
@@ -577,6 +655,100 @@ const heroSpark = computed(() => {
       </div>
     </section>
 
+    <section class="copilot-section">
+      <header class="section-head">
+        <h2 class="section-title">
+          <Sparkles :size="15" class="section-icon" />
+          Pergunte ao workspace
+        </h2>
+        <div class="copilot-status">
+          <span>{{ searchStatus?.indexed ? 'Indexado' : 'Índice pendente' }}</span>
+          <small v-if="searchStatus?.lastIndexedAt">{{ formatFeedDate(searchStatus.lastIndexedAt) }}</small>
+          <button class="ghost-btn press" type="button" :disabled="reindexLoading" @click="forceReindex">
+            <RefreshCw :size="13" />
+            {{ reindexLoading ? 'Reindexando...' : 'Reindexar' }}
+          </button>
+        </div>
+      </header>
+
+      <form class="copilot-form" @submit.prevent="askWorkspace">
+        <textarea
+          v-model="workspaceQuestion"
+          rows="3"
+          class="copilot-input"
+          placeholder="Ex: quais entregas estão bloqueadas esta semana?"
+          :disabled="askLoading"
+        />
+        <button class="copilot-submit press" type="submit" :disabled="!workspaceQuestion.trim() || askLoading">
+          <Loader2 v-if="askLoading" :size="14" class="spin" />
+          <Sparkles v-else :size="14" />
+          Perguntar
+        </button>
+      </form>
+
+      <article v-if="workspaceAnswer" class="copilot-answer">
+        <strong>Resposta</strong>
+        <p>{{ workspaceAnswer }}</p>
+        <div v-if="workspaceSources.length" class="copilot-sources">
+          <span v-for="source in workspaceSources" :key="`${source.entityType}-${source.entityId}`">
+            {{ source.title }}
+          </span>
+        </div>
+      </article>
+    </section>
+
+    <section class="feed-section">
+      <header class="section-head">
+        <h2 class="section-title">
+          <MessageSquare :size="15" class="section-icon" />
+          Timeline da empresa
+        </h2>
+        <div class="feed-actions">
+          <button class="ghost-btn press" type="button" :disabled="loadingFeed" @click="refreshFeed">
+            <RefreshCw :size="13" />
+            Atualizar
+          </button>
+          <button class="ghost-btn press" type="button" :disabled="digestLoading" @click="generateDigest">
+            <Sparkles :size="13" />
+            {{ digestLoading ? 'Gerando...' : 'Resumo IA' }}
+          </button>
+        </div>
+      </header>
+
+      <article v-if="digestSummary" class="digest-card">
+        <span class="eyebrow">Digest IA</span>
+        <p>{{ digestSummary }}</p>
+      </article>
+
+      <div v-if="loadingFeed" class="feed-list">
+        <Skeleton v-for="i in 4" :key="i" type="row" />
+      </div>
+
+      <div v-else-if="feedError" class="agenda-empty">
+        <MessageSquare :size="22" />
+        <span>{{ feedError }}</span>
+      </div>
+
+      <div v-else-if="!feed.length" class="agenda-empty">
+        <MessageSquare :size="22" />
+        <span>Nenhum evento no feed ainda</span>
+      </div>
+
+      <div v-else class="feed-list">
+        <article v-for="event in feed" :key="event.id" class="feed-item">
+          <div class="feed-dot" />
+          <div class="feed-body">
+            <div class="feed-meta">
+              <strong>{{ feedActorName(event) }}</strong>
+              <span>{{ formatFeedDate(event.createdAt) }}</span>
+            </div>
+            <p>{{ event.summary }}</p>
+            <small>{{ event.entityType }} · {{ event.verb }}</small>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <!-- Projects -->
     <section class="projects-section">
       <header class="section-head">
@@ -689,8 +861,9 @@ const heroSpark = computed(() => {
 
 .hero-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .mode-toggle {
@@ -733,11 +906,12 @@ const heroSpark = computed(() => {
 .ghost-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 7px 12px;
+  min-height: 36px;
+  padding: 8px 14px;
   border-radius: 8px;
   font-family: inherit;
   font-size: 12.5px;
@@ -1322,6 +1496,204 @@ const heroSpark = computed(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 10px;
+}
+
+/* ─── Copilot ─── */
+.copilot-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+}
+
+.copilot-section .section-head,
+.feed-section .section-head {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 2px;
+}
+
+.copilot-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.copilot-status > span {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.copilot-status small {
+  color: var(--text-4);
+}
+
+.copilot-form {
+  display: grid;
+  gap: 10px;
+}
+
+.copilot-input {
+  width: 100%;
+  min-height: 86px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+}
+
+.copilot-input:focus {
+  border-color: var(--border-strong);
+}
+
+.copilot-submit {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-fg);
+  min-height: 38px;
+  padding: 9px 14px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.copilot-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.copilot-answer {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.copilot-answer p {
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.copilot-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.copilot-sources span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-3);
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+/* ─── Feed ─── */
+.feed-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+}
+
+.feed-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.digest-card {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+}
+
+.digest-card p {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.feed-list {
+  display: grid;
+  gap: 10px;
+}
+
+.feed-item {
+  display: grid;
+  grid-template-columns: 12px 1fr;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.feed-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.feed-body {
+  min-width: 0;
+}
+
+.feed-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.feed-meta strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.feed-body p {
+  margin: 6px 0 4px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.feed-body small {
+  color: var(--text-4);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .agenda-item {

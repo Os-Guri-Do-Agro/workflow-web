@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { onMounted, onUnmounted } from 'vue'
 import inboxService from '@/service/inbox/inbox-service'
+import realtimeService from '@/service/realtime/realtime-service'
 
 export const inboxKeys = {
   all: ['inbox'] as const,
@@ -9,6 +11,7 @@ export const inboxKeys = {
 
 export function useInbox() {
   const queryClient = useQueryClient()
+  let unsubscribeRealtime: (() => boolean) | null = null
 
   const notifications = useQuery({
     queryKey: inboxKeys.list,
@@ -42,6 +45,18 @@ export function useInbox() {
   const dismiss = useMutation({
     mutationFn: (id: string) => inboxService.dismiss(id),
     onSuccess: invalidateInbox,
+  })
+
+  onMounted(() => {
+    unsubscribeRealtime = realtimeService.connect({
+      notificationNew: () => {
+        void invalidateInbox()
+      },
+    }) as (() => boolean) | null
+  })
+
+  onUnmounted(() => {
+    unsubscribeRealtime?.()
   })
 
   return {

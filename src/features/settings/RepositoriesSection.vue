@@ -15,6 +15,7 @@ import {
 } from 'lucide-vue-next'
 import githubConnectionService from '@/service/github-connection/github-connection-service'
 import { useToast } from '@/composables/useToast'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 const { success: toastSuccess, error: toastError } = useToast()
 
@@ -31,6 +32,7 @@ const connections = ref<Connection[]>([])
 const loading = ref(false)
 const syncingId = ref<string | null>(null)
 const removingId = ref<string | null>(null)
+const connectionPendingRemoval = ref<Connection | null>(null)
 
 // Modal de criar
 const showCreate = ref(false)
@@ -103,17 +105,20 @@ const syncConnection = async (id: string, silent = false) => {
   }
 }
 
-const removeConnection = async (id: string, ownerLogin: string) => {
-  if (
-    !confirm(
-      `Remover conexão "${ownerLogin}"?\n\nIsso apaga TODOS os repositórios importados desta org. (não toca no GitHub)`,
-    )
-  )
-    return
+const requestRemoveConnection = (connection: Connection) => {
+  connectionPendingRemoval.value = connection
+}
+
+const removeConnection = async () => {
+  const connection = connectionPendingRemoval.value
+  if (!connection) return
+  const { id } = connection
+
   removingId.value = id
   try {
     await githubConnectionService.remove(id)
     toastSuccess('Conexão removida')
+    connectionPendingRemoval.value = null
     await load()
   } catch (e: any) {
     toastError(e?.response?.data?.message || 'Erro ao remover')
@@ -198,7 +203,7 @@ onMounted(() => load())
               class="conn-btn conn-btn--danger"
               :disabled="removingId === c.id"
               :aria-label="`Remover ${c.ownerLogin}`"
-              @click="removeConnection(c.id, c.ownerLogin)"
+              @click="requestRemoveConnection(c)"
             >
               <Loader2 v-if="removingId === c.id" :size="13" class="spin" />
               <Trash2 v-else :size="13" />
@@ -300,6 +305,17 @@ onMounted(() => load())
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      :model-value="!!connectionPendingRemoval"
+      danger
+      title="Remover conexão?"
+      :message="`Isso apaga todos os repositórios importados de '${connectionPendingRemoval?.ownerLogin || ''}'. Não toca no GitHub.`"
+      confirm-label="Remover"
+      :loading="!!removingId"
+      @update:model-value="(value) => { if (!value) connectionPendingRemoval = null }"
+      @confirm="removeConnection"
+    />
   </div>
 </template>
 

@@ -27,16 +27,22 @@ import {
   Paintbrush,
   Save,
   SendToBack,
+  Sparkles,
   Square,
   StickyNote,
   Type,
   Trash2,
   Undo2,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-vue-next'
 import { useBoard, useBoardMutations } from '@/composables/useBoards'
 import { useToast } from '@/composables/useToast'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import boardsService from '@/service/boards/boards-service'
+import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
+import aiService from '@/service/ai/ai-service'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 type BoardPoint = {
   x: number
@@ -152,16 +158,20 @@ const synced = ref(false)
 const showInspector = ref(true)
 const showGrid = ref(true)
 const actionsMenuOpen = ref(false)
+const showClearConfirm = ref(false)
 const isFullscreen = ref(false)
 const isSpacePanning = ref(false)
 const viewportOffset = ref<BoardPoint>({ x: 0, y: 0 })
 const surfaceSize = ref({ width: 1, height: 1 })
+const zoom = ref(1)
 const tool = ref<CanvasTool>('select')
 const color = ref('var(--accent)')
 const customColor = ref('#f59e0b')
 const backgroundColor = ref('transparent')
 const strokeWidth = ref(3)
 const titleDraft = ref('')
+const diagramPrompt = ref('')
+const diagramLoading = ref(false)
 const colorOptions = [
   { label: 'Texto', value: 'var(--text)' },
   { label: 'Erro', value: 'var(--err)' },
@@ -223,15 +233,20 @@ const objectCount = computed(() => elements.value.length)
 const selectedElement = computed(() => elements.value.find((element) => element.id === selectedElementId.value) ?? null)
 const selectedBounds = computed(() => (selectedElement.value ? elementBounds(selectedElement.value) : null))
 const isPanningMode = computed(() => isSpacePanning.value || !!panState.value)
+const viewportSize = computed(() => ({
+  width: surfaceSize.value.width / zoom.value,
+  height: surfaceSize.value.height / zoom.value,
+}))
+const zoomLabel = computed(() => `${Math.round(zoom.value * 100)}%`)
 const svgViewBox = computed(() => {
-  return `${viewportOffset.value.x} ${viewportOffset.value.y} ${surfaceSize.value.width} ${surfaceSize.value.height}`
+  return `${viewportOffset.value.x} ${viewportOffset.value.y} ${viewportSize.value.width} ${viewportSize.value.height}`
 })
 const gridRect = computed(() => {
   return {
     x: viewportOffset.value.x,
     y: viewportOffset.value.y,
-    width: surfaceSize.value.width,
-    height: surfaceSize.value.height,
+    width: viewportSize.value.width,
+    height: viewportSize.value.height,
   }
 })
 
@@ -269,6 +284,7 @@ async function connectBoard(id: string) {
 
   await applySnapshot(id)
   migrateLegacyStrokes()
+  scheduleSurfaceSizeSync()
 
   provider = new HocuspocusProvider({
     url: collabUrl(),
@@ -296,6 +312,7 @@ async function connectBoard(id: string) {
     synced.value = true
     syncElements()
     migrateLegacyStrokes()
+    scheduleSurfaceSizeSync()
   })
   provider.on('authenticationFailed', (event: { reason: string }) => {
     status.value = 'disconnected'
@@ -406,8 +423,8 @@ function pointFromEvent(event: PointerEvent | MouseEvent): BoardPoint {
   const pressure = 'pressure' in event && event.pressure > 0 ? event.pressure : 0.5
 
   return {
-    x: Math.round(event.clientX - rect.left + viewportOffset.value.x),
-    y: Math.round(event.clientY - rect.top + viewportOffset.value.y),
+    x: Math.round((event.clientX - rect.left) / zoom.value + viewportOffset.value.x),
+    y: Math.round((event.clientY - rect.top) / zoom.value + viewportOffset.value.y),
     pressure,
   }
 }
@@ -534,8 +551,8 @@ function handlePointerMove(event: PointerEvent) {
 
 function handleWindowPointerMove(event: PointerEvent) {
   if (panState.value) {
-    const dx = event.clientX - panState.value.originClient.x
-    const dy = event.clientY - panState.value.originClient.y
+    const dx = (event.clientX - panState.value.originClient.x) / zoom.value
+    const dy = (event.clientY - panState.value.originClient.y) / zoom.value
     viewportOffset.value = {
       x: panState.value.originOffset.x - dx,
       y: panState.value.originOffset.y - dy,
@@ -589,6 +606,35 @@ function startPan(event: PointerEvent) {
 
 function resetViewport() {
   viewportOffset.value = { x: 0, y: 0 }
+  zoom.value = 1
+}
+
+function setZoom(nextZoom: number) {
+  const clamped = Math.min(2.5, Math.max(0.35, nextZoom))
+  if (clamped === zoom.value) return
+
+  const center = {
+    x: viewportOffset.value.x + viewportSize.value.width / 2,
+    y: viewportOffset.value.y + viewportSize.value.height / 2,
+  }
+
+  zoom.value = clamped
+  viewportOffset.value = {
+    x: Math.round(center.x - viewportSize.value.width / 2),
+    y: Math.round(center.y - viewportSize.value.height / 2),
+  }
+}
+
+function zoomIn() {
+  const currentPercent = Math.round(zoom.value * 100)
+  const nextPercent = Math.ceil(currentPercent / 10) * 10 + 10
+  setZoom(nextPercent / 100)
+}
+
+function zoomOut() {
+  const currentPercent = Math.round(zoom.value * 100)
+  const nextPercent = Math.floor(currentPercent / 10) * 10 - 10
+  setZoom(nextPercent / 100)
 }
 
 function handleResizePointerDown(handle: ResizeHandle, event: PointerEvent) {
@@ -1026,8 +1072,12 @@ function handleOpacityInput(event: Event) {
 
 function handleClear() {
   if (!canWrite.value || objectCount.value === 0) return
-  if (!window.confirm('Limpar todos os objetos deste board?')) return
+  showClearConfirm.value = true
+}
+
+function confirmClear() {
   if (yElements?.length) yElements.delete(0, yElements.length)
+  showClearConfirm.value = false
   success('Canvas limpo')
 }
 
@@ -1079,6 +1129,68 @@ function createQuickShape(type: 'line' | 'arrow' | 'rect' | 'ellipse' | 'diamond
   tool.value = 'select'
 }
 
+async function generateDiagramFromPrompt() {
+  const prompt = diagramPrompt.value.trim()
+  if (!prompt || !yElements) return
+
+  diagramLoading.value = true
+  try {
+    const diagram = await aiService.diagram(prompt)
+    const origin = centerPoint()
+    const nodePositions = new Map<string, BoardPoint>()
+    const generated: BoardElement[] = diagram.nodes.map((node, index) => {
+      const column = index % 3
+      const row = Math.floor(index / 3)
+      const start = { x: origin.x + column * 300 - 300, y: origin.y + row * 190 - 120 }
+      nodePositions.set(node.id, start)
+      return {
+        id: crypto.randomUUID(),
+        type: node.kind === 'decision' ? 'diamond' : 'note',
+        color: 'var(--text)',
+        width: 2,
+        opacity: 1,
+        start,
+        end: { x: start.x + 220, y: start.y + 110 },
+        text: node.label,
+        fontSize: 16,
+        fill: node.kind === 'decision'
+          ? 'color-mix(in srgb, var(--warn) 18%, var(--surface))'
+          : 'var(--surface-3)',
+        fillStyle: 'solid',
+        variant: 'flow-card',
+        createdAt: Date.now(),
+      }
+    })
+
+    const edges: BoardElement[] = diagram.edges.flatMap((edge) => {
+      const from = nodePositions.get(edge.from)
+      const to = nodePositions.get(edge.to)
+      if (!from || !to) return []
+      return [{
+        id: crypto.randomUUID(),
+        type: 'arrow',
+        color: 'var(--accent)',
+        width: 2,
+        opacity: 1,
+        start: { x: from.x + 220, y: from.y + 55 },
+        end: { x: to.x, y: to.y + 55 },
+        text: edge.label,
+        fontSize: 12,
+        createdAt: Date.now(),
+      }]
+    })
+
+    yElements.push([...generated, ...edges])
+    diagramPrompt.value = ''
+    actionsMenuOpen.value = false
+    success('Diagrama gerado no canvas')
+  } catch {
+    showError('Não foi possível gerar o diagrama')
+  } finally {
+    diagramLoading.value = false
+  }
+}
+
 function handleImageSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -1110,10 +1222,9 @@ function handleImageSelected(event: Event) {
 }
 
 function centerPoint(): BoardPoint {
-  const rect = svgRef.value?.getBoundingClientRect()
   return {
-    x: Math.round((rect?.width ?? 640) / 2 - 160),
-    y: Math.round((rect?.height ?? 360) / 2 - 100),
+    x: Math.round(viewportOffset.value.x + viewportSize.value.width / 2 - 160),
+    y: Math.round(viewportOffset.value.y + viewportSize.value.height / 2 - 100),
   }
 }
 
@@ -1371,6 +1482,24 @@ function handleKeyDown(event: KeyboardEvent) {
     return
   }
 
+  if (event.ctrlKey || event.metaKey) {
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault()
+      zoomIn()
+      return
+    }
+    if (event.key === '-' || event.key === '_') {
+      event.preventDefault()
+      zoomOut()
+      return
+    }
+    if (event.key === '0') {
+      event.preventDefault()
+      resetViewport()
+      return
+    }
+  }
+
   if (event.key === 'Delete' || event.key === 'Backspace') {
     if (selectedElement.value) {
       event.preventDefault()
@@ -1426,10 +1555,20 @@ function handleFullscreenChange() {
 
 function updateSurfaceSize() {
   const svg = svgRef.value
+  const rect = svg?.getBoundingClientRect()
+  const fallbackHeight = Math.max(window.innerHeight - 140, 480)
   surfaceSize.value = {
-    width: Math.max(svg?.clientWidth ?? 1, 1),
-    height: Math.max(svg?.clientHeight ?? 1, 1),
+    width: Math.max(rect?.width ?? svg?.clientWidth ?? 1, 1),
+    height: Math.max(rect?.height ?? svg?.clientHeight ?? fallbackHeight, 1),
   }
+}
+
+function scheduleSurfaceSizeSync() {
+  void nextTick(() => {
+    updateSurfaceSize()
+    window.requestAnimationFrame(updateSurfaceSize)
+    window.setTimeout(updateSurfaceSize, 120)
+  })
 }
 
 function cleanupCanvasPage() {
@@ -1446,7 +1585,7 @@ onMounted(() => {
   window.addEventListener('keyup', handleKeyUp)
   window.addEventListener('resize', updateSurfaceSize)
   document.addEventListener('fullscreenchange', handleFullscreenChange)
-  nextTick(updateSurfaceSize)
+  scheduleSurfaceSizeSync()
 })
 onBeforeUnmount(cleanupCanvasPage)
 </script>
@@ -1535,6 +1674,20 @@ onBeforeUnmount(cleanupCanvasPage)
 
           <div class="toolbar-divider" />
 
+          <div class="zoom-controls" aria-label="Zoom do canvas">
+            <button class="tool-btn tool-btn--square" type="button" title="Ctrl -" @click="zoomOut">
+              <ZoomOut :size="14" />
+            </button>
+            <button class="zoom-value" type="button" title="Ctrl 0" @click="resetViewport">
+              {{ zoomLabel }}
+            </button>
+            <button class="tool-btn tool-btn--square" type="button" title="Ctrl +" @click="zoomIn">
+              <ZoomIn :size="14" />
+            </button>
+          </div>
+
+          <div class="toolbar-divider" />
+
           <button class="tool-btn" type="button" :disabled="!canWrite" title="Ctrl+Z" @click="handleUndo">
             <Undo2 :size="14" />
             Desfazer
@@ -1605,6 +1758,29 @@ onBeforeUnmount(cleanupCanvasPage)
                     <span>Excluir item</span>
                   </button>
                 </div>
+              </div>
+
+              <div class="actions-menu__section">
+                <span class="actions-menu__label">IA</span>
+                <textarea
+                  v-model="diagramPrompt"
+                  class="actions-menu__textarea"
+                  rows="3"
+                  placeholder="Descreva um fluxo para transformar em diagrama..."
+                  :disabled="diagramLoading || !canWrite"
+                />
+                <button
+                  class="actions-menu__row"
+                  type="button"
+                  :disabled="!diagramPrompt.trim() || diagramLoading || !canWrite"
+                  @click="generateDiagramFromPrompt"
+                >
+                  <Sparkles :size="14" />
+                  <span>
+                    <strong>{{ diagramLoading ? 'Gerando...' : 'Texto para diagrama' }}</strong>
+                    <small>Insere cards e conectores no canvas</small>
+                  </span>
+                </button>
               </div>
 
               <div class="actions-menu__section">
@@ -1840,21 +2016,21 @@ onBeforeUnmount(cleanupCanvasPage)
               class="resize-handle resize-handle--e"
               :cx="selectedBounds.x + selectedBounds.width + 8"
               :cy="selectedBounds.y + selectedBounds.height / 2"
-              r="6"
+              r="4.5"
               @pointerdown="handleResizePointerDown('e', $event)"
             />
             <circle
               class="resize-handle resize-handle--s"
               :cx="selectedBounds.x + selectedBounds.width / 2"
               :cy="selectedBounds.y + selectedBounds.height + 8"
-              r="6"
+              r="4.5"
               @pointerdown="handleResizePointerDown('s', $event)"
             />
             <circle
               class="resize-handle resize-handle--se"
               :cx="selectedBounds.x + selectedBounds.width + 8"
               :cy="selectedBounds.y + selectedBounds.height + 8"
-              r="7"
+              r="5.5"
               @pointerdown="handleResizePointerDown('se', $event)"
             />
           </g>
@@ -1874,7 +2050,7 @@ onBeforeUnmount(cleanupCanvasPage)
           v-model="textDraft.value"
           class="text-draft-input"
           :style="{
-            transform: `translate(${textDraft.x - viewportOffset.x}px, ${textDraft.y - viewportOffset.y}px)`,
+            transform: `translate(${(textDraft.x - viewportOffset.x) * zoom}px, ${(textDraft.y - viewportOffset.y) * zoom}px)`,
             color: textDraft.color,
             fontSize: `${textDraft.fontSize}px`,
           }"
@@ -1953,7 +2129,7 @@ onBeforeUnmount(cleanupCanvasPage)
           :key="presence.clientId"
           class="remote-cursor"
           :style="{
-            transform: `translate(${presence.cursor.x - viewportOffset.x}px, ${presence.cursor.y - viewportOffset.y}px)`,
+            transform: `translate(${(presence.cursor.x - viewportOffset.x) * zoom}px, ${(presence.cursor.y - viewportOffset.y) * zoom}px)`,
             '--cursor-color': presence.color,
           }"
         >
@@ -2091,8 +2267,19 @@ onBeforeUnmount(cleanupCanvasPage)
           <span class="inspector-label">Atalhos</span>
           <p>Espaço move a tela. Ctrl+Z desfaz. Delete remove. V/P/A/R/D/O/T/N alternam ferramentas.</p>
         </div>
+
+        <CommentsPanel entity-type="BOARD" :entity-id="boardId" title="Comentários do board" compact />
       </aside>
     </section>
+
+    <ConfirmDialog
+      v-model="showClearConfirm"
+      danger
+      title="Limpar canvas?"
+      message="Isso remove todos os objetos deste board. Esta ação não pode ser desfeita."
+      confirm-label="Limpar canvas"
+      @confirm="confirmClear"
+    />
   </main>
 </template>
 
@@ -2384,8 +2571,50 @@ onBeforeUnmount(cleanupCanvasPage)
   flex: 0 0 auto;
 }
 
+.tool-btn--square {
+  width: 34px;
+  justify-content: center;
+  padding: 0;
+}
+
 .tool-btn--danger {
   color: var(--err);
+}
+
+.zoom-controls {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  flex: 0 0 auto;
+}
+
+.zoom-controls .tool-btn {
+  height: 26px;
+  border: 0;
+  background: transparent;
+}
+
+.zoom-value {
+  min-width: 52px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.zoom-value:hover {
+  color: var(--text);
+  background: var(--surface-3);
 }
 
 .actions-menu-wrap {
@@ -2450,21 +2679,21 @@ onBeforeUnmount(cleanupCanvasPage)
 .actions-menu__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
+  gap: 10px;
 }
 
 .actions-menu__grid button,
 .actions-menu__row {
   width: 100%;
-  min-height: 36px;
-  padding: 8px 9px;
+  min-height: 42px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--surface-2);
   color: var(--text-2);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-family: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -2488,7 +2717,7 @@ onBeforeUnmount(cleanupCanvasPage)
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .actions-menu__row strong {
@@ -2502,6 +2731,24 @@ onBeforeUnmount(cleanupCanvasPage)
   line-height: 1.25;
 }
 
+.actions-menu__textarea {
+  width: 100%;
+  min-height: 82px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.actions-menu__textarea:focus {
+  border-color: var(--border-strong);
+}
+
 .actions-menu__grid button.danger,
 .actions-menu__row.danger {
   color: var(--err);
@@ -2511,6 +2758,7 @@ onBeforeUnmount(cleanupCanvasPage)
   display: grid;
   grid-template-columns: 1fr;
   flex: 1;
+  height: calc(100vh - 96px);
   min-height: 0;
   overflow: hidden;
   background: var(--surface-2);
@@ -2523,7 +2771,8 @@ onBeforeUnmount(cleanupCanvasPage)
 .canvas-stage {
   position: relative;
   min-width: 0;
-  min-height: 0;
+  min-height: 480px;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -2540,6 +2789,7 @@ onBeforeUnmount(cleanupCanvasPage)
 .drawing-surface {
   width: 100%;
   height: 100%;
+  min-height: 480px;
   display: block;
   touch-action: none;
   cursor: crosshair;
@@ -2593,7 +2843,7 @@ onBeforeUnmount(cleanupCanvasPage)
 }
 
 .selected {
-  stroke-dasharray: 7 5;
+  stroke-dasharray: none;
   filter: none;
   outline: none;
 }
@@ -2605,7 +2855,7 @@ onBeforeUnmount(cleanupCanvasPage)
 .flow-note.selected rect,
 .shape.selected,
 .image-element.selected {
-  stroke: var(--text);
+  stroke: var(--accent);
   stroke-width: 2;
 }
 
@@ -2732,20 +2982,21 @@ onBeforeUnmount(cleanupCanvasPage)
 }
 
 .selection-box rect {
-  fill: none;
-  stroke: var(--text);
-  stroke-width: 1.5;
-  stroke-dasharray: 6 5;
+  fill: color-mix(in srgb, var(--accent) 5%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1.25;
+  stroke-dasharray: none;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 
 .resize-handle {
-  fill: var(--surface);
-  stroke: var(--text);
-  stroke-width: 1.5;
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
   pointer-events: all;
   vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
 }
 
 .resize-handle--e {

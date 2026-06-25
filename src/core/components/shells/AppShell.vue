@@ -16,7 +16,9 @@ const bare = computed(
     route.name === 'signup' ||
     route.name === 'download' ||
     route.name === 'bug-report' ||
-    route.name === 'report-status',
+    route.name === 'report-status' ||
+    route.name === 'public-board' ||
+    route.name === 'public-roadmap',
 )
 
 const ActiveShell = computed(() => {

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Copy,
+  ImagePlus,
   Loader2,
   MoreVertical,
   Paintbrush,
@@ -14,6 +15,9 @@ import { useBoards, useBoardMutations } from '@/composables/useBoards'
 import { useToast } from '@/composables/useToast'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import type { BoardMeta } from '@/service/boards/boards-service'
+import boardsService from '@/service/boards/boards-service'
+import shareService from '@/service/share/share-service'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 const router = useRouter()
 const workspace = useWorkspaceStore()
@@ -24,6 +28,7 @@ const { createBoard, duplicateBoard, removeBoard } = useBoardMutations()
 const search = ref('')
 const title = ref('')
 const menuOpenId = ref<string | null>(null)
+const boardPendingRemoval = ref<BoardMeta | null>(null)
 
 const roleKnown = computed(() => !!workspace.activeRole)
 const canWrite = computed(() => !roleKnown.value || workspace.canEdit)
@@ -77,11 +82,47 @@ async function handleDuplicate(board: BoardMeta) {
   }
 }
 
-async function handleRemove(board: BoardMeta) {
-  if (!window.confirm(`Remover "${board.title}"?`)) return
+async function handleShare(board: BoardMeta) {
+  if (!canWrite.value) return
+
+  try {
+    const link = await shareService.shareBoard(board.id)
+    await navigator.clipboard.writeText(`${window.location.origin}${link.path}`)
+    menuOpenId.value = null
+    success('Link público copiado')
+  } catch {
+    showError('Não foi possível compartilhar o board')
+  }
+}
+
+async function handleThumbnail(board: BoardMeta, event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  try {
+    await boardsService.uploadThumbnail(board.id, file)
+    menuOpenId.value = null
+    await refetch()
+    success('Thumbnail atualizada')
+  } catch {
+    showError('Não foi possível enviar a thumbnail')
+  }
+}
+
+function requestRemove(board: BoardMeta) {
+  boardPendingRemoval.value = board
+  menuOpenId.value = null
+}
+
+async function confirmRemove() {
+  const board = boardPendingRemoval.value
+  if (!board) return
 
   try {
     await removeBoard.mutateAsync(board.id)
+    boardPendingRemoval.value = null
     menuOpenId.value = null
     success('Board removido')
   } catch {
@@ -177,11 +218,20 @@ function formatUpdatedAt(value: string) {
                   <Copy :size="13" />
                   Duplicar
                 </button>
+                <button type="button" :disabled="!canWrite" @click="handleShare(board)">
+                  <Copy :size="13" />
+                  Compartilhar
+                </button>
+                <label class="menu-file" :class="{ disabled: !canWrite }">
+                  <ImagePlus :size="13" />
+                  Thumbnail
+                  <input type="file" accept="image/*" :disabled="!canWrite" @change="handleThumbnail(board, $event)" />
+                </label>
                 <button
                   type="button"
                   class="danger"
                   :disabled="!canWrite"
-                  @click="handleRemove(board)"
+                  @click="requestRemove(board)"
                 >
                   <Trash2 :size="13" />
                   Remover
@@ -193,6 +243,17 @@ function formatUpdatedAt(value: string) {
         </div>
       </article>
     </section>
+
+    <ConfirmDialog
+      :model-value="!!boardPendingRemoval"
+      danger
+      title="Remover board?"
+      :message="`Isso removerá '${boardPendingRemoval?.title || ''}' e o canvas associado.`"
+      confirm-label="Remover"
+      :loading="removeBoard.isPending.value"
+      @update:model-value="(value) => { if (!value) boardPendingRemoval = null }"
+      @confirm="confirmRemove"
+    />
   </main>
 </template>
 
@@ -407,8 +468,8 @@ function formatUpdatedAt(value: string) {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  width: 140px;
-  padding: 5px;
+  width: 168px;
+  padding: 8px;
   z-index: 20;
   background: var(--surface);
   border: 1px solid var(--border-strong);
@@ -416,9 +477,10 @@ function formatUpdatedAt(value: string) {
   box-shadow: var(--shadow-overlay);
 }
 
-.menu-pop button {
+.menu-pop button,
+.menu-file {
   width: 100%;
-  height: 30px;
+  min-height: 36px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -428,11 +490,12 @@ function formatUpdatedAt(value: string) {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 0 8px;
+  gap: 10px;
+  padding: 8px 10px;
 }
 
-.menu-pop button:hover {
+.menu-pop button:hover,
+.menu-file:hover {
   background: var(--surface-2);
   color: var(--text);
 }
@@ -444,6 +507,15 @@ function formatUpdatedAt(value: string) {
 .menu-pop button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.menu-file.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.menu-file input {
+  display: none;
 }
 
 .state {

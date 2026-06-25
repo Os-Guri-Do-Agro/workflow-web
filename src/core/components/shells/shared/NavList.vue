@@ -13,6 +13,7 @@ import {
   Bug,
   Milestone,
   Paintbrush,
+  Ticket,
   type LucideIcon,
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
@@ -51,6 +52,7 @@ const mainItems = computed<NavItem[]>(() => [
   { title: 'Canvas', icon: Paintbrush, to: '/boards', section: 'Trabalho' },
   { title: 'Roadmap', icon: Milestone, to: '/roadmap', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', section: 'Trabalho' },
+  { title: 'Tickets', icon: Ticket, to: '/tickets', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
   { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },

@@ -37,6 +37,7 @@ import {
 import Pill from '@/components/ui/Pill.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 
 function getActivityMonthId(activity: any): string | undefined {
   if (!activity) return undefined
@@ -936,7 +937,15 @@ const deleteAttachment = async (attachmentId: string) => {
             </a>
           </div>
         </section>
+
       </aside>
+
+      <CommentsPanel
+        class="comments-wide"
+        entity-type="ACTIVITY"
+        :entity-id="taskId"
+        title="Comentários da atividade"
+      />
     </div>
   </div>
 
@@ -1650,6 +1659,10 @@ const deleteAttachment = async (attachmentId: string) => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.comments-wide {
+  grid-column: 1 / -1;
 }
 
 .panel {
