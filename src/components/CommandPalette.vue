@@ -18,6 +18,7 @@ import {
   ArrowUp,
   ArrowDown,
   Clock,
+  Paintbrush,
   type LucideIcon,
 } from 'lucide-vue-next'
 import aiService, { type SearchHit } from '@/service/ai/ai-service'
@@ -42,6 +43,15 @@ let workspaceSearchTimer: number | null = null
 let workspaceSearchSeq = 0
 
 const RECENTS_KEY = 'cmdk.recents'
+type CompanyCommandSource = {
+  id?: string
+  name?: string
+  company?: {
+    id?: string
+    name?: string
+  }
+}
+
 function loadRecents(): string[] {
   try {
     return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]')
@@ -56,11 +66,13 @@ function saveRecents() {
 const loadCompanies = async () => {
   try {
     const response = await companiesServices.getCompany()
-    const data = Array.isArray(response) ? response : response?.data || []
-    companies.value = data.map((item: any) => ({
-      id: item.company?.id || item.id,
-      name: item.company?.name || item.name,
-    }))
+    const data = (Array.isArray(response) ? response : response?.data || []) as CompanyCommandSource[]
+    companies.value = data
+      .map((item) => ({
+        id: item.company?.id || item.id,
+        name: item.company?.name || item.name,
+      }))
+      .filter((item): item is { id: string; name: string } => !!item.id && !!item.name)
   } catch {
     /* silent */
   }
@@ -79,6 +91,7 @@ interface Command {
 const staticCommands = computed<Command[]>(() => [
   { id: 'nav-dash', label: 'Dashboard', hint: 'Visão geral', icon: LayoutDashboard, section: 'Navegação', keywords: 'home inicio painel', action: () => go('/') },
   { id: 'nav-roadmap', label: 'Roadmap', hint: 'Eventos e atividades', icon: Milestone, section: 'Navegação', keywords: 'planejamento timeline estrategia entregas', action: () => go('/roadmap') },
+  { id: 'nav-canvas', label: 'Canvas', hint: 'Boards de desenho', icon: Paintbrush, section: 'Navegação', keywords: 'desenho lousa whiteboard yjs', action: () => go('/boards') },
   { id: 'nav-tickets', label: 'Tickets', hint: 'Gerenciar tickets', icon: Ticket, section: 'Navegação', keywords: 'suporte', action: () => go('/tickets') },
   { id: 'nav-vars', label: 'Variáveis', hint: 'Credenciais e URLs', icon: KeyRound, section: 'Navegação', keywords: 'senhas secrets env aws', action: () => go('/variables') },
   { id: 'nav-users', label: 'Usuários / Empresas', hint: 'Gestão de acesso', icon: Users, section: 'Navegação', keywords: 'pessoas time membros', action: () => go('/company-users') },

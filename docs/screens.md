@@ -12,11 +12,15 @@ flowchart LR
     Download["/download"]
     BugPublic["/report/:companyId"]
     BugStatus["/r/:id"]
+    PublicBoard["/public/board/:token"]
+    PublicRoadmap["/public/roadmap/:token"]
   end
 
   subgraph work [Trabalho — requer auth]
     Dash["/ · /dashboard"]
     Board["/board"]
+    CanvasList["/boards"]
+    CanvasDet["/boards/:id"]
     Roadmap["/roadmap"]
     Tasks["/tasks/:month"]
     TaskDet["/tasks/:month/:taskId"]
@@ -51,9 +55,13 @@ flowchart LR
 | `/report/:companyId`    | bug-report        | `ReportBugView`        | ❌    | Pública | —                       |
 | `/reports/:companyId`   | bug-report        | _(alias)_              | ❌    | Pública | —                       |
 | `/r/:id`                | report-status     | `ReportStatusView`     | ❌    | Pública | —                       |
+| `/public/board/:token`  | public-board      | `PublicBoardView`      | ❌    | Pública | —                       |
+| `/public/roadmap/:token`| public-roadmap    | `PublicRoadmapView`    | ❌    | Pública | —                       |
 | `/`                     | home              | `DashboardView`        | ✅    | JWT     | —                       |
 | `/dashboard`            | dashboard         | `DashboardView`        | ✅    | JWT     | —                       |
 | `/board`                | board             | `BoardView`            | ✅    | JWT     | —                       |
+| `/boards`               | boards            | `BoardsListView`       | ✅    | JWT     | —                       |
+| `/boards/:id`           | board-canvas      | `BoardCanvasView`      | ✅    | JWT     | —                       |
 | `/roadmap`              | roadmap           | `RoadmapView`          | ✅    | JWT     | —                       |
 | `/tasks/:month`         | tasks             | `TasksView`            | ✅    | JWT     | —                       |
 | `/tasks/:month/:taskId` | task-details      | `TaskDetailsView`      | ✅    | JWT     | —                       |
@@ -68,7 +76,7 @@ flowchart LR
 | `/bug-reports/:id`      | bug-report-detail | `BugReportDetailView`  | ✅    | JWT     | —                       |
 | `/repos`                | repos-list        | `ReposListView`        | ✅    | JWT     | —                       |
 | `/repos/:id`            | repo-browser      | `RepoBrowserView`      | ✅    | JWT     | —                       |
-| `/tickets`              | —                 | `TicketsView`          | —     | —       | **Rota não registrada** |
+| `/tickets`              | tickets           | `TicketsView`          | ✅    | JWT     | —                       |
 
 ## Navegação principal
 
@@ -80,8 +88,10 @@ A sidebar (`NavList.vue`) organiza itens em duas seções:
 | --------------- | ----------------------- | ---------------------------------------- |
 | Dashboard       | `/dashboard`            | Home alternativa                         |
 | Board           | `/board`                | Kanban cross-company                     |
+| Canvas          | `/boards`               | Boards de desenho colaborativo via Yjs   |
 | Roadmap         | `/roadmap`              | Timeline mockada de eventos e atividades |
 | Bug reports     | `/bug-reports`          | Lista interna                            |
+| Tickets         | `/tickets`              | Tickets internos                         |
 | Tarefas         | dinâmico                | Submenu por trimestre → mês              |
 | ↳ Relatório Q\* | `/relatorio/:quarterId` | Editor TipTap por trimestre              |
 | ↳ Mês           | `/tasks/:monthId`       | Board + backlog do mês                   |
@@ -101,7 +111,7 @@ A sidebar (`NavList.vue`) organiza itens em duas seções:
 | ------------- | ----------- | ------------------------------ |
 | Repositórios  | `/repos`    | URL direta ou Command Palette  |
 | Configurações | `/settings` | UserMenu ou Cmd+K              |
-| Tickets       | `/tickets`  | Shells + Cmd+K (rota pendente) |
+| Tickets       | `/tickets`  | Sidebar, shells e Cmd+K        |
 
 ## Detalhamento por tela
 
@@ -141,6 +151,8 @@ Visão geral da empresa ou do workspace completo.
 - Gráfico de tendência semanal (criadas vs concluídas)
 - Backlog resumido
 - Próximos eventos
+- Timeline da empresa (`/feed`) com atualização realtime e digest IA (`/copilot/digest`)
+- Pergunte ao workspace (`/copilot/ask`) com fontes e status/reindex de busca
 - Atalhos para criar tarefa / trocar empresa
 
 **Dados:** Vue Query (`useDashboardMetrics`, `useBacklog`, `useWorkspaceDashboard`, `useUpcomingEvents`)
@@ -159,6 +171,23 @@ Kanban **cross-company** com todas as atividades do workspace.
 
 ---
 
+### Canvas (`/boards` e `/boards/:id`)
+
+Boards de desenho colaborativo para rascunhos, fluxos e diagramas rápidos.
+
+**Blocos principais:**
+
+- Lista de boards com criar, duplicar e remover
+- Canvas de desenho livre sincronizado via Yjs/Hocuspocus (`/collab`)
+- Cursores de presença via awareness
+- Texto para diagrama via IA (`/copilot/diagram`)
+- Upload de thumbnail do board
+- Controles de cor, espessura, desfazer, limpar, fullscreen, pan com espaço e resize por handles
+- Ferramentas para fluxos: conectores, setas, decisões em diamante, cards, texto, imagens e painel de propriedades
+- Atalhos: `Espaço` move a tela, `Ctrl+Z` desfaz, `Delete` remove seleção, `Ctrl+D` duplica seleção
+
+---
+
 ### Roadmap (`/roadmap`)
 
 Tela de roadmap com alternância por tipo: timeline anual de eventos/atividades ou calendários mensais com datas marcadas.
@@ -173,6 +202,7 @@ Tela de roadmap com alternância por tipo: timeline anual de eventos/atividades 
 - Barras de atividades por período, progresso e status
 - Marcos pontuais com data e label
 - Calendários mensais com eventos/notas por data, anotações locais e exportação via PDF
+- Geração de roadmap por prompt (`/copilot/roadmap`)
 
 ---
 
@@ -206,7 +236,7 @@ Tela focada em uma atividade individual.
 - Anexos
 - Histórico de status
 - Sugestão com IA (`POST /activity/:id/suggest`)
-- Comentários / atividade
+- Comentários da atividade com menções e reações (`/comments`)
 
 ---
 
@@ -266,6 +296,8 @@ Editor TipTap completo com toolbar rica.
 
 **Extensões:** headings, listas, task lists, tabelas, code blocks com syntax highlight, imagens, links, cores, alinhamento
 
+**IA:** melhorar texto via `/copilot/improve`
+
 **Rota especial:** `/notes/new` cria nota nova
 
 ---
@@ -313,6 +345,7 @@ Calendário mensal com eventos.
 
 - Mensagens, transcrição, metadados do vídeo
 - Thread de comunicação
+- Comentários internos com menções e reações
 
 ---
 
@@ -347,9 +380,25 @@ Painel de preferências e integrações.
 
 ---
 
-### Tickets (`/tickets`) — pendente
+### Tickets (`/tickets`)
 
-View implementada (`TicketsView.vue`) com CRUD de tickets internos, mas **a rota não está registrada** no router. Referenciada nos shells e Command Palette.
+View implementada (`TicketsView.vue`) com CRUD de tickets internos e rota registrada no router.
+
+---
+
+### Compartilhamento público
+
+#### Board público (`/public/board/:token`)
+
+- Sem autenticação e sem App Shell
+- Usa `GET /public/board/:token`
+- Renderiza snapshot Yjs em modo somente leitura
+
+#### Roadmap público (`/public/roadmap/:token`)
+
+- Sem autenticação e sem App Shell
+- Usa `GET /public/roadmap/:token`
+- Renderiza os 12 meses em modo somente leitura
 
 ---
 

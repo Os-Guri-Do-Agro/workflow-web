@@ -27,9 +27,15 @@ Content-Type: application/json
 | Backlog           | `service/backlog/backlog-service.ts`                     | Backlog por empresa            |
 | Dashboard         | `service/dashboard/dashboard-service.ts`                 | Métricas e workspace           |
 | Events            | `service/events/events-service.ts`                       | Calendário e Google            |
+| Boards            | `service/boards/boards-service.ts`                       | Canvas colaborativo Yjs        |
 | AI                | `service/ai/ai-service.ts`                               | Busca global e Copilot         |
 | Share             | `service/share/share-service.ts`                         | Links públicos read-only       |
 | Inbox             | `service/inbox/inbox-service.ts`                         | Notificações in-app            |
+| Collaboration     | `service/collaboration/collaboration-service.ts`         | Comentários, reações e feed    |
+| Presence          | `service/presence/presence-service.ts`                   | Usuários online por empresa    |
+| Realtime          | `service/realtime/realtime-service.ts`                   | Eventos socket.io              |
+| Export            | `service/export/export-service.ts`                       | Downloads gerados no backend   |
+| Health            | `service/health/health-service.ts`                       | Status público da API          |
 | Notes             | `service/notes/notes-service.ts`                         | Notas e pastas                 |
 | Bug Report        | `service/bug-report/bug-report-service.ts`               | Reports públicos e internos    |
 | Repository        | `service/repository/repository-service.ts`               | Git browser                    |
@@ -130,6 +136,20 @@ Content-Type: application/json
 | DELETE | `/events/:id`              | Remover                           |
 | GET    | `/auth/google/link`        | URL OAuth Google Calendar         |
 
+### Boards
+
+| Método | Endpoint                  | Descrição                          |
+| ------ | ------------------------- | ---------------------------------- |
+| GET    | `/boards`                 | Listar metadados dos boards        |
+| POST   | `/boards`                 | Criar board                        |
+| GET    | `/boards/:id`             | Obter metadados                    |
+| GET    | `/boards/:id/snapshot`    | Snapshot read-only do documento    |
+| PATCH  | `/boards/:id`             | Atualizar título/thumbnail         |
+| POST   | `/boards/:id/duplicate`   | Duplicar board e canvas            |
+| DELETE | `/boards/:id`             | Remover board                      |
+| POST   | `/boards/:id/thumbnail`   | Upload de thumbnail                |
+| WS     | `/collab`                 | Documento Yjs (`name = boardId`)   |
+
 ### AI / Workspace Intelligence
 
 | Método | Endpoint            | Descrição                              |
@@ -164,6 +184,33 @@ Rotas `/public/*` usam `publicApi`, sem `Authorization` nem `x-company-id`.
 | PATCH  | `/inbox/:id/read`     | Marcar notificação como lida    |
 | POST   | `/inbox/read-all`     | Marcar todas como lidas         |
 | DELETE | `/inbox/:id`          | Dispensar/remover uma notificação |
+
+### Collaboration
+
+| Método | Endpoint                          | Descrição                         |
+| ------ | --------------------------------- | --------------------------------- |
+| GET    | `/comments?entityType=&entityId=` | Comentários de uma entidade       |
+| POST   | `/comments`                       | Criar comentário                  |
+| PATCH  | `/comments/:id`                   | Editar comentário do autor        |
+| DELETE | `/comments/:id`                   | Remover comentário do autor       |
+| POST   | `/comments/:id/reactions`         | Adicionar reação                  |
+| DELETE | `/comments/:id/reactions/:emoji`  | Remover reação                    |
+| GET    | `/feed?take=50`                   | Timeline da empresa               |
+| POST   | `/copilot/digest`                 | Digest IA do feed                 |
+
+### Realtime & Presence
+
+| Canal / Método | Endpoint      | Descrição                                                       |
+| -------------- | ------------- | --------------------------------------------------------------- |
+| socket.io      | `/socket.io`  | `notification:new`, `feed:new`, `comment:new`, `presence:update` |
+| GET            | `/presence`   | Presença inicial `{ online: string[] }`                         |
+
+### Export & Health
+
+| Método | Endpoint                    | Descrição                    |
+| ------ | --------------------------- | ---------------------------- |
+| GET    | `/export/roadmap.pdf?year=` | Download do PDF do roadmap   |
+| GET    | `/health`                   | Status público da API        |
 
 ### Notes
 

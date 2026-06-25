@@ -6,6 +6,7 @@ import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
 import Underline from '@tiptap/extension-underline'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -32,6 +33,7 @@ const selectedFolder = ref('')
 const tags = ref<string[]>([])
 const newTag = ref('')
 const isPinned = ref(false)
+const showDeleteConfirm = ref(false)
 
 const editor = useEditor({
   content: '',
@@ -76,10 +78,14 @@ function save() {
 }
 
 function deleteNote() {
-  if (props.note?.id && confirm('Tem certeza que deseja excluir esta nota?')) {
-    emit('delete', props.note.id)
-    close()
-  }
+  if (props.note?.id) showDeleteConfirm.value = true
+}
+
+function confirmDeleteNote() {
+  if (!props.note?.id) return
+  emit('delete', props.note.id)
+  showDeleteConfirm.value = false
+  close()
 }
 
 function addTag() {
@@ -268,6 +274,15 @@ const selectedColor = ref(0)
         </div>
       </div>
     </Transition>
+
+    <ConfirmDialog
+      v-model="showDeleteConfirm"
+      danger
+      title="Excluir nota?"
+      message="A nota será removida permanentemente."
+      confirm-label="Excluir"
+      @confirm="confirmDeleteNote"
+    />
   </Teleport>
 </template>
 

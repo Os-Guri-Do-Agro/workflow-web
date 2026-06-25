@@ -15,6 +15,7 @@ import {
   Milestone,
   Plus,
   Rocket,
+  Sparkles,
   StickyNote,
   Target,
   UsersRound,
@@ -30,7 +31,11 @@ import roadmapMonthlyService, {
   type RoadmapPhoto,
 } from '@/service/roadmap/roadmap-monthly-service'
 import quarterService from '@/service/quarters/quarters-service'
+import exportService from '@/service/export/export-service'
+import shareService from '@/service/share/share-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
+import aiService from '@/service/ai/ai-service'
 
 const { success, error: showError, info } = useToast()
 const workspace = useWorkspaceStore()
@@ -106,6 +111,8 @@ type CalendarCategoryMeta = {
 const roadmapMode = ref<RoadmapMode>('monthly')
 const showMonthlyHelp = ref(false)
 const isRoadmapPrinting = ref(false)
+const roadmapPrompt = ref('')
+const roadmapPromptLoading = ref(false)
 const weekDays = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SAB']
 
 const calendarCategoryMeta: Record<CalendarCategory, CalendarCategoryMeta> = {
@@ -434,6 +441,7 @@ const extraFocusItems = ref<Record<string, string[]>>({})
 const focusPhotos = ref<Record<string, string[]>>({})
 const focusIds = ref<Record<string, string[]>>({})
 const focusPhotoIds = ref<Record<string, string[]>>({})
+const showAllMonthlyPlans = ref(false)
 const monthEntryPreviewLimit = 8
 
 const monthlyPlans = ref<MonthlyPlan[]>([])
@@ -792,8 +800,22 @@ const monthlySummary = computed(() => {
 
 const hasMonthlyPlans = computed(() => monthlyPlans.value.length > 0)
 
+const currentMonthKey = computed(() => {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${now.getFullYear()}-${month}`
+})
+
+const visibleMonthlyPlans = computed(() => {
+  if (showAllMonthlyPlans.value) return monthlyPlans.value
+  return monthlyPlans.value.filter((month) => month.key >= currentMonthKey.value)
+})
+
+const hiddenPastMonthsCount = computed(() => monthlyPlans.value.length - visibleMonthlyPlans.value.length)
+const hasVisibleMonthlyPlans = computed(() => visibleMonthlyPlans.value.length > 0)
+
 const selectedNoteMonth = computed(() =>
-  monthlyPlans.value.find((month) => month.key === noteMonthKey.value) ?? monthlyPlans.value[0],
+  visibleMonthlyPlans.value.find((month) => month.key === noteMonthKey.value) ?? visibleMonthlyPlans.value[0] ?? monthlyPlans.value[0],
 )
 
 const printedMonthlyPlans = computed(() =>
@@ -864,14 +886,21 @@ function applyRoadmapApiMonths(months: RoadmapMonth[]) {
   focusPhotos.value = nextFocusPhotos
   focusPhotoIds.value = nextFocusPhotoIds
 
-  if (!monthlyPlans.value.some((month) => month.key === noteMonthKey.value)) {
-    noteMonthKey.value = monthlyPlans.value[0]?.key ?? noteMonthKey.value
+  if (!visibleMonthlyPlans.value.some((month) => month.key === noteMonthKey.value)) {
+    noteMonthKey.value = visibleMonthlyPlans.value[0]?.key ?? monthlyPlans.value[0]?.key ?? noteMonthKey.value
   }
   if (exportMonthKey.value !== 'all' && !monthlyPlans.value.some((month) => month.key === exportMonthKey.value)) {
     exportMonthKey.value = 'all'
   }
   if (selectedMonthDetailsKey.value && !monthlyPlans.value.some((month) => month.key === selectedMonthDetailsKey.value)) {
     selectedMonthDetailsKey.value = null
+  }
+}
+
+function toggleAllMonthlyPlans() {
+  showAllMonthlyPlans.value = !showAllMonthlyPlans.value
+  if (!showAllMonthlyPlans.value && !visibleMonthlyPlans.value.some((month) => month.key === noteMonthKey.value)) {
+    noteMonthKey.value = visibleMonthlyPlans.value[0]?.key ?? noteMonthKey.value
   }
 }
 
@@ -1201,6 +1230,14 @@ async function exportMonthlyPdf() {
     return
   }
 
+  try {
+    await exportService.downloadRoadmapPdf(roadmapStart.getFullYear())
+    success('Download do PDF iniciado')
+    return
+  } catch (err) {
+    showError(apiErrorMessage(err, 'Não foi possível exportar pelo servidor. Abrindo impressão local.'))
+  }
+
   isRoadmapPrinting.value = true
   document.body.classList.add('roadmap-printing')
   const cleanup = () => {
@@ -1212,6 +1249,33 @@ async function exportMonthlyPdf() {
   await nextTick()
   window.print()
   window.setTimeout(cleanup, 800)
+}
+
+async function shareRoadmap() {
+  try {
+    const link = await shareService.shareRoadmap(roadmapStart.getFullYear())
+    await navigator.clipboard.writeText(`${window.location.origin}${link.path}`)
+    success('Link público do roadmap copiado')
+  } catch (err) {
+    showError(apiErrorMessage(err, 'Não foi possível compartilhar o roadmap'))
+  }
+}
+
+async function generateRoadmapFromPrompt() {
+  const prompt = roadmapPrompt.value.trim()
+  if (!prompt) return
+
+  roadmapPromptLoading.value = true
+  try {
+    await aiService.roadmap(prompt, roadmapStart.getFullYear())
+    roadmapPrompt.value = ''
+    await fetchMonthlyRoadmap()
+    success('Roadmap gerado pela IA')
+  } catch (err) {
+    showError(apiErrorMessage(err, 'Não foi possível gerar o roadmap'))
+  } finally {
+    roadmapPromptLoading.value = false
+  }
 }
 
 function resetFilters() {
@@ -1333,9 +1397,9 @@ function resetFilters() {
               </div>
             </article>
           </div>
-          <div v-if="hasMonthlyPlans && canEditMonthlyRoadmap" class="monthly-note-form">
+          <div v-if="hasVisibleMonthlyPlans && canEditMonthlyRoadmap" class="monthly-note-form">
             <select v-model="noteMonthKey" class="monthly-control" aria-label="Mes da nota">
-              <option v-for="month in monthlyPlans" :key="month.key" :value="month.key">
+              <option v-for="month in visibleMonthlyPlans" :key="month.key" :value="month.key">
                 {{ month.title }}
               </option>
             </select>
@@ -1355,24 +1419,10 @@ function resetFilters() {
           <p v-else-if="!hasMonthlyPlans" class="monthly-readonly-hint">
             Nenhum m&ecirc;s cadastrado na API para receber anota&ccedil;&otilde;es.
           </p>
+          <p v-else-if="!hasVisibleMonthlyPlans" class="monthly-readonly-hint">
+            N&atilde;o h&aacute; meses atuais ou futuros para anota&ccedil;&otilde;es. Use "Ver todos" para acessar meses anteriores.
+          </p>
           <p v-else class="monthly-readonly-hint">Seu perfil pode visualizar o roadmap mensal, mas n&atilde;o pode criar anota&ccedil;&otilde;es.</p>
-        </div>
-
-        <aside class="monthly-side-panel">
-          <div class="monthly-export-card">
-            <FileDown :size="16" />
-            <div>
-              <strong>Exporta&ccedil;&atilde;o</strong>
-              <p>Escolha um m&ecirc;s ou exporte todos os calend&aacute;rios em uma vers&atilde;o limpa para PDF.</p>
-            </div>
-            <select v-model="exportMonthKey" class="monthly-control monthly-export-select" aria-label="Mes para exportar">
-              <option value="all">Todos os meses</option>
-              <option v-for="month in monthlyPlans" :key="`export-${month.key}`" :value="month.key">
-                {{ month.title }}
-              </option>
-            </select>
-            <button class="monthly-export-btn press" :disabled="!hasMonthlyPlans" @click="exportMonthlyPdf">Exportar PDF</button>
-          </div>
 
           <section class="monthly-legend" aria-label="Legenda dos calendarios">
             <strong>Legenda</strong>
@@ -1386,6 +1436,46 @@ function resetFilters() {
               {{ meta.label }}
             </span>
           </section>
+        </div>
+
+        <aside class="monthly-side-panel">
+          <div class="monthly-export-card monthly-prompt-card">
+            <Sparkles :size="16" />
+            <div>
+              <strong>Gerar por prompt</strong>
+              <p>Descreva objetivos, entregas e restrições para a IA gerar e persistir o roadmap mensal.</p>
+            </div>
+            <textarea
+              v-model="roadmapPrompt"
+              class="monthly-control monthly-ai-prompt"
+              rows="4"
+              placeholder="Ex: planeje o roadmap de 2026 para lançar onboarding, billing e métricas..."
+              :disabled="roadmapPromptLoading || !canEditMonthlyRoadmap"
+            />
+            <button
+              class="monthly-export-btn press"
+              :disabled="!roadmapPrompt.trim() || roadmapPromptLoading || !canEditMonthlyRoadmap"
+              @click="generateRoadmapFromPrompt"
+            >
+              {{ roadmapPromptLoading ? 'Gerando...' : 'Gerar roadmap' }}
+            </button>
+          </div>
+
+          <div class="monthly-export-card">
+            <FileDown :size="16" />
+            <div>
+              <strong>Exporta&ccedil;&atilde;o</strong>
+              <p>Escolha um m&ecirc;s ou exporte todos os calend&aacute;rios em uma vers&atilde;o limpa para PDF.</p>
+            </div>
+            <select v-model="exportMonthKey" class="monthly-control monthly-export-select" aria-label="Mes para exportar">
+              <option value="all">Todos os meses</option>
+              <option v-for="month in monthlyPlans" :key="`export-${month.key}`" :value="month.key">
+                {{ month.title }}
+              </option>
+            </select>
+            <button class="monthly-export-btn press" :disabled="!hasMonthlyPlans" @click="exportMonthlyPdf">Exportar PDF</button>
+            <button class="monthly-export-btn press" :disabled="!hasMonthlyPlans || !canEditMonthlyRoadmap" @click="shareRoadmap">Compartilhar</button>
+          </div>
         </aside>
       </section>
 
@@ -1401,14 +1491,46 @@ function resetFilters() {
         </div>
       </section>
 
-      <div v-else class="months-grid">
+      <section v-else-if="hasMonthlyPlans" class="monthly-filter-bar no-print">
+        <div>
+          <span class="text-eyebrow">Filtro de meses</span>
+          <p>
+            {{
+              showAllMonthlyPlans
+                ? 'Mostrando todos os meses do ano.'
+                : hiddenPastMonthsCount > 0
+                  ? `${hiddenPastMonthsCount} meses anteriores ocultos.`
+                  : 'Mostrando meses atuais e futuros.'
+            }}
+          </p>
+        </div>
+        <button
+          v-if="hiddenPastMonthsCount > 0 || showAllMonthlyPlans"
+          class="monthly-filter-btn press"
+          type="button"
+          @click="toggleAllMonthlyPlans"
+        >
+          {{ showAllMonthlyPlans ? 'Ocultar anteriores' : 'Ver todos' }}
+        </button>
+      </section>
+
+      <section v-if="hasMonthlyPlans && !hasVisibleMonthlyPlans" class="monthly-empty-state">
+        <CalendarDays :size="22" />
+        <div>
+          <span class="text-eyebrow">Todos os meses estão no passado</span>
+          <h2>Nenhum mês atual ou futuro para exibir</h2>
+          <p>Use "Ver todos" para consultar meses anteriores deste roadmap.</p>
+        </div>
+      </section>
+
+      <div v-if="hasVisibleMonthlyPlans" class="months-grid">
         <article
-          v-for="(month, index) in monthlyPlans"
+          v-for="(month, index) in visibleMonthlyPlans"
           :key="month.key"
           class="month-card"
         >
           <header class="month-head">
-            <span>Etapa {{ index + 1 }} de {{ monthlyPlans.length }}</span>
+            <span>Etapa {{ monthlyPlans.findIndex((item) => item.key === month.key) + 1 }} de {{ monthlyPlans.length }}</span>
             <div>
               <h2>{{ month.title }}</h2>
               <p>{{ month.main }}</p>
@@ -1788,6 +1910,14 @@ function resetFilters() {
               </div>
             </article>
           </section>
+
+          <CommentsPanel
+            v-if="selectedMonthDetails.id"
+            entity-type="ROADMAP_MONTH"
+            :entity-id="selectedMonthDetails.id"
+            title="Comentários do mês"
+            compact
+          />
         </aside>
       </div>
     </template>
@@ -2990,8 +3120,9 @@ function resetFilters() {
 
 .monthly-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 420px);
+  gap: 18px;
+  align-items: start;
   margin-bottom: 18px;
   padding: 14px;
   border-radius: var(--radius-xl);
@@ -2999,8 +3130,8 @@ function resetFilters() {
 
 .monthly-note-panel {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 16px;
   align-items: start;
   padding: 16px;
   background: var(--surface-2);
@@ -3010,9 +3141,12 @@ function resetFilters() {
 
 .monthly-note-head {
   display: flex;
+  grid-column: 1 / -1;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
 }
 
 .monthly-note-title {
@@ -3035,7 +3169,7 @@ function resetFilters() {
   flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
-  padding-top: 22px;
+  padding-top: 0;
 }
 
 .monthly-note-panel h2 {
@@ -3062,8 +3196,8 @@ function resetFilters() {
 
 .monthly-action-context {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
 .monthly-action-context article {
@@ -3072,7 +3206,8 @@ function resetFilters() {
   grid-template-columns: auto 1fr;
   gap: 8px;
   align-items: start;
-  padding: 10px;
+  min-height: 72px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -3111,8 +3246,19 @@ function resetFilters() {
 
 .monthly-note-form {
   display: grid;
-  grid-template-columns: 150px 150px minmax(180px, 1fr) auto;
-  gap: 8px;
+  grid-template-columns: minmax(150px, 0.85fr) minmax(150px, 0.85fr);
+  gap: 12px;
+  align-content: start;
+}
+
+.monthly-note-form .monthly-control--text {
+  grid-column: 1 / -1;
+}
+
+.monthly-note-form .monthly-add-btn {
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-width: 132px;
 }
 
 .monthly-control {
@@ -3147,14 +3293,22 @@ select.monthly-control {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
+.monthly-ai-prompt {
+  min-height: 96px;
+  height: auto;
+  resize: vertical;
+  padding: 10px 12px;
+  line-height: 1.45;
+}
+
 .monthly-add-btn,
 .monthly-export-btn {
-  height: 40px;
+  min-height: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 0 13px;
+  gap: 9px;
+  padding: 9px 15px;
   border-radius: var(--radius);
   border: 1px solid color-mix(in srgb, var(--accent) 72%, transparent);
   background: var(--accent);
@@ -3173,12 +3327,13 @@ select.monthly-control {
 
 .monthly-side-panel {
   display: grid;
-  gap: 10px;
+  gap: 14px;
+  align-content: start;
 }
 
 .monthly-export-card,
 .monthly-legend {
-  padding: 12px;
+  padding: 14px;
   border-radius: var(--radius-lg);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -3187,7 +3342,7 @@ select.monthly-control {
 .monthly-export-card {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 10px;
+  gap: 14px;
   align-items: start;
 }
 
@@ -3208,15 +3363,60 @@ select.monthly-control {
   border-color: var(--border);
 }
 
+.monthly-export-card .monthly-export-btn + .monthly-export-btn {
+  margin-top: -4px;
+}
+
 .monthly-export-select {
   grid-column: 1 / -1;
   width: 100%;
 }
 
 .monthly-legend {
+  grid-column: 1 / -1;
+}
+
+.monthly-note-panel .monthly-legend {
+  margin-top: 2px;
+  background: var(--surface);
+}
+
+.monthly-prompt-card {
+  grid-template-columns: 1fr;
+}
+
+.monthly-prompt-card > svg {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-bottom: -4px;
+  color: var(--accent);
+}
+
+.monthly-prompt-card > div {
+  display: grid;
+  gap: 4px;
+}
+
+.monthly-prompt-card > div::before {
+  content: none;
+}
+
+.monthly-prompt-card .monthly-ai-prompt {
+  min-height: 118px;
+  grid-column: auto;
+  width: 100%;
+}
+
+.monthly-prompt-card .monthly-export-btn {
+  min-height: 44px;
+  grid-column: auto;
+}
+
+.monthly-legend {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -3267,6 +3467,44 @@ select.monthly-control {
 
 .monthly-legend-item {
   padding: 5px 8px;
+}
+
+.monthly-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.monthly-filter-bar p {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.monthly-filter-btn {
+  min-height: 38px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.monthly-filter-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
 }
 
 .months-grid {
@@ -4098,9 +4336,12 @@ select.monthly-control {
 
   .monthly-note-panel,
   .monthly-action-context,
-  .monthly-note-form,
   .months-grid {
     grid-template-columns: 1fr;
+  }
+
+  .monthly-note-form {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 
@@ -4131,6 +4372,15 @@ select.monthly-control {
   .monthly-note-head {
     flex-direction: column;
     gap: 10px;
+  }
+
+  .monthly-filter-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .monthly-note-form {
+    grid-template-columns: 1fr;
   }
 
   .monthly-help-row {

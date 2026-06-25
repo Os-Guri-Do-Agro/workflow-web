@@ -1,5 +1,11 @@
 import api from '../api'
 
+export interface PublicUser {
+  id: string
+  name: string
+  email: string
+}
+
 export interface AppNotification {
   id: string
   type: string
@@ -8,6 +14,8 @@ export interface AppNotification {
   link: string | null
   read: boolean
   createdAt: string
+  userId: string
+  user: PublicUser | null
 }
 
 const inboxService = {

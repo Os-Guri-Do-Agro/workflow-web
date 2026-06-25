@@ -16,6 +16,7 @@ import {
 } from 'lucide-vue-next'
 import bugReportService from '@/service/bug-report/bug-report-service'
 import { useToast } from '@/composables/useToast'
+import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -224,6 +225,8 @@ watch(reportId, async (newId) => {
             <ExternalLink :size="14" />
           </button>
         </div>
+
+        <CommentsPanel entity-type="BUG_REPORT" :entity-id="reportId" title="Comentários internos" />
       </section>
 
       <!-- COLUNA DIREITA: chat -->

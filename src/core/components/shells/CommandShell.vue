@@ -7,6 +7,7 @@ import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
 import NavList from './shared/NavList.vue'
+import InboxBell from './shared/InboxBell.vue'
 
 defineEmits<{
   'open-command-palette': []
@@ -20,6 +21,7 @@ const breadcrumbs = computed(() => {
     '/': 'Dashboard',
     '/dashboard': 'Dashboard',
     '/board': 'Board',
+    '/boards': 'Canvas',
     '/roadmap': 'Roadmap',
     '/settings': 'Configurações',
     '/variables': 'Variáveis',
@@ -37,6 +39,7 @@ const breadcrumbs = computed(() => {
     return items
   }
   if (path.startsWith('/relatorio/')) return ['Tarefas', 'Relatório']
+  if (path.startsWith('/boards/')) return ['Canvas', 'Board']
   if (path.startsWith('/notes/')) return ['Notas', 'Editor']
   return ['Forge']
 })
@@ -57,6 +60,7 @@ const breadcrumbs = computed(() => {
       </div>
       <div class="spacer" />
       <CmdKButton variant="full" @open="$emit('open-command-palette')" />
+      <InboxBell />
       <ThemeToggle />
       <UserMenu />
     </header>

@@ -98,6 +98,12 @@ Em [`components/ui/`](./components/ui/):
 | `Pill.vue`             | Chip monocromático com ícone. Variants: `soft`, `outline`, `solid`.                                                  |
 | `AuroraBackground.vue` | Gradient blobs animados + noise + grid mask. Props: `intensity="subtle\|medium\|bold"`. Usado no fundo dos 3 shells. |
 
+## Colaboração
+
+- `components/collaboration/CommentsPanel.vue` — painel reutilizável para `/comments`, menções por IDs e reações.
+- `composables/useCompanyFeed.ts` — timeline da empresa com `/feed` e `feed:new`.
+- `composables/useComments.ts` — comentários por entidade com `comment:new`.
+
 ## Utilities CSS (em [`styles/reset.css`](./styles/reset.css))
 
 Classes utilitárias premium que qualquer componente pode usar:
@@ -118,9 +124,12 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | --------------- | ---------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------- |
 | Dashboard       | [`features/dashboard/DashboardView.vue`](./features/dashboard/DashboardView.vue)               | `/` e `/dashboard` | Usa Vue Query                                                         |
 | Board           | [`features/board/BoardView.vue`](./features/board/BoardView.vue)                               | `/board`           | Kanban                                                                |
+| Canvas          | [`features/boards/BoardsListView.vue`](./features/boards/BoardsListView.vue)                   | `/boards`          | Boards de desenho Yjs; detalhe em `/boards/:id`                      |
+| Público         | [`features/public/PublicBoardView.vue`](./features/public/PublicBoardView.vue)                 | `/public/board/:token` | Board read-only por token                                         |
+| Público         | [`features/public/PublicRoadmapView.vue`](./features/public/PublicRoadmapView.vue)             | `/public/roadmap/:token` | Roadmap read-only por token                                   |
 | Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais mockados                         |
 | Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês                                                   |
-| Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         |                                                                       |
+| Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         | Rota registrada na navegação                                           |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
 | Notas           | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | TipTap editor                                                         |
 | Calendário      | [`features/calendar/CalendarView.vue`](./features/calendar/CalendarView.vue)                   | `/calendar`        | Google Calendar integration                                           |

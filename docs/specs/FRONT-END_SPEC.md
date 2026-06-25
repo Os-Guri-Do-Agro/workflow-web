@@ -487,10 +487,10 @@ Health:    GET /health
 
 - [ ] **Calendário** consumindo `/events` (remover mock) + tipos TASK/PERSONAL.
 - [ ] **Roadmap mensal**: grade 12 meses do GET + ensure-then-write + upload de fotos + Copilot.
-- [ ] **Boards**: lista (cards c/ thumbnail) + canvas Excalidraw via `@hocuspocus/provider` + cursores + duplicar + compartilhar. **Parcial:** lista + canvas de desenho Yjs + cursores + duplicar/remover.
+- [ ] **Boards**: lista (cards c/ thumbnail) + canvas Excalidraw via `@hocuspocus/provider` + cursores + duplicar + compartilhar.
 - [ ] **Busca global (Ctrl+K)** + **Pergunte ao workspace** + **texto→diagrama** + **melhorar texto**.
 - [ ] **Compartilhar** board/roadmap + páginas públicas read-only (`/public/*`).
-- [x] **Inbox** (sininho + dropdown + dispensar).
+- [ ] **Inbox** (sininho + dropdown + dispensar).
 - [ ] **Colaboração**: comentários com @menção + reações em atividade/board; **timeline (feed)** no dashboard; botão **"resumo da semana" (digest)**.
 - [ ] Esconder ações WORKER+/ADMIN para CLIENT/VIEWER; tratar `403`/`503` em toasts.
 

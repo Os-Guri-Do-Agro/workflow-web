@@ -25,6 +25,7 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { common, createLowlight } from 'lowlight'
 import notesService from '@/service/notes/notes-service'
 import { useToast } from '@/composables/useToast'
+import aiService from '@/service/ai/ai-service'
 import {
   ArrowLeft, Save, Loader2,
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -39,6 +40,7 @@ import {
   TableCellsMerge, TableCellsSplit,
   Rows3, Columns3,
   Trash2,
+  Sparkles,
 } from 'lucide-vue-next'
 
 const lowlight = createLowlight(common)
@@ -56,6 +58,7 @@ const folderId = ref<string | null>(null)
 const folders = ref<any[]>([])
 const loading = ref(true)
 const saving = ref(false)
+const improving = ref(false)
 const newTag = ref('')
 const showLinkInput = ref(false)
 const linkUrl = ref('')
@@ -159,6 +162,26 @@ async function saveNote() {
   }
 }
 
+async function improveNoteText() {
+  const text = editor.value?.getText().trim()
+  if (!text) {
+    showError('Escreva algo antes de melhorar com IA')
+    return
+  }
+
+  improving.value = true
+  try {
+    const response = await aiService.improve(text, 'Melhore clareza, estrutura e tom mantendo o sentido original.')
+    editor.value?.commands.setContent(response.text)
+    content.value = editor.value?.getHTML() || response.text
+    success('Texto melhorado com IA')
+  } catch {
+    showError('Não foi possível melhorar o texto')
+  } finally {
+    improving.value = false
+  }
+}
+
 function addTag() {
   if (newTag.value.trim() && !tags.value.includes(newTag.value.trim())) {
     tags.value.push(newTag.value.trim())
@@ -240,6 +263,9 @@ watch(() => editor.value, (e) => {
       </button>
       <button class="toolbar-btn" @click="editor?.chain().focus().redo().run()" :disabled="!editor?.can().redo()">
         <Redo2 :size="15" />
+      </button>
+      <button class="toolbar-btn" :disabled="improving" title="Melhorar texto com IA" @click="improveNoteText">
+        <component :is="improving ? Loader2 : Sparkles" :size="15" :class="{ spin: improving }" />
       </button>
       <div class="toolbar-divider" />
 
@@ -526,8 +552,9 @@ watch(() => editor.value, (e) => {
 .editor-toolbar {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 20px;
+  gap: 6px;
+  row-gap: 8px;
+  padding: 10px 20px;
   border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08);
   flex-wrap: wrap;
 }
@@ -536,9 +563,9 @@ watch(() => editor.value, (e) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   border: none;
   background: transparent;
   color: rgba(var(--v-theme-secondary), 0.5);
@@ -563,8 +590,9 @@ watch(() => editor.value, (e) => {
 
 .toolbar-btn--sm {
   width: auto;
-  padding: 4px 8px;
-  gap: 4px;
+  min-height: 32px;
+  padding: 6px 10px;
+  gap: 6px;
   font-size: 11px;
   font-weight: 500;
 }

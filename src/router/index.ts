@@ -22,6 +22,11 @@ import NotesView from '@/features/notes/NotesView.vue'
 import NoteEditorView from '@/features/notes/NoteEditorView.vue'
 import CalendarView from '@/features/calendar/CalendarView.vue'
 import RoadmapView from '@/features/roadmap/RoadmapView.vue'
+import BoardsListView from '@/features/boards/BoardsListView.vue'
+import BoardCanvasView from '@/features/boards/BoardCanvasView.vue'
+import PublicBoardView from '@/features/public/PublicBoardView.vue'
+import PublicRoadmapView from '@/features/public/PublicRoadmapView.vue'
+import TicketsView from '@/features/tickets/TicketsView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
@@ -39,8 +44,12 @@ const router = createRouter({
       component: ReportBugView,
     },
     { path: '/r/:id', name: 'report-status', component: ReportStatusView },
+    { path: '/public/board/:token', name: 'public-board', component: PublicBoardView },
+    { path: '/public/roadmap/:token', name: 'public-roadmap', component: PublicRoadmapView },
     { path: '/', name: 'home', component: DashboardView },
     { path: '/board', name: 'board', component: BoardView },
+    { path: '/boards', name: 'boards', component: BoardsListView },
+    { path: '/boards/:id', name: 'board-canvas', component: BoardCanvasView },
     { path: '/dashboard', name: 'dashboard', component: DashboardView },
     { path: '/notes', name: 'notes', component: NotesView },
     { path: '/notes/:id', name: 'note-editor', component: NoteEditorView },
@@ -56,6 +65,7 @@ const router = createRouter({
     { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView },
     { path: '/repos', name: 'repos-list', component: ReposListView },
     { path: '/repos/:id', name: 'repo-browser', component: RepoBrowserView },
+    { path: '/tickets', name: 'tickets', component: TicketsView },
   ],
 })
 
@@ -70,7 +80,9 @@ router.beforeEach((to, from) => {
     to.name !== 'signup' &&
     to.name !== 'download' &&
     to.name !== 'bug-report' &&
-    to.name !== 'report-status'
+    to.name !== 'report-status' &&
+    to.name !== 'public-board' &&
+    to.name !== 'public-roadmap'
   ) {
     return { name: 'login' }
   }
