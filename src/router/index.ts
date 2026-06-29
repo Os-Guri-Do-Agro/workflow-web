@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { jwtDecode } from 'jwt-decode'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
+import { clearSession } from '@/service/api'
 import BoardView from '@/features/board/BoardView.vue'
 import DashboardView from '@/features/dashboard/DashboardView.vue'
 import TasksView from '@/features/tasks/TasksView.vue'
@@ -71,19 +73,38 @@ const router = createRouter({
 
 const { capturePageview } = usePostHog()
 
+const PUBLIC_ROUTES = new Set([
+  'login',
+  'signup',
+  'download',
+  'bug-report',
+  'report-status',
+  'public-board',
+  'public-roadmap',
+])
+
+/** JWT expirado (ou malformado) conta como "sem token". */
+function isTokenExpired(token: string): boolean {
+  try {
+    const { exp } = jwtDecode<{ exp?: number }>(token)
+    return !exp || exp * 1000 <= Date.now()
+  } catch {
+    return true
+  }
+}
+
 router.beforeEach((to, from) => {
   if (to.path !== from.path) NProgress.start()
-  const token = localStorage.getItem('token')
-  if (
-    !token &&
-    to.name !== 'login' &&
-    to.name !== 'signup' &&
-    to.name !== 'download' &&
-    to.name !== 'bug-report' &&
-    to.name !== 'report-status' &&
-    to.name !== 'public-board' &&
-    to.name !== 'public-roadmap'
-  ) {
+
+  let token = localStorage.getItem('token')
+  // Token presente mas expirado: limpa proativamente (o guard antigo só via
+  // "existe ou não", deixando token vencido passar e nunca deslogar).
+  if (token && isTokenExpired(token)) {
+    clearSession()
+    token = null
+  }
+
+  if (!token && !PUBLIC_ROUTES.has(to.name as string)) {
     return { name: 'login' }
   }
 })
