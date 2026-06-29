@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Bell,
   CalendarDays,
@@ -9,6 +10,7 @@ import {
   CircleDot,
   Clock3,
   Flag,
+  Link2,
   ListTodo,
   Loader2,
   Plus,
@@ -112,7 +114,57 @@ const upcomingEvents = computed(() => {
 })
 const dataSourceLabel = computed(() => (apiUnavailable.value ? 'API indisponível' : 'Eventos da API'))
 
-onMounted(fetchEvents)
+// ─── Google Calendar (conectar/desconectar) ─────────────────────────────────
+const route = useRoute()
+const router = useRouter()
+const googleConnected = ref(false)
+const googleBusy = ref(false)
+
+async function refreshGoogleStatus() {
+  try {
+    googleConnected.value = await eventsService.getGoogleStatus()
+  } catch {
+    googleConnected.value = false
+  }
+}
+
+async function connectGoogle() {
+  googleBusy.value = true
+  try {
+    window.location.href = await eventsService.getGoogleAuthUrl()
+  } catch {
+    showError('Não foi possível iniciar a conexão com o Google')
+    googleBusy.value = false
+  }
+}
+
+async function disconnectGoogle() {
+  googleBusy.value = true
+  try {
+    await eventsService.disconnectGoogle()
+    googleConnected.value = false
+    success('Google Calendar desconectado')
+  } catch {
+    showError('Não foi possível desconectar o Google')
+  } finally {
+    googleBusy.value = false
+  }
+}
+
+onMounted(async () => {
+  await fetchEvents()
+  await refreshGoogleStatus()
+  // Retorno do OAuth (callback do backend redireciona com ?sync=success|error).
+  if (route.query.sync === 'success') {
+    success('Google Calendar conectado!')
+    await refreshGoogleStatus()
+    await fetchEvents()
+    router.replace({ query: { ...route.query, sync: undefined } })
+  } else if (route.query.sync === 'error') {
+    showError('Falha ao conectar o Google Calendar')
+    router.replace({ query: { ...route.query, sync: undefined } })
+  }
+})
 watch(currentDate, fetchEvents)
 
 function currentRange() {
@@ -292,6 +344,17 @@ function apiErrorMessage(err: unknown, fallback: string): string {
       </div>
 
       <div class="header-actions">
+        <button
+          class="btn-ghost press"
+          :class="{ 'btn-ghost--ok': googleConnected }"
+          :disabled="googleBusy"
+          :title="googleConnected ? 'Clique para desconectar o Google Calendar' : 'Sincronizar com o Google Calendar'"
+          @click="googleConnected ? disconnectGoogle() : connectGoogle()"
+        >
+          <Loader2 v-if="googleBusy" :size="13" class="spin" />
+          <Link2 v-else :size="13" />
+          {{ googleConnected ? 'Google conectado' : 'Conectar Google' }}
+        </button>
         <button class="btn-ghost press" @click="goToToday">Hoje</button>
         <button class="btn-primary press" @click="openSelectedDayEventModal">
           <Plus :size="13" />
@@ -576,6 +639,17 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 .btn-ghost {
   height: 34px;
   padding: 0 12px;
+}
+
+.btn-ghost--ok {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border)) !important;
+  background: color-mix(in srgb, var(--success) 10%, var(--surface)) !important;
+}
+
+.btn-ghost:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-primary {

@@ -47,8 +47,19 @@ const eventsService = {
     return response.data
   },
 
-  async getGoogleAuthUrl() {
-    return await api.get('/auth/google/link')
+  async getGoogleAuthUrl(): Promise<string> {
+    const response = await api.get<{ url: string }>('/auth/google/link')
+    return response.data.url
+  },
+
+  async getGoogleStatus(): Promise<boolean> {
+    const response = await api.get<{ connected: boolean }>('/auth/google/status')
+    return !!response.data?.connected
+  },
+
+  async disconnectGoogle() {
+    const response = await api.delete('/auth/google/link')
+    return response.data
   },
 
   async getUpcomingEvents(limit: number = 5) {
