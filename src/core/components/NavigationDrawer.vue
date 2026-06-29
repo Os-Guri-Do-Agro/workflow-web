@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   Columns3,
   ListTodo,
-  Ticket,
   Settings2,
   StickyNote,
   CalendarDays,
@@ -28,7 +27,6 @@ const lucideIcons: Record<string, LucideIcon> = {
   'l-dashboard': LayoutDashboard,
   'l-board': Columns3,
   'l-tasks': ListTodo,
-  'l-ticket': Ticket,
   'l-variables': Settings2,
   'l-notes': StickyNote,
   'l-calendar': CalendarDays,
@@ -126,7 +124,6 @@ const switchCompany = (company: Company) => {
 const mainItems = computed<MenuItem[]>(() => [
   { title: 'Dashboard', icon: 'l-dashboard', to: '/dashboard' },
   { title: 'Board', icon: 'l-board', to: '/board' },
-  { title: 'Tickets', icon: 'l-ticket', to: '/tickets' },
   { title: 'Variáveis', icon: 'l-variables', to: '/variables' },
   { title: 'Usuários', icon: 'l-users', to: '/company-users', role: 'ADMIN' },
 ])

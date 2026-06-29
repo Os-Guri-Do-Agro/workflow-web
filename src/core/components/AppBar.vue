@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { computed, ref } from 'vue'
-import { Menu, ChevronRight, Search, Moon, Sun, Settings, LogOut } from 'lucide-vue-next'
+import { Menu, ChevronRight, Search, Moon, Sun, Settings, LogOut, Sparkles } from 'lucide-vue-next'
 import { getUserToken } from '@/utils/authContent'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useAssistant } from '@/composables/useAssistant'
 
 defineProps<{
   drawer: boolean
@@ -19,6 +20,7 @@ const router = useRouter()
 const userMenu = ref(false)
 const user = getUserToken()
 const { theme, toggleTheme } = useUiPreferences()
+const assistant = useAssistant()
 
 const userInitials = computed(() => {
   const name = user?.name || ''
@@ -39,7 +41,6 @@ const breadcrumbs = computed(() => {
     '/settings': { title: 'Configurações' },
     '/variables': { title: 'Variáveis' },
     '/company-users': { title: 'Usuários / Empresas' },
-    '/tickets': { title: 'Tickets' },
   }
 
   const current = routes[path]
@@ -86,6 +87,17 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
       <Search :size="14" class="cmd-k-icon" />
       <span class="cmd-k-text">Buscar...</span>
       <kbd class="cmd-k-kbd">{{ shortcutLabel }}</kbd>
+    </button>
+
+    <!-- Assistente de IA (abre o painel de chat à direita) -->
+    <button
+      class="ia-btn ml-1"
+      type="button"
+      aria-label="Abrir assistente de IA"
+      title="Assistente · Ctrl/Cmd + I"
+      @click="assistant.toggle()"
+    >
+      <Sparkles :size="15" />
     </button>
 
     <!-- Theme toggle -->
@@ -185,6 +197,32 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
   border: 1px solid var(--border);
   font-family: var(--font-mono);
   line-height: 1.4;
+}
+
+/* ─── Assistente IA ─── */
+.ia-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+.ia-btn:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.ia-btn:active {
+  transform: scale(0.94);
+}
+.ia-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ─── User button ─── */

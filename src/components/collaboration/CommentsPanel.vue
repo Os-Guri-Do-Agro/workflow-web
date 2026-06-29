@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Loader2, MessageSquare, Send, Trash2 } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { Loader2, MessageSquare, Send, Trash2, X } from 'lucide-vue-next'
 import { useComments } from '@/composables/useComments'
 import type { CommentEntityType } from '@/service/collaboration/collaboration-service'
 import type { CommentPayload } from '@/service/realtime/realtime-service'
 import { useToast } from '@/composables/useToast'
+import userService from '@/service/user/user-service'
 
 const props = defineProps<{
   entityType: CommentEntityType
@@ -15,19 +16,73 @@ const props = defineProps<{
 
 const { error: showError } = useToast()
 const draft = ref('')
-const mentionsDraft = ref('')
 const reactions = ['👍', '✅', '👀', '🔥']
 const { comments, loading, sending, error, create, remove, toggleReaction } = useComments(
   () => props.entityType,
   () => props.entityId,
 )
 
-const mentionIds = computed(() =>
-  mentionsDraft.value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean),
-)
+// ─── @menção por nome (autocomplete escopado na empresa) ─────────────────────
+type MentionUser = { id: string; name: string; email: string }
+const mentionQuery = ref('')
+const mentionResults = ref<MentionUser[]>([])
+const selectedMentions = ref<MentionUser[]>([])
+const searchingMentions = ref(false)
+const highlightIdx = ref(0)
+let mentionTimer: number | null = null
+
+function onMentionInput() {
+  highlightIdx.value = 0
+  if (mentionTimer) window.clearTimeout(mentionTimer)
+  const q = mentionQuery.value.trim()
+  if (q.length < 2) {
+    mentionResults.value = []
+    searchingMentions.value = false
+    return
+  }
+  searchingMentions.value = true
+  mentionTimer = window.setTimeout(async () => {
+    try {
+      const res = await userService.searchUsers(q)
+      const chosen = new Set(selectedMentions.value.map((m) => m.id))
+      mentionResults.value = (Array.isArray(res) ? res : []).filter((u) => !chosen.has(u.id))
+    } catch {
+      mentionResults.value = []
+    } finally {
+      searchingMentions.value = false
+    }
+  }, 200)
+}
+
+function addMention(user: MentionUser) {
+  if (!selectedMentions.value.some((m) => m.id === user.id)) {
+    selectedMentions.value.push(user)
+  }
+  mentionQuery.value = ''
+  mentionResults.value = []
+  highlightIdx.value = 0
+}
+
+function removeMention(id: string) {
+  selectedMentions.value = selectedMentions.value.filter((m) => m.id !== id)
+}
+
+function onMentionKeydown(e: KeyboardEvent) {
+  if (!mentionResults.value.length) return
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    highlightIdx.value = Math.min(highlightIdx.value + 1, mentionResults.value.length - 1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    highlightIdx.value = Math.max(highlightIdx.value - 1, 0)
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    const u = mentionResults.value[highlightIdx.value]
+    if (u) addMention(u)
+  } else if (e.key === 'Escape') {
+    mentionResults.value = []
+  }
+}
 
 function authorName(comment: CommentPayload) {
   return comment.author?.name || comment.author?.email || 'Colaborador'
@@ -53,9 +108,11 @@ function formatDate(value: string) {
 
 async function submit() {
   try {
-    await create(draft.value, mentionIds.value)
+    await create(draft.value, selectedMentions.value.map((m) => m.id))
     draft.value = ''
-    mentionsDraft.value = ''
+    selectedMentions.value = []
+    mentionQuery.value = ''
+    mentionResults.value = []
   } catch {
     showError('Não foi possível comentar')
   }
@@ -96,16 +153,47 @@ async function react(comment: CommentPayload, emoji: string) {
         v-model="draft"
         class="comment-input"
         rows="3"
-        placeholder="Escreva um comentário. Use o campo abaixo para @menções por ID."
+        placeholder="Escreva um comentário…"
         :disabled="sending"
       />
-      <input
-        v-model="mentionsDraft"
-        class="mentions-input"
-        type="text"
-        placeholder="IDs mencionados separados por vírgula (opcional)"
-        :disabled="sending"
-      />
+
+      <!-- @menção por nome (autocomplete) -->
+      <div class="mention-field">
+        <div v-if="selectedMentions.length" class="mention-chips">
+          <span v-for="m in selectedMentions" :key="m.id" class="mention-chip">
+            @{{ m.name }}
+            <button type="button" aria-label="Remover menção" @click="removeMention(m.id)">
+              <X :size="11" />
+            </button>
+          </span>
+        </div>
+        <div class="mention-input-wrap">
+          <input
+            v-model="mentionQuery"
+            class="mentions-input"
+            type="text"
+            placeholder="Mencionar alguém (digite o nome)…"
+            :disabled="sending"
+            @input="onMentionInput"
+            @keydown="onMentionKeydown"
+          />
+          <ul v-if="mentionQuery.trim().length >= 2" class="mention-menu">
+            <li v-if="searchingMentions" class="mention-empty">Buscando…</li>
+            <li v-else-if="!mentionResults.length" class="mention-empty">Ninguém encontrado</li>
+            <li
+              v-for="(u, i) in mentionResults"
+              :key="u.id"
+              class="mention-option"
+              :class="{ active: i === highlightIdx }"
+              @mouseenter="highlightIdx = i"
+              @mousedown.prevent="addMention(u)"
+            >
+              <span class="mention-name">{{ u.name }}</span>
+              <span class="mention-email">{{ u.email }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
       <button class="comment-send press" type="submit" :disabled="!draft.trim() || sending">
         <Loader2 v-if="sending" :size="14" class="spin" />
         <Send v-else :size="14" />
@@ -238,6 +326,99 @@ async function react(comment: CommentPayload, emoji: string) {
 .comment-input:focus,
 .mentions-input:focus {
   border-color: var(--border-strong);
+}
+
+/* ─── @menção ─── */
+.mention-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mention-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 4px 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.mention-chip button {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.mention-chip button:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.mention-input-wrap {
+  position: relative;
+}
+
+.mention-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+}
+
+.mention-empty {
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.mention-option {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.mention-option.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+
+.mention-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mention-email {
+  font-size: 11.5px;
+  color: var(--text-3);
 }
 
 .comment-send {

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   AlertTriangle,
   Upload,
   Video,
+  Image as ImageIcon,
   X,
   Loader2,
   CheckCircle2,
@@ -36,9 +37,14 @@ const progress = ref(0)
 const submittedId = ref<string | null>(null)
 const submitError = ref<string | null>(null)
 
-const ALLOWED_MIME = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska']
-const MAX_BYTES = 18 * 1024 * 1024
+const ALLOWED_VIDEO_MIME = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska']
+const ALLOWED_IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const MAX_VIDEO_BYTES = 18 * 1024 * 1024
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const RECORD_MAX_SECONDS = 60
+
+const previewUrl = ref<string | null>(null)
+const isImageFile = computed(() => !!file.value && file.value.type.startsWith('image/'))
 
 const fileSizeMB = computed(() =>
   file.value ? (file.value.size / (1024 * 1024)).toFixed(1) : '',
@@ -82,16 +88,29 @@ onMounted(async () => {
 })
 
 function validateFile(f: File): string | null {
-  if (!ALLOWED_MIME.includes(f.type)) {
-    return 'Esse arquivo não parece um vídeo. Tenta um arquivo de vídeo (MP4, MOV ou WebM).'
+  const isVideo = ALLOWED_VIDEO_MIME.includes(f.type)
+  const isImage = ALLOWED_IMAGE_MIME.includes(f.type)
+  if (!isVideo && !isImage) {
+    return 'Tipo não suportado. Anexa um vídeo (MP4, MOV, WebM) ou uma imagem (JPG, PNG, WebP, GIF).'
   }
-  if (f.size > MAX_BYTES) {
+  if (isVideo && f.size > MAX_VIDEO_BYTES) {
     return 'Esse vídeo é longo demais. Tenta gravar algo mais curto, de até 1 minuto.'
+  }
+  if (isImage && f.size > MAX_IMAGE_BYTES) {
+    return 'Essa imagem é grande demais. Tenta uma imagem de até 10 MB.'
   }
   return null
 }
 
+function clearPreview() {
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = null
+  }
+}
+
 function setFile(f: File | null) {
+  clearPreview()
   if (!f) {
     file.value = null
     submitError.value = null
@@ -105,7 +124,10 @@ function setFile(f: File | null) {
   }
   submitError.value = null
   file.value = f
+  if (f.type.startsWith('image/')) previewUrl.value = URL.createObjectURL(f)
 }
+
+onBeforeUnmount(clearPreview)
 
 function onDrop(ev: DragEvent) {
   ev.preventDefault()
@@ -249,7 +271,7 @@ function reset() {
             ref="inputRef"
             type="file"
             class="dropzone-input"
-            accept="video/mp4,video/webm,video/quicktime,video/x-matroska"
+            accept="video/mp4,video/webm,video/quicktime,video/x-matroska,image/jpeg,image/png,image/webp,image/gif"
             @change="onPick"
           />
 
@@ -257,21 +279,25 @@ function reset() {
             <div class="dropzone-icon">
               <Upload :size="20" />
             </div>
-            <p class="dropzone-title">Anexar um vídeo</p>
-            <p class="dropzone-hint">Vídeo curto (até 1 minuto)</p>
+            <p class="dropzone-title">Anexar vídeo ou imagem</p>
+            <p class="dropzone-hint">Vídeo curto (até 1 min) ou imagem (até 10 MB)</p>
           </template>
 
           <template v-else>
             <div class="file-preview">
-              <Video :size="20" />
+              <img v-if="isImageFile && previewUrl" :src="previewUrl" alt="" class="file-thumb" />
+              <ImageIcon v-else-if="isImageFile" :size="20" />
+              <Video v-else :size="20" />
               <div class="file-info">
                 <p class="file-name">{{ file.name }}</p>
-                <p class="file-size">{{ fileSizeMB }} MB · vídeo pronto pra enviar</p>
+                <p class="file-size">
+                  {{ fileSizeMB }} MB · {{ isImageFile ? 'imagem' : 'vídeo' }} pronto pra enviar
+                </p>
               </div>
               <button
                 type="button"
                 class="file-remove"
-                aria-label="Remover vídeo"
+                :aria-label="isImageFile ? 'Remover imagem' : 'Remover vídeo'"
                 @click.stop="setFile(null)"
               >
                 <X :size="14" />
@@ -742,6 +768,56 @@ function reset() {
   border-color: var(--border-strong);
 }
 
+.btn-secondary:focus-visible,
+.btn-copy-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.status-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Ação principal do card de sucesso (espelha .btn-secondary, mas em accent). */
+.btn-copy-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    filter var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.btn-copy-link:hover {
+  filter: brightness(1.08);
+}
+
+.btn-copy-link:active {
+  transform: scale(0.97);
+}
+
+.file-thumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
 /* Form footer */
 .form-foot {
   display: flex;
@@ -791,9 +867,9 @@ function reset() {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: color-mix(in srgb, #10b981 16%, var(--surface-2));
-  border: 1px solid color-mix(in srgb, #10b981 30%, var(--border));
-  color: #10b981;
+  background: color-mix(in srgb, var(--success) 16%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--success) 30%, var(--border));
+  color: var(--success);
   margin-bottom: 6px;
 }
 

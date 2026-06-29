@@ -26,6 +26,14 @@ class userService {
       'Erro ao buscar usuários',
     )
   }
+  /** Busca usuários da empresa ativa por nome/email (autocomplete de @menção). */
+  searchUsers(q: string): Promise<Array<{ id: string; name: string; email: string }>> {
+    return this.handleRequest(
+      api.get('/user/search', { params: { q } }),
+      'Erro ao buscar usuários',
+    )
+  }
+
   getInfoAuth(): Promise<any> {
     const token = localStorage.getItem('token')
     return this.handleRequest(

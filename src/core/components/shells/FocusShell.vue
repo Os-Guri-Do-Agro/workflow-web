@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   Columns3,
   Milestone,
-  Ticket,
   KeyRound,
   Users,
   StickyNote,
@@ -15,7 +14,6 @@ import {
   ChevronRight,
   BarChart3,
   CalendarRange,
-  Paintbrush,
 } from 'lucide-vue-next'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
@@ -37,14 +35,12 @@ const railItems = computed(() => {
   const items: Array<{ to: string; icon: Component; label: string }> = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/board', icon: Columns3, label: 'Board' },
-    { to: '/boards', icon: Paintbrush, label: 'Canvas' },
     { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
   ]
   if (firstMonth.value) {
     items.push({ to: `/tasks/${firstMonth.value.id}`, icon: ListTodo, label: 'Tarefas' })
   }
   items.push(
-    { to: '/tickets', icon: Ticket, label: 'Tickets' },
     { to: '/variables', icon: KeyRound, label: 'Variáveis' },
     { to: '/notes', icon: StickyNote, label: 'Notas' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
@@ -173,10 +169,6 @@ const showTasks = computed(() =>
               <Columns3 :size="12" class="quick-icon" />
               <span class="quick-label">Board</span>
             </button>
-            <button class="quick-item" @click="router.push('/boards')">
-              <Paintbrush :size="12" class="quick-icon" />
-              <span class="quick-label">Canvas</span>
-            </button>
             <button class="quick-item" @click="router.push('/roadmap')">
               <Milestone :size="12" class="quick-icon" />
               <span class="quick-label">Roadmap</span>
@@ -188,10 +180,6 @@ const showTasks = computed(() =>
             >
               <ListTodo :size="12" class="quick-icon" />
               <span class="quick-label">Tarefas</span>
-            </button>
-            <button class="quick-item" @click="router.push('/tickets')">
-              <Ticket :size="12" class="quick-icon" />
-              <span class="quick-label">Tickets</span>
             </button>
           </div>
 

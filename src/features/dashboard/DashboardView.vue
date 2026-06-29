@@ -121,7 +121,6 @@ const workspaceQuestion = ref('')
 const workspaceAnswer = ref('')
 const workspaceSources = ref<SearchHit[]>([])
 const askLoading = ref(false)
-const reindexLoading = ref(false)
 const searchStatus = ref<{ indexed: boolean; lastIndexedAt: string | null } | null>(null)
 const aiPanelOpen = ref(false)
 const activeAiTool = ref<'ask' | 'digest'>('ask')
@@ -489,18 +488,6 @@ async function askWorkspace() {
   }
 }
 
-async function forceReindex() {
-  reindexLoading.value = true
-  try {
-    await aiService.reindex()
-    await loadSearchStatus()
-    success('Reindexação solicitada')
-  } catch {
-    showError('Não foi possível reindexar o workspace')
-  } finally {
-    reindexLoading.value = false
-  }
-}
 
 const formatFeedDate = (value: string) =>
   new Date(value).toLocaleString('pt-BR', {
@@ -977,10 +964,6 @@ const heroSpark = computed(() => {
                     <span class="example-chip">Use para recuperar decisões recentes</span>
                   </template>
                 </div>
-                <button class="ghost-btn press" type="button" :disabled="reindexLoading" @click="forceReindex">
-                  <RefreshCw :size="13" />
-                  {{ reindexLoading ? 'Reindexando...' : 'Atualizar índice' }}
-                </button>
               </aside>
             </div>
           </section>
