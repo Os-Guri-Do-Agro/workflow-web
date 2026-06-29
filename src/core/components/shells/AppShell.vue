@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import CommandShell from './CommandShell.vue'
 import FocusShell from './FocusShell.vue'
@@ -7,12 +7,15 @@ import CanvasShell from './CanvasShell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
 import AssistantPanel from '@/components/assistant/AssistantPanel.vue'
 import AssistantLauncher from '@/components/assistant/AssistantLauncher.vue'
+import WelcomeGuide from '@/components/onboarding/WelcomeGuide.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useAssistant } from '@/composables/useAssistant'
+import { useOnboarding } from '@/composables/useOnboarding'
 
 const route = useRoute()
 const { shell } = useUiPreferences()
 const assistant = useAssistant()
+const onboarding = useOnboarding()
 
 // Atalho global do Assistente (Ctrl/Cmd + I), estilo extensão do Claude.
 // Ignora quando o foco está em input/textarea/contentEditable (ex.: editor TipTap,
@@ -49,6 +52,16 @@ const ActiveShell = computed(() => {
   return CommandShell
 })
 
+// Onboarding abre sozinho UMA vez, quando o usuário entra numa rota logada
+// (sai do login/bare). maybeAutoOpen é idempotente (guarda em localStorage).
+watch(
+  bare,
+  (isBare) => {
+    if (!isBare) window.setTimeout(() => onboarding.maybeAutoOpen(), 600)
+  },
+  { immediate: true },
+)
+
 const paletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
 const openPalette = () => paletteRef.value?.open()
 </script>
@@ -64,6 +77,7 @@ const openPalette = () => paletteRef.value?.open()
     <CommandPalette ref="paletteRef" />
     <AssistantLauncher />
     <AssistantPanel />
+    <WelcomeGuide />
   </div>
 </template>
 
