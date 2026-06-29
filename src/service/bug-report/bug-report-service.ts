@@ -41,6 +41,7 @@ class bugReportService {
     )
   }
 
+  /** Público: só o status (sem conteúdo/spec) — usado na tela de acompanhamento /r/:id. */
   getStatus(reportId: string): Promise<any> {
     const token = localStorage.getItem('token')
     return this.handleRequest(
@@ -50,6 +51,14 @@ class bugReportService {
         },
       }),
       'Erro ao buscar status do bug report',
+    )
+  }
+
+  /** Protegido (WORKER+): detalhe completo com a spec — usado em /bug-reports/:id. */
+  getDetail(reportId: string): Promise<any> {
+    return this.handleRequest(
+      api.get(`/bug-report/${reportId}`),
+      'Erro ao carregar o bug report',
     )
   }
 
@@ -65,33 +74,6 @@ class bugReportService {
     )
   }
 
-  listMessages(reportId: string): Promise<any> {
-    const token = localStorage.getItem('token')
-    return this.handleRequest(
-      api.get(`/bug-report/${reportId}/messages`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }),
-      'Erro ao listar mensagens',
-    )
-  }
-
-  postMessage(reportId: string, content: string): Promise<any> {
-    const token = localStorage.getItem('token')
-    return this.handleRequest(
-      api.post(
-        `/bug-report/${reportId}/message`,
-        { content },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      ),
-      'Erro ao enviar mensagem',
-    )
-  }
 }
 
 export default new bugReportService()
