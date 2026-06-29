@@ -24,6 +24,9 @@ import NotesView from '@/features/notes/NotesView.vue'
 import NoteEditorView from '@/features/notes/NoteEditorView.vue'
 import CalendarView from '@/features/calendar/CalendarView.vue'
 import RoadmapView from '@/features/roadmap/RoadmapView.vue'
+import BoardsListView from '@/features/boards/BoardsListView.vue'
+import BoardCanvasView from '@/features/boards/BoardCanvasView.vue'
+import PublicBoardView from '@/features/public/PublicBoardView.vue'
 import PublicRoadmapView from '@/features/public/PublicRoadmapView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 
@@ -42,9 +45,12 @@ const router = createRouter({
       component: ReportBugView,
     },
     { path: '/r/:id', name: 'report-status', component: ReportStatusView },
+    { path: '/public/board/:token', name: 'public-board', component: PublicBoardView },
     { path: '/public/roadmap/:token', name: 'public-roadmap', component: PublicRoadmapView },
     { path: '/', name: 'home', component: DashboardView },
     { path: '/board', name: 'board', component: BoardView },
+    { path: '/boards', name: 'boards', component: BoardsListView },
+    { path: '/boards/:id', name: 'board-canvas', component: BoardCanvasView },
     { path: '/dashboard', name: 'dashboard', component: DashboardView },
     { path: '/notes', name: 'notes', component: NotesView },
     { path: '/notes/:id', name: 'note-editor', component: NoteEditorView },
@@ -60,7 +66,7 @@ const router = createRouter({
     { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView, meta: { requiredRole: 'WORKER' } },
     { path: '/repos', name: 'repos-list', component: ReposListView },
     { path: '/repos/:id', name: 'repo-browser', component: RepoBrowserView },
-    // Rota inexistente (ex.: /boards e /tickets removidos) → volta pro início.
+    // Rota inexistente (ex.: /tickets removido) → volta pro início.
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

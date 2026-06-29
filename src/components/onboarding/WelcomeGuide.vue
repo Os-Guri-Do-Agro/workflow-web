@@ -8,6 +8,7 @@ import {
   ArrowRight,
   LayoutDashboard,
   Milestone,
+  Paintbrush,
   KeyRound,
   Settings,
   PartyPopper,
@@ -36,6 +37,7 @@ const dialogRef = ref<HTMLElement | null>(null)
 const steps: Step[] = [
   { id: 'dashboard', icon: LayoutDashboard, title: 'Veja o panorama', desc: 'Métricas, feed da empresa e o que precisa de atenção.', cta: 'Abrir Dashboard', to: '/' },
   { id: 'roadmap', icon: Milestone, title: 'Planeje o ano', desc: 'Monte o roadmap mensal e acompanhe as entregas.', cta: 'Abrir Roadmap', to: '/roadmap' },
+  { id: 'canvas', icon: Paintbrush, title: 'Desenhe e colabore', desc: 'Boards de canvas em tempo real com o seu time.', cta: 'Abrir Canvas', to: '/boards' },
   { id: 'ai', icon: Sparkles, title: 'Pergunte à IA', desc: 'Tire dúvidas sobre o workspace — atalho Ctrl/Cmd + I.', cta: 'Abrir assistente', action: 'assistant' },
   { id: 'variables', icon: KeyRound, title: 'Centralize credenciais', desc: 'Guarde URLs, chaves e secrets por empresa.', cta: 'Abrir Variáveis', to: '/variables' },
   { id: 'settings', icon: Settings, title: 'Deixe com a sua cara', desc: 'Tema, cor de destaque, densidade e shell.', cta: 'Abrir Configurações', to: '/settings' },
