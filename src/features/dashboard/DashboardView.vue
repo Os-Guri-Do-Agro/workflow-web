@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import type { LucideIcon } from 'lucide-vue-next'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -21,6 +22,8 @@ import {
   Loader2,
   MessageSquare,
   RefreshCw,
+  HelpCircle,
+  Search,
 } from 'lucide-vue-next'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
@@ -35,12 +38,77 @@ import { useCompanyFeed } from '@/composables/useCompanyFeed'
 import collaborationService from '@/service/collaboration/collaboration-service'
 import { useToast } from '@/composables/useToast'
 import aiService, { type SearchHit } from '@/service/ai/ai-service'
+import type { CalendarEvent } from '@/service/events/events-service'
+import type { FeedEventPayload } from '@/service/realtime/realtime-service'
 
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent])
 
 const router = useRouter()
+const route = useRoute()
 const activeCompanyStore = useActiveCompanyId()
-const companies = ref<any[]>([])
+
+type DashboardMetricSummary = {
+  total?: number
+  completed?: number
+  inProgress?: number
+  overdue?: number
+  progress?: number
+  status?: {
+    completed?: number
+    inProgress?: number
+  }
+  time?: {
+    overdue?: number
+    dueThisWeek?: number
+  }
+}
+
+type WorkspaceDashboardPayload = {
+  totals?: DashboardMetricSummary
+  metrics?: DashboardMetricSummary
+}
+
+type WeeklyTrendPayload = {
+  series?: Array<{
+    created?: number
+    completed?: number
+  }>
+}
+
+type BacklogChange = {
+  activityTitle?: string
+  changedBy?: {
+    name?: string
+  } | null
+  changedAt: string
+  newStatus?: string
+}
+
+type CompanyProject = {
+  id?: string
+  name?: string
+  cnpj?: string
+  metrics?: {
+    progress?: number
+    total?: number
+    completed?: number
+    inProgress?: number
+  }
+}
+
+type CompanyProjectSource = {
+  company?: CompanyProject
+}
+
+type UpcomingEvent = Pick<CalendarEvent, 'id' | 'title' | 'startDate' | 'type'> & {
+  start?: string
+  start_date?: string
+  date?: string
+  summary?: string
+  description?: string | null
+}
+
+const companies = ref<CompanyProjectSource[]>([])
 const loadingCompanies = ref(true)
 const { firstMonth } = useNavQuarters()
 const { error: showError, success } = useToast()
@@ -53,6 +121,8 @@ const workspaceSources = ref<SearchHit[]>([])
 const askLoading = ref(false)
 const reindexLoading = ref(false)
 const searchStatus = ref<{ indexed: boolean; lastIndexedAt: string | null } | null>(null)
+const aiPanelOpen = ref(false)
+const activeAiTool = ref<'ask' | 'digest'>('ask')
 
 const mode = ref<'company' | 'workspace'>(
   (localStorage.getItem('dashboard.mode') as 'company' | 'workspace') || 'company',
@@ -68,7 +138,7 @@ const companyId = computed(
 
 const { data: metricsData, isLoading: loading } = useDashboardMetrics(companyId)
 const { data: backlogData, isLoading: loadingBacklog } = useBacklog(companyId)
-const { data: workspaceData, isLoading: loadingWorkspace } = useWorkspaceDashboard(
+const { data: workspaceData } = useWorkspaceDashboard(
   computed(() => mode.value === 'workspace'),
 )
 const { data: upcomingData, isLoading: loadingUpcoming } = useUpcomingEvents(5)
@@ -84,8 +154,8 @@ const { data: weeklyTrendData } = useQuery({
 })
 
 const weeklySeries = computed<{ created: number[]; completed: number[] }>(() => {
-  const w = weeklyTrendData.value as any
-  const series: any[] = w?.series ?? []
+  const w = weeklyTrendData.value as WeeklyTrendPayload | undefined
+  const series = w?.series ?? []
   return {
     created: series.map((d) => d.created ?? 0),
     completed: series.map((d) => d.completed ?? 0),
@@ -93,11 +163,11 @@ const weeklySeries = computed<{ created: number[]; completed: number[] }>(() => 
 })
 
 const metrics = computed(() => metricsData.value ?? null)
-const backlog = computed(() => backlogData.value ?? [])
-const upcoming = computed<any[]>(() => {
-  const v = upcomingData.value
+const backlog = computed<BacklogChange[]>(() => backlogData.value ?? [])
+const upcoming = computed<UpcomingEvent[]>(() => {
+  const v = upcomingData.value as UpcomingEvent[] | { data: UpcomingEvent[] } | undefined
   if (Array.isArray(v)) return v
-  if (v && Array.isArray((v as any).data)) return (v as any).data
+  if (v && 'data' in v && Array.isArray(v.data)) return v.data
   return []
 })
 
@@ -135,7 +205,13 @@ onMounted(async () => {
   await ensureActiveCompany()
   findCompanies()
   void loadSearchStatus()
+  handleAiQueryParam(route.query.ai)
 })
+
+watch(
+  () => route.query.ai,
+  (value) => handleAiQueryParam(value),
+)
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -152,7 +228,7 @@ const todayLabel = computed(() => {
 
 const hero = computed(() => {
   if (mode.value === 'workspace') {
-    const w = workspaceData.value as any
+    const w = workspaceData.value as WorkspaceDashboardPayload | undefined
     const agg = w?.totals || w?.metrics || {}
     const total = agg?.total ?? 0
     const done = agg?.completed ?? agg?.status?.completed ?? 0
@@ -171,7 +247,7 @@ const hero = computed(() => {
 type StatCard = {
   title: string
   value: string
-  icon: any
+  icon: LucideIcon
   color: string
   spark: number[]
   trend: string
@@ -268,7 +344,7 @@ const sparkOption = (data: number[], color: string) => {
   return {
     grid: { top: 2, right: 2, bottom: 2, left: 2 },
     xAxis: { type: 'category', show: false, data: data.map((_, i) => i) },
-    yAxis: { type: 'value', show: false, min: (v: any) => v.min - v.min * 0.2 },
+    yAxis: { type: 'value', show: false, min: (v: { min: number }) => v.min - v.min * 0.2 },
     series: [
       {
         type: 'line',
@@ -300,7 +376,7 @@ const sparkOption = (data: number[], color: string) => {
 }
 
 const recentActivities = computed(() => {
-  return backlog.value.slice(0, 10).map((item: any) => ({
+  return backlog.value.slice(0, 10).map((item) => ({
     title: item.activityTitle,
     author: item.changedBy?.name || 'Sistema',
     initials: (item.changedBy?.name || 'S S')
@@ -331,7 +407,7 @@ const statusMeta: Record<string, { color: string; label: string }> = {
 }
 
 const projects = computed(() => {
-  return companies.value.map((item: any) => {
+  return companies.value.map((item) => {
     const company = item.company
     const m = company?.metrics || {}
     const progress = m.progress || 0
@@ -363,6 +439,23 @@ const handleNewTask = () => {
 }
 
 const openCalendar = () => router.push('/calendar')
+
+function openAiTool(tool: 'ask' | 'digest') {
+  activeAiTool.value = tool
+  aiPanelOpen.value = true
+}
+
+function closeAiPanel() {
+  aiPanelOpen.value = false
+}
+
+function handleAiQueryParam(value: unknown) {
+  if (value === 'ask' || value === 'digest') openAiTool(value)
+}
+
+function openWorkspaceSearch() {
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))
+}
 
 async function loadSearchStatus() {
   try {
@@ -409,7 +502,7 @@ const formatFeedDate = (value: string) =>
     minute: '2-digit',
   })
 
-const feedActorName = (event: any) => event.actor?.name || event.actor?.email || 'Sistema'
+const feedActorName = (event: FeedEventPayload) => event.actor?.name || event.actor?.email || 'Sistema'
 
 async function generateDigest() {
   digestLoading.value = true
@@ -657,43 +750,62 @@ const heroSpark = computed(() => {
 
     <section class="copilot-section">
       <header class="section-head">
-        <h2 class="section-title">
-          <Sparkles :size="15" class="section-icon" />
-          Pergunte ao workspace
-        </h2>
+        <div>
+          <h2 class="section-title">
+            <Sparkles :size="15" class="section-icon" />
+            Assistentes de IA
+          </h2>
+          <p class="section-subtitle">Use IA quando precisar investigar, resumir ou encontrar contexto no workspace.</p>
+        </div>
         <div class="copilot-status">
           <span>{{ searchStatus?.indexed ? 'Indexado' : 'Índice pendente' }}</span>
           <small v-if="searchStatus?.lastIndexedAt">{{ formatFeedDate(searchStatus.lastIndexedAt) }}</small>
-          <button class="ghost-btn press" type="button" :disabled="reindexLoading" @click="forceReindex">
-            <RefreshCw :size="13" />
-            {{ reindexLoading ? 'Reindexando...' : 'Reindexar' }}
-          </button>
         </div>
       </header>
 
-      <form class="copilot-form" @submit.prevent="askWorkspace">
-        <textarea
-          v-model="workspaceQuestion"
-          rows="3"
-          class="copilot-input"
-          placeholder="Ex: quais entregas estão bloqueadas esta semana?"
-          :disabled="askLoading"
-        />
-        <button class="copilot-submit press" type="submit" :disabled="!workspaceQuestion.trim() || askLoading">
-          <Loader2 v-if="askLoading" :size="14" class="spin" />
-          <Sparkles v-else :size="14" />
-          Perguntar
-        </button>
-      </form>
+      <div class="ai-actions-grid">
+        <article class="ai-action-card">
+          <div class="ai-card-icon"><Sparkles :size="16" /></div>
+          <div class="ai-card-body">
+            <strong>Pergunte ao workspace</strong>
+            <span>Faça perguntas sobre tarefas, roadmap, eventos e bloqueios usando as fontes indexadas.</span>
+          </div>
+          <button class="ghost-btn press" type="button" @click="openAiTool('ask')">
+            Abrir
+          </button>
+        </article>
 
-      <article v-if="workspaceAnswer" class="copilot-answer">
-        <strong>Resposta</strong>
-        <p>{{ workspaceAnswer }}</p>
-        <div v-if="workspaceSources.length" class="copilot-sources">
-          <span v-for="source in workspaceSources" :key="`${source.entityType}-${source.entityId}`">
-            {{ source.title }}
-          </span>
+        <article class="ai-action-card">
+          <div class="ai-card-icon"><MessageSquare :size="16" /></div>
+          <div class="ai-card-body">
+            <strong>Resumo da semana</strong>
+            <span>Transforma a timeline recente em um digest executivo para alinhamentos rápidos.</span>
+          </div>
+          <button class="ghost-btn press" type="button" @click="openAiTool('digest')">
+            Abrir
+          </button>
+        </article>
+
+        <article class="ai-action-card ai-action-card--muted">
+          <div class="ai-card-icon"><Search :size="16" /></div>
+          <div class="ai-card-body">
+            <strong>Busca inteligente</strong>
+            <span>Pressione Ctrl+K e digite qualquer termo para localizar itens do workspace.</span>
+          </div>
+          <button class="ghost-btn press" type="button" @click="openWorkspaceSearch">
+            Buscar
+          </button>
+        </article>
+      </div>
+
+      <article v-if="workspaceAnswer || digestSummary" class="ai-result-strip">
+        <div>
+          <span class="eyebrow">Última saída da IA</span>
+          <p>{{ workspaceAnswer || digestSummary }}</p>
         </div>
+        <button class="ghost-btn press" type="button" @click="openAiTool(workspaceAnswer ? 'ask' : 'digest')">
+          Ver detalhes
+        </button>
       </article>
     </section>
 
@@ -708,9 +820,9 @@ const heroSpark = computed(() => {
             <RefreshCw :size="13" />
             Atualizar
           </button>
-          <button class="ghost-btn press" type="button" :disabled="digestLoading" @click="generateDigest">
+          <button class="ghost-btn press" type="button" :disabled="digestLoading" @click="openAiTool('digest')">
             <Sparkles :size="13" />
-            {{ digestLoading ? 'Gerando...' : 'Resumo IA' }}
+            Resumo IA
           </button>
         </div>
       </header>
@@ -748,6 +860,125 @@ const heroSpark = computed(() => {
         </article>
       </div>
     </section>
+
+    <Teleport to="body">
+      <Transition name="ai-modal">
+        <div v-if="aiPanelOpen" class="ai-modal-overlay" @mousedown.self="closeAiPanel">
+          <section class="ai-modal" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+            <header class="ai-modal-head">
+              <div>
+                <span class="eyebrow">
+                  <Sparkles :size="12" />
+                  IA do workspace
+                </span>
+                <h2 id="ai-modal-title">
+                  {{ activeAiTool === 'ask' ? 'Pergunte ao workspace' : 'Resumo da semana' }}
+                </h2>
+              </div>
+              <button class="ghost-btn press" type="button" @click="closeAiPanel">Fechar</button>
+            </header>
+
+            <div class="ai-modal-grid">
+              <div class="ai-workspace">
+                <template v-if="activeAiTool === 'ask'">
+                  <form class="copilot-form" @submit.prevent="askWorkspace">
+                    <label class="field-label" for="workspace-question">Sua pergunta</label>
+                    <textarea
+                      id="workspace-question"
+                      v-model="workspaceQuestion"
+                      rows="5"
+                      class="copilot-input"
+                      placeholder="Ex: quais entregas estão bloqueadas esta semana?"
+                      :disabled="askLoading"
+                    />
+                    <button class="copilot-submit press" type="submit" :disabled="!workspaceQuestion.trim() || askLoading">
+                      <Loader2 v-if="askLoading" :size="14" class="spin" />
+                      <Sparkles v-else :size="14" />
+                      Perguntar
+                    </button>
+                  </form>
+
+                  <article v-if="workspaceAnswer" class="copilot-answer">
+                    <strong>Resposta</strong>
+                    <p>{{ workspaceAnswer }}</p>
+                    <div v-if="workspaceSources.length" class="copilot-sources">
+                      <span v-for="source in workspaceSources" :key="`${source.entityType}-${source.entityId}`">
+                        {{ source.title }}
+                      </span>
+                    </div>
+                  </article>
+                </template>
+
+                <template v-else>
+                  <div class="digest-action">
+                    <p>Gere um resumo dos últimos 7 dias da timeline da empresa para compartilhar em reuniões, alinhamentos ou status report.</p>
+                    <button class="copilot-submit press" type="button" :disabled="digestLoading" @click="generateDigest">
+                      <Loader2 v-if="digestLoading" :size="14" class="spin" />
+                      <Sparkles v-else :size="14" />
+                      {{ digestLoading ? 'Gerando...' : 'Gerar digest' }}
+                    </button>
+                  </div>
+
+                  <article v-if="digestSummary" class="copilot-answer">
+                    <strong>Digest IA</strong>
+                    <p>{{ digestSummary }}</p>
+                  </article>
+                </template>
+              </div>
+
+              <aside class="ai-help-card">
+                <div class="ai-help-title">
+                  <HelpCircle :size="16" />
+                  Como funciona
+                </div>
+                <p v-if="activeAiTool === 'ask'">
+                  A IA consulta o índice do workspace e responde com base em tarefas, eventos, roadmap e registros conectados.
+                </p>
+                <p v-else>
+                  O digest lê a timeline recente da empresa e organiza os eventos em uma síntese executiva.
+                </p>
+                <div class="example-list">
+                  <span>Exemplos úteis</span>
+                  <button
+                    v-if="activeAiTool === 'ask'"
+                    type="button"
+                    class="example-chip"
+                    @click="workspaceQuestion = 'Quais entregas estão bloqueadas esta semana?'"
+                  >
+                    Quais entregas estão bloqueadas esta semana?
+                  </button>
+                  <button
+                    v-if="activeAiTool === 'ask'"
+                    type="button"
+                    class="example-chip"
+                    @click="workspaceQuestion = 'O que mudou no roadmap deste mês?'"
+                  >
+                    O que mudou no roadmap deste mês?
+                  </button>
+                  <button
+                    v-if="activeAiTool === 'ask'"
+                    type="button"
+                    class="example-chip"
+                    @click="workspaceQuestion = 'Quais tarefas precisam de atenção hoje?'"
+                  >
+                    Quais tarefas precisam de atenção hoje?
+                  </button>
+                  <template v-else>
+                    <span class="example-chip">Use antes de reuniões semanais</span>
+                    <span class="example-chip">Use para status report de cliente</span>
+                    <span class="example-chip">Use para recuperar decisões recentes</span>
+                  </template>
+                </div>
+                <button class="ghost-btn press" type="button" :disabled="reindexLoading" @click="forceReindex">
+                  <RefreshCw :size="13" />
+                  {{ reindexLoading ? 'Reindexando...' : 'Atualizar índice' }}
+                </button>
+              </aside>
+            </div>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Projects -->
     <section class="projects-section">
@@ -1319,6 +1550,12 @@ const heroSpark = computed(() => {
   margin: 0;
 }
 
+.section-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
 .section-chip {
   font-size: 10.5px;
   font-weight: 700;
@@ -1535,9 +1772,89 @@ const heroSpark = computed(() => {
   color: var(--text-4);
 }
 
+.ai-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-action-card {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.ai-action-card--muted {
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
+.ai-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+}
+
+.ai-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ai-card-body strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ai-card-body span {
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.ai-result-strip {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-2));
+}
+
+.ai-result-strip p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .copilot-form {
   display: grid;
   gap: 10px;
+}
+
+.field-label {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .copilot-input {
@@ -1607,6 +1924,157 @@ const heroSpark = computed(() => {
   color: var(--text-3);
   padding: 4px 8px;
   font-size: 11px;
+}
+
+.digest-action {
+  display: grid;
+  gap: 12px;
+}
+
+.digest-action p {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.55;
+  font-size: 13px;
+}
+
+.ai-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.ai-modal {
+  width: min(980px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-overlay);
+}
+
+.ai-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-modal-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.ai-modal-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px;
+  padding: 18px;
+}
+
+.ai-workspace,
+.ai-help-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  padding: 14px;
+}
+
+.ai-help-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ai-help-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ai-help-card p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.example-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.example-list > span:first-child {
+  color: var(--text-4);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.example-chip {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-2);
+  min-height: 40px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+}
+
+.example-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+.ai-modal-enter-active,
+.ai-modal-leave-active {
+  transition: opacity var(--motion) var(--motion-ease);
+}
+
+.ai-modal-enter-active .ai-modal,
+.ai-modal-leave-active .ai-modal {
+  transition:
+    transform var(--motion) var(--motion-ease),
+    opacity var(--motion) var(--motion-ease);
+}
+
+.ai-modal-enter-from,
+.ai-modal-leave-to {
+  opacity: 0;
+}
+
+.ai-modal-enter-from .ai-modal,
+.ai-modal-leave-to .ai-modal {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
 }
 
 /* ─── Feed ─── */
@@ -1783,12 +2251,27 @@ const heroSpark = computed(() => {
   100% { background-position: 200% 0; }
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (max-width: 960px) {
   .grid-main {
     grid-template-columns: 1fr;
   }
   .hero-grid {
     grid-template-columns: 1fr;
+  }
+  .ai-actions-grid,
+  .ai-modal-grid {
+    grid-template-columns: 1fr;
+  }
+  .ai-action-card {
+    grid-template-columns: 34px 1fr;
+  }
+  .ai-action-card .ghost-btn {
+    grid-column: 1 / -1;
+    justify-content: center;
   }
 }
 </style>

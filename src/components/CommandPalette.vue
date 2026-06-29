@@ -19,6 +19,8 @@ import {
   ArrowDown,
   Clock,
   Paintbrush,
+  MessageSquare,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-vue-next'
 import aiService, { type SearchHit } from '@/service/ai/ai-service'
@@ -96,6 +98,8 @@ const staticCommands = computed<Command[]>(() => [
   { id: 'nav-vars', label: 'Variáveis', hint: 'Credenciais e URLs', icon: KeyRound, section: 'Navegação', keywords: 'senhas secrets env aws', action: () => go('/variables') },
   { id: 'nav-users', label: 'Usuários / Empresas', hint: 'Gestão de acesso', icon: Users, section: 'Navegação', keywords: 'pessoas time membros', action: () => go('/company-users') },
   { id: 'nav-settings', label: 'Configurações', hint: 'Aparência e preferências', icon: Settings, section: 'Navegação', keywords: 'tema shell accent ajustes', action: () => go('/settings') },
+  { id: 'ai-ask', label: 'Pergunte ao workspace', hint: 'Assistente de IA', icon: Sparkles, section: 'IA', keywords: 'copilot pergunta inteligencia artificial bloquear entregas', action: () => go('/dashboard?ai=ask') },
+  { id: 'ai-digest', label: 'Resumo da semana', hint: 'Digest IA da timeline', icon: MessageSquare, section: 'IA', keywords: 'copilot digest resumo timeline semana status report', action: () => go('/dashboard?ai=digest') },
   {
     id: 'act-theme',
     label: theme.value === 'dark' ? 'Modo Claro' : 'Modo Escuro',
