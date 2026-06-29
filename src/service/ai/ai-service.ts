@@ -27,6 +27,12 @@ export interface AskResponse {
   sources: SearchHit[]
 }
 
+export interface Diagram {
+  title: string
+  nodes: { id: string; label: string; kind?: string }[]
+  edges: { from: string; to: string; label?: string }[]
+}
+
 const aiService = {
   async searchStatus() {
     const response = await api.get<SearchStatus>('/search/status')
@@ -45,6 +51,11 @@ const aiService = {
 
   async ask(question: string) {
     const response = await api.post<AskResponse>('/copilot/ask', { question })
+    return response.data
+  },
+
+  async diagram(prompt: string) {
+    const response = await api.post<Diagram>('/copilot/diagram', { prompt })
     return response.data
   },
 
