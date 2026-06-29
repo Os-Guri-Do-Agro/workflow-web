@@ -712,14 +712,14 @@ const heroSpark = computed(() => {
           <div class="agenda-when">
             <span class="agenda-day">
               {{
-                new Date(ev.startDate || ev.start || ev.start_date || ev.date).toLocaleDateString('pt-BR', {
+                new Date(ev.startDate || ev.start || ev.start_date || ev.date || '').toLocaleDateString('pt-BR', {
                   day: '2-digit',
                 })
               }}
             </span>
             <span class="agenda-month">
               {{
-                new Date(ev.startDate || ev.start || ev.start_date || ev.date)
+                new Date(ev.startDate || ev.start || ev.start_date || ev.date || '')
                   .toLocaleDateString('pt-BR', { month: 'short' })
                   .replace('.', '')
                   .toUpperCase()
@@ -730,7 +730,7 @@ const heroSpark = computed(() => {
             <span class="agenda-title">{{ ev.title || ev.summary || 'Evento' }}</span>
             <span class="agenda-meta">
               {{
-                new Date(ev.startDate || ev.start || ev.start_date || ev.date).toLocaleTimeString('pt-BR', {
+                new Date(ev.startDate || ev.start || ev.start_date || ev.date || '').toLocaleTimeString('pt-BR', {
                   hour: '2-digit',
                   minute: '2-digit',
                 })
