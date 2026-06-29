@@ -24,11 +24,7 @@ import NotesView from '@/features/notes/NotesView.vue'
 import NoteEditorView from '@/features/notes/NoteEditorView.vue'
 import CalendarView from '@/features/calendar/CalendarView.vue'
 import RoadmapView from '@/features/roadmap/RoadmapView.vue'
-import BoardsListView from '@/features/boards/BoardsListView.vue'
-import BoardCanvasView from '@/features/boards/BoardCanvasView.vue'
-import PublicBoardView from '@/features/public/PublicBoardView.vue'
 import PublicRoadmapView from '@/features/public/PublicRoadmapView.vue'
-import TicketsView from '@/features/tickets/TicketsView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
@@ -46,12 +42,9 @@ const router = createRouter({
       component: ReportBugView,
     },
     { path: '/r/:id', name: 'report-status', component: ReportStatusView },
-    { path: '/public/board/:token', name: 'public-board', component: PublicBoardView },
     { path: '/public/roadmap/:token', name: 'public-roadmap', component: PublicRoadmapView },
     { path: '/', name: 'home', component: DashboardView },
     { path: '/board', name: 'board', component: BoardView },
-    { path: '/boards', name: 'boards', component: BoardsListView },
-    { path: '/boards/:id', name: 'board-canvas', component: BoardCanvasView },
     { path: '/dashboard', name: 'dashboard', component: DashboardView },
     { path: '/notes', name: 'notes', component: NotesView },
     { path: '/notes/:id', name: 'note-editor', component: NoteEditorView },
@@ -63,11 +56,12 @@ const router = createRouter({
     { path: '/settings', name: 'settings', component: SettingsView },
     { path: '/variables', name: 'variables', component: CompanyVariablesView },
     { path: '/company-users', name: 'company-users', component: CompanyUsersView, meta: { requiredRole: 'ADMIN' } },
-    { path: '/bug-reports', name: 'bug-reports-list', component: BugReportsListView },
-    { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView },
+    { path: '/bug-reports', name: 'bug-reports-list', component: BugReportsListView, meta: { requiredRole: 'WORKER' } },
+    { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView, meta: { requiredRole: 'WORKER' } },
     { path: '/repos', name: 'repos-list', component: ReposListView },
     { path: '/repos/:id', name: 'repo-browser', component: RepoBrowserView },
-    { path: '/tickets', name: 'tickets', component: TicketsView },
+    // Rota inexistente (ex.: /boards e /tickets removidos) → volta pro início.
+    { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })
 
@@ -79,9 +73,16 @@ const PUBLIC_ROUTES = new Set([
   'download',
   'bug-report',
   'report-status',
-  'public-board',
   'public-roadmap',
 ])
+
+const ROLE_RANK: Record<string, number> = {
+  VIEWER: 0,
+  CLIENT: 1,
+  WORKER: 2,
+  ADMIN: 3,
+  OWNER: 4,
+}
 
 /** JWT expirado (ou malformado) conta como "sem token". */
 function isTokenExpired(token: string): boolean {
@@ -90,6 +91,17 @@ function isTokenExpired(token: string): boolean {
     return !exp || exp * 1000 <= Date.now()
   } catch {
     return true
+  }
+}
+
+/** Papel do usuário na empresa ativa, lido do JWT. */
+function activeCompanyRole(token: string): string | null {
+  try {
+    const decoded = jwtDecode<{ companies?: { companyId: string; role: string }[] }>(token)
+    const companyId = localStorage.getItem('activeCompany')
+    return decoded.companies?.find((c) => c.companyId === companyId)?.role ?? null
+  } catch {
+    return null
   }
 }
 
@@ -106,6 +118,16 @@ router.beforeEach((to, from) => {
 
   if (!token && !PUBLIC_ROUTES.has(to.name as string)) {
     return { name: 'login' }
+  }
+
+  // Aplica meta.requiredRole (antes não era lido por guard nenhum) — esconde
+  // bug-reports/empresa de quem não tem papel suficiente na empresa ativa.
+  const required = to.meta.requiredRole as string | undefined
+  if (required && token) {
+    const role = activeCompanyRole(token)
+    if (!role || (ROLE_RANK[role] ?? -1) < (ROLE_RANK[required] ?? 99)) {
+      return { name: 'home' }
+    }
   }
 })
 

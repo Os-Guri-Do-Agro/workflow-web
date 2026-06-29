@@ -39,7 +39,6 @@ const breadcrumbs = computed(() => {
     '/settings': { title: 'Configurações' },
     '/variables': { title: 'Variáveis' },
     '/company-users': { title: 'Usuários / Empresas' },
-    '/tickets': { title: 'Tickets' },
   }
 
   const current = routes[path]

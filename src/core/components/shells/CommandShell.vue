@@ -21,12 +21,10 @@ const breadcrumbs = computed(() => {
     '/': 'Dashboard',
     '/dashboard': 'Dashboard',
     '/board': 'Board',
-    '/boards': 'Canvas',
     '/roadmap': 'Roadmap',
     '/settings': 'Configurações',
     '/variables': 'Variáveis',
     '/company-users': 'Usuários',
-    '/tickets': 'Tickets',
     '/notes': 'Notas',
     '/calendar': 'Calendário',
   }
@@ -39,7 +37,6 @@ const breadcrumbs = computed(() => {
     return items
   }
   if (path.startsWith('/relatorio/')) return ['Tarefas', 'Relatório']
-  if (path.startsWith('/boards/')) return ['Canvas', 'Board']
   if (path.startsWith('/notes/')) return ['Notas', 'Editor']
   return ['Forge']
 })
