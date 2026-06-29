@@ -1230,10 +1230,16 @@ function centerPoint(): BoardPoint {
 
 function replaceElement(id: string, next: BoardElement) {
   if (!yElements) return
-  const index = yElements.toArray().findIndex((element) => element.id === id)
+  const arr = yElements
+  const index = arr.toArray().findIndex((element) => element.id === id)
   if (index < 0) return
-  yElements.delete(index, 1)
-  yElements.insert(index, [next])
+  // delete + insert como UMA transação atômica: move/resize gera um único update
+  // Yjs e não corre o risco de perder o elemento se a conexão cair entre as duas
+  // operações (era um delete e um insert separados).
+  ;(arr.doc ?? ydoc)?.transact(() => {
+    arr.delete(index, 1)
+    arr.insert(index, [next])
+  })
   selectedElementId.value = next.id
 }
 

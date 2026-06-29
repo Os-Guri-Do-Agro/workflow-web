@@ -19,6 +19,9 @@ import {
   ArrowDown,
   Clock,
   Paintbrush,
+  MessageSquare,
+  Sparkles,
+  Compass,
   type LucideIcon,
 } from 'lucide-vue-next'
 import aiService, { type SearchHit } from '@/service/ai/ai-service'
@@ -26,10 +29,14 @@ import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
 import { getInfoAuth } from '@/utils/authContent'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useAssistant } from '@/composables/useAssistant'
+import { useOnboarding } from '@/composables/useOnboarding'
 
 const router = useRouter()
 const activeCompanyStore = useActiveCompanyId()
 const { theme, toggleTheme } = useUiPreferences()
+const assistant = useAssistant()
+const onboarding = useOnboarding()
 
 const isOpen = ref(false)
 const query = ref('')
@@ -96,6 +103,9 @@ const staticCommands = computed<Command[]>(() => [
   { id: 'nav-vars', label: 'Variáveis', hint: 'Credenciais e URLs', icon: KeyRound, section: 'Navegação', keywords: 'senhas secrets env aws', action: () => go('/variables') },
   { id: 'nav-users', label: 'Usuários / Empresas', hint: 'Gestão de acesso', icon: Users, section: 'Navegação', keywords: 'pessoas time membros', action: () => go('/company-users') },
   { id: 'nav-settings', label: 'Configurações', hint: 'Aparência e preferências', icon: Settings, section: 'Navegação', keywords: 'tema shell accent ajustes', action: () => go('/settings') },
+  { id: 'ai-ask', label: 'Pergunte ao workspace', hint: 'Assistente de IA', icon: Sparkles, section: 'IA', keywords: 'copilot pergunta inteligencia artificial bloquear entregas ctrl i', action: () => { close(); assistant.open() } },
+  { id: 'ai-digest', label: 'Resumo da semana', hint: 'Digest IA da timeline', icon: MessageSquare, section: 'IA', keywords: 'copilot digest resumo timeline semana status report', action: () => { close(); assistant.open(); assistant.runDigest() } },
+  { id: 'help-onboarding', label: 'Primeiros passos', hint: 'Guia de uso do Workflow', icon: Compass, section: 'Ajuda', keywords: 'onboarding tour guia ajuda comecar tutorial bem vindo como usar', action: () => { close(); onboarding.open() } },
   {
     id: 'act-theme',
     label: theme.value === 'dark' ? 'Modo Claro' : 'Modo Escuro',
