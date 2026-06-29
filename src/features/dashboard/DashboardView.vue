@@ -37,6 +37,7 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import { useCompanyFeed } from '@/composables/useCompanyFeed'
 import collaborationService from '@/service/collaboration/collaboration-service'
 import { useToast } from '@/composables/useToast'
+import { useAssistant } from '@/composables/useAssistant'
 import aiService, { type SearchHit } from '@/service/ai/ai-service'
 import type { CalendarEvent } from '@/service/events/events-service'
 import type { FeedEventPayload } from '@/service/realtime/realtime-service'
@@ -46,6 +47,7 @@ use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent])
 const router = useRouter()
 const route = useRoute()
 const activeCompanyStore = useActiveCompanyId()
+const assistant = useAssistant()
 
 type DashboardMetricSummary = {
   total?: number
@@ -440,9 +442,11 @@ const handleNewTask = () => {
 
 const openCalendar = () => router.push('/calendar')
 
+// Abre o Assistente global (painel à direita). O antigo modal local foi
+// substituído pelo AssistantPanel montado no AppShell.
 function openAiTool(tool: 'ask' | 'digest') {
-  activeAiTool.value = tool
-  aiPanelOpen.value = true
+  assistant.open()
+  if (tool === 'digest') assistant.runDigest()
 }
 
 function closeAiPanel() {
@@ -450,7 +454,11 @@ function closeAiPanel() {
 }
 
 function handleAiQueryParam(value: unknown) {
-  if (value === 'ask' || value === 'digest') openAiTool(value)
+  if (value === 'ask' || value === 'digest') {
+    openAiTool(value)
+    // limpa o ?ai= da URL — a entrada agora é o painel global (Ctrl/Cmd+I)
+    router.replace({ query: { ...route.query, ai: undefined } })
+  }
 }
 
 function openWorkspaceSearch() {

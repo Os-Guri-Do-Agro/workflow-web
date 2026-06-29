@@ -1,14 +1,36 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import CommandShell from './CommandShell.vue'
 import FocusShell from './FocusShell.vue'
 import CanvasShell from './CanvasShell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
+import AssistantPanel from '@/components/assistant/AssistantPanel.vue'
+import AssistantLauncher from '@/components/assistant/AssistantLauncher.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useAssistant } from '@/composables/useAssistant'
 
 const route = useRoute()
 const { shell } = useUiPreferences()
+const assistant = useAssistant()
+
+// Atalho global do Assistente (Ctrl/Cmd + I), estilo extensão do Claude.
+// Ignora quando o foco está em input/textarea/contentEditable (ex.: editor TipTap,
+// onde Cmd+I = itálico).
+function isTyping(el: EventTarget | null): boolean {
+  if (!el || !(el instanceof HTMLElement)) return false
+  const tag = el.tagName.toLowerCase()
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable
+}
+function onAssistantHotkey(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'i') {
+    if (isTyping(e.target)) return
+    e.preventDefault()
+    assistant.toggle()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onAssistantHotkey, true))
+onUnmounted(() => window.removeEventListener('keydown', onAssistantHotkey, true))
 
 const bare = computed(
   () =>
@@ -40,6 +62,8 @@ const openPalette = () => paletteRef.value?.open()
       <slot />
     </component>
     <CommandPalette ref="paletteRef" />
+    <AssistantLauncher />
+    <AssistantPanel />
   </div>
 </template>
 
