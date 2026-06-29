@@ -42,6 +42,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStores'
 import boardsService from '@/service/boards/boards-service'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import aiService from '@/service/ai/ai-service'
+import { getApiErrorMessage } from '@/service/api'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 type BoardPoint = {
@@ -1184,8 +1185,10 @@ async function generateDiagramFromPrompt() {
     diagramPrompt.value = ''
     actionsMenuOpen.value = false
     success('Diagrama gerado no canvas')
-  } catch {
-    showError('Não foi possível gerar o diagrama')
+  } catch (err) {
+    // Surface a mensagem do backend (ex.: 503 "IA indisponível") em vez de texto
+    // genérico — conforme o spec de integração copilot.
+    showError(getApiErrorMessage(err, 'Não foi possível gerar o diagrama'))
   } finally {
     diagramLoading.value = false
   }
