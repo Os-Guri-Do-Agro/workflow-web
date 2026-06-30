@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Search, FileStack, Folder, FileText, Pin } from 'lucide-vue-next'
 import notesService from '@/service/notes/notes-service'
+import { stripHtmlPreview } from '@/utils/html-preview'
 
 const router = useRouter()
 const notes = ref<any[]>([])
@@ -131,7 +132,7 @@ function selectFolder(folderId: string | null) {
               <h3 class="note-title">{{ note.title }}</h3>
               <Pin v-if="note.isPinned" :size="13" class="pin-icon" />
             </div>
-            <p class="note-preview">{{ note.content.substring(0, 100) }}...</p>
+            <p class="note-preview">{{ stripHtmlPreview(note.content) }}</p>
             <div class="note-meta">
               <span class="note-date">
                 {{ new Date(note.updatedAt).toLocaleDateString('pt-BR') }}

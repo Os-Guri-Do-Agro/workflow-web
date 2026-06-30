@@ -41,6 +41,7 @@ import {
   Rows3, Columns3,
   Trash2,
   Sparkles,
+  Pin,
 } from 'lucide-vue-next'
 
 const lowlight = createLowlight(common)
@@ -58,6 +59,8 @@ const folderId = ref<string | null>(null)
 const folders = ref<any[]>([])
 const loading = ref(true)
 const saving = ref(false)
+const isPinned = ref(false)
+const pinning = ref(false)
 const improving = ref(false)
 const newTag = ref('')
 const showLinkInput = ref(false)
@@ -128,12 +131,29 @@ async function fetchNote() {
     content.value = response.content
     tags.value = response.tags || []
     folderId.value = response.folderId
+    isPinned.value = !!response.isPinned
 
     if (editor.value) {
       editor.value.commands.setContent(response.content)
     }
   } catch (e) {
     showError('Erro ao carregar nota')
+  }
+}
+
+async function handleTogglePin() {
+  if (isNew.value || pinning.value) return
+  pinning.value = true
+  // Optimistic: reflete o novo estado de imediato e reverte se a API falhar.
+  isPinned.value = !isPinned.value
+  try {
+    await notesService.togglePin(noteId.value)
+    success(isPinned.value ? 'Nota fixada' : 'Nota desafixada')
+  } catch (e) {
+    isPinned.value = !isPinned.value
+    showError('Erro ao fixar nota')
+  } finally {
+    pinning.value = false
   }
 }
 
@@ -248,6 +268,17 @@ watch(() => editor.value, (e) => {
       </div>
       <div class="header-right">
         <span class="char-count">{{ wordCount }} palavras &middot; {{ charCount }} chars</span>
+        <button
+          v-if="!isNew"
+          class="pin-btn"
+          :class="{ 'pin-btn--active': isPinned }"
+          :disabled="pinning"
+          :title="isPinned ? 'Desafixar nota' : 'Fixar nota'"
+          :aria-pressed="isPinned"
+          @click="handleTogglePin"
+        >
+          <Pin :size="16" />
+        </button>
         <button class="save-btn" :disabled="saving" @click="saveNote">
           <component :is="saving ? Loader2 : Save" :size="16" :class="{ 'spin': saving }" />
           {{ saving ? 'Salvando...' : 'Salvar' }}
@@ -511,6 +542,40 @@ watch(() => editor.value, (e) => {
 .back-btn:hover {
   background: rgba(var(--v-theme-secondary), 0.1);
   color: rgb(var(--v-theme-secondary));
+}
+
+.pin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(var(--v-theme-secondary), 0.05);
+  color: rgba(var(--v-theme-secondary), 0.6);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pin-btn:hover {
+  background: rgba(var(--v-theme-secondary), 0.1);
+  color: rgb(var(--v-theme-secondary));
+}
+
+.pin-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pin-btn--active {
+  background: rgba(var(--v-theme-warning), 0.12);
+  color: rgb(var(--v-theme-warning));
+}
+
+.pin-btn--active:hover {
+  background: rgba(var(--v-theme-warning), 0.18);
+  color: rgb(var(--v-theme-warning));
 }
 
 .title-input {

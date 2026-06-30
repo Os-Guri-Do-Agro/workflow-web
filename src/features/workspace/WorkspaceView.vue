@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { Pin, Folder } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import dashboardService from '@/service/dashboard/dashboard-service'
+import { stripHtmlPreview } from '@/utils/html-preview'
 
 const router = useRouter()
 const workspace = useWorkspaceStore()
@@ -289,12 +291,12 @@ function getPriorityLabel(priority: number): string {
               @click="openNote(note.id)"
             >
               <div class="note-header">
-                <v-icon v-if="note.isPinned" size="12" color="warning">mdi-pin</v-icon>
+                <Pin v-if="note.isPinned" :size="12" class="note-pin-icon" />
                 <span class="note-title">{{ note.title }}</span>
               </div>
-              <p class="note-preview">{{ note.content?.substring(0, 60) || '' }}...</p>
+              <p class="note-preview">{{ stripHtmlPreview(note.content, 60) }}</p>
               <div v-if="note.folder" class="note-folder">
-                <v-icon size="10">mdi-folder</v-icon>
+                <Folder :size="10" />
                 {{ note.folder.name }}
               </div>
             </div>
@@ -866,6 +868,11 @@ function getPriorityLabel(priority: number): string {
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
+}
+
+.note-pin-icon {
+  color: var(--warn);
+  flex-shrink: 0;
 }
 
 .note-title {
