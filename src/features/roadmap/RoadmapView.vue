@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import {
   Activity,
   BarChart3,
+  CalendarCheck,
   CalendarDays,
   CalendarClock,
   CheckCircle2,
@@ -66,12 +67,17 @@ type RoadmapItem = {
   kind: 'activity' | 'event'
 }
 
+type MilestoneKind = 'milestone' | 'review'
+
 type RoadmapMilestone = {
   id: string
-  laneId: string
+  // laneId é opcional: o contrato novo ancora por `quarterId`/`date`, não por área.
+  laneId: string | null
+  quarterId: string | null
   title: string
   date: string
   status: RoadmapStatus
+  type: MilestoneKind
 }
 
 type RoadmapSelection =
@@ -269,14 +275,40 @@ function laneItems(laneId: string): RoadmapItem[] {
   )
 }
 
-function laneMilestones(laneId: string): RoadmapMilestone[] {
-  return annualMilestones.value.filter(
-    (milestone) =>
-      milestone.laneId === laneId &&
-      (activeStatus.value === 'all' || milestone.status === activeStatus.value) &&
-      overlapsDate(milestone.date, milestone.date),
+function milestonePassesFilters(milestone: RoadmapMilestone): boolean {
+  return (
+    (activeStatus.value === 'all' || milestone.status === activeStatus.value) &&
+    overlapsDate(milestone.date, milestone.date)
   )
 }
+
+/** Marco/review ancorado a esta lane via `quarterId` (shape quarters) ou `laneId` (shape lanes). */
+function milestoneAnchoredToLane(milestone: RoadmapMilestone, laneId: string): boolean {
+  return milestone.quarterId === laneId || milestone.laneId === laneId
+}
+
+function laneMilestones(laneId: string): RoadmapMilestone[] {
+  return annualMilestones.value.filter(
+    (milestone) => milestoneAnchoredToLane(milestone, laneId) && milestonePassesFilters(milestone),
+  )
+}
+
+/**
+ * Marcos/reviews sem âncora de área (sem `quarterId` nem `laneId` válido) — o contrato novo
+ * permite `quarterId` opcional. Renderizados numa faixa própria sobre o eixo, posicionados por data.
+ */
+const floatingMilestones = computed<RoadmapMilestone[]>(() => {
+  const laneIds = new Set(annualLanes.value.map((lane) => lane.id))
+  return annualMilestones.value.filter((milestone) => {
+    if (!milestonePassesFilters(milestone)) return false
+    const anchored =
+      (milestone.quarterId != null && laneIds.has(milestone.quarterId)) ||
+      (milestone.laneId != null && laneIds.has(milestone.laneId))
+    return !anchored
+  })
+})
+
+const hasFloatingMilestones = computed(() => floatingMilestones.value.length > 0)
 
 function formatDate(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString('pt-BR', {
@@ -330,25 +362,43 @@ async function fetchAnnualRoadmap() {
   }
 }
 
+function parseAnnualMilestones(payload: any): RoadmapMilestone[] {
+  // Contrato novo: `milestones[]` traz MILESTONE e REVIEW no mesmo array (com `type`).
+  const milestonesPayload = firstArray(payload, ['milestones', 'markers'])
+  const milestones = milestonesPayload.map(mapAnnualMilestone).filter(Boolean) as RoadmapMilestone[]
+
+  // Compat legado: reviews separados (sem `type`) são normalizados como type='review'.
+  const reviewsPayload = firstArray(payload, ['reviews', 'reviewMarkers'])
+  const reviews = reviewsPayload
+    .map((input: any) => mapAnnualMilestone({ ...input, type: input?.type ?? 'REVIEW' }))
+    .filter(Boolean) as RoadmapMilestone[]
+
+  const seen = new Set(milestones.map((milestone) => milestone.id))
+  return [...milestones, ...reviews.filter((review) => !seen.has(review.id))]
+}
+
 function applyAnnualRoadmapResponse(response: unknown) {
   const payload = unwrapApiPayload(response)
   const quartersPayload = firstArray(payload, ['quarters'])
 
   if (quartersPayload.length) {
-    applyAnnualQuarterRoadmap(quartersPayload)
+    applyAnnualQuarterRoadmap(quartersPayload, parseAnnualMilestones(payload))
     return
   }
 
   const lanesPayload = firstArray(payload, ['lanes', 'areas', 'columns'])
   const itemsPayload = firstArray(payload, ['items', 'activities', 'tasks', 'entries'])
-  const milestonesPayload = firstArray(payload, ['milestones', 'markers'])
   annualLanes.value = lanesPayload.map(mapAnnualLane).filter(Boolean) as RoadmapLane[]
   annualItems.value = itemsPayload.map(mapAnnualItem).filter(Boolean) as RoadmapItem[]
-  annualMilestones.value = milestonesPayload.map(mapAnnualMilestone).filter(Boolean) as RoadmapMilestone[]
+  annualMilestones.value = parseAnnualMilestones(payload)
 
   const laneIds = new Set(annualLanes.value.map((lane) => lane.id))
   annualItems.value = annualItems.value.filter((item) => laneIds.has(item.laneId))
-  annualMilestones.value = annualMilestones.value.filter((milestone) => laneIds.has(milestone.laneId))
+  // Marcos só são descartados se estiverem presos a um laneId inexistente.
+  // Marcos sem laneId (ancorados por quarter/data) são preservados.
+  annualMilestones.value = annualMilestones.value.filter(
+    (milestone) => milestone.laneId == null || laneIds.has(milestone.laneId),
+  )
 
   if (selected.value?.type === 'item' && !annualItems.value.some((item) => item.id === selected.value?.value.id)) {
     selected.value = null
@@ -361,7 +411,7 @@ function applyAnnualRoadmapResponse(response: unknown) {
   }
 }
 
-function applyAnnualQuarterRoadmap(quartersPayload: any[]) {
+function applyAnnualQuarterRoadmap(quartersPayload: any[], milestones: RoadmapMilestone[] = []) {
   annualLanes.value = quartersPayload.map((quarter, index) => ({
     id: String(quarter?.id ?? quarter?.label ?? `quarter-${index + 1}`),
     title: String(quarter?.label ?? `Q${index + 1}`),
@@ -380,13 +430,25 @@ function applyAnnualQuarterRoadmap(quartersPayload: any[]) {
       .map((month: any) => mapQuarterMonthItem(month, laneId))
       .filter(Boolean) as RoadmapItem[]
   })
-  annualMilestones.value = []
 
+  // Marcos/reviews do contrato novo ancoram por `quarterId` (lane = quarter) ou por data.
+  // Aqui as lanes SÃO os quarters, então resolvemos o quarterId para o id da lane.
   const laneIds = new Set(annualLanes.value.map((lane) => lane.id))
+  annualMilestones.value = milestones.filter(
+    (milestone) =>
+      milestone.quarterId == null ||
+      milestone.laneId == null ||
+      laneIds.has(milestone.quarterId) ||
+      laneIds.has(milestone.laneId),
+  )
+
   if (activeLaneId.value !== 'all' && !laneIds.has(activeLaneId.value)) {
     activeLaneId.value = 'all'
   }
   if (selected.value?.type === 'item' && !annualItems.value.some((item) => item.id === selected.value?.value.id)) {
+    selected.value = null
+  }
+  if (selected.value?.type === 'milestone' && !annualMilestones.value.some((item) => item.id === selected.value?.value.id)) {
     selected.value = null
   }
 }
@@ -488,19 +550,27 @@ function mapAnnualItem(input: any): RoadmapItem | null {
   }
 }
 
+function normalizeMilestoneKind(value: unknown): MilestoneKind {
+  return String(value ?? '').toUpperCase() === 'REVIEW' ? 'review' : 'milestone'
+}
+
 function mapAnnualMilestone(input: any): RoadmapMilestone | null {
   const id = String(input?.id ?? input?.milestoneId ?? '')
-  const laneId = String(input?.laneId ?? input?.areaId ?? input?.lane?.id ?? '')
-  const title = String(input?.title ?? input?.name ?? '')
+  // Contrato novo: marco/review ancora por `quarterId`/`date`. `laneId` pode não existir.
+  const rawLaneId = input?.laneId ?? input?.areaId ?? input?.lane?.id
+  const rawQuarterId = input?.quarterId ?? input?.quarter?.id ?? input?.quarterID
+  const title = String(input?.title ?? input?.name ?? input?.label ?? '')
   const date = normalizeDateOnly(input?.date ?? input?.dueDate ?? input?.startsAt)
-  if (!id || !laneId || !title || !date) return null
+  if (!id || !title || !date) return null
 
   return {
     id,
-    laneId,
+    laneId: rawLaneId != null ? String(rawLaneId) : null,
+    quarterId: rawQuarterId != null ? String(rawQuarterId) : null,
     title,
     date,
     status: normalizeRoadmapStatus(input?.status),
+    type: normalizeMilestoneKind(input?.type),
   }
 }
 
@@ -1735,7 +1805,13 @@ function resetFilters() {
         <template v-if="selected">
           <div class="detail-head">
             <span class="detail-type">
-              {{ selected.type === 'item' ? 'Atividade' : 'Marco' }}
+              {{
+                selected.type === 'item'
+                  ? 'Atividade'
+                  : selected.value.type === 'review'
+                    ? 'Review'
+                    : 'Marco'
+              }}
             </span>
             <span v-if="selectedStatus" class="detail-status">
               <component :is="selectedStatus.icon" :size="12" />
@@ -1862,15 +1938,63 @@ function resetFilters() {
                 class="milestone-pin"
                 :class="[
                   `milestone-pin--${milestone.status}`,
+                  `milestone-pin--${milestone.type}`,
                   { 'milestone-pin--selected': isSelected('milestone', milestone.id) },
                 ]"
                 :style="markerStyle(milestone.date)"
                 role="button"
                 tabindex="0"
+                :aria-label="`${milestone.type === 'review' ? 'Review' : 'Marco'}: ${milestone.title} (${formatDate(milestone.date)})`"
                 @click="selectMilestone(milestone)"
                 @keydown.enter.prevent="selectMilestone(milestone)"
                 @keydown.space.prevent="selectMilestone(milestone)"
               >
+                <component :is="milestone.type === 'review' ? CalendarCheck : Flag" :size="11" class="milestone-icon" />
+                <span class="milestone-label">{{ milestone.title }}</span>
+                <span class="milestone-date">{{ formatDate(milestone.date) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="hasFloatingMilestones" class="lane-row lane-row--markers" :style="{ '--lane-color': 'var(--accent)' }">
+            <div class="lane-title">
+              <div class="lane-icon">
+                <Milestone :size="18" />
+              </div>
+              <div>
+                <strong>Marcos &amp; reviews</strong>
+                <span>Eventos pontuais ancorados por data</span>
+              </div>
+            </div>
+
+            <div class="lane-owner">Empresa</div>
+
+            <div class="lane-status lane-status--planned">
+              <Flag :size="13" />
+              No eixo
+            </div>
+
+            <div class="timeline-cell">
+              <div class="timeline-grid" aria-hidden="true" />
+
+              <div
+                v-for="milestone in floatingMilestones"
+                :key="milestone.id"
+                class="milestone-pin"
+                :class="[
+                  `milestone-pin--${milestone.status}`,
+                  `milestone-pin--${milestone.type}`,
+                  { 'milestone-pin--selected': isSelected('milestone', milestone.id) },
+                ]"
+                :style="markerStyle(milestone.date)"
+                role="button"
+                tabindex="0"
+                :aria-label="`${milestone.type === 'review' ? 'Review' : 'Marco'}: ${milestone.title} (${formatDate(milestone.date)})`"
+                @click="selectMilestone(milestone)"
+                @keydown.enter.prevent="selectMilestone(milestone)"
+                @keydown.space.prevent="selectMilestone(milestone)"
+              >
+                <component :is="milestone.type === 'review' ? CalendarCheck : Flag" :size="11" class="milestone-icon" />
                 <span class="milestone-label">{{ milestone.title }}</span>
                 <span class="milestone-date">{{ formatDate(milestone.date) }}</span>
               </div>
@@ -2532,12 +2656,58 @@ function resetFilters() {
   transform: rotate(45deg) scale(1.18);
 }
 
+/* Tipo: marco normal usa o acento; review usa um marcador distinto (info/warn). */
+.milestone-pin--milestone::after {
+  border-color: var(--accent);
+}
+
+.milestone-pin--review::after {
+  /* Review é renderizado como um marcador circular (não-diamante) na cor info. */
+  border-radius: 50%;
+  transform: rotate(0deg);
+  border-color: var(--info);
+  background: color-mix(in srgb, var(--info) 16%, var(--surface));
+}
+
+.milestone-pin--review:hover::after,
+.milestone-pin--review:focus-visible::after,
+.milestone-pin--review.milestone-pin--selected::after {
+  transform: rotate(0deg) scale(1.18);
+}
+
+.milestone-pin--review .milestone-label {
+  color: var(--info);
+}
+
+/* Status mantém prioridade visual sobre o tipo (concluído/atenção). */
 .milestone-pin--done::after {
   border-color: var(--success);
 }
 
 .milestone-pin--risk::after {
   border-color: var(--warn);
+}
+
+.milestone-pin--review.milestone-pin--risk::after {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface));
+}
+
+.milestone-icon {
+  color: var(--lane-color);
+}
+
+.milestone-pin--review .milestone-icon {
+  color: var(--info);
+}
+
+/* Faixa dedicada para marcos/reviews sem âncora de área (quarterId opcional). */
+.lane-row--markers {
+  border-top: 1px dashed var(--border);
+}
+
+.lane-row--markers .lane-title strong {
+  color: var(--accent);
 }
 
 .milestone-date {
