@@ -9,11 +9,12 @@ import {
   AlertCircle,
   X,
 } from 'lucide-vue-next'
-import { useWorkspaceStore } from '@/stores/workspaceStores'
+import { useWorkspaceStore, type ActivityItem } from '@/stores/workspaceStores'
 import { useToast } from '@/composables/useToast'
+import activityService from '@/service/activities/activity-service'
 import AppSelect from '@/components/ui/AppSelect.vue'
 
-const { error: showError } = useToast()
+const { error: showError, success: showSuccess } = useToast()
 
 const router = useRouter()
 const workspace = useWorkspaceStore()
@@ -22,7 +23,7 @@ const loading = ref(true)
 const searchQuery = ref('')
 const filterCompany = ref<string | null>(null)
 const filterPriority = ref<number | null>(null)
-const draggedTask = ref<any>(null)
+const draggedTask = ref<ActivityItem | null>(null)
 
 type ColumnStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
 
@@ -167,17 +168,28 @@ function isOverdue(activity: any) {
   return new Date(activity.dueDate) < new Date()
 }
 
-async function updateTaskStatus(taskId: string, newStatus: string) {
-  console.log('Update task', taskId, 'to', newStatus)
+async function updateTaskStatus(task: ActivityItem, newStatus: ColumnStatus) {
+  const previousStatus = task.status
+  // Update otimista: o card move na hora.
+  task.status = newStatus
+  try {
+    await activityService.patchActivityStatus(task.id, newStatus)
+    showSuccess('Atividade movida')
+  } catch {
+    // Reverte em caso de erro.
+    task.status = previousStatus
+    showError('Não foi possível mover a atividade')
+  }
 }
 
-function handleDragStart(task: any) {
+function handleDragStart(task: ActivityItem) {
   draggedTask.value = task
 }
 
-function handleDrop(columnId: string) {
-  if (draggedTask.value && draggedTask.value.status !== columnId) {
-    updateTaskStatus(draggedTask.value.id, columnId)
+function handleDrop(columnId: ColumnStatus) {
+  const task = draggedTask.value
+  if (task && task.status !== columnId) {
+    updateTaskStatus(task, columnId)
   }
   draggedTask.value = null
 }
