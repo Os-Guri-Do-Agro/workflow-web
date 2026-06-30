@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import TiptapEditor from '@/components/reports/TiptapEditor.vue'
 import quartersService from '@/service/quarters/quarters-service'
 import { useToast } from '@/composables/useToast'
+import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 
 const route = useRoute()
 const router = useRouter()
@@ -196,7 +197,7 @@ watch(quarterId, () => {
 
       <v-card-text class="pa-6" style="max-height: 600px">
         <v-card variant="flat" class="pa-6 bg-grey-lighten-5" rounded="lg">
-          <div v-html="suggestedContent" class="text-body-1"></div>
+          <div v-html="renderMarkdown(String(suggestedContent ?? ''))" class="text-body-1"></div>
         </v-card>
       </v-card-text>
 
