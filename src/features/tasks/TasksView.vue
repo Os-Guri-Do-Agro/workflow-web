@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTasks } from '@/features/tasks/useTasks'
 import TaskForm from '@/components/tasks/TaskForm.vue'
 import KanbanBoard from '@/components/tasks/KanbanBoard.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import type { Activity } from '@/core/types'
 import quartersService from '@/service/quarters/quarters-service'
 import activityService from '@/service/activities/activity-service'
@@ -180,6 +181,11 @@ const allUsers = computed(() => {
   return Array.from(users).sort()
 })
 
+const userItems = computed<{ label: string; value: string }[]>(() => [
+  { label: 'Todos', value: '' },
+  ...allUsers.value.map((u) => ({ label: u, value: u })),
+])
+
 
 const totalTasks = computed(() => {
   if (!tasks.value) return 0
@@ -335,10 +341,15 @@ const showFilters = ref(false)
         <!-- User -->
         <div class="filter-group">
           <label class="filter-label">Responsável</label>
-          <select v-model="selectedUser" class="filter-select">
-            <option value="">Todos</option>
-            <option v-for="u in allUsers" :key="u" :value="u">{{ u }}</option>
-          </select>
+          <div class="filter-select-wrap">
+            <AppSelect
+              v-model="selectedUser"
+              :items="userItems"
+              placeholder="Todos"
+              label="Filtrar por responsável"
+              density="compact"
+            />
+          </div>
         </div>
 
         <!-- Priority -->
@@ -617,21 +628,8 @@ const showFilters = ref(false)
   letter-spacing: 0.04em;
 }
 
-.filter-select {
-  font-size: 12.5px;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
-  outline: none;
-  font-family: inherit;
-  min-width: 140px;
-  cursor: pointer;
-}
-
-.filter-select:focus {
-  border-color: var(--accent);
+.filter-select-wrap {
+  min-width: 160px;
 }
 
 .filter-chips {

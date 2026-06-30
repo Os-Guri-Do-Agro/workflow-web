@@ -35,6 +35,7 @@ import exportService from '@/service/export/export-service'
 import shareService from '@/service/share/share-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import aiService from '@/service/ai/ai-service'
 
 const { success, error: showError, info } = useToast()
@@ -450,6 +451,27 @@ const canEditMonthlyRoadmap = computed(() => {
   if (!workspace.activeRole) return true
   return workspace.canEdit
 })
+
+const laneFilterItems = computed<{ label: string; value: string }[]>(() => [
+  { label: 'Todas as áreas', value: 'all' },
+  ...annualLanes.value.map((lane) => ({ label: lane.title, value: lane.id })),
+])
+
+const statusFilterItems = computed<{ label: string; value: string }[]>(() => [
+  { label: 'Todos', value: 'all' },
+  ...(Object.entries(statusMeta) as [RoadmapStatus, { label: string; icon: LucideIcon }][]).map(
+    ([status, meta]) => ({ label: meta.label, value: status }),
+  ),
+])
+
+const noteMonthItems = computed<{ label: string; value: string }[]>(() =>
+  visibleMonthlyPlans.value.map((month) => ({ label: month.title, value: month.key })),
+)
+
+const exportMonthItems = computed<{ label: string; value: string }[]>(() => [
+  { label: 'Todos os meses', value: 'all' },
+  ...monthlyPlans.value.map((month) => ({ label: month.title, value: month.key })),
+])
 
 onMounted(() => {
   void fetchMonthlyRoadmap()
@@ -1398,11 +1420,14 @@ function resetFilters() {
             </article>
           </div>
           <div v-if="hasVisibleMonthlyPlans && canEditMonthlyRoadmap" class="monthly-note-form">
-            <select v-model="noteMonthKey" class="monthly-control" aria-label="Mes da nota">
-              <option v-for="month in visibleMonthlyPlans" :key="month.key" :value="month.key">
-                {{ month.title }}
-              </option>
-            </select>
+            <div class="monthly-select-wrap">
+              <AppSelect
+                v-model="noteMonthKey"
+                :items="noteMonthItems"
+                label="Mês da nota"
+                density="compact"
+              />
+            </div>
             <input v-model="noteDate" type="date" class="monthly-control" aria-label="Data da nota" />
             <input
               v-model="noteDraft"
@@ -1467,12 +1492,14 @@ function resetFilters() {
               <strong>Exportação</strong>
               <p>Escolha um mês ou exporte todos os calendários em uma versão limpa para PDF.</p>
             </div>
-            <select v-model="exportMonthKey" class="monthly-control monthly-export-select" aria-label="Mes para exportar">
-              <option value="all">Todos os meses</option>
-              <option v-for="month in monthlyPlans" :key="`export-${month.key}`" :value="month.key">
-                {{ month.title }}
-              </option>
-            </select>
+            <div class="monthly-select-wrap monthly-export-select">
+              <AppSelect
+                v-model="exportMonthKey"
+                :items="exportMonthItems"
+                label="Mês para exportar"
+                density="compact"
+              />
+            </div>
             <button class="monthly-export-btn press" :disabled="!hasMonthlyPlans" @click="exportMonthlyPdf">Exportar PDF</button>
             <button class="monthly-export-btn press" :disabled="!hasMonthlyPlans || !canEditMonthlyRoadmap" @click="shareRoadmap">Compartilhar</button>
           </div>
@@ -1960,22 +1987,23 @@ function resetFilters() {
 
           <div class="control-group">
             <span class="control-label">Área</span>
-            <select v-model="activeLaneId" class="select-control" aria-label="Filtrar por area">
-              <option value="all">Todas as áreas</option>
-              <option v-for="lane in annualLanes" :key="lane.id" :value="lane.id">
-                {{ lane.title }}
-              </option>
-            </select>
+            <AppSelect
+              v-model="activeLaneId"
+              :items="laneFilterItems"
+              label="Filtrar por área"
+              density="compact"
+            />
           </div>
 
           <div class="control-group">
             <span class="control-label">Status</span>
-            <select v-model="activeStatus" class="select-control" aria-label="Filtrar por status">
-              <option value="all">Todos</option>
-              <option v-for="(meta, status) in statusMeta" :key="status" :value="status">
-                {{ meta.label }}
-              </option>
-            </select>
+            <AppSelect
+              :model-value="activeStatus"
+              :items="statusFilterItems"
+              label="Filtrar por status"
+              density="compact"
+              @update:model-value="activeStatus = $event as StatusFilter"
+            />
           </div>
 
           <button class="ghost-btn" @click="resetFilters">Limpar filtros</button>
@@ -2362,8 +2390,7 @@ function resetFilters() {
 }
 
 .segmented-btn,
-.ghost-btn,
-.select-control {
+.ghost-btn {
   font-family: inherit;
   font-size: 12.5px;
 }
@@ -2393,19 +2420,8 @@ function resetFilters() {
   color: var(--text);
 }
 
-.select-control {
+.control-group :deep(.app-select__trigger) {
   min-width: 178px;
-  height: 36px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
-  padding: 0 10px;
-  outline: none;
-}
-
-.select-control:focus {
-  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
 }
 
 .ghost-btn {
@@ -3273,19 +3289,8 @@ function resetFilters() {
   outline: none;
 }
 
-select.monthly-control {
-  appearance: none;
-  padding-right: 48px;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
-    linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
-  background-position:
-    calc(100% - 19px) 17px,
-    calc(100% - 14px) 17px;
-  background-size:
-    5px 5px,
-    5px 5px;
-  background-repeat: no-repeat;
+.monthly-select-wrap {
+  min-width: 0;
 }
 
 .monthly-control:focus {

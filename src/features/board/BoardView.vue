@@ -7,11 +7,11 @@ import {
   User,
   LayoutGrid,
   AlertCircle,
-  ChevronDown,
   X,
 } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useToast } from '@/composables/useToast'
+import AppSelect from '@/components/ui/AppSelect.vue'
 
 const { error: showError } = useToast()
 
@@ -83,6 +83,19 @@ const companies = computed(() => {
     })) || []
   )
 })
+
+const companyItems = computed(() => [
+  { label: 'Todas empresas', value: null as string | null },
+  ...companies.value.map((c) => ({ label: c.name, value: c.id })),
+])
+
+const priorityItems: { label: string; value: number | null }[] = [
+  { label: 'Todas prioridades', value: null },
+  { label: 'P0 · Crítica', value: 0 },
+  { label: 'P1 · Alta', value: 1 },
+  { label: 'P2 · Média', value: 2 },
+  { label: 'P3 · Baixa', value: 3 },
+]
 
 const hasFilters = computed(
   () => !!searchQuery.value || !!filterCompany.value || filterPriority.value !== null,
@@ -209,23 +222,24 @@ function initials(name: string) {
       </div>
 
       <div class="filter-group">
-        <div class="filter-wrap">
-          <select v-model="filterCompany" class="filter-select">
-            <option :value="null">Todas empresas</option>
-            <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-          <ChevronDown :size="12" class="filter-chev" />
+        <div class="filter-select-wrap">
+          <AppSelect
+            v-model="filterCompany"
+            :items="companyItems"
+            placeholder="Todas empresas"
+            label="Filtrar por empresa"
+            density="compact"
+          />
         </div>
 
-        <div class="filter-wrap">
-          <select v-model="filterPriority" class="filter-select">
-            <option :value="null">Todas prioridades</option>
-            <option :value="0">P0 · Crítica</option>
-            <option :value="1">P1 · Alta</option>
-            <option :value="2">P2 · Média</option>
-            <option :value="3">P3 · Baixa</option>
-          </select>
-          <ChevronDown :size="12" class="filter-chev" />
+        <div class="filter-select-wrap">
+          <AppSelect
+            v-model="filterPriority"
+            :items="priorityItems"
+            placeholder="Todas prioridades"
+            label="Filtrar por prioridade"
+            density="compact"
+          />
         </div>
 
         <button v-if="hasFilters" class="clear-btn" @click="clearFilters">
@@ -442,40 +456,8 @@ function initials(name: string) {
   margin-left: auto;
 }
 
-.filter-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.filter-chev {
-  position: absolute;
-  right: 10px;
-  color: var(--text-3);
-  pointer-events: none;
-}
-
-.filter-select {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 7px 28px 7px 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: 12.5px;
-  font-family: inherit;
-  cursor: pointer;
-  outline: none;
-  transition: border-color var(--motion-fast) var(--motion-ease);
-}
-
-.filter-select:hover {
-  border-color: var(--border-strong);
-}
-
-.filter-select:focus {
-  border-color: var(--accent);
+.filter-select-wrap {
+  min-width: 160px;
 }
 
 .clear-btn {
@@ -804,7 +786,6 @@ function initials(name: string) {
   .card,
   .col,
   .search-input,
-  .filter-select,
   .col-bar-fill {
     transition-duration: 1ms;
   }

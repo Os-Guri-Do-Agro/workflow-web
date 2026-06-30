@@ -26,6 +26,7 @@ import { common, createLowlight } from 'lowlight'
 import notesService from '@/service/notes/notes-service'
 import { useToast } from '@/composables/useToast'
 import aiService from '@/service/ai/ai-service'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import {
   ArrowLeft, Save, Loader2,
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -106,6 +107,11 @@ const editor = useEditor({
 
 const charCount = computed(() => editor.value?.storage.characterCount?.characters() ?? 0)
 const wordCount = computed(() => editor.value?.storage.characterCount?.words() ?? 0)
+
+const folderItems = computed<{ label: string; value: string | null }[]>(() => [
+  { label: 'Sem pasta', value: null },
+  ...folders.value.map((folder: any) => ({ label: folder.name, value: folder.id })),
+])
 
 onMounted(async () => {
   await fetchFolders()
@@ -454,12 +460,13 @@ watch(() => editor.value, (e) => {
       <div class="editor-sidebar">
         <div class="sidebar-section">
           <label class="sidebar-label">Pasta</label>
-          <select v-model="folderId" class="sidebar-select">
-            <option :value="null">Sem pasta</option>
-            <option v-for="folder in folders" :key="folder.id" :value="folder.id">
-              {{ folder.name }}
-            </option>
-          </select>
+          <AppSelect
+            v-model="folderId"
+            :items="folderItems"
+            placeholder="Sem pasta"
+            label="Pasta"
+            density="compact"
+          />
         </div>
 
         <div class="sidebar-section">
@@ -963,17 +970,6 @@ watch(() => editor.value, (e) => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 8px;
-}
-
-.sidebar-select {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 6px;
-  background: transparent;
-  font-size: 13px;
-  color: rgb(var(--v-theme-secondary));
-  cursor: pointer;
 }
 
 .tags-input {
