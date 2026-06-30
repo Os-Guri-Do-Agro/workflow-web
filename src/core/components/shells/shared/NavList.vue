@@ -17,6 +17,7 @@ import {
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 export type NavItem = {
   title: string
@@ -48,7 +49,10 @@ function userMeetsRole(required?: string): boolean {
 const mainItems = computed<NavItem[]>(() => [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/dashboard', section: 'Trabalho' },
   { title: 'Board', icon: Columns3, to: '/board', section: 'Trabalho' },
-  { title: 'Canvas', icon: Paintbrush, to: '/boards', section: 'Trabalho' },
+  // Canvas: escondido via feature flag (CANVAS_ENABLED). Reativar = VITE_CANVAS_ENABLED=true.
+  ...(CANVAS_ENABLED
+    ? [{ title: 'Canvas', icon: Paintbrush, to: '/boards', section: 'Trabalho' } as NavItem]
+    : []),
   { title: 'Roadmap', icon: Milestone, to: '/roadmap', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)

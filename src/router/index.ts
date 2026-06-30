@@ -29,6 +29,7 @@ import BoardCanvasView from '@/features/boards/BoardCanvasView.vue'
 import PublicBoardView from '@/features/public/PublicBoardView.vue'
 import PublicRoadmapView from '@/features/public/PublicRoadmapView.vue'
 import { usePostHog } from '@/composables/usePostHog'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
 
@@ -90,6 +91,14 @@ const ROLE_RANK: Record<string, number> = {
   OWNER: 4,
 }
 
+/**
+ * Rotas dos boards de desenho (Canvas). Escondidas via feature flag
+ * `CANVAS_ENABLED` (ver `src/config/feature-flags.ts`). Quando a flag está off,
+ * o guard redireciona essas rotas para a home — sem deletar nada. Repare que
+ * `/board` (Kanban) NÃO está aqui: é outra feature e fica sempre acessível.
+ */
+const CANVAS_ROUTE_NAMES = new Set(['boards', 'board-canvas', 'public-board'])
+
 /** JWT expirado (ou malformado) conta como "sem token". */
 function isTokenExpired(token: string): boolean {
   try {
@@ -113,6 +122,12 @@ function activeCompanyRole(token: string): string | null {
 
 router.beforeEach((to, from) => {
   if (to.path !== from.path) NProgress.start()
+
+  // Canvas escondido (feature flag off): qualquer rota de board de desenho
+  // volta pra home. Reativar = VITE_CANVAS_ENABLED=true.
+  if (!CANVAS_ENABLED && CANVAS_ROUTE_NAMES.has(to.name as string)) {
+    return { name: 'home' }
+  }
 
   let token = localStorage.getItem('token')
   // Token presente mas expirado: limpa proativamente (o guard antigo só via

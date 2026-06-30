@@ -8,6 +8,8 @@ import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
 import NavList from './shared/NavList.vue'
 import InboxBell from './shared/InboxBell.vue'
+import HelpButton from './shared/HelpButton.vue'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 defineEmits<{
   'open-command-palette': []
@@ -21,7 +23,8 @@ const breadcrumbs = computed(() => {
     '/': 'Dashboard',
     '/dashboard': 'Dashboard',
     '/board': 'Board',
-    '/boards': 'Canvas',
+    // Canvas: breadcrumb '/boards' só existe com a flag ligada (ver feature-flags.ts).
+    ...(CANVAS_ENABLED ? { '/boards': 'Canvas' } : {}),
     '/roadmap': 'Roadmap',
     '/settings': 'Configurações',
     '/variables': 'Variáveis',
@@ -38,7 +41,7 @@ const breadcrumbs = computed(() => {
     return items
   }
   if (path.startsWith('/relatorio/')) return ['Tarefas', 'Relatório']
-  if (path.startsWith('/boards/')) return ['Canvas', 'Board']
+  if (CANVAS_ENABLED && path.startsWith('/boards/')) return ['Canvas', 'Board']
   if (path.startsWith('/notes/')) return ['Notas', 'Editor']
   return ['Forge']
 })
@@ -59,6 +62,7 @@ const breadcrumbs = computed(() => {
       </div>
       <div class="spacer" />
       <CmdKButton variant="full" @open="$emit('open-command-palette')" />
+      <HelpButton />
       <InboxBell />
       <ThemeToggle />
       <UserMenu />

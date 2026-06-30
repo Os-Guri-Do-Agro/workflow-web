@@ -21,7 +21,9 @@ import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
 import InboxBell from './shared/InboxBell.vue'
+import HelpButton from './shared/HelpButton.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 defineEmits<{
   'open-command-palette': []
@@ -36,7 +38,8 @@ const railItems = computed(() => {
   const items: Array<{ to: string; icon: Component; label: string }> = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/board', icon: Columns3, label: 'Board' },
-    { to: '/boards', icon: Paintbrush, label: 'Canvas' },
+    // Canvas escondido via feature flag (ver feature-flags.ts).
+    ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas' }] : []),
     { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
   ]
   if (firstMonth.value) {
@@ -171,7 +174,7 @@ const showTasks = computed(() =>
               <Columns3 :size="12" class="quick-icon" />
               <span class="quick-label">Board</span>
             </button>
-            <button class="quick-item" @click="router.push('/boards')">
+            <button v-if="CANVAS_ENABLED" class="quick-item" @click="router.push('/boards')">
               <Paintbrush :size="12" class="quick-icon" />
               <span class="quick-label">Canvas</span>
             </button>
@@ -212,6 +215,7 @@ const showTasks = computed(() =>
       <header class="slim-top">
         <span class="slim-label">{{ currentLabel }}</span>
         <div class="spacer" />
+        <HelpButton />
         <InboxBell />
         <ThemeToggle />
       </header>

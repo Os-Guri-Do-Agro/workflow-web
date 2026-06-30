@@ -21,7 +21,9 @@ import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
 import InboxBell from './shared/InboxBell.vue'
+import HelpButton from './shared/HelpButton.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const emit = defineEmits<{
   'open-command-palette': []
@@ -32,21 +34,22 @@ const router = useRouter()
 
 const { quarters, firstMonth } = useNavQuarters()
 
-const tabs = [
+// Canvas (`/boards`) só aparece com a feature flag ligada (ver feature-flags.ts).
+const tabs = computed(() => [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/board', icon: Columns3, label: 'Board' },
-  { to: '/boards', icon: Paintbrush, label: 'Canvas' },
+  ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas' }] : []),
   { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
   { to: '/variables', icon: KeyRound, label: 'Variáveis' },
   { to: '/notes', icon: StickyNote, label: 'Notas' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
-]
+])
 
 const dockItems = computed(() => {
   const items: Array<{ to: string; icon: Component }> = [
     { to: '/dashboard', icon: LayoutDashboard },
     { to: '/board', icon: Columns3 },
-    { to: '/boards', icon: Paintbrush },
+    ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush }] : []),
     { to: '/roadmap', icon: Milestone },
   ]
   if (firstMonth.value) items.push({ to: `/tasks/${firstMonth.value.id}`, icon: ListTodo })
@@ -162,6 +165,7 @@ const handleNew = () => {
           <Plus :size="14" />
           <span>Novo</span>
         </button>
+        <HelpButton />
         <InboxBell />
         <ThemeToggle />
         <UserMenu :show-name="false" />

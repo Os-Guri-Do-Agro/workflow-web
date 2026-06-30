@@ -22,6 +22,7 @@ import notificationsService from '@/service/notifications/notifications-service'
 // import RepositoriesSection from './RepositoriesSection.vue' // oculto até liberar feature
 import type { AccentName, Density, ShellVariant } from '@/plugins/tokens'
 import { accents } from '@/plugins/tokens'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const { success: toastSuccess, error: toastError } = useToast()
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -220,12 +221,17 @@ const shellOptions: {
     desc: 'Rail de ícones + coluna de contexto. Inspirado no Linear.',
     icon: Columns3,
   },
-  {
-    value: 'canvas',
-    label: 'Canvas',
-    desc: 'Nav horizontal + dock flutuante. Mais espaço para o conteúdo.',
-    icon: Square,
-  },
+  // Shell "Canvas" só aparece com a feature flag ligada (ver feature-flags.ts).
+  ...(CANVAS_ENABLED
+    ? [
+        {
+          value: 'canvas' as ShellVariant,
+          label: 'Canvas',
+          desc: 'Nav horizontal + dock flutuante. Mais espaço para o conteúdo.',
+          icon: Square,
+        },
+      ]
+    : []),
 ]
 </script>
 
