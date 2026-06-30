@@ -1294,7 +1294,7 @@ function resetFilters() {
         @click="roadmapMode = 'monthly'"
       >
         <CalendarDays :size="14" />
-        Calend&aacute;rios mensais
+        Calendários mensais
       </button>
       <button
         class="mode-btn"
@@ -1312,9 +1312,9 @@ function resetFilters() {
         <section class="monthly-help-modal">
           <header class="monthly-help-head">
             <div>
-              <span class="text-eyebrow">Guia r&aacute;pido</span>
-              <h2>Como usar os calend&aacute;rios mensais</h2>
-              <p>Esta tela serve para transformar o roadmap em uma leitura simples por m&ecirc;s: foco, datas importantes, agenda e notas.</p>
+              <span class="text-eyebrow">Guia rápido</span>
+              <h2>Como usar os calendários mensais</h2>
+              <p>Esta tela serve para transformar o roadmap em uma leitura simples por mês: foco, datas importantes, agenda e notas.</p>
             </div>
             <button class="monthly-help-close press" type="button" aria-label="Fechar ajuda" @click="showMonthlyHelp = false">
               <X :size="18" />
@@ -1325,29 +1325,29 @@ function resetFilters() {
             <article>
               <span>1</span>
               <div>
-                <strong>Leia o foco do m&ecirc;s</strong>
-                <p>O bloco de foco mostra as prioridades principais. No card aparecem s&oacute; os primeiros itens; a lista completa fica em detalhes.</p>
+                <strong>Leia o foco do mês</strong>
+                <p>O bloco de foco mostra as prioridades principais. No card aparecem só os primeiros itens; a lista completa fica em detalhes.</p>
               </div>
             </article>
             <article>
               <span>2</span>
               <div>
-                <strong>Use o calend&aacute;rio para localizar datas</strong>
+                <strong>Use o calendário para localizar datas</strong>
                 <p>Dias coloridos indicam que existe algo marcado. Quando um dia tem mais de um item, ele mostra um contador.</p>
               </div>
             </article>
             <article>
               <span>3</span>
               <div>
-                <strong>Abra os detalhes do m&ecirc;s</strong>
-                <p>Em "Ver detalhes" voc&ecirc; encontra calend&aacute;rio ampliado, agenda completa, todos os focos e a galeria de imagens.</p>
+                <strong>Abra os detalhes do mês</strong>
+                <p>Em "Ver detalhes" você encontra calendário ampliado, agenda completa, todos os focos e a galeria de imagens.</p>
               </div>
             </article>
             <article>
               <span>4</span>
               <div>
                 <strong>Registre notas e exporte o PDF</strong>
-                <p>Use anota&ccedil;&otilde;es r&aacute;pidas para decis&otilde;es pontuais e escolha se o PDF deve sair com todos os meses ou apenas um.</p>
+                <p>Use anotações rápidas para decisões pontuais e escolha se o PDF deve sair com todos os meses ou apenas um.</p>
               </div>
             </article>
           </div>
@@ -1359,13 +1359,13 @@ function resetFilters() {
           <div class="monthly-note-head">
             <div class="monthly-note-title">
               <span class="text-eyebrow">
-                Anota&ccedil;&otilde;es r&aacute;pidas
+                Anotações rápidas
                 <small class="roadmap-data-source">
-                  {{ roadmapMonthlyLoading ? 'Sincronizando...' : usingRoadmapMonthlyApi ? 'Dados da API' : 'API indispon&iacute;vel' }}
+                  {{ roadmapMonthlyLoading ? 'Sincronizando...' : usingRoadmapMonthlyApi ? 'Dados da API' : 'API indisponível' }}
                 </small>
               </span>
-              <h2>Registre uma decis&atilde;o ou lembrete</h2>
-              <p>Escolha m&ecirc;s e data para adicionar uma nota diretamente no calend&aacute;rio correspondente.</p>
+              <h2>Registre uma decisão ou lembrete</h2>
+              <p>Escolha mês e data para adicionar uma nota diretamente no calendário correspondente.</p>
             </div>
             <div class="monthly-help-row no-print">
               <button class="monthly-help-btn press" type="button" @click="showMonthlyHelp = true">
@@ -1385,14 +1385,14 @@ function resetFilters() {
             <article>
               <CalendarClock :size="14" />
               <div>
-                <span>Agenda do m&ecirc;s</span>
+                <span>Agenda do mês</span>
                 <strong>{{ selectedNoteMonth.entries.length }} itens planejados</strong>
               </div>
             </article>
             <article>
               <CircleDot :size="14" />
               <div>
-                <span>Dias com aten&ccedil;&atilde;o</span>
+                <span>Dias com atenção</span>
                 <strong>{{ monthMarkedDays(selectedNoteMonth) }} datas marcadas</strong>
               </div>
             </article>
@@ -1417,12 +1417,12 @@ function resetFilters() {
             </button>
           </div>
           <p v-else-if="!hasMonthlyPlans" class="monthly-readonly-hint">
-            Nenhum m&ecirc;s cadastrado na API para receber anota&ccedil;&otilde;es.
+            Nenhum mês cadastrado na API para receber anotações.
           </p>
           <p v-else-if="!hasVisibleMonthlyPlans" class="monthly-readonly-hint">
-            N&atilde;o h&aacute; meses atuais ou futuros para anota&ccedil;&otilde;es. Use "Ver todos" para acessar meses anteriores.
+            Não há meses atuais ou futuros para anotações. Use "Ver todos" para acessar meses anteriores.
           </p>
-          <p v-else class="monthly-readonly-hint">Seu perfil pode visualizar o roadmap mensal, mas n&atilde;o pode criar anota&ccedil;&otilde;es.</p>
+          <p v-else class="monthly-readonly-hint">Seu perfil pode visualizar o roadmap mensal, mas não pode criar anotações.</p>
 
           <section class="monthly-legend" aria-label="Legenda dos calendarios">
             <strong>Legenda</strong>
@@ -1464,8 +1464,8 @@ function resetFilters() {
           <div class="monthly-export-card">
             <FileDown :size="16" />
             <div>
-              <strong>Exporta&ccedil;&atilde;o</strong>
-              <p>Escolha um m&ecirc;s ou exporte todos os calend&aacute;rios em uma vers&atilde;o limpa para PDF.</p>
+              <strong>Exportação</strong>
+              <p>Escolha um mês ou exporte todos os calendários em uma versão limpa para PDF.</p>
             </div>
             <select v-model="exportMonthKey" class="monthly-control monthly-export-select" aria-label="Mes para exportar">
               <option value="all">Todos os meses</option>
@@ -1483,7 +1483,7 @@ function resetFilters() {
         <CalendarDays :size="22" />
         <div>
           <span class="text-eyebrow">Sem dados do roadmap mensal</span>
-          <h2>Nenhum m&ecirc;s cadastrado para {{ roadmapStart.getFullYear() }}</h2>
+          <h2>Nenhum mês cadastrado para {{ roadmapStart.getFullYear() }}</h2>
           <p>
             A API respondeu sem meses para a empresa ativa. Assim que o backend cadastrar meses, focos e agenda,
             esta tela passa a exibir os dados reais.
@@ -1580,7 +1580,7 @@ function resetFilters() {
             <section class="month-guidance">
               <div class="month-section-title">
                 <Target :size="14" />
-                Foco do m&ecirc;s
+                Foco do mês
               </div>
               <ul>
                 <li v-for="bullet in focusItemsForCard(month)" :key="bullet">{{ bullet }}</li>
@@ -1626,7 +1626,7 @@ function resetFilters() {
               <div class="month-section-title month-section-title--split">
                 <span>
                   <CalendarClock :size="14" />
-                  Agenda do m&ecirc;s
+                  Agenda do mês
                 </span>
                 <small>{{ monthEntriesForCard(month).length }} de {{ month.entries.length }}</small>
               </div>
@@ -1659,7 +1659,7 @@ function resetFilters() {
                 type="button"
                 @click="openMonthDetails(month.key)"
               >
-                Ver detalhes do m&ecirc;s
+                Ver detalhes do mês
               </button>
             </section>
           </div>
@@ -1674,7 +1674,7 @@ function resetFilters() {
         >
           <header class="print-month-head">
             <div>
-              <span>Roadmap mensal &middot; etapa {{ monthlyPlans.findIndex((item) => item.key === month.key) + 1 }} de {{ monthlyPlans.length }}</span>
+              <span>Roadmap mensal · etapa {{ monthlyPlans.findIndex((item) => item.key === month.key) + 1 }} de {{ monthlyPlans.length }}</span>
               <h2>{{ month.title }}</h2>
               <p>{{ month.main }}</p>
             </div>
@@ -1696,7 +1696,7 @@ function resetFilters() {
 
           <div class="print-month-grid">
             <section class="print-panel">
-              <h3>Foco do m&ecirc;s</h3>
+              <h3>Foco do mês</h3>
               <ul class="print-focus-list">
                 <li v-for="bullet in focusItemsFor(month)" :key="`print-${month.key}-${bullet}`">
                   {{ bullet }}
@@ -1741,7 +1741,7 @@ function resetFilters() {
           </section>
 
           <footer class="print-month-footer">
-            <span>Workflow &middot; Stack Roads</span>
+            <span>Workflow · Stack Roads</span>
             <span v-if="printedMonthlyPlans.length > 1">{{ index + 1 }} / {{ printedMonthlyPlans.length }}</span>
           </footer>
         </article>
@@ -1753,7 +1753,7 @@ function resetFilters() {
         <aside class="month-drawer">
           <header class="month-drawer-head">
             <div>
-              <span class="text-eyebrow">Detalhes do m&ecirc;s</span>
+              <span class="text-eyebrow">Detalhes do mês</span>
               <h2>{{ selectedMonthDetails.title }}</h2>
               <p>{{ selectedMonthDetails.main }}</p>
             </div>
@@ -1807,7 +1807,7 @@ function resetFilters() {
           <section class="drawer-section">
             <div class="month-section-title">
               <Target :size="14" />
-              Foco do m&ecirc;s
+              Foco do mês
             </div>
             <div v-if="canEditMonthlyRoadmap" class="drawer-focus-actions">
               <div class="focus-add-row">
@@ -1815,7 +1815,7 @@ function resetFilters() {
                   class="focus-add-input"
                   type="text"
                   :value="focusDraftFor(selectedMonthDetails.key)"
-                  placeholder="Novo foco do m&ecirc;s"
+                  placeholder="Novo foco do mês"
                   @input="setFocusDraft(selectedMonthDetails.key, ($event.target as HTMLInputElement).value)"
                   @keydown.enter.prevent="addFocusItem(selectedMonthDetails.key)"
                 />
@@ -1927,10 +1927,10 @@ function resetFilters() {
         <div class="controls-intro">
           <div>
             <span class="text-eyebrow">Como usar</span>
-            <h2>Explore o roadmap por trimestre, &aacute;rea ou status</h2>
+            <h2>Explore o roadmap por trimestre, área ou status</h2>
           </div>
           <p>
-            Use os filtros para focar em uma parte do ano. Clique em uma barra ou marco da timeline para ver per&iacute;odo,
+            Use os filtros para focar em uma parte do ano. Clique em uma barra ou marco da timeline para ver período,
             progresso e contexto no painel ao lado.
           </p>
         </div>
@@ -1959,9 +1959,9 @@ function resetFilters() {
           </div>
 
           <div class="control-group">
-            <span class="control-label">&Aacute;rea</span>
+            <span class="control-label">Área</span>
             <select v-model="activeLaneId" class="select-control" aria-label="Filtrar por area">
-              <option value="all">Todas as &aacute;reas</option>
+              <option value="all">Todas as áreas</option>
               <option v-for="lane in annualLanes" :key="lane.id" :value="lane.id">
                 {{ lane.title }}
               </option>
@@ -1994,10 +1994,10 @@ function resetFilters() {
             </span>
           </div>
           <h2>{{ selected.value.title }}</h2>
-          <p v-if="selectedLane">{{ selectedLane.title }} &middot; {{ selectedLane.owner }}</p>
+          <p v-if="selectedLane">{{ selectedLane.title }} · {{ selectedLane.owner }}</p>
           <dl class="detail-list">
             <div>
-              <dt>Per&iacute;odo</dt>
+              <dt>Período</dt>
               <dd v-if="selected.type === 'item'">
                 {{ formatDate(selected.value.start) }} - {{ formatDate(selected.value.end) }}
               </dd>
@@ -2017,8 +2017,8 @@ function resetFilters() {
           <div class="detail-empty">
             <Milestone :size="22" />
             <h2>Selecione uma atividade</h2>
-            <p v-if="annualItems.length || annualMilestones.length">Clique em uma barra ou marco do roadmap para ver mais informa&ccedil;&otilde;es aqui.</p>
-            <p v-else>A timeline anual ainda n&atilde;o possui dados para detalhar.</p>
+            <p v-if="annualItems.length || annualMilestones.length">Clique em uma barra ou marco do roadmap para ver mais informações aqui.</p>
+            <p v-else>A timeline anual ainda não possui dados para detalhar.</p>
           </div>
         </template>
       </aside>
@@ -2042,8 +2042,8 @@ function resetFilters() {
         <span class="text-eyebrow">Sem dados da timeline</span>
         <h2>Nenhum item cadastrado no roadmap anual</h2>
         <p>
-          A API da timeline anual n&atilde;o retornou &aacute;reas, atividades ou marcos para a empresa ativa.
-          Assim que o backend cadastrar esses dados, a timeline ser&aacute; exibida aqui.
+          A API da timeline anual não retornou áreas, atividades ou marcos para a empresa ativa.
+          Assim que o backend cadastrar esses dados, a timeline será exibida aqui.
         </p>
       </div>
     </section>
@@ -2064,8 +2064,8 @@ function resetFilters() {
           </div>
 
           <div class="board-header">
-            <div class="side-header">&Aacute;rea</div>
-            <div class="meta-header">Respons&aacute;vel</div>
+            <div class="side-header">Área</div>
+            <div class="meta-header">Responsável</div>
             <div class="meta-header">Status</div>
             <div class="timeline-header">
               <div
