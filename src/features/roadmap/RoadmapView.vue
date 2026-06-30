@@ -36,6 +36,7 @@ import shareService from '@/service/share/share-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import aiService from '@/service/ai/ai-service'
 
 const { success, error: showError, info } = useToast()
@@ -125,294 +126,18 @@ const calendarCategoryMeta: Record<CalendarCategory, CalendarCategoryMeta> = {
   risk: { label: 'Risco', icon: Flag, tone: 'var(--err)' },
 }
 
-const roadmapStart = new Date('2026-01-01T00:00:00')
-const roadmapEnd = new Date('2026-12-31T23:59:59')
+const roadmapYear = new Date().getFullYear()
+const roadmapStart = new Date(roadmapYear, 0, 1, 0, 0, 0)
+const roadmapEnd = new Date(roadmapYear, 11, 31, 23, 59, 59)
 
+// R\u00e9gua trimestral derivada do ano corrente (estrutura de eixo, n\u00e3o dados de roadmap).
+// Os itens, \u00e1reas e marcos do timeline v\u00eam da API (annualLanes/annualItems/annualMilestones).
 const quarters = [
-  { label: 'Q1', period: 'Jan - Mar', start: '2026-01-01', end: '2026-03-31' },
-  { label: 'Q2', period: 'Abr - Jun', start: '2026-04-01', end: '2026-06-30' },
-  { label: 'Q3', period: 'Jul - Set', start: '2026-07-01', end: '2026-09-30' },
-  { label: 'Q4', period: 'Out - Dez', start: '2026-10-01', end: '2026-12-31' },
+  { label: 'Q1', period: 'Jan - Mar', start: `${roadmapYear}-01-01`, end: `${roadmapYear}-03-31` },
+  { label: 'Q2', period: 'Abr - Jun', start: `${roadmapYear}-04-01`, end: `${roadmapYear}-06-30` },
+  { label: 'Q3', period: 'Jul - Set', start: `${roadmapYear}-07-01`, end: `${roadmapYear}-09-30` },
+  { label: 'Q4', period: 'Out - Dez', start: `${roadmapYear}-10-01`, end: `${roadmapYear}-12-31` },
 ] as const
-
-const reviewMarkers = [
-  { label: 'Review Q1', date: '2026-03-27' },
-  { label: 'Review Q2', date: '2026-06-26' },
-  { label: 'Review Q3', date: '2026-09-25' },
-  { label: 'Review Q4', date: '2026-12-18' },
-]
-
-const lanes: RoadmapLane[] = [
-  {
-    id: 'planning',
-    title: 'Planejamento',
-    description: 'Vis\u00e3o, objetivos e or\u00e7amento do ciclo.',
-    owner: 'Produto',
-    status: 'active',
-    color: 'var(--accent)',
-    icon: Target,
-  },
-  {
-    id: 'strategy',
-    title: 'Estrat\u00e9gia',
-    description: 'Pesquisa, hip\u00f3teses e valida\u00e7\u00e3o de mercado.',
-    owner: 'Growth',
-    status: 'planned',
-    color: 'var(--err)',
-    icon: Flag,
-  },
-  {
-    id: 'development',
-    title: 'Desenvolvimento',
-    description: 'Entrega de roadmap, betas e release.',
-    owner: 'Engenharia',
-    status: 'active',
-    color: 'var(--success)',
-    icon: Rocket,
-  },
-  {
-    id: 'intelligence',
-    title: 'Business Intelligence',
-    description: 'M\u00e9tricas, dashboards e relat\u00f3rios operacionais.',
-    owner: 'Dados',
-    status: 'risk',
-    color: 'var(--info)',
-    icon: BarChart3,
-  },
-]
-
-const roadmapItems: RoadmapItem[] = [
-  {
-    id: 'vision',
-    laneId: 'planning',
-    title: 'Vis\u00e3o',
-    start: '2026-01-01',
-    end: '2026-02-14',
-    progress: 100,
-    status: 'done',
-    kind: 'activity',
-  },
-  {
-    id: 'objectives',
-    laneId: 'planning',
-    title: 'Objetivos',
-    start: '2026-01-24',
-    end: '2026-03-06',
-    progress: 100,
-    status: 'done',
-    kind: 'activity',
-  },
-  {
-    id: 'goals',
-    laneId: 'planning',
-    title: 'Metas',
-    start: '2026-03-02',
-    end: '2026-04-10',
-    progress: 100,
-    status: 'done',
-    kind: 'activity',
-  },
-  {
-    id: 'intent',
-    laneId: 'planning',
-    title: 'Strategic Intent',
-    start: '2026-04-01',
-    end: '2026-05-14',
-    progress: 64,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'budget',
-    laneId: 'planning',
-    title: 'Sales Budget',
-    start: '2026-05-16',
-    end: '2026-06-14',
-    progress: 35,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'release-plan',
-    laneId: 'planning',
-    title: 'Beta + Release Plans',
-    start: '2026-06-16',
-    end: '2026-08-30',
-    progress: 18,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'market',
-    laneId: 'strategy',
-    title: 'Market Analysis',
-    start: '2026-02-05',
-    end: '2026-03-22',
-    progress: 80,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'swot',
-    laneId: 'strategy',
-    title: 'SWOT',
-    start: '2026-03-14',
-    end: '2026-04-02',
-    progress: 45,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'business-model',
-    laneId: 'strategy',
-    title: 'Business Model',
-    start: '2026-04-01',
-    end: '2026-06-02',
-    progress: 20,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'price-research',
-    laneId: 'strategy',
-    title: 'Price Research',
-    start: '2026-05-24',
-    end: '2026-07-12',
-    progress: 0,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'sales-trends',
-    laneId: 'strategy',
-    title: 'Sales Trends Analysis',
-    start: '2026-07-15',
-    end: '2026-09-10',
-    progress: 0,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'vks',
-    laneId: 'development',
-    title: 'VKS',
-    start: '2026-02-24',
-    end: '2026-03-20',
-    progress: 75,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'product-roadmap',
-    laneId: 'development',
-    title: 'Product Roadmap',
-    start: '2026-02-28',
-    end: '2026-04-20',
-    progress: 64,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'development',
-    laneId: 'development',
-    title: 'Development',
-    start: '2026-04-01',
-    end: '2026-08-22',
-    progress: 42,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'qa',
-    laneId: 'development',
-    title: 'QA + RC',
-    start: '2026-08-23',
-    end: '2026-09-18',
-    progress: 0,
-    status: 'planned',
-    kind: 'event',
-  },
-  {
-    id: 'release-web',
-    laneId: 'development',
-    title: 'Release to Web',
-    start: '2026-09-20',
-    end: '2026-11-10',
-    progress: 0,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'service-metrics',
-    laneId: 'intelligence',
-    title: 'Service Metrics',
-    start: '2026-03-01',
-    end: '2026-03-08',
-    progress: 100,
-    status: 'done',
-    kind: 'event',
-  },
-  {
-    id: 'quality-metrics',
-    laneId: 'intelligence',
-    title: 'Quality Metrics',
-    start: '2026-04-05',
-    end: '2026-04-12',
-    progress: 100,
-    status: 'done',
-    kind: 'event',
-  },
-  {
-    id: 'service-dashboard',
-    laneId: 'intelligence',
-    title: 'Service Dashboard',
-    start: '2026-06-28',
-    end: '2026-07-05',
-    progress: 30,
-    status: 'active',
-    kind: 'event',
-  },
-  {
-    id: 'real-time-analytics',
-    laneId: 'intelligence',
-    title: 'Real-time Analytics',
-    start: '2026-09-12',
-    end: '2026-09-20',
-    progress: 0,
-    status: 'planned',
-    kind: 'event',
-  },
-  {
-    id: 'sales-dashboard',
-    laneId: 'intelligence',
-    title: 'Sales Dashboard',
-    start: '2026-11-25',
-    end: '2026-12-02',
-    progress: 0,
-    status: 'planned',
-    kind: 'event',
-  },
-  {
-    id: 'reporting',
-    laneId: 'intelligence',
-    title: 'Real-time Reporting',
-    start: '2026-12-10',
-    end: '2026-12-18',
-    progress: 0,
-    status: 'planned',
-    kind: 'event',
-  },
-]
-
-const milestones: RoadmapMilestone[] = [
-  { id: 'competitive-review', laneId: 'strategy', title: 'Competitive Review', date: '2026-03-14', status: 'active' },
-  { id: 'alpha', laneId: 'development', title: 'Alpha', date: '2026-05-20', status: 'active' },
-  { id: 'private-beta', laneId: 'development', title: 'Private Beta', date: '2026-06-30', status: 'planned' },
-  { id: 'public-beta', laneId: 'development', title: 'Public Beta', date: '2026-08-10', status: 'planned' },
-  { id: 'staging', laneId: 'development', title: 'Staging', date: '2026-11-15', status: 'planned' },
-  { id: 'go-live', laneId: 'development', title: 'Go Live!', date: '2026-12-20', status: 'planned' },
-  { id: 'price-list', laneId: 'strategy', title: 'Final Price List', date: '2026-07-05', status: 'planned' },
-]
 
 const statusMeta: Record<RoadmapStatus, { label: string; icon: LucideIcon }> = {
   done: { label: 'Conclu\u00eddo', icon: CheckCircle2 },
@@ -426,8 +151,8 @@ const activeStatus = ref<StatusFilter>('all')
 const activeQuarter = ref<QuarterFilter>('all')
 const selected = ref<RoadmapSelection | null>(null)
 const noteDraft = ref('')
-const noteMonthKey = ref('2026-05')
-const noteDate = ref('2026-05-03')
+const noteMonthKey = ref(`${roadmapYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+const noteDate = ref(new Date().toISOString().slice(0, 10))
 const exportMonthKey = ref<'all' | string>('all')
 const selectedMonthDetailsKey = ref<string | null>(null)
 const annualRoadmapLoading = ref(false)
@@ -484,8 +209,8 @@ const viewport = computed(() => {
   }
   const quarter = quarters.find((item) => item.label === activeQuarter.value)
   return {
-    start: new Date(`${quarter?.start ?? '2026-01-01'}T00:00:00`),
-    end: new Date(`${quarter?.end ?? '2026-12-31'}T23:59:59`),
+    start: new Date(`${quarter?.start ?? `${roadmapYear}-01-01`}T00:00:00`),
+    end: new Date(`${quarter?.end ?? `${roadmapYear}-12-31`}T23:59:59`),
   }
 })
 
@@ -498,10 +223,6 @@ const visibleQuarters = computed(() => {
   if (activeQuarter.value === 'all') return quarters
   return quarters.filter((quarter) => quarter.label === activeQuarter.value)
 })
-
-const visibleReviewMarkers = computed(() =>
-  reviewMarkers.filter((review) => annualItems.value.length && overlapsDate(review.date, review.date)),
-)
 
 const selectedLane = computed(() => {
   const laneId = selected.value?.value.laneId
@@ -1474,7 +1195,7 @@ function resetFilters() {
               v-model="roadmapPrompt"
               class="monthly-control monthly-ai-prompt"
               rows="4"
-              placeholder="Ex: planeje o roadmap de 2026 para lançar onboarding, billing e métricas..."
+              placeholder="Ex: planeje o roadmap do ano para lançar onboarding, billing e métricas..."
               :disabled="roadmapPromptLoading || !canEditMonthlyRoadmap"
             />
             <button
@@ -2061,36 +1782,16 @@ function resetFilters() {
       </div>
     </section>
 
-    <section
+    <EmptyState
       v-else-if="roadmapMode === 'timeline' && (!annualLanes.length || (!annualItems.length && !annualMilestones.length))"
-      class="monthly-empty-state"
-    >
-      <Milestone :size="22" />
-      <div>
-        <span class="text-eyebrow">Sem dados da timeline</span>
-        <h2>Nenhum item cadastrado no roadmap anual</h2>
-        <p>
-          A API da timeline anual não retornou áreas, atividades ou marcos para a empresa ativa.
-          Assim que o backend cadastrar esses dados, a timeline será exibida aqui.
-        </p>
-      </div>
-    </section>
+      :icon="Milestone"
+      title="Roadmap anual em breve"
+      description="A timeline anual ainda não tem áreas, atividades ou marcos cadastrados para a empresa ativa. Assim que o backend disponibilizar esses dados, eles aparecerão aqui."
+    />
 
     <div v-else-if="roadmapMode === 'timeline'" class="roadmap-shell">
       <div class="roadmap-scroll" role="region" aria-label="Linha do tempo do roadmap" tabindex="0">
         <div class="roadmap-board">
-          <div class="review-layer" aria-hidden="true">
-            <div
-              v-for="review in visibleReviewMarkers"
-              :key="review.label"
-              class="review-marker"
-              :style="markerStyle(review.date)"
-            >
-              <span>{{ review.label }}</span>
-              <i />
-            </div>
-          </div>
-
           <div class="board-header">
             <div class="side-header">Área</div>
             <div class="meta-header">Responsável</div>
@@ -2536,37 +2237,6 @@ function resetFilters() {
 .roadmap-board {
   min-width: 1240px;
   position: relative;
-}
-
-.review-layer {
-  position: absolute;
-  left: 360px;
-  right: 0;
-  top: 0;
-  height: 72px;
-  pointer-events: none;
-  z-index: 4;
-}
-
-.review-marker {
-  position: absolute;
-  top: 8px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.review-marker i {
-  width: 12px;
-  height: 18px;
-  background: var(--err);
-  clip-path: polygon(0 0, 100% 0, 72% 100%, 50% 80%, 28% 100%);
 }
 
 .board-header,
