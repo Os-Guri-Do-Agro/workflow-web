@@ -1,6 +1,6 @@
 # Spec: Overhaul Didatico do work-flow (branch develop)
 
-**Status:** Planejado — aguardando aprovação para implementar
+**Status:** Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)
 **Criado em:** 2026-06-30
 **Tipo:** Programa multi-fase (UX rework + a11y + fixes + débito técnico)
 **Locale:** pt-BR (somente) — sem i18n nesta spec
