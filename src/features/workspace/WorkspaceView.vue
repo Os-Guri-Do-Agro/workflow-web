@@ -294,9 +294,10 @@ function getPriorityLabel(priority: number): string {
             >
               <div class="note-header">
                 <Pin v-if="note.isPinned" :size="12" class="note-pin-icon" />
+                <span v-if="note.emoji" class="note-emoji">{{ note.emoji }}</span>
                 <span class="note-title">{{ note.title }}</span>
               </div>
-              <p class="note-preview">{{ stripHtmlPreview(note.content, 60) }}</p>
+              <p class="note-preview">{{ note.preview ?? stripHtmlPreview(note.content, 60) }}</p>
               <div v-if="note.folder" class="note-folder">
                 <Folder :size="10" />
                 {{ note.folder.name }}
@@ -874,6 +875,12 @@ function getPriorityLabel(priority: number): string {
 
 .note-pin-icon {
   color: var(--warn);
+  flex-shrink: 0;
+}
+
+.note-emoji {
+  font-size: 13px;
+  line-height: 1;
   flex-shrink: 0;
 }
 

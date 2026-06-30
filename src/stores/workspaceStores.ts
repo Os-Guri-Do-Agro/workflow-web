@@ -88,7 +88,11 @@ export interface WorkspaceData {
     id: string
     title: string
     content?: string
+    preview?: string
     isPinned?: boolean
+    emoji?: string
+    coverImage?: string
+    noteColor?: string
     folder?: { name: string }
   }>
   events?: Array<{

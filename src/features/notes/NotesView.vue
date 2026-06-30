@@ -127,14 +127,19 @@ function selectFolder(folderId: string | null) {
             v-for="note in notes"
             :key="note.id"
             class="note-card"
-            :class="{ 'note-card--pinned': note.isPinned }"
+            :class="{ 'note-card--pinned': note.isPinned, 'note-card--accent': !!note.noteColor }"
+            :style="note.noteColor ? { borderLeftColor: note.noteColor } : undefined"
             @click="openNote(note.id)"
           >
+            <div v-if="note.coverImage" class="note-cover">
+              <img :src="note.coverImage" alt="" class="note-cover-img" />
+            </div>
             <div class="note-header">
+              <span v-if="note.emoji" class="note-emoji">{{ note.emoji }}</span>
               <h3 class="note-title">{{ note.title }}</h3>
               <Pin v-if="note.isPinned" :size="13" class="pin-icon" />
             </div>
-            <p class="note-preview">{{ stripHtmlPreview(note.content) }}</p>
+            <p class="note-preview">{{ note.preview ?? stripHtmlPreview(note.content) }}</p>
             <div class="note-meta">
               <span class="note-date">
                 {{ new Date(note.updatedAt).toLocaleDateString('pt-BR') }}
@@ -382,11 +387,38 @@ function selectFolder(folderId: string | null) {
   background: rgba(245, 158, 11, 0.02);
 }
 
+/* Acento de cor do usuário (cor dinâmica via style inline). */
+.note-card--accent {
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+
+.note-cover {
+  height: 96px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: rgba(var(--v-theme-secondary), 0.05);
+}
+
+.note-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .note-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   margin-bottom: 8px;
+}
+
+.note-emoji {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .note-title {
@@ -397,6 +429,13 @@ function selectFolder(folderId: string | null) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.pin-icon {
+  flex-shrink: 0;
+  color: rgb(245, 158, 11);
 }
 
 .note-preview {
