@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router'
 import { Plus, Search, FileStack, Folder, FileText, Pin } from 'lucide-vue-next'
 import notesService from '@/service/notes/notes-service'
 import { stripHtmlPreview } from '@/utils/html-preview'
+import { useUiPreferences } from '@/composables/useUiPreferences'
 
+const { density } = useUiPreferences()
 const router = useRouter()
 const notes = ref<any[]>([])
 const folders = ref<any[]>([])
@@ -54,7 +56,7 @@ function selectFolder(folderId: string | null) {
 </script>
 
 <template>
-  <div class="notes-page">
+  <div class="notes-page" :class="`notes-page--${density}`">
     <div class="notes-header">
       <div>
         <h1 class="notes-title">Notas</h1>
@@ -154,6 +156,34 @@ function selectFolder(folderId: string | null) {
 .notes-page {
   padding: 24px;
   height: 100%;
+}
+
+/* Density real (acessibilidade 50+): "confortável" abre o respiro de grid,
+   cards e itens de pasta de forma visível; "compacta" adensa. */
+.notes-page--comfortable .notes-grid,
+.notes-page--comfortable .notes-skeleton {
+  gap: 18px;
+}
+
+.notes-page--comfortable .note-card {
+  padding: 20px;
+}
+
+.notes-page--comfortable .folder-item {
+  padding: 11px 12px;
+}
+
+.notes-page--compact .notes-grid,
+.notes-page--compact .notes-skeleton {
+  gap: 8px;
+}
+
+.notes-page--compact .note-card {
+  padding: 11px;
+}
+
+.notes-page--compact .folder-item {
+  padding: 6px 10px;
 }
 
 .notes-header {

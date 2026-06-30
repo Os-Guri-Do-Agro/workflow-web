@@ -45,6 +45,19 @@ const breadcrumbs = computed(() => {
   if (path.startsWith('/notes/')) return ['Notas', 'Editor']
   return ['Forge']
 })
+
+// Glossário de jargão em PT-BR simples (acessibilidade 50+). Quando um crumb é
+// um termo técnico, mostramos uma explicação amigável no tooltip (title).
+const JARGON_GLOSSARY: Record<string, string> = {
+  Board: 'Quadro de tarefas no estilo Kanban: organize o trabalho em colunas (a fazer, fazendo, feito).',
+  Backlog: 'Lista de tudo o que ainda está por fazer, esperando para ser priorizado.',
+  Sprint: 'Ciclo curto de trabalho (geralmente 1 a 2 semanas) com metas definidas.',
+  Roadmap: 'Planejamento do que será entregue ao longo do tempo.',
+}
+
+function crumbTooltip(crumb: string): string | undefined {
+  return JARGON_GLOSSARY[crumb]
+}
 </script>
 
 <template>
@@ -55,7 +68,11 @@ const breadcrumbs = computed(() => {
       <div class="breadcrumbs">
         <template v-for="(crumb, i) in breadcrumbs" :key="i">
           <ChevronRight v-if="i > 0" :size="12" class="crumb-sep" />
-          <span class="crumb" :class="{ 'crumb--active': i === breadcrumbs.length - 1 }">
+          <span
+            class="crumb"
+            :class="{ 'crumb--active': i === breadcrumbs.length - 1, 'crumb--glossary': crumbTooltip(crumb) }"
+            :title="crumbTooltip(crumb)"
+          >
             {{ crumb }}
           </span>
         </template>
@@ -150,6 +167,14 @@ const breadcrumbs = computed(() => {
 .crumb--active {
   color: var(--text);
   font-weight: 600;
+}
+
+/* Termo técnico com explicação no tooltip (acessibilidade 50+). */
+.crumb--glossary {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--text-4);
 }
 
 .spacer {

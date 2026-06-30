@@ -20,7 +20,7 @@ import { useToast } from '@/composables/useToast'
 import importService from '@/service/import/import-service'
 import notificationsService from '@/service/notifications/notifications-service'
 // import RepositoriesSection from './RepositoriesSection.vue' // oculto até liberar feature
-import type { AccentName, Density, ShellVariant } from '@/plugins/tokens'
+import type { AccentName, Density, FontScale, ShellVariant } from '@/plugins/tokens'
 import { accents } from '@/plugins/tokens'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
@@ -77,11 +77,13 @@ const {
   accent,
   density,
   shell,
+  fontScale,
   setTheme,
   toggleTheme,
   setAccent,
   setDensity,
   setShell,
+  setFontScale,
 } = useUiPreferences()
 
 const accentOptions: { name: AccentName; label: string }[] = [
@@ -96,6 +98,13 @@ const accentOptions: { name: AccentName; label: string }[] = [
 const densityOptions: { value: Density; label: string; desc: string }[] = [
   { value: 'compact', label: 'Compacta', desc: 'Mais itens na tela, ideal para power users' },
   { value: 'comfortable', label: 'Confortável', desc: 'Espaçamento maior, respira mais' },
+]
+
+const fontScaleOptions: { value: FontScale; label: string }[] = [
+  { value: 1, label: 'Padrão' },
+  { value: 1.1, label: 'Maior' },
+  { value: 1.2, label: 'Grande' },
+  { value: 1.3, label: 'Máximo' },
 ]
 
 // ── Discord notifications ────────────────────────────────────────────────
@@ -310,6 +319,27 @@ const shellOptions: {
             </button>
           </div>
         </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Aumento de fonte</span>
+            <span class="setting-desc">
+              Deixa todo o texto do app maior, para uma leitura mais confortável.
+            </span>
+          </div>
+          <div class="segmented">
+            <button
+              v-for="opt in fontScaleOptions"
+              :key="opt.value"
+              class="segmented-btn"
+              :class="{ 'segmented-btn--active': fontScale === opt.value }"
+              :title="`Escala ${Math.round(opt.value * 100)}%`"
+              @click="setFontScale(opt.value)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Shell variant -->
@@ -317,9 +347,14 @@ const shellOptions: {
         <div class="card-section-title">Layout</div>
         <div class="setting-row setting-row--column">
           <div class="setting-info">
-            <span class="setting-label">Variante de shell</span>
+            <span
+              class="setting-label setting-label--glossary"
+              title="“Shell” é o esqueleto da tela: onde ficam o menu, a barra do topo e a navegação."
+            >
+              Variante de shell
+            </span>
             <span class="setting-desc">
-              Escolha como a navegação principal é exibida. A troca é instantânea.
+              Escolha como a navegação principal é exibida (menu e barra do topo). A troca é instantânea.
             </span>
           </div>
           <div class="shell-grid">
@@ -551,7 +586,12 @@ const shellOptions: {
         <div class="card-section-title">Atalhos de teclado</div>
         <div class="shortcuts-grid">
           <div class="shortcut-row">
-            <span class="shortcut-label">Abrir Command Palette</span>
+            <span
+              class="shortcut-label shortcut-label--glossary"
+              title="Command Palette: uma busca rápida que abre qualquer página ou ação digitando o nome."
+            >
+              Abrir busca rápida (Command Palette)
+            </span>
             <kbd class="kbd">Ctrl K</kbd>
           </div>
           <div class="shortcut-row">
@@ -898,6 +938,15 @@ const shellOptions: {
   font-size: 13.5px;
   font-weight: 600;
   color: var(--text);
+}
+
+/* Termo técnico com explicação no tooltip (acessibilidade 50+). */
+.setting-label--glossary,
+.shortcut-label--glossary {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--text-4);
 }
 
 .setting-desc {

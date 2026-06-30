@@ -65,4 +65,33 @@ const { theme } = useUiPreferences()
 :where([data-sonner-toaster]) [data-sonner-toast][data-type='info'] [data-icon] {
   color: var(--info) !important;
 }
+
+/* Botão dismiss (X) com hit-area >= 44x44 (acessibilidade 50+).
+   O ícone segue pequeno; só a área clicável cresce, e ganha foco visível. */
+:where([data-sonner-toaster]) [data-close-button],
+:where([data-sonner-toaster]) .sonner-close {
+  width: 44px !important;
+  height: 44px !important;
+  /* re-centra o alvo maior sobre o canto onde o vue-sonner ancora o X */
+  margin: -8px !important;
+  color: var(--text-3) !important;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease) !important;
+}
+
+:where([data-sonner-toaster]) [data-close-button]:hover,
+:where([data-sonner-toaster]) .sonner-close:hover {
+  color: var(--text) !important;
+  background: var(--surface-3) !important;
+}
+
+:where([data-sonner-toaster]) [data-close-button]:focus-visible,
+:where([data-sonner-toaster]) .sonner-close:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px !important;
+  color: var(--text) !important;
+}
 </style>

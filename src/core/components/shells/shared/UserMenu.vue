@@ -36,7 +36,14 @@ const handleLogout = () => {
 <template>
   <v-menu v-model="menu" :close-on-content-click="true" location="bottom end">
     <template #activator="{ props }">
-      <button v-bind="props" class="user-btn">
+      <button
+        v-bind="props"
+        class="user-btn"
+        :class="{ 'user-btn--icon': !showName }"
+        type="button"
+        aria-label="Abrir menu do usuário"
+        aria-haspopup="menu"
+      >
         <div class="user-avatar">{{ userInitials }}</div>
         <span v-if="showName" class="user-name">{{ firstName }}</span>
       </button>
@@ -70,25 +77,39 @@ const handleLogout = () => {
   border: none;
   cursor: pointer;
   padding: 4px 8px;
+  /* Hit-area >= 44 de altura (acessibilidade 50+). */
+  min-height: 44px;
   border-radius: 8px;
   transition: background var(--motion-fast) var(--motion-ease);
   font-family: inherit;
+}
+
+/* Sem nome ao lado: garante hit-area quadrada >= 44x44. */
+.user-btn--icon {
+  min-width: 44px;
+  justify-content: center;
+  padding: 4px;
 }
 
 .user-btn:hover {
   background: var(--surface-2);
 }
 
+.user-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .user-avatar {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: var(--accent);
   color: var(--accent-fg);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
 }

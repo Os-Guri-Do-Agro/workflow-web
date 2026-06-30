@@ -6,15 +6,23 @@ const { theme, toggleTheme } = useUiPreferences()
 </script>
 
 <template>
-  <button class="theme-btn" :title="theme === 'dark' ? 'Modo claro' : 'Modo escuro'" @click="toggleTheme">
+  <button
+    class="theme-btn"
+    type="button"
+    :title="theme === 'dark' ? 'Modo claro' : 'Modo escuro'"
+    :aria-label="theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'"
+    @click="toggleTheme"
+  >
     <component :is="theme === 'dark' ? Sun : Moon" :size="15" />
   </button>
 </template>
 
 <style scoped>
+/* Hit-area >= 44x44 (acessibilidade 50+). O ícone segue compacto (15px);
+   só a área clicável cresce. */
 .theme-btn {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -23,12 +31,20 @@ const { theme, toggleTheme } = useUiPreferences()
   align-items: center;
   justify-content: center;
   color: var(--text-2);
-  transition: background var(--motion-fast) var(--motion-ease);
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
   font-family: inherit;
 }
 
 .theme-btn:hover {
   background: var(--surface-2);
+  color: var(--text);
+}
+
+.theme-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   color: var(--text);
 }
 </style>
