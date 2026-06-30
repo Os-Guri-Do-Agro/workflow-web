@@ -14,6 +14,7 @@ import {
 } from 'lucide-vue-next'
 import bugReportService from '@/service/bug-report/bug-report-service'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
+import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 
 const route = useRoute()
 const router = useRouter()
@@ -134,14 +135,19 @@ watch(reportId, (newId) => {
           <Sparkles :size="13" />
           <h2 class="block-title">Spec gerada por IA</h2>
         </div>
-        <pre class="markdown-pre">{{ report.spec.content }}</pre>
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div class="markdown-body" v-html="renderMarkdown(String(report.spec.content ?? ''))" />
       </div>
 
       <div v-else-if="report.extractedDescription || report.descriptionText" class="block">
         <div class="block-head">
           <h2 class="block-title">Descrição</h2>
         </div>
-        <pre class="markdown-pre">{{ report.extractedDescription || report.descriptionText }}</pre>
+        <!-- eslint-disable-next-line vue/no-v-html -->
+        <div
+          class="markdown-body"
+          v-html="renderMarkdown(String(report.extractedDescription || report.descriptionText || ''))"
+        />
       </div>
 
       <!-- Activity link -->
@@ -334,14 +340,140 @@ watch(reportId, (newId) => {
   margin: 0;
 }
 
-.markdown-pre {
-  margin: 0;
+.markdown-body {
   font-family: inherit;
   font-size: 13.5px;
   line-height: 1.6;
   color: var(--text);
-  white-space: pre-wrap;
   word-wrap: break-word;
+  min-width: 0;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 16px 0 8px;
+  color: var(--text);
+}
+
+.markdown-body :deep(h1) {
+  font-size: 18px;
+}
+
+.markdown-body :deep(h2) {
+  font-size: 16px;
+}
+
+.markdown-body :deep(h3) {
+  font-size: 14.5px;
+}
+
+.markdown-body :deep(h4) {
+  font-size: 13.5px;
+}
+
+.markdown-body :deep(:first-child) {
+  margin-top: 0;
+}
+
+.markdown-body :deep(:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(p) {
+  margin: 0 0 10px;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 8px 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.markdown-body :deep(li) {
+  line-height: 1.55;
+}
+
+.markdown-body :deep(strong) {
+  font-weight: 700;
+}
+
+.markdown-body :deep(em) {
+  font-style: italic;
+}
+
+.markdown-body :deep(a) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-body :deep(a:hover) {
+  opacity: 0.85;
+}
+
+.markdown-body :deep(code) {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+.markdown-body :deep(pre) {
+  margin: 10px 0;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.markdown-body :deep(pre code) {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.markdown-body :deep(blockquote) {
+  margin: 10px 0;
+  padding: 4px 0 4px 14px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-2);
+}
+
+.markdown-body :deep(hr) {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.markdown-body :deep(table) {
+  border-collapse: collapse;
+  margin: 10px 0;
+  width: 100%;
+  font-size: 12.5px;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-body :deep(th) {
+  background: var(--surface-2);
+  font-weight: 600;
 }
 
 .activity-block {

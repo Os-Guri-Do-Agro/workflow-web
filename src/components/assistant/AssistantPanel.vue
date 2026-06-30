@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from 'lucide-vue-next'
 import { useAssistant, type AssistantMessage } from '@/composables/useAssistant'
+import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import type { EntityType, SearchHit } from '@/service/ai/ai-service'
 
 const router = useRouter()
@@ -86,50 +87,6 @@ function autosize() {
   if (!el) return
   el.style.height = 'auto'
   el.style.height = `${Math.min(el.scrollHeight, 150)}px`
-}
-
-// ─── Markdown leve e seguro (escapa HTML, depois aplica formatação) ───────────
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
-function formatRich(text: string): string {
-  const lines = escapeHtml(text).split('\n')
-  const out: string[] = []
-  let inList = false
-  for (const raw of lines) {
-    const line = raw.trimEnd()
-    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line)
-    if (bullet) {
-      if (!inList) {
-        out.push('<ul>')
-        inList = true
-      }
-      out.push(`<li>${inline(bullet[1] ?? '')}</li>`)
-      continue
-    }
-    if (inList) {
-      out.push('</ul>')
-      inList = false
-    }
-    if (line.trim() === '') out.push('<br>')
-    else out.push(`<p>${inline(line)}</p>`)
-  }
-  if (inList) out.push('</ul>')
-  return out.join('')
-}
-
-function inline(s: string): string {
-  return s
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+?)`/g, '<code>$1</code>')
-    .replace(
-      /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
-    )
 }
 
 function scrollToBottom() {
@@ -289,7 +246,7 @@ function isUser(m: AssistantMessage) {
                   <!-- answer -->
                   <template v-else>
                     <!-- eslint-disable-next-line vue/no-v-html -->
-                    <div class="ai-md" v-html="formatRich(m.content)" />
+                    <div class="ai-md" v-html="renderMarkdown(String(m.content ?? ''))" />
                     <div v-if="m.sources?.length" class="sources">
                       <span class="sources-label">Fontes</span>
                       <div class="sources-list">
