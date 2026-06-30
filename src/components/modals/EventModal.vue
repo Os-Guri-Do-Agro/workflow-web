@@ -28,6 +28,7 @@ import {
   ListOrdered,
   type LucideIcon,
 } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 
 type EventType =
   | 'MEETING'
@@ -366,17 +367,18 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
             </div>
 
             <!-- Recurrence -->
-            <label class="field">
+            <div class="field">
               <span class="label">
                 <Repeat :size="12" />
                 Recorrência
               </span>
-              <select v-model="recurrence" class="input">
-                <option v-for="opt in recurrenceOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
-            </label>
+              <AppSelect
+                v-model="recurrence"
+                :items="recurrenceOptions"
+                label="Recorrência"
+                placeholder="Não se repete"
+              />
+            </div>
 
             <!-- Description editor -->
             <div class="field">
@@ -636,21 +638,6 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
 
 .time-input {
   text-align: center;
-}
-
-select.input {
-  cursor: pointer;
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
-    linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
-  background-position:
-    calc(100% - 14px) 50%,
-    calc(100% - 10px) 50%;
-  background-size:
-    4px 4px,
-    4px 4px;
-  background-repeat: no-repeat;
-  padding-right: 28px;
 }
 
 /* Type grid */

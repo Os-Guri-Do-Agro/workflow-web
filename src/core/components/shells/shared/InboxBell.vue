@@ -164,8 +164,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 
 .inbox-trigger {
   position: relative;
-  width: 32px;
-  height: 32px;
+  /* Hit-area >= 44x44 (acessibilidade 50+). Visual permanece compacto. */
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-2);
@@ -187,10 +188,16 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
   color: var(--text);
 }
 
+.inbox-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  color: var(--text);
+}
+
 .inbox-badge {
   position: absolute;
-  top: -5px;
-  right: -5px;
+  top: 6px;
+  right: 6px;
   min-width: 17px;
   height: 17px;
   padding: 0 4px;

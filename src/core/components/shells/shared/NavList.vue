@@ -17,6 +17,12 @@ import {
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import { useUiPreferences } from '@/composables/useUiPreferences'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
+
+const { density } = useUiPreferences()
+// v-list aceita 'compact' | 'comfortable' | 'default'. Mapeamos direto.
+const listDensity = computed(() => (density.value === 'comfortable' ? 'comfortable' : 'compact'))
 
 export type NavItem = {
   title: string
@@ -48,7 +54,10 @@ function userMeetsRole(required?: string): boolean {
 const mainItems = computed<NavItem[]>(() => [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/dashboard', section: 'Trabalho' },
   { title: 'Board', icon: Columns3, to: '/board', section: 'Trabalho' },
-  { title: 'Canvas', icon: Paintbrush, to: '/boards', section: 'Trabalho' },
+  // Canvas: escondido via feature flag (CANVAS_ENABLED). Reativar = VITE_CANVAS_ENABLED=true.
+  ...(CANVAS_ENABLED
+    ? [{ title: 'Canvas', icon: Paintbrush, to: '/boards', section: 'Trabalho' } as NavItem]
+    : []),
   { title: 'Roadmap', icon: Milestone, to: '/roadmap', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
@@ -99,10 +108,10 @@ defineExpose({ workItems, personalItems })
 </script>
 
 <template>
-  <div class="nav-sections">
+  <div class="nav-sections" :class="`nav-sections--${density}`">
     <div class="nav-section">
       <div class="nav-eyebrow">Trabalho</div>
-      <v-list nav density="compact" class="nav-list">
+      <v-list nav :density="listDensity" class="nav-list">
         <template v-for="item in workItems" :key="item.title">
           <v-list-item
             v-if="!item.children"
@@ -176,7 +185,7 @@ defineExpose({ workItems, personalItems })
 
     <div class="nav-section">
       <div class="nav-eyebrow">Pessoal</div>
-      <v-list nav density="compact" class="nav-list">
+      <v-list nav :density="listDensity" class="nav-list">
         <v-list-item
           v-for="item in personalItems"
           :key="item.title"
@@ -202,6 +211,20 @@ defineExpose({ workItems, personalItems })
   flex-direction: column;
   gap: 14px;
   padding: 0 8px;
+}
+
+/* Density real (acessibilidade 50+): "confortável" abre os itens e o respiro
+   entre seções de forma visível; "compacta" adensa. */
+.nav-sections--comfortable {
+  gap: 18px;
+}
+
+.nav-sections--comfortable .nav-item {
+  min-height: 42px !important;
+}
+
+.nav-sections--compact .nav-item {
+  min-height: 32px !important;
 }
 
 .nav-section {

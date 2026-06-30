@@ -21,12 +21,28 @@ const notesService = {
     return response.data
   },
 
-  async createNote(data: { title: string; content: string; folderId?: string | null; tags?: string[] }) {
+  async createNote(data: {
+    title: string
+    content: string
+    folderId?: string | null
+    tags?: string[]
+    emoji?: string
+    coverImage?: string
+    noteColor?: string
+  }) {
     const response = await api.post('/notes', data)
     return response.data
   },
 
-  async updateNote(id: string, data: { title?: string; content?: string; folderId?: string | null; tags?: string[] }) {
+  async updateNote(id: string, data: {
+    title?: string
+    content?: string
+    folderId?: string | null
+    tags?: string[]
+    emoji?: string
+    coverImage?: string
+    noteColor?: string
+  }) {
     const response = await api.patch(`/notes/${id}`, data)
     return response.data
   },

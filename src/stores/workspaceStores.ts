@@ -55,6 +55,24 @@ export interface WorkspaceCompany {
   }>
 }
 
+/** Item bruto retornado por `companiesServices.getCompany()` (lista de vínculos empresa↔usuário). */
+interface RawCompanyMembership {
+  company: {
+    id: string
+    name: string
+    cnpj: string
+    createdAt: string
+  }
+  role: CompanyRole
+}
+
+/** Extrai uma mensagem de erro legível de um valor desconhecido lançado num catch. */
+function errorMessage(e: unknown, fallback: string): string {
+  if (e instanceof Error && e.message) return e.message
+  if (typeof e === 'string' && e) return e
+  return fallback
+}
+
 export interface WorkspaceData {
   summary: {
     totalCompanies: number
@@ -70,7 +88,11 @@ export interface WorkspaceData {
     id: string
     title: string
     content?: string
+    preview?: string
     isPinned?: boolean
+    emoji?: string
+    coverImage?: string
+    noteColor?: string
     folder?: { name: string }
   }>
   events?: Array<{
@@ -167,8 +189,8 @@ export const useWorkspaceStore = defineStore('workspace', {
         }
         
         return response
-      } catch (e: any) {
-        this.error = e.message || 'Erro ao carregar workspace'
+      } catch (e: unknown) {
+        this.error = errorMessage(e, 'Erro ao carregar workspace')
         throw e
       } finally {
         this.loading = false
@@ -177,20 +199,24 @@ export const useWorkspaceStore = defineStore('workspace', {
     
     async fetchCompanies() {
       try {
-        const response = await companiesServices.getCompany()
-        const companiesList = Array.isArray(response) ? response : response?.data || []
-        
-        this.companies = companiesList.map((item: any) => ({
+        const response = (await companiesServices.getCompany()) as
+          | RawCompanyMembership[]
+          | { data?: RawCompanyMembership[] }
+        const companiesList: RawCompanyMembership[] = Array.isArray(response)
+          ? response
+          : response?.data ?? []
+
+        this.companies = companiesList.map((item) => ({
           id: item.company.id,
           name: item.company.name,
           cnpj: item.company.cnpj,
           myRole: item.role,
           createdAt: item.company.createdAt,
         }))
-        
+
         return this.companies
       } catch (e) {
-        console.error('Erro ao buscar empresas:', e)
+        this.error = errorMessage(e, 'Erro ao buscar empresas')
         throw e
       }
     },

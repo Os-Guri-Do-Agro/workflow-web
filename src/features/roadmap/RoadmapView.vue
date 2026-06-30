@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import {
   Activity,
   BarChart3,
+  CalendarCheck,
   CalendarDays,
   CalendarClock,
   CheckCircle2,
@@ -35,6 +36,8 @@ import exportService from '@/service/export/export-service'
 import shareService from '@/service/share/share-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import aiService from '@/service/ai/ai-service'
 
 const { success, error: showError, info } = useToast()
@@ -64,12 +67,17 @@ type RoadmapItem = {
   kind: 'activity' | 'event'
 }
 
+type MilestoneKind = 'milestone' | 'review'
+
 type RoadmapMilestone = {
   id: string
-  laneId: string
+  // laneId é opcional: o contrato novo ancora por `quarterId`/`date`, não por área.
+  laneId: string | null
+  quarterId: string | null
   title: string
   date: string
   status: RoadmapStatus
+  type: MilestoneKind
 }
 
 type RoadmapSelection =
@@ -124,294 +132,18 @@ const calendarCategoryMeta: Record<CalendarCategory, CalendarCategoryMeta> = {
   risk: { label: 'Risco', icon: Flag, tone: 'var(--err)' },
 }
 
-const roadmapStart = new Date('2026-01-01T00:00:00')
-const roadmapEnd = new Date('2026-12-31T23:59:59')
+const roadmapYear = new Date().getFullYear()
+const roadmapStart = new Date(roadmapYear, 0, 1, 0, 0, 0)
+const roadmapEnd = new Date(roadmapYear, 11, 31, 23, 59, 59)
 
+// R\u00e9gua trimestral derivada do ano corrente (estrutura de eixo, n\u00e3o dados de roadmap).
+// Os itens, \u00e1reas e marcos do timeline v\u00eam da API (annualLanes/annualItems/annualMilestones).
 const quarters = [
-  { label: 'Q1', period: 'Jan - Mar', start: '2026-01-01', end: '2026-03-31' },
-  { label: 'Q2', period: 'Abr - Jun', start: '2026-04-01', end: '2026-06-30' },
-  { label: 'Q3', period: 'Jul - Set', start: '2026-07-01', end: '2026-09-30' },
-  { label: 'Q4', period: 'Out - Dez', start: '2026-10-01', end: '2026-12-31' },
+  { label: 'Q1', period: 'Jan - Mar', start: `${roadmapYear}-01-01`, end: `${roadmapYear}-03-31` },
+  { label: 'Q2', period: 'Abr - Jun', start: `${roadmapYear}-04-01`, end: `${roadmapYear}-06-30` },
+  { label: 'Q3', period: 'Jul - Set', start: `${roadmapYear}-07-01`, end: `${roadmapYear}-09-30` },
+  { label: 'Q4', period: 'Out - Dez', start: `${roadmapYear}-10-01`, end: `${roadmapYear}-12-31` },
 ] as const
-
-const reviewMarkers = [
-  { label: 'Review Q1', date: '2026-03-27' },
-  { label: 'Review Q2', date: '2026-06-26' },
-  { label: 'Review Q3', date: '2026-09-25' },
-  { label: 'Review Q4', date: '2026-12-18' },
-]
-
-const lanes: RoadmapLane[] = [
-  {
-    id: 'planning',
-    title: 'Planejamento',
-    description: 'Vis\u00e3o, objetivos e or\u00e7amento do ciclo.',
-    owner: 'Produto',
-    status: 'active',
-    color: 'var(--accent)',
-    icon: Target,
-  },
-  {
-    id: 'strategy',
-    title: 'Estrat\u00e9gia',
-    description: 'Pesquisa, hip\u00f3teses e valida\u00e7\u00e3o de mercado.',
-    owner: 'Growth',
-    status: 'planned',
-    color: 'var(--err)',
-    icon: Flag,
-  },
-  {
-    id: 'development',
-    title: 'Desenvolvimento',
-    description: 'Entrega de roadmap, betas e release.',
-    owner: 'Engenharia',
-    status: 'active',
-    color: 'var(--success)',
-    icon: Rocket,
-  },
-  {
-    id: 'intelligence',
-    title: 'Business Intelligence',
-    description: 'M\u00e9tricas, dashboards e relat\u00f3rios operacionais.',
-    owner: 'Dados',
-    status: 'risk',
-    color: 'var(--info)',
-    icon: BarChart3,
-  },
-]
-
-const roadmapItems: RoadmapItem[] = [
-  {
-    id: 'vision',
-    laneId: 'planning',
-    title: 'Vis\u00e3o',
-    start: '2026-01-01',
-    end: '2026-02-14',
-    progress: 100,
-    status: 'done',
-    kind: 'activity',
-  },
-  {
-    id: 'objectives',
-    laneId: 'planning',
-    title: 'Objetivos',
-    start: '2026-01-24',
-    end: '2026-03-06',
-    progress: 100,
-    status: 'done',
-    kind: 'activity',
-  },
-  {
-    id: 'goals',
-    laneId: 'planning',
-    title: 'Metas',
-    start: '2026-03-02',
-    end: '2026-04-10',
-    progress: 100,
-    status: 'done',
-    kind: 'activity',
-  },
-  {
-    id: 'intent',
-    laneId: 'planning',
-    title: 'Strategic Intent',
-    start: '2026-04-01',
-    end: '2026-05-14',
-    progress: 64,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'budget',
-    laneId: 'planning',
-    title: 'Sales Budget',
-    start: '2026-05-16',
-    end: '2026-06-14',
-    progress: 35,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'release-plan',
-    laneId: 'planning',
-    title: 'Beta + Release Plans',
-    start: '2026-06-16',
-    end: '2026-08-30',
-    progress: 18,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'market',
-    laneId: 'strategy',
-    title: 'Market Analysis',
-    start: '2026-02-05',
-    end: '2026-03-22',
-    progress: 80,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'swot',
-    laneId: 'strategy',
-    title: 'SWOT',
-    start: '2026-03-14',
-    end: '2026-04-02',
-    progress: 45,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'business-model',
-    laneId: 'strategy',
-    title: 'Business Model',
-    start: '2026-04-01',
-    end: '2026-06-02',
-    progress: 20,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'price-research',
-    laneId: 'strategy',
-    title: 'Price Research',
-    start: '2026-05-24',
-    end: '2026-07-12',
-    progress: 0,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'sales-trends',
-    laneId: 'strategy',
-    title: 'Sales Trends Analysis',
-    start: '2026-07-15',
-    end: '2026-09-10',
-    progress: 0,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'vks',
-    laneId: 'development',
-    title: 'VKS',
-    start: '2026-02-24',
-    end: '2026-03-20',
-    progress: 75,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'product-roadmap',
-    laneId: 'development',
-    title: 'Product Roadmap',
-    start: '2026-02-28',
-    end: '2026-04-20',
-    progress: 64,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'development',
-    laneId: 'development',
-    title: 'Development',
-    start: '2026-04-01',
-    end: '2026-08-22',
-    progress: 42,
-    status: 'active',
-    kind: 'activity',
-  },
-  {
-    id: 'qa',
-    laneId: 'development',
-    title: 'QA + RC',
-    start: '2026-08-23',
-    end: '2026-09-18',
-    progress: 0,
-    status: 'planned',
-    kind: 'event',
-  },
-  {
-    id: 'release-web',
-    laneId: 'development',
-    title: 'Release to Web',
-    start: '2026-09-20',
-    end: '2026-11-10',
-    progress: 0,
-    status: 'planned',
-    kind: 'activity',
-  },
-  {
-    id: 'service-metrics',
-    laneId: 'intelligence',
-    title: 'Service Metrics',
-    start: '2026-03-01',
-    end: '2026-03-08',
-    progress: 100,
-    status: 'done',
-    kind: 'event',
-  },
-  {
-    id: 'quality-metrics',
-    laneId: 'intelligence',
-    title: 'Quality Metrics',
-    start: '2026-04-05',
-    end: '2026-04-12',
-    progress: 100,
-    status: 'done',
-    kind: 'event',
-  },
-  {
-    id: 'service-dashboard',
-    laneId: 'intelligence',
-    title: 'Service Dashboard',
-    start: '2026-06-28',
-    end: '2026-07-05',
-    progress: 30,
-    status: 'active',
-    kind: 'event',
-  },
-  {
-    id: 'real-time-analytics',
-    laneId: 'intelligence',
-    title: 'Real-time Analytics',
-    start: '2026-09-12',
-    end: '2026-09-20',
-    progress: 0,
-    status: 'planned',
-    kind: 'event',
-  },
-  {
-    id: 'sales-dashboard',
-    laneId: 'intelligence',
-    title: 'Sales Dashboard',
-    start: '2026-11-25',
-    end: '2026-12-02',
-    progress: 0,
-    status: 'planned',
-    kind: 'event',
-  },
-  {
-    id: 'reporting',
-    laneId: 'intelligence',
-    title: 'Real-time Reporting',
-    start: '2026-12-10',
-    end: '2026-12-18',
-    progress: 0,
-    status: 'planned',
-    kind: 'event',
-  },
-]
-
-const milestones: RoadmapMilestone[] = [
-  { id: 'competitive-review', laneId: 'strategy', title: 'Competitive Review', date: '2026-03-14', status: 'active' },
-  { id: 'alpha', laneId: 'development', title: 'Alpha', date: '2026-05-20', status: 'active' },
-  { id: 'private-beta', laneId: 'development', title: 'Private Beta', date: '2026-06-30', status: 'planned' },
-  { id: 'public-beta', laneId: 'development', title: 'Public Beta', date: '2026-08-10', status: 'planned' },
-  { id: 'staging', laneId: 'development', title: 'Staging', date: '2026-11-15', status: 'planned' },
-  { id: 'go-live', laneId: 'development', title: 'Go Live!', date: '2026-12-20', status: 'planned' },
-  { id: 'price-list', laneId: 'strategy', title: 'Final Price List', date: '2026-07-05', status: 'planned' },
-]
 
 const statusMeta: Record<RoadmapStatus, { label: string; icon: LucideIcon }> = {
   done: { label: 'Conclu\u00eddo', icon: CheckCircle2 },
@@ -425,8 +157,8 @@ const activeStatus = ref<StatusFilter>('all')
 const activeQuarter = ref<QuarterFilter>('all')
 const selected = ref<RoadmapSelection | null>(null)
 const noteDraft = ref('')
-const noteMonthKey = ref('2026-05')
-const noteDate = ref('2026-05-03')
+const noteMonthKey = ref(`${roadmapYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+const noteDate = ref(new Date().toISOString().slice(0, 10))
 const exportMonthKey = ref<'all' | string>('all')
 const selectedMonthDetailsKey = ref<string | null>(null)
 const annualRoadmapLoading = ref(false)
@@ -451,6 +183,27 @@ const canEditMonthlyRoadmap = computed(() => {
   return workspace.canEdit
 })
 
+const laneFilterItems = computed<{ label: string; value: string }[]>(() => [
+  { label: 'Todas as áreas', value: 'all' },
+  ...annualLanes.value.map((lane) => ({ label: lane.title, value: lane.id })),
+])
+
+const statusFilterItems = computed<{ label: string; value: string }[]>(() => [
+  { label: 'Todos', value: 'all' },
+  ...(Object.entries(statusMeta) as [RoadmapStatus, { label: string; icon: LucideIcon }][]).map(
+    ([status, meta]) => ({ label: meta.label, value: status }),
+  ),
+])
+
+const noteMonthItems = computed<{ label: string; value: string }[]>(() =>
+  visibleMonthlyPlans.value.map((month) => ({ label: month.title, value: month.key })),
+)
+
+const exportMonthItems = computed<{ label: string; value: string }[]>(() => [
+  { label: 'Todos os meses', value: 'all' },
+  ...monthlyPlans.value.map((month) => ({ label: month.title, value: month.key })),
+])
+
 onMounted(() => {
   void fetchMonthlyRoadmap()
   void fetchAnnualRoadmap()
@@ -462,8 +215,8 @@ const viewport = computed(() => {
   }
   const quarter = quarters.find((item) => item.label === activeQuarter.value)
   return {
-    start: new Date(`${quarter?.start ?? '2026-01-01'}T00:00:00`),
-    end: new Date(`${quarter?.end ?? '2026-12-31'}T23:59:59`),
+    start: new Date(`${quarter?.start ?? `${roadmapYear}-01-01`}T00:00:00`),
+    end: new Date(`${quarter?.end ?? `${roadmapYear}-12-31`}T23:59:59`),
   }
 })
 
@@ -476,10 +229,6 @@ const visibleQuarters = computed(() => {
   if (activeQuarter.value === 'all') return quarters
   return quarters.filter((quarter) => quarter.label === activeQuarter.value)
 })
-
-const visibleReviewMarkers = computed(() =>
-  reviewMarkers.filter((review) => annualItems.value.length && overlapsDate(review.date, review.date)),
-)
 
 const selectedLane = computed(() => {
   const laneId = selected.value?.value.laneId
@@ -526,14 +275,40 @@ function laneItems(laneId: string): RoadmapItem[] {
   )
 }
 
-function laneMilestones(laneId: string): RoadmapMilestone[] {
-  return annualMilestones.value.filter(
-    (milestone) =>
-      milestone.laneId === laneId &&
-      (activeStatus.value === 'all' || milestone.status === activeStatus.value) &&
-      overlapsDate(milestone.date, milestone.date),
+function milestonePassesFilters(milestone: RoadmapMilestone): boolean {
+  return (
+    (activeStatus.value === 'all' || milestone.status === activeStatus.value) &&
+    overlapsDate(milestone.date, milestone.date)
   )
 }
+
+/** Marco/review ancorado a esta lane via `quarterId` (shape quarters) ou `laneId` (shape lanes). */
+function milestoneAnchoredToLane(milestone: RoadmapMilestone, laneId: string): boolean {
+  return milestone.quarterId === laneId || milestone.laneId === laneId
+}
+
+function laneMilestones(laneId: string): RoadmapMilestone[] {
+  return annualMilestones.value.filter(
+    (milestone) => milestoneAnchoredToLane(milestone, laneId) && milestonePassesFilters(milestone),
+  )
+}
+
+/**
+ * Marcos/reviews sem âncora de área (sem `quarterId` nem `laneId` válido) — o contrato novo
+ * permite `quarterId` opcional. Renderizados numa faixa própria sobre o eixo, posicionados por data.
+ */
+const floatingMilestones = computed<RoadmapMilestone[]>(() => {
+  const laneIds = new Set(annualLanes.value.map((lane) => lane.id))
+  return annualMilestones.value.filter((milestone) => {
+    if (!milestonePassesFilters(milestone)) return false
+    const anchored =
+      (milestone.quarterId != null && laneIds.has(milestone.quarterId)) ||
+      (milestone.laneId != null && laneIds.has(milestone.laneId))
+    return !anchored
+  })
+})
+
+const hasFloatingMilestones = computed(() => floatingMilestones.value.length > 0)
 
 function formatDate(date: string): string {
   return new Date(`${date}T00:00:00`).toLocaleDateString('pt-BR', {
@@ -587,25 +362,43 @@ async function fetchAnnualRoadmap() {
   }
 }
 
+function parseAnnualMilestones(payload: any): RoadmapMilestone[] {
+  // Contrato novo: `milestones[]` traz MILESTONE e REVIEW no mesmo array (com `type`).
+  const milestonesPayload = firstArray(payload, ['milestones', 'markers'])
+  const milestones = milestonesPayload.map(mapAnnualMilestone).filter(Boolean) as RoadmapMilestone[]
+
+  // Compat legado: reviews separados (sem `type`) são normalizados como type='review'.
+  const reviewsPayload = firstArray(payload, ['reviews', 'reviewMarkers'])
+  const reviews = reviewsPayload
+    .map((input: any) => mapAnnualMilestone({ ...input, type: input?.type ?? 'REVIEW' }))
+    .filter(Boolean) as RoadmapMilestone[]
+
+  const seen = new Set(milestones.map((milestone) => milestone.id))
+  return [...milestones, ...reviews.filter((review) => !seen.has(review.id))]
+}
+
 function applyAnnualRoadmapResponse(response: unknown) {
   const payload = unwrapApiPayload(response)
   const quartersPayload = firstArray(payload, ['quarters'])
 
   if (quartersPayload.length) {
-    applyAnnualQuarterRoadmap(quartersPayload)
+    applyAnnualQuarterRoadmap(quartersPayload, parseAnnualMilestones(payload))
     return
   }
 
   const lanesPayload = firstArray(payload, ['lanes', 'areas', 'columns'])
   const itemsPayload = firstArray(payload, ['items', 'activities', 'tasks', 'entries'])
-  const milestonesPayload = firstArray(payload, ['milestones', 'markers'])
   annualLanes.value = lanesPayload.map(mapAnnualLane).filter(Boolean) as RoadmapLane[]
   annualItems.value = itemsPayload.map(mapAnnualItem).filter(Boolean) as RoadmapItem[]
-  annualMilestones.value = milestonesPayload.map(mapAnnualMilestone).filter(Boolean) as RoadmapMilestone[]
+  annualMilestones.value = parseAnnualMilestones(payload)
 
   const laneIds = new Set(annualLanes.value.map((lane) => lane.id))
   annualItems.value = annualItems.value.filter((item) => laneIds.has(item.laneId))
-  annualMilestones.value = annualMilestones.value.filter((milestone) => laneIds.has(milestone.laneId))
+  // Marcos só são descartados se estiverem presos a um laneId inexistente.
+  // Marcos sem laneId (ancorados por quarter/data) são preservados.
+  annualMilestones.value = annualMilestones.value.filter(
+    (milestone) => milestone.laneId == null || laneIds.has(milestone.laneId),
+  )
 
   if (selected.value?.type === 'item' && !annualItems.value.some((item) => item.id === selected.value?.value.id)) {
     selected.value = null
@@ -618,7 +411,7 @@ function applyAnnualRoadmapResponse(response: unknown) {
   }
 }
 
-function applyAnnualQuarterRoadmap(quartersPayload: any[]) {
+function applyAnnualQuarterRoadmap(quartersPayload: any[], milestones: RoadmapMilestone[] = []) {
   annualLanes.value = quartersPayload.map((quarter, index) => ({
     id: String(quarter?.id ?? quarter?.label ?? `quarter-${index + 1}`),
     title: String(quarter?.label ?? `Q${index + 1}`),
@@ -637,13 +430,25 @@ function applyAnnualQuarterRoadmap(quartersPayload: any[]) {
       .map((month: any) => mapQuarterMonthItem(month, laneId))
       .filter(Boolean) as RoadmapItem[]
   })
-  annualMilestones.value = []
 
+  // Marcos/reviews do contrato novo ancoram por `quarterId` (lane = quarter) ou por data.
+  // Aqui as lanes SÃO os quarters, então resolvemos o quarterId para o id da lane.
   const laneIds = new Set(annualLanes.value.map((lane) => lane.id))
+  annualMilestones.value = milestones.filter(
+    (milestone) =>
+      milestone.quarterId == null ||
+      milestone.laneId == null ||
+      laneIds.has(milestone.quarterId) ||
+      laneIds.has(milestone.laneId),
+  )
+
   if (activeLaneId.value !== 'all' && !laneIds.has(activeLaneId.value)) {
     activeLaneId.value = 'all'
   }
   if (selected.value?.type === 'item' && !annualItems.value.some((item) => item.id === selected.value?.value.id)) {
+    selected.value = null
+  }
+  if (selected.value?.type === 'milestone' && !annualMilestones.value.some((item) => item.id === selected.value?.value.id)) {
     selected.value = null
   }
 }
@@ -745,19 +550,27 @@ function mapAnnualItem(input: any): RoadmapItem | null {
   }
 }
 
+function normalizeMilestoneKind(value: unknown): MilestoneKind {
+  return String(value ?? '').toUpperCase() === 'REVIEW' ? 'review' : 'milestone'
+}
+
 function mapAnnualMilestone(input: any): RoadmapMilestone | null {
   const id = String(input?.id ?? input?.milestoneId ?? '')
-  const laneId = String(input?.laneId ?? input?.areaId ?? input?.lane?.id ?? '')
-  const title = String(input?.title ?? input?.name ?? '')
+  // Contrato novo: marco/review ancora por `quarterId`/`date`. `laneId` pode não existir.
+  const rawLaneId = input?.laneId ?? input?.areaId ?? input?.lane?.id
+  const rawQuarterId = input?.quarterId ?? input?.quarter?.id ?? input?.quarterID
+  const title = String(input?.title ?? input?.name ?? input?.label ?? '')
   const date = normalizeDateOnly(input?.date ?? input?.dueDate ?? input?.startsAt)
-  if (!id || !laneId || !title || !date) return null
+  if (!id || !title || !date) return null
 
   return {
     id,
-    laneId,
+    laneId: rawLaneId != null ? String(rawLaneId) : null,
+    quarterId: rawQuarterId != null ? String(rawQuarterId) : null,
     title,
     date,
     status: normalizeRoadmapStatus(input?.status),
+    type: normalizeMilestoneKind(input?.type),
   }
 }
 
@@ -1294,7 +1107,7 @@ function resetFilters() {
         @click="roadmapMode = 'monthly'"
       >
         <CalendarDays :size="14" />
-        Calend&aacute;rios mensais
+        Calendários mensais
       </button>
       <button
         class="mode-btn"
@@ -1312,9 +1125,9 @@ function resetFilters() {
         <section class="monthly-help-modal">
           <header class="monthly-help-head">
             <div>
-              <span class="text-eyebrow">Guia r&aacute;pido</span>
-              <h2>Como usar os calend&aacute;rios mensais</h2>
-              <p>Esta tela serve para transformar o roadmap em uma leitura simples por m&ecirc;s: foco, datas importantes, agenda e notas.</p>
+              <span class="text-eyebrow">Guia rápido</span>
+              <h2>Como usar os calendários mensais</h2>
+              <p>Esta tela serve para transformar o roadmap em uma leitura simples por mês: foco, datas importantes, agenda e notas.</p>
             </div>
             <button class="monthly-help-close press" type="button" aria-label="Fechar ajuda" @click="showMonthlyHelp = false">
               <X :size="18" />
@@ -1325,29 +1138,29 @@ function resetFilters() {
             <article>
               <span>1</span>
               <div>
-                <strong>Leia o foco do m&ecirc;s</strong>
-                <p>O bloco de foco mostra as prioridades principais. No card aparecem s&oacute; os primeiros itens; a lista completa fica em detalhes.</p>
+                <strong>Leia o foco do mês</strong>
+                <p>O bloco de foco mostra as prioridades principais. No card aparecem só os primeiros itens; a lista completa fica em detalhes.</p>
               </div>
             </article>
             <article>
               <span>2</span>
               <div>
-                <strong>Use o calend&aacute;rio para localizar datas</strong>
+                <strong>Use o calendário para localizar datas</strong>
                 <p>Dias coloridos indicam que existe algo marcado. Quando um dia tem mais de um item, ele mostra um contador.</p>
               </div>
             </article>
             <article>
               <span>3</span>
               <div>
-                <strong>Abra os detalhes do m&ecirc;s</strong>
-                <p>Em "Ver detalhes" voc&ecirc; encontra calend&aacute;rio ampliado, agenda completa, todos os focos e a galeria de imagens.</p>
+                <strong>Abra os detalhes do mês</strong>
+                <p>Em "Ver detalhes" você encontra calendário ampliado, agenda completa, todos os focos e a galeria de imagens.</p>
               </div>
             </article>
             <article>
               <span>4</span>
               <div>
                 <strong>Registre notas e exporte o PDF</strong>
-                <p>Use anota&ccedil;&otilde;es r&aacute;pidas para decis&otilde;es pontuais e escolha se o PDF deve sair com todos os meses ou apenas um.</p>
+                <p>Use anotações rápidas para decisões pontuais e escolha se o PDF deve sair com todos os meses ou apenas um.</p>
               </div>
             </article>
           </div>
@@ -1359,13 +1172,13 @@ function resetFilters() {
           <div class="monthly-note-head">
             <div class="monthly-note-title">
               <span class="text-eyebrow">
-                Anota&ccedil;&otilde;es r&aacute;pidas
+                Anotações rápidas
                 <small class="roadmap-data-source">
-                  {{ roadmapMonthlyLoading ? 'Sincronizando...' : usingRoadmapMonthlyApi ? 'Dados da API' : 'API indispon&iacute;vel' }}
+                  {{ roadmapMonthlyLoading ? 'Sincronizando...' : usingRoadmapMonthlyApi ? 'Dados da API' : 'API indisponível' }}
                 </small>
               </span>
-              <h2>Registre uma decis&atilde;o ou lembrete</h2>
-              <p>Escolha m&ecirc;s e data para adicionar uma nota diretamente no calend&aacute;rio correspondente.</p>
+              <h2>Registre uma decisão ou lembrete</h2>
+              <p>Escolha mês e data para adicionar uma nota diretamente no calendário correspondente.</p>
             </div>
             <div class="monthly-help-row no-print">
               <button class="monthly-help-btn press" type="button" @click="showMonthlyHelp = true">
@@ -1385,24 +1198,27 @@ function resetFilters() {
             <article>
               <CalendarClock :size="14" />
               <div>
-                <span>Agenda do m&ecirc;s</span>
+                <span>Agenda do mês</span>
                 <strong>{{ selectedNoteMonth.entries.length }} itens planejados</strong>
               </div>
             </article>
             <article>
               <CircleDot :size="14" />
               <div>
-                <span>Dias com aten&ccedil;&atilde;o</span>
+                <span>Dias com atenção</span>
                 <strong>{{ monthMarkedDays(selectedNoteMonth) }} datas marcadas</strong>
               </div>
             </article>
           </div>
           <div v-if="hasVisibleMonthlyPlans && canEditMonthlyRoadmap" class="monthly-note-form">
-            <select v-model="noteMonthKey" class="monthly-control" aria-label="Mes da nota">
-              <option v-for="month in visibleMonthlyPlans" :key="month.key" :value="month.key">
-                {{ month.title }}
-              </option>
-            </select>
+            <div class="monthly-select-wrap">
+              <AppSelect
+                v-model="noteMonthKey"
+                :items="noteMonthItems"
+                label="Mês da nota"
+                density="compact"
+              />
+            </div>
             <input v-model="noteDate" type="date" class="monthly-control" aria-label="Data da nota" />
             <input
               v-model="noteDraft"
@@ -1417,12 +1233,12 @@ function resetFilters() {
             </button>
           </div>
           <p v-else-if="!hasMonthlyPlans" class="monthly-readonly-hint">
-            Nenhum m&ecirc;s cadastrado na API para receber anota&ccedil;&otilde;es.
+            Nenhum mês cadastrado na API para receber anotações.
           </p>
           <p v-else-if="!hasVisibleMonthlyPlans" class="monthly-readonly-hint">
-            N&atilde;o h&aacute; meses atuais ou futuros para anota&ccedil;&otilde;es. Use "Ver todos" para acessar meses anteriores.
+            Não há meses atuais ou futuros para anotações. Use "Ver todos" para acessar meses anteriores.
           </p>
-          <p v-else class="monthly-readonly-hint">Seu perfil pode visualizar o roadmap mensal, mas n&atilde;o pode criar anota&ccedil;&otilde;es.</p>
+          <p v-else class="monthly-readonly-hint">Seu perfil pode visualizar o roadmap mensal, mas não pode criar anotações.</p>
 
           <section class="monthly-legend" aria-label="Legenda dos calendarios">
             <strong>Legenda</strong>
@@ -1449,7 +1265,7 @@ function resetFilters() {
               v-model="roadmapPrompt"
               class="monthly-control monthly-ai-prompt"
               rows="4"
-              placeholder="Ex: planeje o roadmap de 2026 para lançar onboarding, billing e métricas..."
+              placeholder="Ex: planeje o roadmap do ano para lançar onboarding, billing e métricas..."
               :disabled="roadmapPromptLoading || !canEditMonthlyRoadmap"
             />
             <button
@@ -1464,15 +1280,17 @@ function resetFilters() {
           <div class="monthly-export-card">
             <FileDown :size="16" />
             <div>
-              <strong>Exporta&ccedil;&atilde;o</strong>
-              <p>Escolha um m&ecirc;s ou exporte todos os calend&aacute;rios em uma vers&atilde;o limpa para PDF.</p>
+              <strong>Exportação</strong>
+              <p>Escolha um mês ou exporte todos os calendários em uma versão limpa para PDF.</p>
             </div>
-            <select v-model="exportMonthKey" class="monthly-control monthly-export-select" aria-label="Mes para exportar">
-              <option value="all">Todos os meses</option>
-              <option v-for="month in monthlyPlans" :key="`export-${month.key}`" :value="month.key">
-                {{ month.title }}
-              </option>
-            </select>
+            <div class="monthly-select-wrap monthly-export-select">
+              <AppSelect
+                v-model="exportMonthKey"
+                :items="exportMonthItems"
+                label="Mês para exportar"
+                density="compact"
+              />
+            </div>
             <button class="monthly-export-btn press" :disabled="!hasMonthlyPlans" @click="exportMonthlyPdf">Exportar PDF</button>
             <button class="monthly-export-btn press" :disabled="!hasMonthlyPlans || !canEditMonthlyRoadmap" @click="shareRoadmap">Compartilhar</button>
           </div>
@@ -1483,7 +1301,7 @@ function resetFilters() {
         <CalendarDays :size="22" />
         <div>
           <span class="text-eyebrow">Sem dados do roadmap mensal</span>
-          <h2>Nenhum m&ecirc;s cadastrado para {{ roadmapStart.getFullYear() }}</h2>
+          <h2>Nenhum mês cadastrado para {{ roadmapStart.getFullYear() }}</h2>
           <p>
             A API respondeu sem meses para a empresa ativa. Assim que o backend cadastrar meses, focos e agenda,
             esta tela passa a exibir os dados reais.
@@ -1580,7 +1398,7 @@ function resetFilters() {
             <section class="month-guidance">
               <div class="month-section-title">
                 <Target :size="14" />
-                Foco do m&ecirc;s
+                Foco do mês
               </div>
               <ul>
                 <li v-for="bullet in focusItemsForCard(month)" :key="bullet">{{ bullet }}</li>
@@ -1626,7 +1444,7 @@ function resetFilters() {
               <div class="month-section-title month-section-title--split">
                 <span>
                   <CalendarClock :size="14" />
-                  Agenda do m&ecirc;s
+                  Agenda do mês
                 </span>
                 <small>{{ monthEntriesForCard(month).length }} de {{ month.entries.length }}</small>
               </div>
@@ -1659,7 +1477,7 @@ function resetFilters() {
                 type="button"
                 @click="openMonthDetails(month.key)"
               >
-                Ver detalhes do m&ecirc;s
+                Ver detalhes do mês
               </button>
             </section>
           </div>
@@ -1674,7 +1492,7 @@ function resetFilters() {
         >
           <header class="print-month-head">
             <div>
-              <span>Roadmap mensal &middot; etapa {{ monthlyPlans.findIndex((item) => item.key === month.key) + 1 }} de {{ monthlyPlans.length }}</span>
+              <span>Roadmap mensal · etapa {{ monthlyPlans.findIndex((item) => item.key === month.key) + 1 }} de {{ monthlyPlans.length }}</span>
               <h2>{{ month.title }}</h2>
               <p>{{ month.main }}</p>
             </div>
@@ -1696,7 +1514,7 @@ function resetFilters() {
 
           <div class="print-month-grid">
             <section class="print-panel">
-              <h3>Foco do m&ecirc;s</h3>
+              <h3>Foco do mês</h3>
               <ul class="print-focus-list">
                 <li v-for="bullet in focusItemsFor(month)" :key="`print-${month.key}-${bullet}`">
                   {{ bullet }}
@@ -1741,7 +1559,7 @@ function resetFilters() {
           </section>
 
           <footer class="print-month-footer">
-            <span>Workflow &middot; Stack Roads</span>
+            <span>Workflow · Stack Roads</span>
             <span v-if="printedMonthlyPlans.length > 1">{{ index + 1 }} / {{ printedMonthlyPlans.length }}</span>
           </footer>
         </article>
@@ -1753,7 +1571,7 @@ function resetFilters() {
         <aside class="month-drawer">
           <header class="month-drawer-head">
             <div>
-              <span class="text-eyebrow">Detalhes do m&ecirc;s</span>
+              <span class="text-eyebrow">Detalhes do mês</span>
               <h2>{{ selectedMonthDetails.title }}</h2>
               <p>{{ selectedMonthDetails.main }}</p>
             </div>
@@ -1807,7 +1625,7 @@ function resetFilters() {
           <section class="drawer-section">
             <div class="month-section-title">
               <Target :size="14" />
-              Foco do m&ecirc;s
+              Foco do mês
             </div>
             <div v-if="canEditMonthlyRoadmap" class="drawer-focus-actions">
               <div class="focus-add-row">
@@ -1815,7 +1633,7 @@ function resetFilters() {
                   class="focus-add-input"
                   type="text"
                   :value="focusDraftFor(selectedMonthDetails.key)"
-                  placeholder="Novo foco do m&ecirc;s"
+                  placeholder="Novo foco do mês"
                   @input="setFocusDraft(selectedMonthDetails.key, ($event.target as HTMLInputElement).value)"
                   @keydown.enter.prevent="addFocusItem(selectedMonthDetails.key)"
                 />
@@ -1927,10 +1745,10 @@ function resetFilters() {
         <div class="controls-intro">
           <div>
             <span class="text-eyebrow">Como usar</span>
-            <h2>Explore o roadmap por trimestre, &aacute;rea ou status</h2>
+            <h2>Explore o roadmap por trimestre, área ou status</h2>
           </div>
           <p>
-            Use os filtros para focar em uma parte do ano. Clique em uma barra ou marco da timeline para ver per&iacute;odo,
+            Use os filtros para focar em uma parte do ano. Clique em uma barra ou marco da timeline para ver período,
             progresso e contexto no painel ao lado.
           </p>
         </div>
@@ -1959,23 +1777,24 @@ function resetFilters() {
           </div>
 
           <div class="control-group">
-            <span class="control-label">&Aacute;rea</span>
-            <select v-model="activeLaneId" class="select-control" aria-label="Filtrar por area">
-              <option value="all">Todas as &aacute;reas</option>
-              <option v-for="lane in annualLanes" :key="lane.id" :value="lane.id">
-                {{ lane.title }}
-              </option>
-            </select>
+            <span class="control-label">Área</span>
+            <AppSelect
+              v-model="activeLaneId"
+              :items="laneFilterItems"
+              label="Filtrar por área"
+              density="compact"
+            />
           </div>
 
           <div class="control-group">
             <span class="control-label">Status</span>
-            <select v-model="activeStatus" class="select-control" aria-label="Filtrar por status">
-              <option value="all">Todos</option>
-              <option v-for="(meta, status) in statusMeta" :key="status" :value="status">
-                {{ meta.label }}
-              </option>
-            </select>
+            <AppSelect
+              :model-value="activeStatus"
+              :items="statusFilterItems"
+              label="Filtrar por status"
+              density="compact"
+              @update:model-value="activeStatus = $event as StatusFilter"
+            />
           </div>
 
           <button class="ghost-btn" @click="resetFilters">Limpar filtros</button>
@@ -1986,7 +1805,13 @@ function resetFilters() {
         <template v-if="selected">
           <div class="detail-head">
             <span class="detail-type">
-              {{ selected.type === 'item' ? 'Atividade' : 'Marco' }}
+              {{
+                selected.type === 'item'
+                  ? 'Atividade'
+                  : selected.value.type === 'review'
+                    ? 'Review'
+                    : 'Marco'
+              }}
             </span>
             <span v-if="selectedStatus" class="detail-status">
               <component :is="selectedStatus.icon" :size="12" />
@@ -1994,10 +1819,10 @@ function resetFilters() {
             </span>
           </div>
           <h2>{{ selected.value.title }}</h2>
-          <p v-if="selectedLane">{{ selectedLane.title }} &middot; {{ selectedLane.owner }}</p>
+          <p v-if="selectedLane">{{ selectedLane.title }} · {{ selectedLane.owner }}</p>
           <dl class="detail-list">
             <div>
-              <dt>Per&iacute;odo</dt>
+              <dt>Período</dt>
               <dd v-if="selected.type === 'item'">
                 {{ formatDate(selected.value.start) }} - {{ formatDate(selected.value.end) }}
               </dd>
@@ -2017,8 +1842,8 @@ function resetFilters() {
           <div class="detail-empty">
             <Milestone :size="22" />
             <h2>Selecione uma atividade</h2>
-            <p v-if="annualItems.length || annualMilestones.length">Clique em uma barra ou marco do roadmap para ver mais informa&ccedil;&otilde;es aqui.</p>
-            <p v-else>A timeline anual ainda n&atilde;o possui dados para detalhar.</p>
+            <p v-if="annualItems.length || annualMilestones.length">Clique em uma barra ou marco do roadmap para ver mais informações aqui.</p>
+            <p v-else>A timeline anual ainda não possui dados para detalhar.</p>
           </div>
         </template>
       </aside>
@@ -2033,39 +1858,19 @@ function resetFilters() {
       </div>
     </section>
 
-    <section
+    <EmptyState
       v-else-if="roadmapMode === 'timeline' && (!annualLanes.length || (!annualItems.length && !annualMilestones.length))"
-      class="monthly-empty-state"
-    >
-      <Milestone :size="22" />
-      <div>
-        <span class="text-eyebrow">Sem dados da timeline</span>
-        <h2>Nenhum item cadastrado no roadmap anual</h2>
-        <p>
-          A API da timeline anual n&atilde;o retornou &aacute;reas, atividades ou marcos para a empresa ativa.
-          Assim que o backend cadastrar esses dados, a timeline ser&aacute; exibida aqui.
-        </p>
-      </div>
-    </section>
+      :icon="Milestone"
+      title="Roadmap anual em breve"
+      description="A timeline anual ainda não tem áreas, atividades ou marcos cadastrados para a empresa ativa. Assim que o backend disponibilizar esses dados, eles aparecerão aqui."
+    />
 
     <div v-else-if="roadmapMode === 'timeline'" class="roadmap-shell">
       <div class="roadmap-scroll" role="region" aria-label="Linha do tempo do roadmap" tabindex="0">
         <div class="roadmap-board">
-          <div class="review-layer" aria-hidden="true">
-            <div
-              v-for="review in visibleReviewMarkers"
-              :key="review.label"
-              class="review-marker"
-              :style="markerStyle(review.date)"
-            >
-              <span>{{ review.label }}</span>
-              <i />
-            </div>
-          </div>
-
           <div class="board-header">
-            <div class="side-header">&Aacute;rea</div>
-            <div class="meta-header">Respons&aacute;vel</div>
+            <div class="side-header">Área</div>
+            <div class="meta-header">Responsável</div>
             <div class="meta-header">Status</div>
             <div class="timeline-header">
               <div
@@ -2133,15 +1938,63 @@ function resetFilters() {
                 class="milestone-pin"
                 :class="[
                   `milestone-pin--${milestone.status}`,
+                  `milestone-pin--${milestone.type}`,
                   { 'milestone-pin--selected': isSelected('milestone', milestone.id) },
                 ]"
                 :style="markerStyle(milestone.date)"
                 role="button"
                 tabindex="0"
+                :aria-label="`${milestone.type === 'review' ? 'Review' : 'Marco'}: ${milestone.title} (${formatDate(milestone.date)})`"
                 @click="selectMilestone(milestone)"
                 @keydown.enter.prevent="selectMilestone(milestone)"
                 @keydown.space.prevent="selectMilestone(milestone)"
               >
+                <component :is="milestone.type === 'review' ? CalendarCheck : Flag" :size="11" class="milestone-icon" />
+                <span class="milestone-label">{{ milestone.title }}</span>
+                <span class="milestone-date">{{ formatDate(milestone.date) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="hasFloatingMilestones" class="lane-row lane-row--markers" :style="{ '--lane-color': 'var(--accent)' }">
+            <div class="lane-title">
+              <div class="lane-icon">
+                <Milestone :size="18" />
+              </div>
+              <div>
+                <strong>Marcos &amp; reviews</strong>
+                <span>Eventos pontuais ancorados por data</span>
+              </div>
+            </div>
+
+            <div class="lane-owner">Empresa</div>
+
+            <div class="lane-status lane-status--planned">
+              <Flag :size="13" />
+              No eixo
+            </div>
+
+            <div class="timeline-cell">
+              <div class="timeline-grid" aria-hidden="true" />
+
+              <div
+                v-for="milestone in floatingMilestones"
+                :key="milestone.id"
+                class="milestone-pin"
+                :class="[
+                  `milestone-pin--${milestone.status}`,
+                  `milestone-pin--${milestone.type}`,
+                  { 'milestone-pin--selected': isSelected('milestone', milestone.id) },
+                ]"
+                :style="markerStyle(milestone.date)"
+                role="button"
+                tabindex="0"
+                :aria-label="`${milestone.type === 'review' ? 'Review' : 'Marco'}: ${milestone.title} (${formatDate(milestone.date)})`"
+                @click="selectMilestone(milestone)"
+                @keydown.enter.prevent="selectMilestone(milestone)"
+                @keydown.space.prevent="selectMilestone(milestone)"
+              >
+                <component :is="milestone.type === 'review' ? CalendarCheck : Flag" :size="11" class="milestone-icon" />
                 <span class="milestone-label">{{ milestone.title }}</span>
                 <span class="milestone-date">{{ formatDate(milestone.date) }}</span>
               </div>
@@ -2362,8 +2215,7 @@ function resetFilters() {
 }
 
 .segmented-btn,
-.ghost-btn,
-.select-control {
+.ghost-btn {
   font-family: inherit;
   font-size: 12.5px;
 }
@@ -2393,19 +2245,8 @@ function resetFilters() {
   color: var(--text);
 }
 
-.select-control {
+.control-group :deep(.app-select__trigger) {
   min-width: 178px;
-  height: 36px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
-  padding: 0 10px;
-  outline: none;
-}
-
-.select-control:focus {
-  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
 }
 
 .ghost-btn {
@@ -2520,37 +2361,6 @@ function resetFilters() {
 .roadmap-board {
   min-width: 1240px;
   position: relative;
-}
-
-.review-layer {
-  position: absolute;
-  left: 360px;
-  right: 0;
-  top: 0;
-  height: 72px;
-  pointer-events: none;
-  z-index: 4;
-}
-
-.review-marker {
-  position: absolute;
-  top: 8px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.review-marker i {
-  width: 12px;
-  height: 18px;
-  background: var(--err);
-  clip-path: polygon(0 0, 100% 0, 72% 100%, 50% 80%, 28% 100%);
 }
 
 .board-header,
@@ -2846,12 +2656,58 @@ function resetFilters() {
   transform: rotate(45deg) scale(1.18);
 }
 
+/* Tipo: marco normal usa o acento; review usa um marcador distinto (info/warn). */
+.milestone-pin--milestone::after {
+  border-color: var(--accent);
+}
+
+.milestone-pin--review::after {
+  /* Review é renderizado como um marcador circular (não-diamante) na cor info. */
+  border-radius: 50%;
+  transform: rotate(0deg);
+  border-color: var(--info);
+  background: color-mix(in srgb, var(--info) 16%, var(--surface));
+}
+
+.milestone-pin--review:hover::after,
+.milestone-pin--review:focus-visible::after,
+.milestone-pin--review.milestone-pin--selected::after {
+  transform: rotate(0deg) scale(1.18);
+}
+
+.milestone-pin--review .milestone-label {
+  color: var(--info);
+}
+
+/* Status mantém prioridade visual sobre o tipo (concluído/atenção). */
 .milestone-pin--done::after {
   border-color: var(--success);
 }
 
 .milestone-pin--risk::after {
   border-color: var(--warn);
+}
+
+.milestone-pin--review.milestone-pin--risk::after {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface));
+}
+
+.milestone-icon {
+  color: var(--lane-color);
+}
+
+.milestone-pin--review .milestone-icon {
+  color: var(--info);
+}
+
+/* Faixa dedicada para marcos/reviews sem âncora de área (quarterId opcional). */
+.lane-row--markers {
+  border-top: 1px dashed var(--border);
+}
+
+.lane-row--markers .lane-title strong {
+  color: var(--accent);
 }
 
 .milestone-date {
@@ -3273,19 +3129,8 @@ function resetFilters() {
   outline: none;
 }
 
-select.monthly-control {
-  appearance: none;
-  padding-right: 48px;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
-    linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
-  background-position:
-    calc(100% - 19px) 17px,
-    calc(100% - 14px) 17px;
-  background-size:
-    5px 5px,
-    5px 5px;
-  background-repeat: no-repeat;
+.monthly-select-wrap {
+  min-width: 0;
 }
 
 .monthly-control:focus {

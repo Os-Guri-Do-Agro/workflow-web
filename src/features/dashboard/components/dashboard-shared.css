@@ -1,0 +1,91 @@
+/* Estilos compartilhados entre as seções do Dashboard.
+   Importado via `@import` nos <style scoped> de cada sub-componente.
+   Mantém tokens (var(--...)) — nunca hex. */
+
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.ghost-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.ghost-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+}
+
+.section-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.section-icon {
+  color: var(--text-3);
+  margin-right: 2px;
+  vertical-align: -2px;
+}
+
+.section-chip {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--surface-2);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.agenda-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-4);
+  font-size: 12.5px;
+  justify-content: center;
+}

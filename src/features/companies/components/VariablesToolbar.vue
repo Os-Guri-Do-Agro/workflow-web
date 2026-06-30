@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Search, X, Plus, Download, ListTree, LayoutGrid } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 
 type VarType = 'TEXT' | 'URL' | 'SECRET'
 type ViewMode = 'list' | 'grid'
@@ -35,6 +37,10 @@ const sortOptions: { value: SortKey; label: string }[] = [
   { value: 'updated', label: 'Mais recente' },
   { value: 'fields', label: 'Mais campos' },
 ]
+
+const sortItems = computed<{ label: string; value: SortKey }[]>(() =>
+  sortOptions.map((s) => ({ label: `Ordenar: ${s.label}`, value: s.value })),
+)
 
 const clearSearch = () => emit('update:search', '')
 
@@ -74,15 +80,15 @@ const onSearchInput = (e: Event) => {
     <div class="toolbar-spacer" />
 
     <div class="toolbar-right">
-      <select
-        class="sort-select"
-        :value="sort"
-        @change="emit('update:sort', ($event.target as HTMLSelectElement).value as SortKey)"
-      >
-        <option v-for="s in sortOptions" :key="s.value" :value="s.value">
-          Ordenar: {{ s.label }}
-        </option>
-      </select>
+      <div class="sort-select-wrap">
+        <AppSelect
+          :model-value="sort"
+          :items="sortItems"
+          label="Ordenar variáveis"
+          density="compact"
+          @update:model-value="emit('update:sort', $event as SortKey)"
+        />
+      </div>
 
       <div class="view-toggle">
         <button
@@ -239,21 +245,8 @@ const onSearchInput = (e: Event) => {
   gap: 8px;
 }
 
-.sort-select {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-family: inherit;
-  font-size: 12px;
-  color: var(--text-2);
-  cursor: pointer;
-  outline: none;
-  transition: border-color var(--motion-fast) var(--motion-ease);
-}
-
-.sort-select:hover {
-  border-color: var(--border-strong);
+.sort-select-wrap {
+  min-width: 170px;
 }
 
 .view-toggle {

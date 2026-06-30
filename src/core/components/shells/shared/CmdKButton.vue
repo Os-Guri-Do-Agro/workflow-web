@@ -21,13 +21,15 @@ const shortcutLabel = isMac ? '⌘K' : 'Ctrl K'
   <button
     v-if="variant === 'icon'"
     class="cmdk-btn cmdk-btn--icon"
+    type="button"
     title="Buscar"
+    aria-label="Abrir busca"
     @click="$emit('open')"
   >
     <Search :size="14" />
   </button>
 
-  <button v-else class="cmdk-btn" :class="`cmdk-btn--${variant}`" @click="$emit('open')">
+  <button v-else class="cmdk-btn" type="button" :class="`cmdk-btn--${variant}`" @click="$emit('open')">
     <Search :size="14" class="cmdk-icon" />
     <span class="cmdk-text">{{ placeholder }}</span>
     <span class="cmdk-kbd">{{ shortcutLabel }}</span>
@@ -56,6 +58,12 @@ const shortcutLabel = isMac ? '⌘K' : 'Ctrl K'
   color: var(--text-2);
 }
 
+.cmdk-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  color: var(--text-2);
+}
+
 .cmdk-btn--full {
   min-width: 260px;
   height: 32px;
@@ -67,9 +75,10 @@ const shortcutLabel = isMac ? '⌘K' : 'Ctrl K'
   padding: 0 8px;
 }
 
+/* Variante icon com hit-area >= 44x44 (acessibilidade 50+). */
 .cmdk-btn--icon {
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   justify-content: center;
 }

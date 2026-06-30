@@ -33,12 +33,12 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(125, 125, 125, 0.25);
+  background: rgba(125, 125, 125, 0.4);
   border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(125, 125, 125, 0.45);
+  background: rgba(125, 125, 125, 0.6);
 }
 
 ::-webkit-scrollbar-track {

@@ -2,6 +2,9 @@
 import { computed } from 'vue'
 import { MoreHorizontal, Pencil, Trash2, Download, Copy, Image as ImageIcon } from 'lucide-vue-next'
 import VariableTypeChip from './VariableTypeChip.vue'
+import { useUiPreferences } from '@/composables/useUiPreferences'
+
+const { density } = useUiPreferences()
 
 type VarType = 'TEXT' | 'URL' | 'SECRET'
 
@@ -74,7 +77,11 @@ const editorInitials = computed(() => {
 </script>
 
 <template>
-  <div class="var-row" :class="{ 'var-row--selected': selected }" @click="emit('open', variable)">
+  <div
+    class="var-row"
+    :class="[`var-row--${density}`, { 'var-row--selected': selected }]"
+    @click="emit('open', variable)"
+  >
     <div class="row-icon">
       <img v-if="variable.imageUrl" :src="variable.imageUrl" class="row-img" alt="" />
       <div v-else class="row-avatar">
@@ -156,6 +163,8 @@ const editorInitials = computed(() => {
 <style scoped>
 .var-row {
   display: grid;
+  /* Última coluna mantém 36px para alinhar com o cabeçalho (VariablesList);
+     o botão de ação tem hit-area 44px que extravasa de forma invisível. */
   grid-template-columns: 40px 1fr 160px 90px 140px 36px;
   align-items: center;
   gap: 14px;
@@ -165,6 +174,20 @@ const editorInitials = computed(() => {
   cursor: pointer;
   transition: background var(--motion-fast) var(--motion-ease);
   min-height: 56px;
+}
+
+/* Density real (acessibilidade 50+): compacta vs confortável muda
+   visivelmente o respiro vertical da linha. */
+.var-row--compact {
+  padding: 8px 14px;
+  gap: 12px;
+  min-height: 52px;
+}
+
+.var-row--comfortable {
+  padding: 16px 16px;
+  gap: 16px;
+  min-height: 72px;
 }
 
 .var-row:hover {
@@ -292,9 +315,18 @@ const editorInitials = computed(() => {
   color: var(--text-3);
 }
 
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .row-action-btn {
-  width: 30px;
-  height: 30px;
+  /* Hit-area >= 44x44 (acessibilidade 50+). Ícone segue compacto; a área
+     extravasa a célula de 36px de forma invisível, sem empurrar o grid. */
+  width: 44px;
+  height: 44px;
+  margin: -4px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -311,6 +343,12 @@ const editorInitials = computed(() => {
 
 .row-action-btn:hover {
   background: var(--surface-3);
+  color: var(--text);
+}
+
+.row-action-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   color: var(--text);
 }
 

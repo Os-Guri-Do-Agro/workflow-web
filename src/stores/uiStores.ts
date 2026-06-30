@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import {
+  applyFontScale,
   applyThemeTokens,
   type AccentName,
   type Density,
+  type FontScale,
   type ShellVariant,
   type ThemeName,
 } from '@/plugins/tokens'
@@ -13,6 +15,7 @@ const STORAGE = {
   accent: 'ui.accent',
   density: 'ui.density',
   shell: 'ui.shell',
+  fontScale: 'ui.fontScale',
 } as const
 
 const readTheme = (): ThemeName => {
@@ -37,11 +40,18 @@ const readShell = (): ShellVariant => {
   return v && allowed.includes(v) ? v : 'command'
 }
 
+const readFontScale = (): FontScale => {
+  const v = Number(localStorage.getItem(STORAGE.fontScale))
+  const allowed: FontScale[] = [1, 1.1, 1.2, 1.3]
+  return (allowed as number[]).includes(v) ? (v as FontScale) : 1
+}
+
 export const useUiStore = defineStore('ui', () => {
   const theme = ref<ThemeName>(readTheme())
   const accent = ref<AccentName>(readAccent())
   const density = ref<Density>(readDensity())
   const shell = ref<ShellVariant>(readShell())
+  const fontScale = ref<FontScale>(readFontScale())
 
   watch(theme, (v) => {
     localStorage.setItem(STORAGE.theme, v)
@@ -62,5 +72,13 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(STORAGE.shell, v)
   })
 
-  return { theme, accent, density, shell }
+  watch(fontScale, (v) => {
+    localStorage.setItem(STORAGE.fontScale, String(v))
+    applyFontScale(v)
+  })
+
+  // Aplica a escala salva já no boot (antes de qualquer watch disparar).
+  applyFontScale(fontScale.value)
+
+  return { theme, accent, density, shell, fontScale }
 })

@@ -26,6 +26,7 @@ import { common, createLowlight } from 'lowlight'
 import notesService from '@/service/notes/notes-service'
 import { useToast } from '@/composables/useToast'
 import aiService from '@/service/ai/ai-service'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import {
   ArrowLeft, Save, Loader2,
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -41,6 +42,10 @@ import {
   Rows3, Columns3,
   Trash2,
   Sparkles,
+  Pin,
+  Smile,
+  Palette,
+  ImagePlus,
 } from 'lucide-vue-next'
 
 const lowlight = createLowlight(common)
@@ -58,10 +63,43 @@ const folderId = ref<string | null>(null)
 const folders = ref<any[]>([])
 const loading = ref(true)
 const saving = ref(false)
+const isPinned = ref(false)
+const pinning = ref(false)
 const improving = ref(false)
 const newTag = ref('')
 const showLinkInput = ref(false)
 const linkUrl = ref('')
+
+// ─── Notion-like: emoji, cor e capa ───
+// Guardamos o estado original carregado do servidor para enviar SÓ o que mudou
+// (convenção do contrato: "" = limpar, omitir = manter).
+const emoji = ref('')
+const noteColor = ref('')
+const coverImage = ref('')
+const original = ref<{ emoji: string; noteColor: string; coverImage: string }>({
+  emoji: '',
+  noteColor: '',
+  coverImage: '',
+})
+
+const showEmojiPicker = ref(false)
+const showColorPicker = ref(false)
+const showCoverInput = ref(false)
+const coverUrlDraft = ref('')
+
+// Conjunto curado de emojis comuns para notas.
+const emojiChoices = [
+  '📝', '📌', '📒', '📚', '💡', '⭐', '✅', '🔥',
+  '🎯', '🚀', '🧠', '❤️', '⚠️', '📊', '🗂️', '🔖',
+  '💬', '🛠️', '📅', '✨', '🎨', '🧩', '🏆', '📎',
+]
+
+// Swatches derivadas dos acentos/cores do projeto (cor dinâmica do usuário,
+// persistida como hex no dado — exceção válida ao "sem hex").
+const colorChoices = [
+  '#2563EB', '#7C3AED', '#059669', '#EA580C', '#DB2777',
+  '#0891B2', '#CA8A04', '#DC2626', '#475569',
+]
 
 const editor = useEditor({
   content: '',
@@ -104,6 +142,11 @@ const editor = useEditor({
 const charCount = computed(() => editor.value?.storage.characterCount?.characters() ?? 0)
 const wordCount = computed(() => editor.value?.storage.characterCount?.words() ?? 0)
 
+const folderItems = computed<{ label: string; value: string | null }[]>(() => [
+  { label: 'Sem pasta', value: null },
+  ...folders.value.map((folder: any) => ({ label: folder.name, value: folder.id })),
+])
+
 onMounted(async () => {
   await fetchFolders()
   if (!isNew.value) {
@@ -128,6 +171,15 @@ async function fetchNote() {
     content.value = response.content
     tags.value = response.tags || []
     folderId.value = response.folderId
+    isPinned.value = !!response.isPinned
+    emoji.value = response.emoji || ''
+    noteColor.value = response.noteColor || ''
+    coverImage.value = response.coverImage || ''
+    original.value = {
+      emoji: emoji.value,
+      noteColor: noteColor.value,
+      coverImage: coverImage.value,
+    }
 
     if (editor.value) {
       editor.value.commands.setContent(response.content)
@@ -137,22 +189,74 @@ async function fetchNote() {
   }
 }
 
+async function handleTogglePin() {
+  if (isNew.value || pinning.value) return
+  pinning.value = true
+  // Optimistic: reflete o novo estado de imediato e reverte se a API falhar.
+  isPinned.value = !isPinned.value
+  try {
+    await notesService.togglePin(noteId.value)
+    success(isPinned.value ? 'Nota fixada' : 'Nota desafixada')
+  } catch (e) {
+    isPinned.value = !isPinned.value
+    showError('Erro ao fixar nota')
+  } finally {
+    pinning.value = false
+  }
+}
+
 async function saveNote() {
   saving.value = true
   try {
-    const data = {
-      title: title.value,
-      content: content.value,
-      tags: tags.value,
-      folderId: folderId.value,
-    }
-
     if (isNew.value) {
+      // Nota nova: inclui emoji/cor/capa só quando o usuário definiu algo.
+      const data: {
+        title: string
+        content: string
+        tags: string[]
+        folderId: string | null
+        emoji?: string
+        noteColor?: string
+        coverImage?: string
+      } = {
+        title: title.value,
+        content: content.value,
+        tags: tags.value,
+        folderId: folderId.value,
+      }
+      if (emoji.value) data.emoji = emoji.value
+      if (noteColor.value) data.noteColor = noteColor.value
+      if (coverImage.value) data.coverImage = coverImage.value
+
       const response = await notesService.createNote(data)
       router.replace(`/notes/${response.id}`)
       success('Nota criada com sucesso')
     } else {
+      // Update: envia a chave só quando mudou. "" limpa, omitir mantém.
+      const data: {
+        title: string
+        content: string
+        tags: string[]
+        folderId: string | null
+        emoji?: string
+        noteColor?: string
+        coverImage?: string
+      } = {
+        title: title.value,
+        content: content.value,
+        tags: tags.value,
+        folderId: folderId.value,
+      }
+      if (emoji.value !== original.value.emoji) data.emoji = emoji.value
+      if (noteColor.value !== original.value.noteColor) data.noteColor = noteColor.value
+      if (coverImage.value !== original.value.coverImage) data.coverImage = coverImage.value
+
       await notesService.updateNote(noteId.value, data)
+      original.value = {
+        emoji: emoji.value,
+        noteColor: noteColor.value,
+        coverImage: coverImage.value,
+      }
       success('Nota salva com sucesso')
     }
   } catch (e) {
@@ -160,6 +264,42 @@ async function saveNote() {
   } finally {
     saving.value = false
   }
+}
+
+function pickEmoji(value: string) {
+  emoji.value = value
+  showEmojiPicker.value = false
+}
+
+function clearEmoji() {
+  emoji.value = ''
+  showEmojiPicker.value = false
+}
+
+function pickColor(value: string) {
+  noteColor.value = value
+  showColorPicker.value = false
+}
+
+function clearColor() {
+  noteColor.value = ''
+  showColorPicker.value = false
+}
+
+function openCoverInput() {
+  coverUrlDraft.value = coverImage.value
+  showCoverInput.value = !showCoverInput.value
+}
+
+function applyCover() {
+  coverImage.value = coverUrlDraft.value.trim()
+  showCoverInput.value = false
+}
+
+function clearCover() {
+  coverImage.value = ''
+  coverUrlDraft.value = ''
+  showCoverInput.value = false
 }
 
 async function improveNoteText() {
@@ -248,6 +388,81 @@ watch(() => editor.value, (e) => {
       </div>
       <div class="header-right">
         <span class="char-count">{{ wordCount }} palavras &middot; {{ charCount }} chars</span>
+
+        <!-- Emoji -->
+        <div class="meta-control">
+          <button
+            class="meta-btn"
+            :class="{ 'meta-btn--set': !!emoji }"
+            title="Emoji da nota"
+            @click="showEmojiPicker = !showEmojiPicker; showColorPicker = false"
+          >
+            <span v-if="emoji" class="meta-emoji">{{ emoji }}</span>
+            <Smile v-else :size="16" />
+          </button>
+          <div v-if="showEmojiPicker" class="meta-popover">
+            <div class="emoji-grid">
+              <button
+                v-for="e in emojiChoices"
+                :key="e"
+                class="emoji-option"
+                :class="{ 'emoji-option--active': emoji === e }"
+                @click="pickEmoji(e)"
+              >
+                {{ e }}
+              </button>
+            </div>
+            <button class="meta-clear" @click="clearEmoji">Remover emoji</button>
+          </div>
+        </div>
+
+        <!-- Cor -->
+        <div class="meta-control">
+          <button
+            class="meta-btn"
+            title="Cor da nota"
+            @click="showColorPicker = !showColorPicker; showEmojiPicker = false"
+          >
+            <span v-if="noteColor" class="meta-color-dot" :style="{ backgroundColor: noteColor }" />
+            <Palette v-else :size="16" />
+          </button>
+          <div v-if="showColorPicker" class="meta-popover">
+            <div class="color-grid">
+              <button
+                v-for="c in colorChoices"
+                :key="c"
+                class="color-option"
+                :class="{ 'color-option--active': noteColor === c }"
+                :style="{ backgroundColor: c }"
+                :title="c"
+                @click="pickColor(c)"
+              />
+            </div>
+            <button class="meta-clear" @click="clearColor">Limpar cor</button>
+          </div>
+        </div>
+
+        <!-- Capa -->
+        <button
+          class="meta-btn"
+          :class="{ 'meta-btn--set': !!coverImage }"
+          title="Imagem de capa"
+          @click="openCoverInput"
+        >
+          <ImagePlus :size="16" />
+        </button>
+
+        <button
+          v-if="!isNew"
+          class="pin-btn"
+          :class="{ 'pin-btn--active': isPinned }"
+          :disabled="pinning"
+          :title="isPinned ? 'Desafixar nota' : 'Fixar nota'"
+          :aria-pressed="isPinned"
+          @click="handleTogglePin"
+        >
+          <Pin :size="16" />
+        </button>
         <button class="save-btn" :disabled="saving" @click="saveNote">
           <component :is="saving ? Loader2 : Save" :size="16" :class="{ 'spin': saving }" />
           {{ saving ? 'Salvando...' : 'Salvar' }}
@@ -362,6 +577,22 @@ watch(() => editor.value, (e) => {
       </button>
     </div>
 
+    <!-- Cover URL input bar -->
+    <div v-if="showCoverInput" class="link-bar">
+      <input
+        v-model="coverUrlDraft"
+        type="url"
+        placeholder="URL da imagem de capa (https://...)"
+        class="link-input"
+        @keydown.enter.prevent="applyCover"
+      />
+      <button class="link-bar-btn" @click="applyCover">Aplicar</button>
+      <button v-if="coverImage" class="link-bar-btn" @click="clearCover">Remover capa</button>
+      <button class="link-bar-btn link-bar-btn--cancel" @click="showCoverInput = false">
+        <X :size="14" />
+      </button>
+    </div>
+
     <!-- Link input bar -->
     <div v-if="showLinkInput" class="link-bar">
       <input
@@ -415,7 +646,24 @@ watch(() => editor.value, (e) => {
       <div class="editor-main">
         <div v-if="loading" class="editor-loading">Carregando...</div>
         <template v-else>
-          <EditorContent :editor="editor" class="editor-content" />
+          <div class="editor-content">
+            <!-- Capa -->
+            <div v-if="coverImage" class="note-cover">
+              <img :src="coverImage" alt="Capa da nota" class="note-cover-img" />
+            </div>
+
+            <!-- Emoji + acento de cor -->
+            <div
+              v-if="emoji || noteColor"
+              class="note-decor"
+              :class="{ 'note-decor--accent': !!noteColor }"
+              :style="noteColor ? { borderLeftColor: noteColor } : undefined"
+            >
+              <span v-if="emoji" class="note-decor-emoji">{{ emoji }}</span>
+            </div>
+
+            <EditorContent :editor="editor" />
+          </div>
         </template>
       </div>
 
@@ -423,12 +671,13 @@ watch(() => editor.value, (e) => {
       <div class="editor-sidebar">
         <div class="sidebar-section">
           <label class="sidebar-label">Pasta</label>
-          <select v-model="folderId" class="sidebar-select">
-            <option :value="null">Sem pasta</option>
-            <option v-for="folder in folders" :key="folder.id" :value="folder.id">
-              {{ folder.name }}
-            </option>
-          </select>
+          <AppSelect
+            v-model="folderId"
+            :items="folderItems"
+            placeholder="Sem pasta"
+            label="Pasta"
+            density="compact"
+          />
         </div>
 
         <div class="sidebar-section">
@@ -513,6 +762,40 @@ watch(() => editor.value, (e) => {
   color: rgb(var(--v-theme-secondary));
 }
 
+.pin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(var(--v-theme-secondary), 0.05);
+  color: rgba(var(--v-theme-secondary), 0.6);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pin-btn:hover {
+  background: rgba(var(--v-theme-secondary), 0.1);
+  color: rgb(var(--v-theme-secondary));
+}
+
+.pin-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pin-btn--active {
+  background: rgba(var(--v-theme-warning), 0.12);
+  color: rgb(var(--v-theme-warning));
+}
+
+.pin-btn--active:hover {
+  background: rgba(var(--v-theme-warning), 0.18);
+  color: rgb(var(--v-theme-warning));
+}
+
 .title-input {
   flex: 1;
   font-size: 18px;
@@ -544,6 +827,132 @@ watch(() => editor.value, (e) => {
 
 .save-btn:hover { opacity: 0.9; }
 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ─── Meta controls (emoji / cor / capa) ─── */
+.meta-control {
+  position: relative;
+  display: flex;
+}
+
+.meta-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(var(--v-theme-secondary), 0.05);
+  color: rgba(var(--v-theme-secondary), 0.6);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.meta-btn:hover {
+  background: rgba(var(--v-theme-secondary), 0.1);
+  color: rgb(var(--v-theme-secondary));
+}
+
+.meta-btn--set {
+  background: rgba(var(--v-theme-secondary), 0.1);
+  color: rgb(var(--v-theme-secondary));
+}
+
+.meta-emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.meta-color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--v-theme-secondary), 0.15);
+}
+
+.meta-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgb(var(--v-theme-primary));
+  border: 1px solid rgba(var(--v-theme-secondary), 0.12);
+  box-shadow: var(--shadow-overlay);
+  width: max-content;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.emoji-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.emoji-option:hover {
+  background: rgba(var(--v-theme-secondary), 0.08);
+}
+
+.emoji-option--active {
+  background: rgba(var(--v-theme-secondary), 0.14);
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.color-option {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+}
+
+.color-option--active {
+  border-color: rgb(var(--v-theme-secondary));
+}
+
+.meta-clear {
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(var(--v-theme-secondary), 0.06);
+  color: rgba(var(--v-theme-secondary), 0.7);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.meta-clear:hover {
+  background: rgba(var(--v-theme-secondary), 0.12);
+}
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -692,6 +1101,39 @@ watch(() => editor.value, (e) => {
 .editor-content {
   max-width: 800px;
   margin: 0 auto;
+}
+
+/* ─── Capa + emoji/cor no topo do editor ─── */
+.note-cover {
+  width: 100%;
+  height: 200px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 16px;
+  background: rgba(var(--v-theme-secondary), 0.05);
+}
+
+.note-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.note-decor {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.note-decor--accent {
+  padding-left: 12px;
+  border-left: 4px solid transparent;
+}
+
+.note-decor-emoji {
+  font-size: 40px;
+  line-height: 1.1;
 }
 
 /* ─── ProseMirror styles ─── */
@@ -898,17 +1340,6 @@ watch(() => editor.value, (e) => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 8px;
-}
-
-.sidebar-select {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 6px;
-  background: transparent;
-  font-size: 13px;
-  color: rgb(var(--v-theme-secondary));
-  cursor: pointer;
 }
 
 .tags-input {

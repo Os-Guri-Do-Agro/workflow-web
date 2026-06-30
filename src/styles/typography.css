@@ -54,15 +54,15 @@ p {
 }
 
 .text-meta {
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 16px;
   font-weight: 500;
   color: var(--text-3);
 }
 
 .text-eyebrow {
-  font-size: 10.5px;
-  line-height: 14px;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -71,4 +71,21 @@ p {
 
 .text-mono {
   font-family: var(--font-mono);
+}
+
+/* Tipografia ampliada — leitura confortável / acessibilidade 50+.
+   Escala junto com o "Aumento de fonte" via os tokens --text-*-large. */
+.text-body-large {
+  font-size: var(--text-body-large);
+  line-height: 1.55;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.text-title-large {
+  font-size: var(--text-title-large);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
 }

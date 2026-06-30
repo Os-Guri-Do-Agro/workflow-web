@@ -2,6 +2,8 @@ export type ThemeName = 'dark' | 'light'
 export type AccentName = 'neutral' | 'blue' | 'violet' | 'green' | 'orange' | 'pink'
 export type Density = 'compact' | 'comfortable'
 export type ShellVariant = 'command' | 'focus' | 'canvas'
+/** Escala de fonte do app ("Aumento de fonte" — acessibilidade 50+). */
+export type FontScale = 1 | 1.1 | 1.2 | 1.3
 
 type TokenMap = Record<string, string>
 
@@ -19,6 +21,10 @@ const sharedRadiusAndShadow = {
     '"Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   '--font-mono':
     'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+  // Tipografia ampliada (modo 50+ / leitura confortável). Escala junto via calc()
+  // com --font-scale, aplicada em runtime por applyFontScale().
+  '--text-body-large': 'calc(15px * var(--font-scale, 1))',
+  '--text-title-large': 'calc(24px * var(--font-scale, 1))',
 }
 
 const darkTokens: TokenMap = {
@@ -31,8 +37,8 @@ const darkTokens: TokenMap = {
   '--border-strong': 'rgba(250,250,250,0.14)',
   '--text': '#FAFAFA',
   '--text-2': 'rgba(250,250,250,0.70)',
-  '--text-3': 'rgba(250,250,250,0.48)',
-  '--text-4': 'rgba(250,250,250,0.32)',
+  '--text-3': 'rgba(250,250,250,0.66)',
+  '--text-4': 'rgba(250,250,250,0.54)',
   '--status-todo': '#2E90FA',
   '--status-prog': '#F79009',
   '--status-test': '#9E77ED',
@@ -56,8 +62,8 @@ const lightTokens: TokenMap = {
   '--border-strong': 'rgba(11,11,12,0.16)',
   '--text': '#0B0B0C',
   '--text-2': 'rgba(11,11,12,0.70)',
-  '--text-3': 'rgba(11,11,12,0.48)',
-  '--text-4': 'rgba(11,11,12,0.32)',
+  '--text-3': 'rgba(11,11,12,0.70)',
+  '--text-4': 'rgba(11,11,12,0.58)',
   '--status-todo': '#2E90FA',
   '--status-prog': '#F79009',
   '--status-test': '#9E77ED',
@@ -123,6 +129,22 @@ function hexToRgbTriple(hex: string): string {
   const g = parseInt(h.slice(2, 4), 16)
   const b = parseInt(h.slice(4, 6), 16)
   return `${r},${g},${b}`
+}
+
+/**
+ * Aplica a escala de fonte global ("Aumento de fonte" — acessibilidade 50+).
+ *
+ * Expõe `--font-scale` no `:root` (consumido por `--text-body-large` e
+ * `--text-title-large` via `calc()`) e ajusta o `font-size` raiz, de modo que
+ * qualquer dimensão em `rem` e os tokens tipográficos cresçam juntos em runtime,
+ * sem reload. `1` = tamanho padrão; `1.3` = 30% maior.
+ */
+export function applyFontScale(scale: FontScale = 1): void {
+  const root = document.documentElement
+  root.style.setProperty('--font-scale', String(scale))
+  // 16px é o tamanho raiz padrão dos browsers; escalamos a partir dele.
+  root.style.fontSize = `${16 * scale}px`
+  root.setAttribute('data-font-scale', String(scale))
 }
 
 export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral'): void {

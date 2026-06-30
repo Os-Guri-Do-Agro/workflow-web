@@ -11,6 +11,7 @@ import WelcomeGuide from '@/components/onboarding/WelcomeGuide.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useAssistant } from '@/composables/useAssistant'
 import { useOnboarding } from '@/composables/useOnboarding'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const route = useRoute()
 const { shell } = useUiPreferences()
@@ -48,7 +49,9 @@ const bare = computed(
 
 const ActiveShell = computed(() => {
   if (shell.value === 'focus') return FocusShell
-  if (shell.value === 'canvas') return CanvasShell
+  // Canvas escondido (feature flag off): quem tinha ui.shell='canvas' no
+  // localStorage cai no CommandShell em vez de uma tela quebrada.
+  if (shell.value === 'canvas' && CANVAS_ENABLED) return CanvasShell
   return CommandShell
 })
 

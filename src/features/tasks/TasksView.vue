@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useTasks } from '@/features/tasks/useTasks'
 import TaskForm from '@/components/tasks/TaskForm.vue'
 import KanbanBoard from '@/components/tasks/KanbanBoard.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import type { Activity } from '@/core/types'
 import quartersService from '@/service/quarters/quarters-service'
 import activityService from '@/service/activities/activity-service'
@@ -15,6 +16,56 @@ import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { useBacklog } from '@/composables/useBacklog'
 import { useQueryClient } from '@tanstack/vue-query'
 
+// ── Tipos locais (shape real da API de tarefas/quarters deste módulo) ──
+type BoardStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+
+interface TaskResponsible {
+  user: { name: string }
+}
+
+interface BoardTask {
+  id: string
+  title?: string
+  priorityNumber?: number
+  responsibles?: TaskResponsible[]
+}
+
+type BoardColumns = Record<BoardStatus, BoardTask[]>
+
+interface CompanyMember {
+  id: string
+  name: string
+  email?: string
+}
+
+interface ActivityFormModel {
+  title: string
+  description: string
+  priorityNumber: number
+  dueDate: string
+  assignees: string[]
+  attachment: File | null
+}
+
+interface RawMonth {
+  id: string
+  name: string
+}
+
+interface RawQuarter {
+  months?: RawMonth[]
+}
+
+/** Erro de request (axios-like) — usado para extrair a mensagem do backend. */
+interface RequestError {
+  response?: { data?: { message?: string } }
+}
+
+function apiErrorMessage(e: unknown, fallback: string): string {
+  const msg = (e as RequestError)?.response?.data?.message
+  return msg ?? fallback
+}
+
 const route = useRoute()
 const router = useRouter()
 useTasks()
@@ -24,10 +75,10 @@ const dialog = ref(false)
 const creating = ref(false)
 const selectedUser = ref<string>('')
 const currentTab = ref<'board' | 'backlog'>('board')
-const members = ref<any[]>([])
+const members = ref<CompanyMember[]>([])
 const isWorkerRole = ref(false)
 const { success: showSuccess, error: showError } = useToast()
-const formActivity = ref<any>({
+const formActivity = ref<ActivityFormModel>({
   title: '',
   description: '',
   priorityNumber: 0,
@@ -37,7 +88,7 @@ const formActivity = ref<any>({
 })
 
 // Local mutable tasks ref for optimistic drag-and-drop updates
-const tasks = ref<any>({ TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] })
+const tasks = ref<BoardColumns>({ TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] })
 
 // ── Reactive query keys ──
 const companyId = computed(() => localStorage.getItem('activeCompany') ?? '')
@@ -55,11 +106,11 @@ const loading = computed(() => tasksLoading.value)
 
 const backLog = computed(() => backlogData.value ?? [])
 
-const currentMonthData = computed(() => {
-  const raw = quartersData.value
-  const quarters: any[] = raw?.data ?? (Array.isArray(raw) ? raw : [])
+const currentMonthData = computed<RawMonth | null>(() => {
+  const raw = quartersData.value as RawQuarter[] | { data?: RawQuarter[] } | undefined
+  const quarters: RawQuarter[] = Array.isArray(raw) ? raw : (raw?.data ?? [])
   for (const quarter of quarters) {
-    const month = quarter.months?.find((m: any) => m.id === monthId.value)
+    const month = quarter.months?.find((m) => m.id === monthId.value)
     if (month) return month
   }
   return null
@@ -72,10 +123,12 @@ const findMembers = async () => {
   const id = localStorage.getItem('activeCompany')
   if (!id) return
   try {
-    const response = await companiesServices.getCompanyMembers(id)
-    members.value = response.data || response
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao buscar membros')
+    const response = (await companiesServices.getCompanyMembers(id)) as
+      | CompanyMember[]
+      | { data?: CompanyMember[] }
+    members.value = Array.isArray(response) ? response : response.data ?? []
+  } catch (error: unknown) {
+    showError(apiErrorMessage(error, 'Erro ao buscar membros'))
   }
 }
 
@@ -108,8 +161,8 @@ const createActivity = async () => {
     formActivity.value = { title: '', description: '', priorityNumber: 0, dueDate: '', assignees: [], attachment: null }
     dialog.value = false
     showSuccess('Atividade criada com sucesso')
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao criar atividade')
+  } catch (error: unknown) {
+    showError(apiErrorMessage(error, 'Erro ao criar atividade'))
   } finally {
     creating.value = false
   }
@@ -138,16 +191,16 @@ const priorityOptions = [
   { value: 5, label: 'P5' },
 ]
 
-const filteredTasks = computed(() => {
-  if (!tasks.value) return tasks.value
-  const result: any = {}
-  for (const [status, list] of Object.entries(tasks.value)) {
-    let arr = (list as any[]) || []
+const filteredTasks = computed<BoardColumns>(() => {
+  const result = { TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] } as BoardColumns
+  if (!tasks.value) return result
+  for (const [status, list] of Object.entries(tasks.value) as [BoardStatus, BoardTask[]][]) {
+    let arr: BoardTask[] = list || []
     if (selectedUser.value) {
-      arr = arr.filter((t: any) => t.responsibles?.some((r: any) => r.user.name === selectedUser.value))
+      arr = arr.filter((t) => t.responsibles?.some((r) => r.user.name === selectedUser.value))
     }
     if (filterPriority.value !== null) {
-      arr = arr.filter((t: any) => t.priorityNumber === filterPriority.value)
+      arr = arr.filter((t) => t.priorityNumber === filterPriority.value)
     }
     if (filterStatus.value !== null && status !== filterStatus.value) {
       arr = []
@@ -171,14 +224,19 @@ const clearFilters = () => {
   filterStatus.value = null
 }
 
-const allUsers = computed(() => {
+const allUsers = computed<string[]>(() => {
   const users = new Set<string>()
   if (!tasks.value) return []
-  Object.values(tasks.value).flat().forEach((task: any) => {
-    task.responsibles?.forEach((r: any) => users.add(r.user.name))
+  ;(Object.values(tasks.value).flat() as BoardTask[]).forEach((task) => {
+    task.responsibles?.forEach((r) => users.add(r.user.name))
   })
   return Array.from(users).sort()
 })
+
+const userItems = computed<{ label: string; value: string }[]>(() => [
+  { label: 'Todos', value: '' },
+  ...allUsers.value.map((u) => ({ label: u, value: u })),
+])
 
 
 const totalTasks = computed(() => {
@@ -189,25 +247,26 @@ const totalTasks = computed(() => {
 // ── Optimistic status update ──
 const handleUpdateStatus = async (taskId: string, apiStatus: string) => {
   // Optimistic: move task in local data so watch doesn't snap it back
-  const statuses = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
-  let movedTask: any = null
+  const statuses: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
+  let movedTask: BoardTask | null = null
   for (const status of statuses) {
-    const list = tasks.value[status] as any[]
+    const list = tasks.value[status]
     if (!list) continue
-    const idx = list.findIndex((t: any) => t.id === taskId)
+    const idx = list.findIndex((t) => t.id === taskId)
     if (idx !== -1) {
-      movedTask = list.splice(idx, 1)[0]
+      movedTask = list.splice(idx, 1)[0] ?? null
       break
     }
   }
-  if (movedTask && tasks.value[apiStatus]) {
-    tasks.value[apiStatus].push(movedTask)
+  const target = tasks.value[apiStatus as BoardStatus]
+  if (movedTask && target) {
+    target.push(movedTask)
   }
 
   try {
     await quartersService.patchActivityStatus(taskId, apiStatus)
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao atualizar status')
+  } catch (error: unknown) {
+    showError(apiErrorMessage(error, 'Erro ao atualizar status'))
     await refreshTasks() // revert on failure
   }
 }
@@ -224,10 +283,10 @@ const handleRenameTask = async (taskId: string, newTitle: string) => {
 
 // ── Delete ──
 const confirmDelete = ref(false)
-const taskToDelete = ref<any>(null)
+const taskToDelete = ref<BoardTask | null>(null)
 const deleting = ref<string | null>(null)
 
-const openDeleteConfirm = (task: any) => {
+const openDeleteConfirm = (task: BoardTask) => {
   taskToDelete.value = task
   confirmDelete.value = true
 }
@@ -240,8 +299,8 @@ const deleteTask = async () => {
     await refreshTasks()
     confirmDelete.value = false
     showSuccess('Atividade excluída')
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao deletar')
+  } catch (error: unknown) {
+    showError(apiErrorMessage(error, 'Erro ao deletar'))
   } finally {
     deleting.value = null
     taskToDelete.value = null
@@ -335,10 +394,15 @@ const showFilters = ref(false)
         <!-- User -->
         <div class="filter-group">
           <label class="filter-label">Responsável</label>
-          <select v-model="selectedUser" class="filter-select">
-            <option value="">Todos</option>
-            <option v-for="u in allUsers" :key="u" :value="u">{{ u }}</option>
-          </select>
+          <div class="filter-select-wrap">
+            <AppSelect
+              v-model="selectedUser"
+              :items="userItems"
+              placeholder="Todos"
+              label="Filtrar por responsável"
+              density="compact"
+            />
+          </div>
         </div>
 
         <!-- Priority -->
@@ -617,21 +681,8 @@ const showFilters = ref(false)
   letter-spacing: 0.04em;
 }
 
-.filter-select {
-  font-size: 12.5px;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
-  outline: none;
-  font-family: inherit;
-  min-width: 140px;
-  cursor: pointer;
-}
-
-.filter-select:focus {
-  border-color: var(--accent);
+.filter-select-wrap {
+  min-width: 160px;
 }
 
 .filter-chips {

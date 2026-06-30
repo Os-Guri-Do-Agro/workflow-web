@@ -16,6 +16,7 @@ import {
 } from 'lucide-vue-next'
 import { useOnboarding } from '@/composables/useOnboarding'
 import { useAssistant } from '@/composables/useAssistant'
+import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 interface Step {
   id: string
@@ -27,6 +28,14 @@ interface Step {
   action?: 'assistant'
 }
 
+// Glossário em PT-BR simples para quem é novo no app (acessibilidade 50+).
+// Explica o jargão comum sem assumir familiaridade com termos de software.
+const glossary: { term: string; meaning: string }[] = [
+  { term: 'Board', meaning: 'Quadro de tarefas em colunas (a fazer, fazendo, feito).' },
+  { term: 'Backlog', meaning: 'Lista do que ainda está por fazer, esperando prioridade.' },
+  { term: 'Sprint', meaning: 'Um ciclo curto de trabalho, com metas para alguns dias ou semanas.' },
+]
+
 const router = useRouter()
 const onboarding = useOnboarding()
 const assistant = useAssistant()
@@ -37,7 +46,10 @@ const dialogRef = ref<HTMLElement | null>(null)
 const steps: Step[] = [
   { id: 'dashboard', icon: LayoutDashboard, title: 'Veja o panorama', desc: 'Métricas, feed da empresa e o que precisa de atenção.', cta: 'Abrir Dashboard', to: '/' },
   { id: 'roadmap', icon: Milestone, title: 'Planeje o ano', desc: 'Monte o roadmap mensal e acompanhe as entregas.', cta: 'Abrir Roadmap', to: '/roadmap' },
-  { id: 'canvas', icon: Paintbrush, title: 'Desenhe e colabore', desc: 'Boards de canvas em tempo real com o seu time.', cta: 'Abrir Canvas', to: '/boards' },
+  // Canvas: step escondido via feature flag (CANVAS_ENABLED). Reativar = VITE_CANVAS_ENABLED=true.
+  ...(CANVAS_ENABLED
+    ? [{ id: 'canvas', icon: Paintbrush, title: 'Desenhe e colabore', desc: 'Boards de canvas em tempo real com o seu time.', cta: 'Abrir Canvas', to: '/boards' } as Step]
+    : []),
   { id: 'ai', icon: Sparkles, title: 'Pergunte à IA', desc: 'Tire dúvidas sobre o workspace — atalho Ctrl/Cmd + I.', cta: 'Abrir assistente', action: 'assistant' },
   { id: 'variables', icon: KeyRound, title: 'Centralize credenciais', desc: 'Guarde URLs, chaves e secrets por empresa.', cta: 'Abrir Variáveis', to: '/variables' },
   { id: 'settings', icon: Settings, title: 'Deixe com a sua cara', desc: 'Tema, cor de destaque, densidade e shell.', cta: 'Abrir Configurações', to: '/settings' },
@@ -133,6 +145,16 @@ watch(isOpen, (open) => {
               </button>
             </li>
           </ul>
+
+          <section v-if="!allDone" class="guide-glossary" aria-label="O que cada termo significa">
+            <p class="glossary-title">Termos que você vai ver por aqui</p>
+            <dl class="glossary-list">
+              <div v-for="g in glossary" :key="g.term" class="glossary-item">
+                <dt class="glossary-term">{{ g.term }}</dt>
+                <dd class="glossary-meaning">{{ g.meaning }}</dd>
+              </div>
+            </dl>
+          </section>
 
           <footer v-if="!allDone" class="guide-foot">
             <span class="foot-hint">Reabra em <kbd>Cmd/Ctrl</kbd>+<kbd>K</kbd> → Primeiros passos</span>
@@ -362,6 +384,46 @@ watch(isOpen, (open) => {
   color: var(--accent);
 }
 
+.guide-glossary {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.glossary-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+.glossary-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.glossary-item {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+.glossary-term {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+.glossary-meaning {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
 .guide-foot {
   display: flex;
   align-items: center;
@@ -495,6 +557,10 @@ watch(isOpen, (open) => {
   }
   .guide-ghost {
     width: 100%;
+  }
+  .glossary-item {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 }
 

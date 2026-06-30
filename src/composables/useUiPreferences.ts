@@ -2,16 +2,18 @@ import { storeToRefs } from 'pinia'
 import { useTheme } from 'vuetify'
 import { useUiStore } from '@/stores/uiStores'
 import {
+  applyFontScale,
   applyThemeTokens,
   type AccentName,
   type Density,
+  type FontScale,
   type ShellVariant,
   type ThemeName,
 } from '@/plugins/tokens'
 
 export function useUiPreferences() {
   const store = useUiStore()
-  const { theme, accent, density, shell } = storeToRefs(store)
+  const { theme, accent, density, shell, fontScale } = storeToRefs(store)
   const vuetifyTheme = useTheme()
 
   const setTheme = (value: ThemeName) => {
@@ -35,15 +37,22 @@ export function useUiPreferences() {
     store.shell = value
   }
 
+  const setFontScale = (value: FontScale) => {
+    store.fontScale = value
+    applyFontScale(value)
+  }
+
   return {
     theme,
     accent,
     density,
     shell,
+    fontScale,
     setTheme,
     toggleTheme,
     setAccent,
     setDensity,
     setShell,
+    setFontScale,
   }
 }

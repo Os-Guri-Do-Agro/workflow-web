@@ -3,7 +3,10 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Search, FileStack, Folder, FileText, Pin } from 'lucide-vue-next'
 import notesService from '@/service/notes/notes-service'
+import { stripHtmlPreview } from '@/utils/html-preview'
+import { useUiPreferences } from '@/composables/useUiPreferences'
 
+const { density } = useUiPreferences()
 const router = useRouter()
 const notes = ref<any[]>([])
 const folders = ref<any[]>([])
@@ -53,7 +56,7 @@ function selectFolder(folderId: string | null) {
 </script>
 
 <template>
-  <div class="notes-page">
+  <div class="notes-page" :class="`notes-page--${density}`">
     <div class="notes-header">
       <div>
         <h1 class="notes-title">Notas</h1>
@@ -124,14 +127,19 @@ function selectFolder(folderId: string | null) {
             v-for="note in notes"
             :key="note.id"
             class="note-card"
-            :class="{ 'note-card--pinned': note.isPinned }"
+            :class="{ 'note-card--pinned': note.isPinned, 'note-card--accent': !!note.noteColor }"
+            :style="note.noteColor ? { borderLeftColor: note.noteColor } : undefined"
             @click="openNote(note.id)"
           >
+            <div v-if="note.coverImage" class="note-cover">
+              <img :src="note.coverImage" alt="" class="note-cover-img" />
+            </div>
             <div class="note-header">
+              <span v-if="note.emoji" class="note-emoji">{{ note.emoji }}</span>
               <h3 class="note-title">{{ note.title }}</h3>
               <Pin v-if="note.isPinned" :size="13" class="pin-icon" />
             </div>
-            <p class="note-preview">{{ note.content.substring(0, 100) }}...</p>
+            <p class="note-preview">{{ note.preview ?? stripHtmlPreview(note.content) }}</p>
             <div class="note-meta">
               <span class="note-date">
                 {{ new Date(note.updatedAt).toLocaleDateString('pt-BR') }}
@@ -153,6 +161,34 @@ function selectFolder(folderId: string | null) {
 .notes-page {
   padding: 24px;
   height: 100%;
+}
+
+/* Density real (acessibilidade 50+): "confortável" abre o respiro de grid,
+   cards e itens de pasta de forma visível; "compacta" adensa. */
+.notes-page--comfortable .notes-grid,
+.notes-page--comfortable .notes-skeleton {
+  gap: 18px;
+}
+
+.notes-page--comfortable .note-card {
+  padding: 20px;
+}
+
+.notes-page--comfortable .folder-item {
+  padding: 11px 12px;
+}
+
+.notes-page--compact .notes-grid,
+.notes-page--compact .notes-skeleton {
+  gap: 8px;
+}
+
+.notes-page--compact .note-card {
+  padding: 11px;
+}
+
+.notes-page--compact .folder-item {
+  padding: 6px 10px;
 }
 
 .notes-header {
@@ -351,11 +387,38 @@ function selectFolder(folderId: string | null) {
   background: rgba(245, 158, 11, 0.02);
 }
 
+/* Acento de cor do usuário (cor dinâmica via style inline). */
+.note-card--accent {
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+
+.note-cover {
+  height: 96px;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: rgba(var(--v-theme-secondary), 0.05);
+}
+
+.note-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .note-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   margin-bottom: 8px;
+}
+
+.note-emoji {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .note-title {
@@ -366,6 +429,13 @@ function selectFolder(folderId: string | null) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.pin-icon {
+  flex-shrink: 0;
+  color: rgb(245, 158, 11);
 }
 
 .note-preview {

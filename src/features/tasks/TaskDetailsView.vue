@@ -35,6 +35,7 @@ import {
   type LucideIcon,
 } from 'lucide-vue-next'
 import Pill from '@/components/ui/Pill.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
@@ -233,6 +234,14 @@ const selectedQuarterMonths = computed(() => {
   const quarter = quartersList.value.find((q: any) => q.id === placementSelection.value.quarterId)
   return quarter?.months ?? []
 })
+
+const quarterSelectItems = computed<{ label: string; value: string }[]>(() =>
+  quarterOptions.value.map((q: any) => ({ label: q.label, value: q.id })),
+)
+
+const monthSelectItems = computed<{ label: string; value: string }[]>(() =>
+  selectedQuarterMonths.value.map((m: any) => ({ label: m.name, value: m.id })),
+)
 
 const currentMonthData = computed(() => {
   const monthId = activeMonthId.value
@@ -836,30 +845,28 @@ const deleteAttachment = async (attachmentId: string) => {
             <div v-if="quarterOptions.length" class="meta-row">
               <dt>Trimestre</dt>
               <dd>
-                <select
-                  class="meta-select"
-                  :value="placementSelection.quarterId"
+                <AppSelect
+                  :model-value="placementSelection.quarterId"
+                  :items="quarterSelectItems"
+                  label="Trimestre"
+                  density="compact"
                   :disabled="changingMonth"
-                  @change="onPlacementQuarterChange(($event.target as HTMLSelectElement).value)"
-                >
-                  <option v-for="q in quarterOptions" :key="q.id" :value="q.id">{{ q.label }}</option>
-                </select>
+                  @update:model-value="onPlacementQuarterChange(String($event))"
+                />
               </dd>
             </div>
 
             <div v-if="selectedQuarterMonths.length" class="meta-row">
               <dt>Mês</dt>
-              <dd>
-                <select
-                  class="meta-select"
-                  :value="placementSelection.monthId"
+              <dd class="meta-month">
+                <AppSelect
+                  :model-value="placementSelection.monthId"
+                  :items="monthSelectItems"
+                  label="Mês"
+                  density="compact"
                   :disabled="changingMonth || selectedQuarterMonths.length <= 1"
-                  @change="changeActivityMonth(($event.target as HTMLSelectElement).value)"
-                >
-                  <option v-for="m in selectedQuarterMonths" :key="m.id" :value="m.id">
-                    {{ m.name }}
-                  </option>
-                </select>
+                  @update:model-value="changeActivityMonth(String($event))"
+                />
                 <Loader2 v-if="changingMonth" :size="14" class="spin meta-loading" />
               </dd>
             </div>
@@ -1917,21 +1924,15 @@ const deleteAttachment = async (attachmentId: string) => {
   color: var(--text-2);
 }
 
-.meta-select {
-  width: 100%;
-  font-size: 12.5px;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 8px;
-  outline: none;
-  font-family: inherit;
-  cursor: pointer;
+.meta-month {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.meta-select:focus {
-  border-color: var(--accent);
+.meta-month > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .meta-loading {

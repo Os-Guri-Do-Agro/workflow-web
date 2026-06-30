@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { Pin, Folder } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import dashboardService from '@/service/dashboard/dashboard-service'
+import { stripHtmlPreview } from '@/utils/html-preview'
+import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
 const workspace = useWorkspaceStore()
+const toast = useToast()
 
 const loading = ref(true)
 const selectedCompanyId = ref<string | null>(null)
@@ -19,28 +23,28 @@ const stats = computed(() => {
       title: 'Empresas',
       value: s.totalCompanies.toString(),
       icon: 'mdi-domain',
-      color: '#3B82F6',
+      color: 'var(--info)',
       trend: `${s.totalCompanies} ativas`,
     },
     {
       title: 'Minhas Tarefas',
       value: s.totalMyAssignments.toString(),
       icon: 'mdi-account-check',
-      color: '#10B981',
+      color: 'var(--success)',
       trend: `${s.totalMyAssignments} atribuídas`,
     },
     {
       title: 'Em Progresso',
       value: s.totalInProgress.toString(),
       icon: 'mdi-progress-clock',
-      color: '#F59E0B',
+      color: 'var(--warn)',
       trend: `${s.totalInProgress} ativas`,
     },
     {
       title: 'Atrasadas',
       value: s.totalOverdue.toString(),
       icon: 'mdi-alert-circle',
-      color: '#EF4444',
+      color: 'var(--err)',
       trend: s.totalOverdue > 0 ? 'Atenção!' : 'Tudo certo',
     },
   ]
@@ -72,15 +76,15 @@ const notes = computed(() => workspaceData.value?.notes || [])
 const events = computed(() => workspaceData.value?.events || [])
 
 const eventColors: Record<string, string> = {
-  'MEETING': '#3B82F6',
-  'DEADLINE': '#EF4444',
-  'REMINDER': '#F59E0B',
-  'SPRINT': '#10B981',
-  'RETROSPECTIVE': '#8B5CF6',
+  'MEETING': 'var(--info)',
+  'DEADLINE': 'var(--err)',
+  'REMINDER': 'var(--warn)',
+  'SPRINT': 'var(--success)',
+  'RETROSPECTIVE': 'var(--status-test)',
 }
 
 function getEventColor(type: string): string {
-  return eventColors[type] || '#6B7280'
+  return eventColors[type] || 'var(--text-3)'
 }
 
 function formatEventDate(dateString: string): string {
@@ -103,25 +107,25 @@ function openEvent(id: string) {
 }
 
 const statusConfig: Record<string, { color: string; label: string }> = {
-  'TODO': { color: '#3B82F6', label: 'A Fazer' },
-  'IN_PROGRESS': { color: '#F59E0B', label: 'Em Andamento' },
-  'IN_TESTING': { color: '#8B5CF6', label: 'Em Teste' },
-  'DONE': { color: '#10B981', label: 'Concluído' },
+  'TODO': { color: 'var(--status-todo)', label: 'A Fazer' },
+  'IN_PROGRESS': { color: 'var(--status-prog)', label: 'Em Andamento' },
+  'IN_TESTING': { color: 'var(--status-test)', label: 'Em Teste' },
+  'DONE': { color: 'var(--status-done)', label: 'Concluído' },
 }
 
 const roleConfig: Record<string, { color: string; label: string }> = {
-  'OWNER': { color: '#EF4444', label: 'Proprietário' },
-  'ADMIN': { color: '#F59E0B', label: 'Admin' },
-  'WORKER': { color: '#3B82F6', label: 'Membro' },
-  'VIEWER': { color: '#6B7280', label: 'Visualizador' },
-  'CLIENT': { color: '#10B981', label: 'Cliente' },
+  'OWNER': { color: 'var(--err)', label: 'Proprietário' },
+  'ADMIN': { color: 'var(--warn)', label: 'Admin' },
+  'WORKER': { color: 'var(--info)', label: 'Membro' },
+  'VIEWER': { color: 'var(--text-3)', label: 'Visualizador' },
+  'CLIENT': { color: 'var(--success)', label: 'Cliente' },
 }
 
 onMounted(async () => {
   try {
     await workspace.fetchWorkspace()
-  } catch (e) {
-    console.error('Erro ao carregar workspace:', e)
+  } catch {
+    toast.error('Erro ao carregar workspace')
   } finally {
     loading.value = false
   }
@@ -170,7 +174,7 @@ function getPriorityLabel(priority: number): string {
         <div v-if="loading" class="stat-skeleton" />
         <template v-else>
           <div class="stat-left">
-            <div class="stat-icon-wrap" :style="{ backgroundColor: stat.color + '18' }">
+            <div class="stat-icon-wrap" :style="{ backgroundColor: `color-mix(in srgb, ${stat.color} 9%, transparent)` }">
               <v-icon :color="stat.color" size="18">{{ stat.icon }}</v-icon>
             </div>
             <div>
@@ -178,7 +182,7 @@ function getPriorityLabel(priority: number): string {
               <div class="stat-label">{{ stat.title }}</div>
             </div>
           </div>
-          <div class="stat-trend" :style="{ color: stat.color, backgroundColor: stat.color + '12' }">
+          <div class="stat-trend" :style="{ color: stat.color, backgroundColor: `color-mix(in srgb, ${stat.color} 7%, transparent)` }">
             {{ stat.trend }}
           </div>
         </template>
@@ -216,9 +220,9 @@ function getPriorityLabel(priority: number): string {
                 </div>
                 <div
                   class="role-badge"
-                  :style="{ 
+                  :style="{
                     color: roleConfig[item.company.myRole]?.color,
-                    backgroundColor: (roleConfig[item.company.myRole]?.color || '#000') + '14'
+                    backgroundColor: `color-mix(in srgb, ${roleConfig[item.company.myRole]?.color || 'var(--text-3)'} 8%, transparent)`
                   }"
                 >
                   {{ roleConfig[item.company.myRole]?.label || item.company.myRole }}
@@ -231,15 +235,15 @@ function getPriorityLabel(priority: number): string {
                   <span class="metric-label">Total</span>
                 </div>
                 <div class="metric">
-                  <span class="metric-value" style="color: #10B981">{{ item.metrics.completed }}</span>
+                  <span class="metric-value" style="color: var(--success)">{{ item.metrics.completed }}</span>
                   <span class="metric-label">Concluídas</span>
                 </div>
                 <div class="metric">
-                  <span class="metric-value" style="color: #F59E0B">{{ item.metrics.inProgress }}</span>
+                  <span class="metric-value" style="color: var(--warn)">{{ item.metrics.inProgress }}</span>
                   <span class="metric-label">Andamento</span>
                 </div>
                 <div class="metric">
-                  <span class="metric-value" :style="{ color: item.metrics.overdue > 0 ? '#EF4444' : '#6B7280' }">
+                  <span class="metric-value" :style="{ color: item.metrics.overdue > 0 ? 'var(--err)' : 'var(--text-3)' }">
                     {{ item.metrics.overdue }}
                   </span>
                   <span class="metric-label">Atrasadas</span>
@@ -289,12 +293,13 @@ function getPriorityLabel(priority: number): string {
               @click="openNote(note.id)"
             >
               <div class="note-header">
-                <v-icon v-if="note.isPinned" size="12" color="warning">mdi-pin</v-icon>
+                <Pin v-if="note.isPinned" :size="12" class="note-pin-icon" />
+                <span v-if="note.emoji" class="note-emoji">{{ note.emoji }}</span>
                 <span class="note-title">{{ note.title }}</span>
               </div>
-              <p class="note-preview">{{ note.content?.substring(0, 60) || '' }}...</p>
+              <p class="note-preview">{{ note.preview ?? stripHtmlPreview(note.content, 60) }}</p>
               <div v-if="note.folder" class="note-folder">
-                <v-icon size="10">mdi-folder</v-icon>
+                <Folder :size="10" />
                 {{ note.folder.name }}
               </div>
             </div>
@@ -698,12 +703,12 @@ function getPriorityLabel(priority: number): string {
 }
 
 .activity-item--mine {
-  background: rgba(59, 130, 246, 0.04);
-  border-color: rgba(59, 130, 246, 0.1);
+  background: color-mix(in srgb, var(--info) 4%, transparent);
+  border-color: color-mix(in srgb, var(--info) 10%, transparent);
 }
 
 .activity-item--mine:hover {
-  background: rgba(59, 130, 246, 0.06);
+  background: color-mix(in srgb, var(--info) 6%, transparent);
 }
 
 .activity-left {
@@ -755,13 +760,13 @@ function getPriorityLabel(priority: number): string {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(239, 68, 68, 0.1);
-  color: #EF4444;
+  background: color-mix(in srgb, var(--err) 10%, transparent);
+  color: var(--err);
 }
 
-.priority-0 { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
-.priority-1 { background: rgba(245, 158, 11, 0.15); color: #F59E0B; }
-.priority-2 { background: rgba(59, 130, 246, 0.15); color: #3B82F6; }
+.priority-0 { background: color-mix(in srgb, var(--err) 15%, transparent); color: var(--err); }
+.priority-1 { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.priority-2 { background: color-mix(in srgb, var(--info) 15%, transparent); color: var(--info); }
 
 .company-badge {
   font-size: 10px;
@@ -784,7 +789,7 @@ function getPriorityLabel(priority: number): string {
 }
 
 .activity-date--overdue {
-  color: #EF4444;
+  color: var(--err);
   font-weight: 600;
 }
 
@@ -799,7 +804,7 @@ function getPriorityLabel(priority: number): string {
 }
 
 .responsible-tag--me {
-  color: #3B82F6;
+  color: var(--info);
   font-weight: 600;
 }
 
@@ -857,8 +862,8 @@ function getPriorityLabel(priority: number): string {
 }
 
 .note-item--pinned {
-  background: rgba(245, 158, 11, 0.05);
-  border-color: rgba(245, 158, 11, 0.2);
+  background: color-mix(in srgb, var(--warn) 5%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 20%, transparent);
 }
 
 .note-header {
@@ -866,6 +871,17 @@ function getPriorityLabel(priority: number): string {
   align-items: center;
   gap: 6px;
   margin-bottom: 4px;
+}
+
+.note-pin-icon {
+  color: var(--warn);
+  flex-shrink: 0;
+}
+
+.note-emoji {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .note-title {

@@ -20,6 +20,7 @@ import hljs from 'highlight.js/lib/common'
 import 'highlight.js/styles/github-dark.css'
 import repositoryService from '@/service/repository/repository-service'
 import { useToast } from '@/composables/useToast'
+import AppSelect from '@/components/ui/AppSelect.vue'
 
 // Mapa extensão -> linguagem hljs
 const LANG_MAP: Record<string, string> = {
@@ -79,6 +80,13 @@ const tab = ref<'files' | 'pulls' | 'clone'>('files')
 const showNewPr = ref(false)
 const prDraft = ref({ title: '', body: '', head: '', base: '' })
 const creatingPr = ref(false)
+
+const branchItems = computed<{ label: string; value: string }[]>(() =>
+  branches.value.map((b: any) => ({
+    label: `${b.name}${b.isDefault ? ' (default)' : ''}`,
+    value: b.name,
+  })),
+)
 
 const breadcrumb = computed(() => {
   const segs = currentPath.value ? currentPath.value.split('/') : []
@@ -331,11 +339,13 @@ watch(tab, (t) => {
       <div class="toolbar">
         <div class="branch-select">
           <GitBranch :size="13" />
-          <select v-model="currentBranch" @change="switchBranch(currentBranch)">
-            <option v-for="b in branches" :key="b.name" :value="b.name">
-              {{ b.name }}{{ b.isDefault ? ' (default)' : '' }}
-            </option>
-          </select>
+          <AppSelect
+            :model-value="currentBranch"
+            :items="branchItems"
+            label="Selecionar branch"
+            density="compact"
+            @update:model-value="switchBranch(String($event))"
+          />
         </div>
 
         <div class="tabs">
@@ -584,21 +594,13 @@ watch(tab, (t) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
   color: var(--text-2);
 }
-.branch-select select {
-  background: transparent;
-  border: none;
-  color: inherit;
-  font: inherit;
-  font-size: 12.5px;
-  padding: 2px;
-  outline: none;
-  cursor: pointer;
+.branch-select > svg {
+  flex-shrink: 0;
+}
+.branch-select :deep(.app-select__trigger) {
+  min-width: 200px;
 }
 .tabs {
   display: inline-flex;
