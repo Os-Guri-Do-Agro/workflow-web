@@ -13,7 +13,7 @@ import {
 
 export function useUiPreferences() {
   const store = useUiStore()
-  const { theme, accent, density, shell, fontScale } = storeToRefs(store)
+  const { theme, accent, density, shell, fontScale, xp } = storeToRefs(store)
   const vuetifyTheme = useTheme()
 
   const setTheme = (value: ThemeName) => {
@@ -42,17 +42,24 @@ export function useUiPreferences() {
     applyFontScale(value)
   }
 
+  // Easter egg Windows XP — o watch do store aplica/persiste.
+  const toggleXp = () => {
+    store.xp = !store.xp
+  }
+
   return {
     theme,
     accent,
     density,
     shell,
     fontScale,
+    xp,
     setTheme,
     toggleTheme,
     setAccent,
     setDensity,
     setShell,
     setFontScale,
+    toggleXp,
   }
 }

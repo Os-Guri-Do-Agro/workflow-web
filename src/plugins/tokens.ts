@@ -147,6 +147,17 @@ export function applyFontScale(scale: FontScale = 1): void {
   root.setAttribute('data-font-scale', String(scale))
 }
 
+/**
+ * Modo Windows XP (easter egg). Liga/desliga o atributo `data-xp` no <html>;
+ * as sobrescritas visuais vivem em `styles/xp.css` (tema Luna + wallpaper
+ * Bliss). Convive com o tema normal: desligar volta exatamente ao que era.
+ */
+export function applyXpMode(on: boolean): void {
+  const root = document.documentElement
+  if (on) root.setAttribute('data-xp', 'true')
+  else root.removeAttribute('data-xp')
+}
+
 export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral'): void {
   const root = document.documentElement
   const tokens = themeTokens[theme]

@@ -20,6 +20,7 @@ import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
+import XpToggle from './shared/XpToggle.vue'
 import InboxBell from './shared/InboxBell.vue'
 import HelpButton from './shared/HelpButton.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
@@ -167,6 +168,7 @@ const handleNew = () => {
         </button>
         <HelpButton />
         <InboxBell />
+        <XpToggle />
         <ThemeToggle />
         <UserMenu :show-name="false" />
       </div>
