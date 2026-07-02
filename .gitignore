@@ -44,3 +44,6 @@ __screenshots__/
 
 # Cursor — rules locais (não versionar)
 .cursor/rules/
+
+# Spec-RAG: embeddings regeneráveis (o cache do modelo fica fora do repo, em ~/.cache/spec-rag-models)
+docs/specs/.rag/
