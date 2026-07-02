@@ -138,6 +138,11 @@ router.beforeEach((to, from) => {
   }
 
   if (!token && !PUBLIC_ROUTES.has(to.name as string)) {
+    // Preserva o destino: quem abre um link compartilhado deslogado cai no
+    // login e, depois de autenticar, segue para onde queria ir (não pra home).
+    if (to.fullPath && to.fullPath !== '/') {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
     return { name: 'login' }
   }
 

@@ -85,7 +85,10 @@ function handleSessionExpired() {
   clearSession()
   if (!window.location.pathname.startsWith('/login')) {
     toast.error('Sua sessão expirou. Faça login novamente.')
-    window.location.assign('/login')
+    // Preserva a rota atual para voltar exatamente aonde estava após relogar.
+    const current = window.location.pathname + window.location.search
+    const redirect = current && current !== '/' ? `?redirect=${encodeURIComponent(current)}` : ''
+    window.location.assign(`/login${redirect}`)
   } else {
     handlingSessionExpiry = false
   }

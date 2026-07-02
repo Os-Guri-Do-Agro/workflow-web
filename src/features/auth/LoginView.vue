@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   Mail,
   Lock,
@@ -18,11 +18,25 @@ import authService from '@/service/auth/auth-service'
 import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
+const route = useRoute()
 const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 const { error: showError } = useToast()
+
+/**
+ * Destino pós-login vindo de deep link (?redirect=/tasks/5). Só aceita caminho
+ * interno ("/x", nunca "//host" ou URL absoluta) para evitar open redirect.
+ */
+const safeRedirect = (): string => {
+  const raw = route.query.redirect
+  const target = Array.isArray(raw) ? raw[0] : raw
+  if (typeof target === 'string' && target.startsWith('/') && !target.startsWith('//')) {
+    return target
+  }
+  return '/'
+}
 
 const login = async () => {
   if (!email.value || !password.value) {
@@ -39,7 +53,7 @@ const login = async () => {
     if (response.accessToken) {
       localStorage.setItem('token', response.accessToken)
     }
-    router.push('/')
+    router.push(safeRedirect())
   } catch (error: any) {
     showError(error?.response?.data?.message || 'Erro ao fazer login. Verifique suas credenciais.')
   } finally {
@@ -50,7 +64,7 @@ const login = async () => {
 onMounted(() => {
   const token = localStorage.getItem('token')
   if (token) {
-    router.push('/')
+    router.push(safeRedirect())
   }
 })
 
