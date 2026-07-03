@@ -63,7 +63,9 @@ const eventsService = {
   },
 
   async getUpcomingEvents(limit: number = 5) {
-    const response = await api.get<Pick<CalendarEvent, 'id' | 'title' | 'startDate' | 'type'>[]>('/events/upcoming', {
+    const response = await api.get<
+      Pick<CalendarEvent, 'id' | 'title' | 'startDate' | 'endDate' | 'description' | 'type'>[]
+    >('/events/upcoming', {
       params: { limit },
     })
     return response.data

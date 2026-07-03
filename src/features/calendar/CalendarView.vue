@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  ArrowRight,
   Bell,
   CalendarDays,
   CheckSquare,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-vue-next'
 import EventModal from '@/components/modals/EventModal.vue'
 import { useToast } from '@/composables/useToast'
+import { getApiErrorMessage } from '@/service/api'
 import eventsService, { type CreateEventInput, type EventType } from '@/service/events/events-service'
 
 const { success, error: showError } = useToast()
@@ -34,7 +36,17 @@ type CalendarEvent = {
   endDate?: string | null
   type: EventType | string
   recurrence?: string | null
+  meetLink?: string | null
+  activityId?: string | null
+  activity?: { id: string; title: string } | null
+  // Ocorrência virtual gerada por recorrência (read-only; edita a série no evento base).
+  isOccurrence?: boolean
+  seriesId?: string
 }
+
+type ViewMode = 'month' | 'week'
+const HOUR_HEIGHT = 44 // altura de 1h na week view (px)
+const hours = Array.from({ length: 24 }, (_, h) => h)
 
 const EVENT_META: Record<EventType, { label: string; token: string; icon: LucideIcon }> = {
   MEETING: { label: 'Reunião', token: 'var(--info)', icon: Video },
@@ -70,6 +82,12 @@ const loading = ref(false)
 const apiUnavailable = ref(false)
 const showEventModal = ref(false)
 const selectedEvent = ref<CalendarEvent | null>(null)
+const viewMode = ref<ViewMode>('month')
+const saving = ref(false)
+
+// Relógio para o indicador "agora" (atualiza a cada minuto).
+const now = ref(new Date())
+let nowTimer: ReturnType<typeof setInterval> | undefined
 
 const daysInMonth = computed(() => {
   const year = currentDate.value.getFullYear()
@@ -94,6 +112,119 @@ const daysInMonth = computed(() => {
 })
 
 const monthLabel = computed(() => `${monthNames[currentDate.value.getMonth()]} ${currentDate.value.getFullYear()}`)
+
+// ─── Week view ───────────────────────────────────────────────────────────────
+// Semana (dom-sáb) que contém a data selecionada.
+const weekDates = computed(() => {
+  const base = new Date(selectedDate.value)
+  const start = new Date(base.getFullYear(), base.getMonth(), base.getDate() - base.getDay())
+  return Array.from({ length: 7 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i))
+})
+
+const weekLabel = computed(() => {
+  const days = weekDates.value
+  const first = days[0]
+  const last = days[days.length - 1]
+  if (!first || !last) return ''
+  const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+  return `${fmt(first)} – ${fmt(last)}`
+})
+
+const periodLabel = computed(() => (viewMode.value === 'week' ? weekLabel.value : monthLabel.value))
+
+// Dias visíveis conforme a view atual (dirige fetch e indexação).
+const visibleDays = computed(() => (viewMode.value === 'week' ? weekDates.value : daysInMonth.value))
+
+// ─── Indexação de eventos por dia (com recorrência) ──────────────────────────
+function dateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+// Avança a data conforme a frequência da recorrência.
+function advanceByFreq(date: Date, freq: string): Date {
+  const d = new Date(date)
+  if (freq === 'DAILY') d.setDate(d.getDate() + 1)
+  else if (freq === 'WEEKLY') d.setDate(d.getDate() + 7)
+  else if (freq === 'MONTHLY') d.setMonth(d.getMonth() + 1)
+  else if (freq === 'YEARLY') d.setFullYear(d.getFullYear() + 1)
+  return d
+}
+
+/**
+ * Gera ocorrências virtuais de um evento recorrente dentro da janela [winStart, winEnd].
+ * Sem lib: interpreta 'FREQ=DAILY|WEEKLY|MONTHLY|YEARLY'. A ocorrência-base mantém o id real;
+ * as demais recebem id sintético `${id}#${YYYY-MM-DD}` e flag isOccurrence (read-only).
+ */
+function expandRecurrence(event: CalendarEvent, winStart: Date, winEnd: Date): CalendarEvent[] {
+  const freq = event.recurrence?.match(/FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/)?.[1]
+  const base = new Date(event.startDate)
+  if (!freq || Number.isNaN(base.getTime())) return [event]
+
+  const durationMs = event.endDate ? Math.max(0, new Date(event.endDate).getTime() - base.getTime()) : 0
+  const out: CalendarEvent[] = []
+  let cursor = new Date(base)
+  let iter = 0
+  const MAX_ITER = 4000 // ~10 anos de recorrência diária: fast-forward seguro
+  const MAX_PUSH = 366 // limite prudente de ocorrências por evento
+
+  while (cursor.getTime() <= winEnd.getTime() && iter < MAX_ITER && out.length < MAX_PUSH) {
+    const occStartMs = cursor.getTime()
+    const occEndMs = occStartMs + durationMs
+    if (occEndMs >= winStart.getTime()) {
+      if (occStartMs === base.getTime()) {
+        out.push(event)
+      } else {
+        out.push({
+          ...event,
+          id: `${event.id ?? 'ev'}#${dateKey(cursor)}`,
+          startDate: new Date(occStartMs).toISOString(),
+          endDate: durationMs ? new Date(occEndMs).toISOString() : null,
+          isOccurrence: true,
+          seriesId: event.id,
+        })
+      }
+    }
+    cursor = advanceByFreq(cursor, freq)
+    iter++
+  }
+
+  return out.length ? out : [event]
+}
+
+// Map<YYYY-MM-DD, CalendarEvent[]> — indexa cada evento em TODOS os dias do seu intervalo,
+// expandindo recorrências. Computado uma vez por render (evita varrer o array por célula).
+const eventsByDay = computed(() => {
+  const map = new Map<string, CalendarEvent[]>()
+  const days = visibleDays.value
+  if (!days.length) return map
+
+  const winStart = startOfDay(days[0]!)
+  const winEnd = endOfDay(days[days.length - 1]!)
+
+  for (const raw of events.value) {
+    for (const ev of expandRecurrence(raw, winStart, winEnd)) {
+      const start = new Date(ev.startDate)
+      if (Number.isNaN(start.getTime())) continue
+      const endRaw = ev.endDate ? new Date(ev.endDate) : start
+      const end = Number.isNaN(endRaw.getTime()) ? start : endRaw
+
+      for (const d of days) {
+        // Dia D cruza [start, end] se start <= fim-do-dia(D) e end >= início-do-dia(D).
+        if (start.getTime() <= endOfDay(d).getTime() && end.getTime() >= startOfDay(d).getTime()) {
+          const k = dateKey(d)
+          const arr = map.get(k) ?? []
+          arr.push(ev)
+          map.set(k, arr)
+        }
+      }
+    }
+  }
+
+  for (const arr of map.values()) {
+    arr.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+  }
+  return map
+})
 
 const selectedDayEvents = computed(() => getDayEvents(selectedDate.value))
 const selectedDayDeliverables = computed(() =>
@@ -152,6 +283,7 @@ async function disconnectGoogle() {
 }
 
 onMounted(async () => {
+  nowTimer = setInterval(() => (now.value = new Date()), 60_000)
   await fetchEvents()
   await refreshGoogleStatus()
   // Retorno do OAuth (callback do backend redireciona com ?sync=success|error).
@@ -165,40 +297,79 @@ onMounted(async () => {
     router.replace({ query: { ...route.query, sync: undefined } })
   }
 })
-watch(currentDate, fetchEvents)
+
+onBeforeUnmount(() => {
+  if (nowTimer) clearInterval(nowTimer)
+})
+
+// Refetch quando a janela visível muda (troca de mês/semana ou de view).
+const rangeKey = computed(() => {
+  const d = visibleDays.value
+  if (!d.length) return ''
+  return `${dateKey(d[0]!)}_${dateKey(d[d.length - 1]!)}`
+})
+watch(rangeKey, fetchEvents)
 
 function currentRange() {
-  const first = daysInMonth.value[0] ?? currentDate.value
-  const last = daysInMonth.value[daysInMonth.value.length - 1] ?? currentDate.value
+  const days = visibleDays.value
+  const first = days[0] ?? currentDate.value
+  const last = days[days.length - 1] ?? currentDate.value
   return {
     start: startOfDay(first).toISOString(),
     end: endOfDay(last).toISOString(),
   }
 }
 
+// Erro de rede ou 5xx → API realmente indisponível. 4xx (validação) NÃO derruba a tela.
+function isServerOrNetworkError(err: unknown): boolean {
+  const status = (err as any)?.response?.status
+  return !(err as any)?.response || (typeof status === 'number' && status >= 500)
+}
+
 async function fetchEvents() {
   loading.value = true
   try {
     const apiEvents = await eventsService.getEvents(currentRange())
-    events.value = apiEvents
+    events.value = apiEvents as CalendarEvent[]
     apiUnavailable.value = false
   } catch (err) {
-    events.value = []
-    apiUnavailable.value = true
-    showError(apiErrorMessage(err, 'API de calendário indisponível'))
+    // Só zera a grade/marca indisponível em falha de rede/servidor.
+    if (isServerOrNetworkError(err)) {
+      events.value = []
+      apiUnavailable.value = true
+    }
+    showError(getApiErrorMessage(err, 'API de calendário indisponível'))
   } finally {
     loading.value = false
   }
 }
 
-function previousMonth() {
-  currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() - 1, 1)
-  selectedDate.value = new Date(currentDate.value)
+// Navegação sensível à view: mês avança 1 mês, semana avança 7 dias.
+function prev() {
+  if (viewMode.value === 'week') shiftWeek(-7)
+  else {
+    currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() - 1, 1)
+    selectedDate.value = new Date(currentDate.value)
+  }
 }
 
-function nextMonth() {
-  currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 1)
-  selectedDate.value = new Date(currentDate.value)
+function next() {
+  if (viewMode.value === 'week') shiftWeek(7)
+  else {
+    currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1, 1)
+    selectedDate.value = new Date(currentDate.value)
+  }
+}
+
+function shiftWeek(deltaDays: number) {
+  const d = new Date(selectedDate.value)
+  d.setDate(d.getDate() + deltaDays)
+  selectedDate.value = d
+  currentDate.value = new Date(d.getFullYear(), d.getMonth(), 1)
+}
+
+function setView(mode: ViewMode) {
+  viewMode.value = mode
 }
 
 function goToToday() {
@@ -235,14 +406,20 @@ function selectDate(date: Date) {
 }
 
 function getDayEvents(date: Date): CalendarEvent[] {
-  return events.value
-    .filter((event) => new Date(event.startDate).toDateString() === date.toDateString())
-    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+  return eventsByDay.value.get(dateKey(date)) ?? []
+}
+
+// Evento é continuação (começou em dia anterior) na célula do mês.
+function isContinuation(event: CalendarEvent, date: Date): boolean {
+  return startOfDay(new Date(event.startDate)).getTime() < startOfDay(date).getTime()
 }
 
 function openEventModal(event?: CalendarEvent, date?: Date) {
   if (date && !event) {
     selectedEvent.value = { title: '', startDate: `${toDateInputValue(date)}T09:00`, type: 'MEETING' }
+  } else if (event?.isOccurrence) {
+    // Ocorrência virtual: abre a série (evento base) para edição.
+    selectedEvent.value = events.value.find((e) => e.id === event.seriesId) ?? event
   } else {
     selectedEvent.value = event ?? null
   }
@@ -264,6 +441,7 @@ async function handleSave(eventData: CalendarEvent) {
     recurrence: eventData.recurrence ?? null,
   }
 
+  saving.value = true
   try {
     if (payload.id) {
       await eventsService.updateEvent(payload.id, payload)
@@ -273,9 +451,13 @@ async function handleSave(eventData: CalendarEvent) {
       success('Evento criado')
     }
     await fetchEvents()
+    // Só fecha o modal no sucesso (mantém o form preenchido em caso de erro).
+    showEventModal.value = false
   } catch (err) {
-    apiUnavailable.value = true
-    showError(apiErrorMessage(err, 'API não salvou o evento'))
+    if (isServerOrNetworkError(err)) apiUnavailable.value = true
+    showError(getApiErrorMessage(err, 'Não foi possível salvar o evento'))
+  } finally {
+    saving.value = false
   }
 }
 
@@ -285,8 +467,8 @@ async function handleDelete(id: string) {
     await fetchEvents()
     success('Evento excluído')
   } catch (err) {
-    apiUnavailable.value = true
-    showError(apiErrorMessage(err, 'API não removeu o evento'))
+    if (isServerOrNetworkError(err)) apiUnavailable.value = true
+    showError(getApiErrorMessage(err, 'Não foi possível remover o evento'))
   }
 }
 
@@ -320,10 +502,51 @@ function formatTimeRange(event: CalendarEvent): string {
   return `${start} - ${formatTime(event.endDate)}`
 }
 
-function apiErrorMessage(err: unknown, fallback: string): string {
-  const message = (err as any)?.response?.data?.message
-  if (Array.isArray(message)) return message.join(', ')
-  return message || fallback
+// ─── Week view: posicionamento por hora ──────────────────────────────────────
+// Evento "de dia inteiro/multi-dia" quando cruza a fronteira de dias (barra no topo).
+function isAllDayLike(event: CalendarEvent): boolean {
+  const start = new Date(event.startDate)
+  if (Number.isNaN(start.getTime())) return false
+  if (!event.endDate) return false
+  const end = new Date(event.endDate)
+  if (Number.isNaN(end.getTime())) return false
+  return startOfDay(start).getTime() !== startOfDay(end).getTime()
+}
+
+// Eventos com hora (não all-day) que começam no dia informado.
+function timedEventsForDay(date: Date): CalendarEvent[] {
+  return getDayEvents(date).filter(
+    (ev) => !isAllDayLike(ev) && startOfDay(new Date(ev.startDate)).getTime() === startOfDay(date).getTime(),
+  )
+}
+
+// Eventos-barra (all-day/multi-dia) que cruzam o dia informado.
+function barEventsForDay(date: Date): CalendarEvent[] {
+  return getDayEvents(date).filter((ev) => isAllDayLike(ev))
+}
+
+function eventPosition(event: CalendarEvent): { top: string; height: string } {
+  const start = new Date(event.startDate)
+  const startHours = start.getHours() + start.getMinutes() / 60
+  let durationH = 1
+  if (event.endDate) {
+    const end = new Date(event.endDate)
+    if (!Number.isNaN(end.getTime())) durationH = Math.max(0.5, (end.getTime() - start.getTime()) / 3_600_000)
+  }
+  return {
+    top: `${startHours * HOUR_HEIGHT}px`,
+    height: `${Math.max(HOUR_HEIGHT * 0.5, durationH * HOUR_HEIGHT)}px`,
+  }
+}
+
+// Posição da linha "agora" (px a partir do topo). null se hoje não está na semana.
+const nowIndicatorTop = computed(() => {
+  const n = now.value
+  return `${(n.getHours() + n.getMinutes() / 60) * HOUR_HEIGHT}px`
+})
+
+function isTodayColumn(date: Date): boolean {
+  return isToday(date)
 }
 </script>
 
@@ -388,12 +611,33 @@ function apiErrorMessage(err: unknown, fallback: string): string {
 
     <div class="toolbar">
       <div class="month-nav">
-        <button class="nav-btn" aria-label="Mês anterior" @click="previousMonth">
+        <button class="nav-btn" :aria-label="viewMode === 'week' ? 'Semana anterior' : 'Mês anterior'" @click="prev">
           <ChevronLeft :size="15" />
         </button>
-        <span class="month-label">{{ monthLabel }}</span>
-        <button class="nav-btn" aria-label="Próximo mês" @click="nextMonth">
+        <span class="month-label">{{ periodLabel }}</span>
+        <button class="nav-btn" :aria-label="viewMode === 'week' ? 'Próxima semana' : 'Próximo mês'" @click="next">
           <ChevronRight :size="15" />
+        </button>
+      </div>
+
+      <div class="view-toggle" role="tablist" aria-label="Modo de visualização">
+        <button
+          class="view-btn"
+          :class="{ 'view-btn--active': viewMode === 'month' }"
+          role="tab"
+          :aria-selected="viewMode === 'month'"
+          @click="setView('month')"
+        >
+          Mês
+        </button>
+        <button
+          class="view-btn"
+          :class="{ 'view-btn--active': viewMode === 'week' }"
+          role="tab"
+          :aria-selected="viewMode === 'week'"
+          @click="setView('week')"
+        >
+          Semana
         </button>
       </div>
 
@@ -406,51 +650,142 @@ function apiErrorMessage(err: unknown, fallback: string): string {
     </div>
 
     <div class="layout">
-      <section class="grid-wrap" aria-label="Calendário mensal">
-        <div class="weekdays">
-          <div v-for="day in weekDays" :key="day" class="weekday">{{ day }}</div>
+      <section class="grid-wrap" :aria-label="viewMode === 'week' ? 'Calendário semanal' : 'Calendário mensal'">
+        <!-- Overlay de loading sutil: a grade permanece montada (não pisca a cada troca). -->
+        <div v-if="loading" class="grid-loading" aria-live="polite">
+          <Loader2 :size="14" class="spin" />
+          Sincronizando…
         </div>
 
-        <div v-if="loading" class="loading">
-          <Loader2 :size="16" class="spin" />
-          Carregando eventos...
-        </div>
+        <!-- ─── MÊS ─── -->
+        <template v-if="viewMode === 'month'">
+          <div class="weekdays">
+            <div v-for="day in weekDays" :key="day" class="weekday">{{ day }}</div>
+          </div>
 
-        <div v-else class="days-grid">
-          <button
-            v-for="date in daysInMonth"
-            :key="date.toISOString()"
-            class="day"
-            :class="{
-              'day--today': isToday(date),
-              'day--other': !isCurrentMonth(date),
-              'day--selected': isSelectedDate(date),
-            }"
-            @click="selectDate(date)"
-            @dblclick="openEventModal(undefined, date)"
-          >
-            <span class="day-head">
-              <span class="day-num">{{ date.getDate() }}</span>
-              <span v-if="getDayEvents(date).length" class="day-count">{{ getDayEvents(date).length }}</span>
-            </span>
+          <div class="days-grid">
+            <button
+              v-for="date in daysInMonth"
+              :key="date.toISOString()"
+              class="day"
+              :class="{
+                'day--today': isToday(date),
+                'day--other': !isCurrentMonth(date),
+                'day--selected': isSelectedDate(date),
+              }"
+              @click="selectDate(date)"
+              @dblclick="openEventModal(undefined, date)"
+            >
+              <span class="day-head">
+                <span class="day-num">{{ date.getDate() }}</span>
+                <span v-if="getDayEvents(date).length" class="day-count">{{ getDayEvents(date).length }}</span>
+              </span>
 
-            <span class="day-events">
+              <span class="day-events">
+                <span
+                  v-for="event in getDayEvents(date).slice(0, 3)"
+                  :key="event.id"
+                  class="ev-pill"
+                  :class="{ 'ev-pill--cont': isContinuation(event, date) }"
+                  :style="eventStyle(event)"
+                  :title="event.title"
+                  @click.stop="openEventModal(event)"
+                >
+                  <ArrowRight v-if="isContinuation(event, date)" :size="11" class="ev-cont-icon" />
+                  <span v-else class="ev-time">{{ formatTime(event.startDate) }}</span>
+                  <span class="ev-title">{{ event.title }}</span>
+                </span>
+                <span v-if="getDayEvents(date).length > 3" class="ev-more">
+                  +{{ getDayEvents(date).length - 3 }}
+                </span>
+              </span>
+            </button>
+          </div>
+        </template>
+
+        <!-- ─── SEMANA (time-grid) ─── -->
+        <template v-else>
+          <div class="week-head">
+            <div class="week-gutter-head" />
+            <button
+              v-for="date in weekDates"
+              :key="date.toISOString()"
+              class="week-day-head"
+              :class="{ 'week-day-head--today': isToday(date), 'week-day-head--selected': isSelectedDate(date) }"
+              @click="selectDate(date)"
+              @dblclick="openEventModal(undefined, date)"
+            >
+              <span class="week-dow">{{ weekDays[date.getDay()] }}</span>
+              <span class="week-dnum">{{ date.getDate() }}</span>
+            </button>
+          </div>
+
+          <!-- Barra de eventos all-day / multi-dia -->
+          <div v-if="weekDates.some((d) => barEventsForDay(d).length)" class="week-allday">
+            <div class="week-gutter-head week-allday-label">Dia todo</div>
+            <div
+              v-for="date in weekDates"
+              :key="date.toISOString()"
+              class="week-allday-col"
+            >
               <span
-                v-for="event in getDayEvents(date).slice(0, 3)"
+                v-for="event in barEventsForDay(date)"
                 :key="event.id"
-                class="ev-pill"
+                class="allday-pill"
                 :style="eventStyle(event)"
-                @click.stop="openEventModal(event)"
+                :title="event.title"
+                @click="openEventModal(event)"
               >
-                <span class="ev-time">{{ formatTime(event.startDate) }}</span>
-                <span class="ev-title">{{ event.title }}</span>
+                {{ event.title }}
               </span>
-              <span v-if="getDayEvents(date).length > 3" class="ev-more">
-                +{{ getDayEvents(date).length - 3 }}
-              </span>
-            </span>
-          </button>
-        </div>
+            </div>
+          </div>
+
+          <div class="week-grid-scroll">
+            <div class="week-grid" :style="{ height: `${HOUR_HEIGHT * 24}px` }">
+              <!-- Coluna de horas -->
+              <div class="week-gutter">
+                <div v-for="h in hours" :key="h" class="hour-cell" :style="{ height: `${HOUR_HEIGHT}px` }">
+                  <span class="hour-label">{{ String(h).padStart(2, '0') }}:00</span>
+                </div>
+              </div>
+
+              <!-- Colunas de dias -->
+              <div
+                v-for="date in weekDates"
+                :key="date.toISOString()"
+                class="week-col"
+                :class="{ 'week-col--today': isToday(date) }"
+                @dblclick="openEventModal(undefined, date)"
+              >
+                <div v-for="h in hours" :key="h" class="week-slot" :style="{ height: `${HOUR_HEIGHT}px` }" />
+
+                <!-- Linha "agora" -->
+                <div
+                  v-if="isTodayColumn(date)"
+                  class="now-line"
+                  :style="{ top: nowIndicatorTop }"
+                  aria-hidden="true"
+                >
+                  <span class="now-dot" />
+                </div>
+
+                <!-- Eventos posicionados -->
+                <button
+                  v-for="event in timedEventsForDay(date)"
+                  :key="event.id"
+                  class="week-event"
+                  :style="{ ...eventStyle(event), ...eventPosition(event) }"
+                  :title="event.title"
+                  @click.stop="openEventModal(event)"
+                >
+                  <span class="week-event-time">{{ formatTimeRange(event) }}</span>
+                  <span class="week-event-title">{{ event.title }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
       </section>
 
       <aside class="sidebar">
@@ -476,23 +811,38 @@ function apiErrorMessage(err: unknown, fallback: string): string {
           </div>
 
           <div v-else class="side-list">
-            <button
-              v-for="event in selectedDayEvents"
-              :key="event.id"
-              class="side-item"
-              @click="openEventModal(event)"
-            >
-              <span class="side-icon" :style="eventStyle(event)">
-                <component :is="eventMeta(event.type).icon" :size="13" />
-              </span>
-              <span class="side-info">
-                <span class="side-item-title">{{ event.title }}</span>
-                <span class="side-item-meta">{{ formatTimeRange(event) }}</span>
-              </span>
-              <span class="side-badge" :style="eventStyle(event)">
-                {{ eventMeta(event.type).label }}
-              </span>
-            </button>
+            <div v-for="event in selectedDayEvents" :key="event.id" class="side-card">
+              <button class="side-item" @click="openEventModal(event)">
+                <span class="side-icon" :style="eventStyle(event)">
+                  <component :is="eventMeta(event.type).icon" :size="13" />
+                </span>
+                <span class="side-info">
+                  <span class="side-item-title">{{ event.title }}</span>
+                  <span class="side-item-meta">{{ formatTimeRange(event) }}</span>
+                </span>
+                <span class="side-badge" :style="eventStyle(event)">
+                  {{ eventMeta(event.type).label }}
+                </span>
+              </button>
+
+              <!-- Ações: Meet + atividade vinculada -->
+              <div v-if="event.meetLink || event.activity" class="side-actions">
+                <a
+                  v-if="event.meetLink"
+                  class="side-meet"
+                  :href="event.meetLink"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Video :size="12" />
+                  Entrar no Meet
+                </a>
+                <span v-if="event.activity" class="side-activity" :title="event.activity.title">
+                  <Link2 :size="11" />
+                  {{ event.activity.title }}
+                </span>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -540,7 +890,13 @@ function apiErrorMessage(err: unknown, fallback: string): string {
       </aside>
     </div>
 
-    <EventModal v-model="showEventModal" :event="selectedEvent" @save="handleSave" @delete="handleDelete" />
+    <EventModal
+      v-model="showEventModal"
+      :event="selectedEvent"
+      :saving="saving"
+      @save="handleSave"
+      @delete="handleDelete"
+    />
   </div>
 </template>
 
@@ -752,6 +1108,64 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   box-shadow: var(--shadow-sm);
 }
 
+.grid-wrap {
+  position: relative;
+}
+
+/* Overlay de loading sutil (não substitui a grade) */
+.grid-loading {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* View toggle Mês/Semana */
+.view-toggle {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.view-btn {
+  height: 28px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.view-btn:hover {
+  color: var(--text);
+}
+
+.view-btn--active {
+  color: var(--accent-fg);
+  background: var(--accent);
+}
+
 .weekdays,
 .days-grid {
   display: grid;
@@ -876,18 +1290,221 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   white-space: nowrap;
 }
 
+.ev-pill--cont {
+  opacity: 0.92;
+}
+
+.ev-cont-icon {
+  color: var(--ev-c);
+}
+
 .ev-more {
   color: var(--text-4);
   font-size: 10.5px;
   font-weight: 800;
 }
 
-.loading {
-  min-height: 420px;
+/* ─── Week view ─────────────────────────────────────────────────────────── */
+.week-head {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+}
+
+.week-gutter-head {
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.week-day-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.week-day-head:last-child {
+  border-right: none;
+}
+
+.week-dow {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.week-dnum {
+  width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.week-day-head--today .week-dnum {
+  color: var(--accent-fg);
+  background: var(--accent);
+}
+
+.week-day-head--selected {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
+}
+
+/* Barra all-day */
+.week-allday {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+  max-height: 92px;
+  overflow-y: auto;
+}
+
+.week-allday-label {
   display: grid;
   place-items: center;
-  color: var(--text-3);
-  font-size: 13px;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: var(--text-4);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.week-allday-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  border-right: 1px solid var(--border);
+}
+
+.week-allday-col:last-child {
+  border-right: none;
+}
+
+.allday-pill {
+  overflow: hidden;
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: color-mix(in srgb, var(--ev-c) 20%, transparent);
+  border-left: 3px solid var(--ev-c);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Time-grid */
+.week-grid-scroll {
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.week-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+}
+
+.week-gutter {
+  border-right: 1px solid var(--border);
+}
+
+.hour-cell {
+  position: relative;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.hour-label {
+  position: absolute;
+  top: -7px;
+  right: 6px;
+  color: var(--text-4);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-col {
+  position: relative;
+  border-right: 1px solid var(--border);
+}
+
+.week-col:last-child {
+  border-right: none;
+}
+
+.week-col--today {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.week-slot {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  z-index: 3;
+}
+
+.now-dot {
+  position: absolute;
+  left: -1px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.week-event {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: color-mix(in srgb, var(--ev-c) 22%, var(--surface));
+  border-left: 3px solid var(--ev-c);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.week-event-time {
+  color: var(--ev-c);
+  font-size: 9.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-event-title {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .spin {
@@ -968,12 +1585,68 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   text-align: left;
 }
 
+.side-card {
+  display: flex;
+  flex-direction: column;
+}
+
 .side-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 10px;
+}
+
+.side-card:has(.side-actions) .side-item {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.side-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+}
+
+.side-meet {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.side-meet:hover {
+  background: color-mix(in srgb, var(--info) 22%, transparent);
+}
+
+.side-activity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .side-icon {
@@ -1078,7 +1751,10 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   }
 
   .weekdays,
-  .days-grid {
+  .days-grid,
+  .week-head,
+  .week-allday,
+  .week-grid {
     min-width: 760px;
   }
 

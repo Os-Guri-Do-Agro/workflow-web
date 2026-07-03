@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Calendar } from 'lucide-vue-next'
+import { Calendar, AlertCircle } from 'lucide-vue-next'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { useUpcomingEvents } from '@/composables/useUpcomingEvents'
 import type { UpcomingEvent } from '@/composables/useDashboardOrchestration'
 
 const emit = defineEmits<{ (e: 'open-calendar'): void }>()
 
-const { data: upcomingData, isLoading: loadingUpcoming } = useUpcomingEvents(5)
+const {
+  data: upcomingData,
+  isLoading: loadingUpcoming,
+  isError: errorUpcoming,
+} = useUpcomingEvents(5)
 
 const upcoming = computed<UpcomingEvent[]>(() => {
   const v = upcomingData.value as UpcomingEvent[] | { data: UpcomingEvent[] } | undefined
@@ -16,8 +20,24 @@ const upcoming = computed<UpcomingEvent[]>(() => {
   return []
 })
 
-const eventDate = (ev: UpcomingEvent) =>
-  new Date(ev.startDate || ev.start || ev.start_date || ev.date || '')
+// Eventos são instantes reais → usa só ev.startDate (backend padronizado). Protege contra Invalid Date.
+const eventDate = (ev: UpcomingEvent): Date | null => {
+  if (!ev.startDate) return null
+  const d = new Date(ev.startDate)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+const dayLabel = (ev: UpcomingEvent) =>
+  eventDate(ev)?.toLocaleDateString('pt-BR', { day: '2-digit' }) ?? '--'
+
+const monthLabel = (ev: UpcomingEvent) =>
+  eventDate(ev)
+    ?.toLocaleDateString('pt-BR', { month: 'short' })
+    .replace('.', '')
+    .toUpperCase() ?? ''
+
+const timeLabel = (ev: UpcomingEvent) =>
+  eventDate(ev)?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) ?? ''
 </script>
 
 <template>
@@ -34,6 +54,11 @@ const eventDate = (ev: UpcomingEvent) =>
       <Skeleton v-for="i in 3" :key="i" type="row" />
     </div>
 
+    <div v-else-if="errorUpcoming" class="agenda-empty agenda-empty--error">
+      <AlertCircle :size="22" />
+      <span>Não foi possível carregar os eventos</span>
+    </div>
+
     <div v-else-if="!upcoming.length" class="agenda-empty">
       <Calendar :size="22" />
       <span>Nenhum evento próximo</span>
@@ -47,23 +72,13 @@ const eventDate = (ev: UpcomingEvent) =>
         @click="emit('open-calendar')"
       >
         <div class="agenda-when">
-          <span class="agenda-day">
-            {{ eventDate(ev).toLocaleDateString('pt-BR', { day: '2-digit' }) }}
-          </span>
-          <span class="agenda-month">
-            {{
-              eventDate(ev)
-                .toLocaleDateString('pt-BR', { month: 'short' })
-                .replace('.', '')
-                .toUpperCase()
-            }}
-          </span>
+          <span class="agenda-day">{{ dayLabel(ev) }}</span>
+          <span class="agenda-month">{{ monthLabel(ev) }}</span>
         </div>
         <div class="agenda-info">
           <span class="agenda-title">{{ ev.title || ev.summary || 'Evento' }}</span>
           <span class="agenda-meta">
-            {{ eventDate(ev).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }}
-            <template v-if="ev.description">· {{ ev.description }}</template>
+            {{ timeLabel(ev) }}
           </span>
         </div>
         <div v-if="ev.type" class="agenda-type">{{ ev.type }}</div>
@@ -85,6 +100,14 @@ const eventDate = (ev: UpcomingEvent) =>
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.agenda-empty--error {
+  color: var(--err);
+}
+
+.agenda-empty--error svg {
+  color: var(--err);
 }
 
 .agenda-list {
