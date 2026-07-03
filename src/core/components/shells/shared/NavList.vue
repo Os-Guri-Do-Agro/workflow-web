@@ -14,11 +14,13 @@ import {
   Bug,
   Milestone,
   Paintbrush,
+  QrCode,
   type LucideIcon,
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useCurrentUser } from '@/composables/useCurrentUser'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const { density } = useUiPreferences()
@@ -36,6 +38,8 @@ export type NavItem = {
 
 const { quarters } = useNavQuarters()
 const workspace = useWorkspaceStore()
+// Ferramentas premium (Meu tempo, QR) só aparecem no nav para quem é Fluvio.
+const { isFluvio } = useCurrentUser()
 
 const ROLE_RANK: Record<string, number> = {
   VIEWER: 0,
@@ -92,7 +96,13 @@ const taskItem = computed<NavItem | null>(() => {
 })
 
 const personalItems = computed<NavItem[]>(() => [
-  { title: 'Meu tempo', icon: Timer, to: '/time', section: 'Pessoal' },
+  // "Meu tempo" e "QR Codes" são ferramentas premium: só com isFluvio.
+  ...(isFluvio.value
+    ? ([{ title: 'Meu tempo', icon: Timer, to: '/time', section: 'Pessoal' }] as NavItem[])
+    : []),
+  ...(isFluvio.value
+    ? ([{ title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Pessoal' }] as NavItem[])
+    : []),
   { title: 'Notas', icon: StickyNote, to: '/notes', section: 'Pessoal' },
   { title: 'Calendário', icon: CalendarDays, to: '/calendar', section: 'Pessoal' },
 ])
