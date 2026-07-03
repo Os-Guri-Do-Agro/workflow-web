@@ -9,6 +9,7 @@ import ThemeToggle from './shared/ThemeToggle.vue'
 import XpToggle from './shared/XpToggle.vue'
 import NavList from './shared/NavList.vue'
 import InboxBell from './shared/InboxBell.vue'
+import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
@@ -81,6 +82,7 @@ function crumbTooltip(crumb: string): string | undefined {
       <div class="spacer" />
       <CmdKButton variant="full" @open="$emit('open-command-palette')" />
       <HelpButton />
+      <TimerWidget />
       <InboxBell />
       <XpToggle />
       <ThemeToggle />

@@ -133,6 +133,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
 | Notas           | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | TipTap editor                                                         |
 | Calendário      | [`features/calendar/CalendarView.vue`](./features/calendar/CalendarView.vue)                   | `/calendar`        | Google Calendar integration                                           |
+| Time Tracking   | [`features/time/TimeTrackingView.vue`](./features/time/TimeTrackingView.vue)                   | `/time`            | Timer estilo Clockify. Widget global nos 3 shells + `useTimeTracking` (Vue Query + socket `time:*`) |
 | Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only                                                            |
 | Configurações   | [`features/settings/SettingsView.vue`](./features/settings/SettingsView.vue)                   | `/settings`        | Tema, acento, densidade, shell variant                                |
 

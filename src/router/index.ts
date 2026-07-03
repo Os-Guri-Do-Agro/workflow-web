@@ -26,6 +26,7 @@ import NotesView from '@/features/notes/NotesView.vue'
 import NoteEditorView from '@/features/notes/NoteEditorView.vue'
 import CalendarView from '@/features/calendar/CalendarView.vue'
 import RoadmapView from '@/features/roadmap/RoadmapView.vue'
+import TimeTrackingView from '@/features/time/TimeTrackingView.vue'
 import BoardsListView from '@/features/boards/BoardsListView.vue'
 import BoardCanvasView from '@/features/boards/BoardCanvasView.vue'
 import PublicBoardView from '@/features/public/PublicBoardView.vue'
@@ -58,6 +59,7 @@ const router = createRouter({
     { path: '/notes', name: 'notes', component: NotesView },
     { path: '/notes/:id', name: 'note-editor', component: NoteEditorView },
     { path: '/calendar', name: 'calendar', component: CalendarView },
+    { path: '/time', name: 'time', component: TimeTrackingView },
     { path: '/roadmap', name: 'roadmap', component: RoadmapView },
     { path: '/tasks/:month', name: 'tasks', component: TasksView },
     { path: '/tasks/:month/:taskId', name: 'task-details', component: TaskDetailsView },

@@ -22,6 +22,7 @@ import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
 import XpToggle from './shared/XpToggle.vue'
 import InboxBell from './shared/InboxBell.vue'
+import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
@@ -167,6 +168,7 @@ const handleNew = () => {
           <span>Novo</span>
         </button>
         <HelpButton />
+        <TimerWidget />
         <InboxBell />
         <XpToggle />
         <ThemeToggle />
