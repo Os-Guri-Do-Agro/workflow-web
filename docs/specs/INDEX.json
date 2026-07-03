@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-07-02T04:19:11.461Z",
+  "generatedAt": "2026-07-03T18:35:32.341Z",
   "model": "Xenova/all-MiniLM-L6-v2",
   "counts": {
-    "specs": 13,
+    "specs": 15,
     "epics": 0,
-    "memories": 2,
+    "memories": 3,
     "enriched": 0
   },
   "statusByName": {
@@ -12,8 +12,10 @@
     "Em Implementação — F1–F4 entregues": 1,
     "Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)": 1,
     "Planejada (não iniciada)": 1,
+    "Concluído": 1,
     "Pronto para implementar": 1,
-    "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)": 1
+    "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)": 1,
+    "aprovada para implementação": 1
   },
   "specs": [
     {
@@ -176,6 +178,32 @@
       ]
     },
     {
+      "path": "docs/specs/qr-dinamico-e-fluvio-gate.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "QR Code dinâmico + gate `is_fluvio`",
+      "status": "Concluído",
+      "lastUpdated": "2026-07-03",
+      "sections": [
+        "Visão Geral",
+        "Motivação / Contexto de Negócio",
+        "Research Findings",
+        "Riscos e Mitigações",
+        "Requisitos Não-Funcionais",
+        "User Stories",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Considerações de Arquitetura",
+        "Plano de Rollout / Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Perguntas em Aberto",
+        "Change Log"
+      ]
+    },
+    {
       "path": "docs/specs/roadmap_mensal.md",
       "kind": "spec",
       "isEpic": false,
@@ -301,6 +329,22 @@
         "12. Checklist macro de telas",
         "13. Notas finais p/ o Cursor"
       ]
+    },
+    {
+      "path": "docs/specs/time-tracking.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Time Tracking (estilo Clockify) — ferramenta global do workflow",
+      "status": "aprovada para implementação",
+      "lastUpdated": null,
+      "sections": [
+        "Regras (a \"melhor regra\")",
+        "Dados (migration aditiva — nada existente muda)",
+        "API (módulo novo `src/time-tracking`)",
+        "Frontend",
+        "Fora de escopo (v2)",
+        "Critérios de aceite"
+      ]
     }
   ],
   "memories": [
@@ -309,6 +353,13 @@
       "kind": "memory",
       "name": "didactic-overhaul-program",
       "description": "Programa multi-fase para deixar o work-flow didático/acessível; spec em docs/specs/didactic-overhaul.md",
+      "type": "project"
+    },
+    {
+      "path": "overnight-fix-program.md",
+      "kind": "memory",
+      "name": "overnight-fix-program",
+      "description": "Programa overnight (02/07/2026) de correção total do work-flow — plano de ondas, estado e caminho do relatório de auditoria",
       "type": "project"
     },
     {
