@@ -27,6 +27,11 @@ export interface AskResponse {
   sources: SearchHit[]
 }
 
+export interface AgentHistoryTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface Diagram {
   title: string
   nodes: { id: string; label: string; kind?: string }[]
@@ -51,6 +56,19 @@ const aiService = {
 
   async ask(question: string) {
     const response = await api.post<AskResponse>('/copilot/ask', { question })
+    return response.data
+  },
+
+  /**
+   * Copiloto AGENTE: dispara o run e retorna { runId } na hora. A resposta real
+   * (deltas, tools, done) chega via socket (eventos assistant:*).
+   */
+  async askAgent(question: string, runId: string, history: AgentHistoryTurn[] = []) {
+    const response = await api.post<{ runId: string }>('/copilot/agent', {
+      question,
+      runId,
+      history,
+    })
     return response.data
   },
 

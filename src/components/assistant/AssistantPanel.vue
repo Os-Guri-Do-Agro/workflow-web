@@ -8,6 +8,7 @@ import {
   ArrowUp,
   RotateCcw,
   CornerDownLeft,
+  Settings2,
   FileText,
   CalendarDays,
   Milestone,
@@ -230,24 +231,32 @@ function isUser(m: AssistantMessage) {
               <div v-else class="ai-row">
                 <span class="ai-avatar"><Sparkles :size="13" /></span>
                 <div class="ai-body">
-                  <!-- pending -->
-                  <div v-if="m.pending" class="typing" aria-label="Gerando resposta">
-                    <span /><span /><span />
-                  </div>
-
                   <!-- error -->
-                  <div v-else-if="m.error" class="ai-error">
+                  <div v-if="m.error" class="ai-error">
                     <p>{{ m.error }}</p>
                     <button class="retry press" type="button" @click="retry(m)">
                       <RotateCcw :size="13" /> Tentar de novo
                     </button>
                   </div>
 
-                  <!-- answer -->
                   <template v-else>
+                    <!-- progresso: enquanto pende e ainda não chegou texto -->
+                    <div v-if="m.pending && !m.content" class="ai-progress" aria-live="polite">
+                      <span v-if="m.toolLabel" class="tool-chip">
+                        <Settings2 :size="12" class="tool-chip-ic" />
+                        {{ m.toolLabel }}
+                      </span>
+                      <div v-else class="typing" aria-label="Gerando resposta">
+                        <span /><span /><span />
+                      </div>
+                    </div>
+
+                    <!-- resposta (renderiza incrementalmente enquanto streama) -->
                     <!-- eslint-disable-next-line vue/no-v-html -->
-                    <div class="ai-md" v-html="renderMarkdown(String(m.content ?? ''))" />
-                    <div v-if="m.sources?.length" class="sources">
+                    <div v-if="m.content" class="ai-md" v-html="renderMarkdown(String(m.content))" />
+
+                    <!-- fontes só quando o run termina -->
+                    <div v-if="m.sources?.length && !m.pending" class="sources">
                       <span class="sources-label">Fontes</span>
                       <div class="sources-list">
                         <button
@@ -583,6 +592,154 @@ function isUser(m: AssistantMessage) {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* Headings */
+.ai-md :deep(h1),
+.ai-md :deep(h2),
+.ai-md :deep(h3) {
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+  margin: 14px 0 6px;
+}
+.ai-md :deep(h1) {
+  font-size: 16px;
+}
+.ai-md :deep(h2) {
+  font-size: 14.5px;
+}
+.ai-md :deep(h3) {
+  font-size: 13px;
+}
+.ai-md :deep(h1:first-child),
+.ai-md :deep(h2:first-child),
+.ai-md :deep(h3:first-child) {
+  margin-top: 0;
+}
+.ai-md :deep(ol) {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* Blockquote */
+.ai-md :deep(blockquote) {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  color: var(--text-2);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.ai-md :deep(blockquote p:last-child) {
+  margin-bottom: 0;
+}
+/* Tables */
+.ai-md :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+  display: block;
+  overflow-x: auto;
+}
+.ai-md :deep(th),
+.ai-md :deep(td) {
+  border: 1px solid var(--border);
+  padding: 6px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+.ai-md :deep(th) {
+  background: var(--surface-2);
+  font-weight: 700;
+  color: var(--text);
+}
+/* Code blocks (com highlight.js) */
+.ai-md :deep(pre) {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  overflow-x: auto;
+}
+.ai-md :deep(pre code) {
+  display: block;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+/* Tokens do hljs — cores neutras baseadas nos tokens do design system */
+.ai-md :deep(.hljs-comment),
+.ai-md :deep(.hljs-quote) {
+  color: var(--text-4);
+  font-style: italic;
+}
+.ai-md :deep(.hljs-keyword),
+.ai-md :deep(.hljs-selector-tag),
+.ai-md :deep(.hljs-built_in),
+.ai-md :deep(.hljs-literal) {
+  color: var(--accent);
+}
+.ai-md :deep(.hljs-string),
+.ai-md :deep(.hljs-regexp),
+.ai-md :deep(.hljs-attr) {
+  color: var(--success);
+}
+.ai-md :deep(.hljs-number),
+.ai-md :deep(.hljs-symbol),
+.ai-md :deep(.hljs-meta) {
+  color: var(--warn);
+}
+.ai-md :deep(.hljs-title),
+.ai-md :deep(.hljs-title.function_),
+.ai-md :deep(.hljs-section),
+.ai-md :deep(.hljs-name) {
+  color: var(--info);
+}
+.ai-md :deep(.hljs-type),
+.ai-md :deep(.hljs-class .hljs-title) {
+  color: var(--info);
+}
+.ai-md :deep(.hljs-emphasis) {
+  font-style: italic;
+}
+.ai-md :deep(.hljs-strong) {
+  font-weight: 700;
+}
+
+/* Progresso (chip de ferramenta) */
+.ai-progress {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+}
+.tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.tool-chip-ic {
+  color: var(--accent);
+  animation: tool-spin 2s linear infinite;
+}
+@keyframes tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 /* Typing indicator */
 .typing {
@@ -845,6 +1002,9 @@ function isUser(m: AssistantMessage) {
     transition: none;
   }
   .typing span {
+    animation: none;
+  }
+  .tool-chip-ic {
     animation: none;
   }
 }

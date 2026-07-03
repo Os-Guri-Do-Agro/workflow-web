@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
-import aiService, { type SearchHit } from '@/service/ai/ai-service'
+import aiService, { type SearchHit, type AgentHistoryTurn } from '@/service/ai/ai-service'
 import collaborationService from '@/service/collaboration/collaboration-service'
+import realtimeService from '@/service/realtime/realtime-service'
 import { getApiErrorMessage } from '@/service/api'
 
 /**
@@ -24,6 +25,10 @@ export interface AssistantMessage {
   /** preenchido quando a chamada falhou — guarda o texto digitado p/ retry */
   error?: string
   retryOf?: string
+  /** id do stream do agente (correlaciona os eventos de socket a esta bolha) */
+  runId?: string
+  /** label amigável da ferramenta em execução ("Buscando tarefas…") */
+  toolLabel?: string
 }
 
 export interface AssistantSuggestion {
@@ -66,6 +71,63 @@ const suggestions: AssistantSuggestion[] = [
 
 const hasConversation = computed(() => messages.value.length > 0)
 
+// ─── Streaming do agente via socket ──────────────────────────────────────────
+const RUN_TIMEOUT = 60_000
+const HISTORY_TURNS = 8
+const runTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let realtimeReady = false
+
+function msgByRun(runId: string) {
+  return messages.value.find((m) => m.runId === runId)
+}
+
+/** Encerra um run: limpa timeout e libera o pending global. */
+function finishRun(runId: string) {
+  const t = runTimers.get(runId)
+  if (t) {
+    clearTimeout(t)
+    runTimers.delete(runId)
+  }
+  pending.value = false
+}
+
+/** Assina os eventos assistant:* uma única vez (reusa o socket singleton). */
+function ensureRealtime() {
+  if (realtimeReady) return
+  realtimeReady = true
+  realtimeService.connect({
+    assistantDelta: ({ runId, text }) => {
+      const m = msgByRun(runId)
+      if (!m) return
+      m.content += text
+      m.toolLabel = undefined // já começou a responder
+    },
+    assistantTool: ({ runId, label }) => {
+      const m = msgByRun(runId)
+      if (m) m.toolLabel = label
+    },
+    assistantDone: ({ runId, sources }) => {
+      const m = msgByRun(runId)
+      if (m) {
+        m.sources = sources
+        m.pending = false
+        m.toolLabel = undefined
+      }
+      finishRun(runId)
+    },
+    assistantError: ({ runId, message }) => {
+      const m = msgByRun(runId)
+      if (m) {
+        m.error = message
+        m.content = ''
+        m.pending = false
+        m.toolLabel = undefined
+      }
+      finishRun(runId)
+    },
+  })
+}
+
 function setWidth(v: number) {
   width.value = clampWidth(v)
   localStorage.setItem(WIDTH_KEY, String(width.value))
@@ -86,7 +148,10 @@ function clear() {
   messages.value = []
 }
 
-/** Pergunta semântica ao workspace (copilot/ask → answer + sources). */
+/**
+ * Pergunta ao copiloto AGENTE (copilot/agent). O POST só dispara o run e retorna
+ * { runId }; a resposta real (deltas, ferramentas, fontes) chega via socket.
+ */
 async function send(text: string) {
   const question = text.trim()
   if (!question || pending.value) return
@@ -96,22 +161,49 @@ async function send(text: string) {
     return
   }
 
+  ensureRealtime()
+
+  // Histórico: últimos ~8 turnos finalizados (sem pending/error), antes desta pergunta.
+  const history: AgentHistoryTurn[] = messages.value
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && !!m.content && !m.pending && !m.error)
+    .slice(-HISTORY_TURNS)
+    .map((m) => ({ role: m.role, content: m.content }))
+
+  const runId = `run_${Date.now()}_${(seq += 1)}`
   const userMsg: AssistantMessage = { id: nextId(), role: 'user', content: question }
-  const aiMsg: AssistantMessage = { id: nextId(), role: 'assistant', content: '', pending: true }
+  const aiMsg: AssistantMessage = {
+    id: nextId(),
+    role: 'assistant',
+    content: '',
+    pending: true,
+    runId,
+    retryOf: question,
+  }
   messages.value.push(userMsg, aiMsg)
   pending.value = true
 
+  // Timeout de segurança: se o socket não fechar o run em 60s, marca erro.
+  runTimers.set(
+    runId,
+    setTimeout(() => {
+      const m = msgByRun(runId)
+      if (m?.pending) {
+        m.error = 'A resposta demorou demais. Tente de novo.'
+        m.pending = false
+        m.toolLabel = undefined
+      }
+      finishRun(runId)
+    }, RUN_TIMEOUT),
+  )
+
   try {
-    const res = await aiService.ask(question)
-    aiMsg.content = res.answer
-    aiMsg.sources = res.sources
+    await aiService.askAgent(question, runId, history)
+    // Sucesso do POST NÃO finaliza o run — aguardamos assistant:done/error via socket.
   } catch (err) {
-    aiMsg.error = getApiErrorMessage(err, 'Não consegui responder agora.')
-    aiMsg.retryOf = question
+    aiMsg.error = getApiErrorMessage(err, 'Não consegui iniciar a resposta agora.')
     aiMsg.content = ''
-  } finally {
     aiMsg.pending = false
-    pending.value = false
+    finishRun(runId)
   }
 }
 
