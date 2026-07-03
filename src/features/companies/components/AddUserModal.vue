@@ -109,18 +109,21 @@ onMounted(() => {
     persistent
   >
     <v-card rounded="lg">
-      <v-card-title class="d-flex align-center justify-space-between pa-5 bg-primary">
+      <v-card-title
+        class="d-flex align-center justify-space-between pa-5"
+        style="background: var(--surface); color: var(--text)"
+      >
         <div class="d-flex align-center ga-3">
-          <v-icon color="secondary" size="28">mdi-account-plus</v-icon>
-          <span class="text-h6 font-weight-bold text-secondary">Adicionar Usuário</span>
+          <v-icon size="28" style="color: var(--text)">mdi-account-plus</v-icon>
+          <span class="text-h6 font-weight-bold">Adicionar Usuário</span>
         </div>
-        <v-btn icon="mdi-close" variant="text" size="small" @click="close" color="secondary" />
+        <v-btn icon="mdi-close" variant="text" size="small" @click="close" style="color: var(--text)" />
       </v-card-title>
 
       <v-card-text class="pa-6">
-        <div v-if="company" class="mb-4 pa-3 bg-grey-lighten-4 rounded">
-          <div class="text-caption text-medium-emphasis text-black">Empresa</div>
-          <div class="text-body-2 font-weight-bold">{{ company.name }}</div>
+        <div v-if="company" class="mb-4 pa-3 rounded" style="background: var(--surface-3)">
+          <div class="text-caption" style="color: var(--text-2)">Empresa</div>
+          <div class="text-body-2 font-weight-bold" style="color: var(--text)">{{ company.name }}</div>
         </div>
 
         <v-select

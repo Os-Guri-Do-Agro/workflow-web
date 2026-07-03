@@ -1,0 +1,16 @@
+/* Overlays do Vuetify (menus de select, autocomplete, v-menu) são teleportados
+   para fora do escopo dos componentes; sem estilo global herdam superfície sobre
+   superfície e ficam ilegíveis. Aqui aplicamos os tokens do design system. */
+.v-overlay__content > .v-list,
+.v-overlay__content > .v-card,
+.v-overlay__content > .v-sheet {
+  background: var(--surface) !important;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-overlay) !important;
+  border-radius: var(--radius);
+  color: var(--text);
+}
+.v-overlay__content .v-list-item-title { color: var(--text); }
+.v-overlay__content .v-list-item__overlay { opacity: 0; }
+.v-overlay__content .v-list-item:hover .v-list-item__overlay,
+.v-overlay__content .v-list-item--active .v-list-item__overlay { opacity: 0.08; }

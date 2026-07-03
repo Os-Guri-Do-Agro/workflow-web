@@ -1142,7 +1142,6 @@ const deleteAttachment = async (attachmentId: string) => {
               label="Trimestre"
               density="compact"
               variant="outlined"
-              color="secondary"
               hide-details
               @update:model-value="onFormQuarterChange"
             />
@@ -1156,7 +1155,6 @@ const deleteAttachment = async (attachmentId: string) => {
               label="Mês"
               density="compact"
               variant="outlined"
-              color="secondary"
               hide-details
               @update:model-value="onFormMonthChange"
             />
@@ -1170,7 +1168,6 @@ const deleteAttachment = async (attachmentId: string) => {
           label="Responsáveis"
           density="compact"
           variant="outlined"
-          color="secondary"
           multiple
           chips
           closable-chips
@@ -1297,7 +1294,6 @@ const deleteAttachment = async (attachmentId: string) => {
           label="Responsáveis"
           density="compact"
           variant="outlined"
-          color="secondary"
           multiple
           chips
           closable-chips
@@ -1496,7 +1492,6 @@ const deleteAttachment = async (attachmentId: string) => {
             label="Responsáveis"
             density="compact"
             variant="outlined"
-            color="secondary"
             multiple
             chips
             closable-chips

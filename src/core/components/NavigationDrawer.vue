@@ -188,7 +188,7 @@ defineEmits<{
     @update:model-value="$emit('update:modelValue', $event)"
     width="260"
     permanent
-    color="primary"
+    color="surface"
     border="none"
     class="drawer-custom"
   >
@@ -320,7 +320,7 @@ defineEmits<{
 
   <!-- Company Switch Dialog -->
   <v-dialog v-model="showCompanyModal" max-width="440" transition="dialog-bottom-transition">
-    <v-card rounded="xl" elevation="8" color="primary" class="company-dialog">
+    <v-card rounded="xl" elevation="8" color="surface" class="company-dialog">
       <div class="d-flex align-center justify-space-between pa-4 pb-3">
         <span class="text-body-2 font-weight-bold" style="color: rgba(var(--v-theme-secondary), 0.7)">
           Trocar Empresa

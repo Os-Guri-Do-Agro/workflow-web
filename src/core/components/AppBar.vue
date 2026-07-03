@@ -66,7 +66,7 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
 </script>
 
 <template>
-  <v-app-bar elevation="0" color="primary" height="48" class="app-bar-custom">
+  <v-app-bar elevation="0" color="surface" height="48" class="app-bar-custom">
     <v-btn icon size="small" variant="text" @click="emit('update:drawer', !drawer)">
       <Menu :size="18" class="bar-icon" />
     </v-btn>
