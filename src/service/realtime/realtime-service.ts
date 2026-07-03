@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client'
+import { apiBaseUrl } from '@/service/api'
 import type { AppNotification } from '@/service/inbox/inbox-service'
 import type { TimeEntry } from '@/service/time/time-service'
 import type { SearchHit } from '@/service/ai/ai-service'
@@ -91,7 +92,9 @@ function getSocket() {
   if (!token) return null
 
   if (!socket) {
-    socket = io(import.meta.env.VITE_API_URL, {
+    // apiBaseUrl normaliza a env (com/sem https://) — env crua sem esquema
+    // faria o socket apontar pro host errado, igual ao axios.
+    socket = io(apiBaseUrl(), {
       auth: { token },
       path: '/socket.io',
       autoConnect: false,

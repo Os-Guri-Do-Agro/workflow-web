@@ -42,7 +42,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStores'
 import boardsService from '@/service/boards/boards-service'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import aiService from '@/service/ai/ai-service'
-import { getApiErrorMessage } from '@/service/api'
+import { apiBaseUrl, getApiErrorMessage } from '@/service/api'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 type BoardPoint = {
@@ -343,7 +343,9 @@ function teardown() {
 }
 
 function collabUrl() {
-  const raw = import.meta.env.VITE_API_URL || window.location.origin
+  // apiBaseUrl normaliza a env (com/sem https://); sem esquema, o new URL
+  // resolveria relativo ao origin do front e apontaria pro host errado.
+  const raw = apiBaseUrl() || window.location.origin
   const url = new URL(raw, window.location.origin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.pathname = '/collab'

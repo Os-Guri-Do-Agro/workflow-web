@@ -35,15 +35,31 @@ export function getApiRequestId(error: unknown) {
   return (error as ApiRequestError).requestId || error.response?.data?.requestId || headerValue(error.response?.headers, 'x-request-id')
 }
 
+/**
+ * Normaliza a URL da API vinda do env. Sem o esquema (`https://`), o axios
+ * trata a baseURL como caminho RELATIVO e todas as chamadas viram 404 no
+ * próprio domínio do front — foi exatamente o que derrubou produção quando a
+ * env no Vercel foi salva como "srhub.up.railway.app". Aqui a gente aceita a
+ * env com ou sem esquema e com/sem barra final.
+ */
+export function apiBaseUrl(): string {
+  const raw = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '')
+  if (!raw) return ''
+  if (/^https?:\/\//i.test(raw)) return raw
+  // localhost sem esquema é dev → http; qualquer outro host assume https.
+  const scheme = /^(localhost|127\.|0\.0\.0\.0)/.test(raw) ? 'http' : 'https'
+  return `${scheme}://${raw}`
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: apiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
 export const publicApi = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: apiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
