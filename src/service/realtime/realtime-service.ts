@@ -7,6 +7,13 @@ export interface PublicUser {
   email: string
 }
 
+/** Usuário mencionado num comentário (attachComments) — name/email podem faltar. */
+export interface MentionedUser {
+  id: string
+  name?: string
+  email?: string
+}
+
 export interface CommentPayload {
   id: string
   companyId: string
@@ -16,6 +23,7 @@ export interface CommentPayload {
   author: PublicUser | null
   body: string
   mentions: string[]
+  mentionedUsers?: MentionedUser[]
   createdAt: string
   updatedAt: string
   reactions: Array<{ id: string; userId: string; emoji: string; user: PublicUser | null }>

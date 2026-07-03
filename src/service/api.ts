@@ -85,6 +85,8 @@ function handleSessionExpired() {
   clearSession()
   if (!window.location.pathname.startsWith('/login')) {
     toast.error('Sua sessão expirou. Faça login novamente.')
+    // O toast morre com o assign; a LoginView lê essa flag e reexibe o aviso.
+    sessionStorage.setItem('loginReason', 'expired')
     // Preserva a rota atual para voltar exatamente aonde estava após relogar.
     const current = window.location.pathname + window.location.search
     const redirect = current && current !== '/' ? `?redirect=${encodeURIComponent(current)}` : ''

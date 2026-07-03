@@ -65,6 +65,12 @@ onMounted(() => {
   const token = localStorage.getItem('token')
   if (token) {
     router.push(safeRedirect())
+    return
+  }
+  // Aviso de sessão expirada sobrevive ao hard-redirect do interceptor de 401.
+  if (sessionStorage.getItem('loginReason') === 'expired') {
+    sessionStorage.removeItem('loginReason')
+    showError('Sua sessão expirou. Faça login novamente.')
   }
 })
 

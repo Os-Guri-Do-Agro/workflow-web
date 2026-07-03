@@ -15,6 +15,7 @@ import {
   Trash2,
 } from 'lucide-vue-next'
 import type { Activity } from '@/core/types'
+import { formatDateOnly, isOverdue } from '@/utils/date'
 
 interface Props {
   tasks: any
@@ -175,11 +176,6 @@ const getSubtaskProgress = (task: any) => {
   return { done, total: task.subtasks.length }
 }
 
-const isOverdue = (dueDate: string) => {
-  if (!dueDate) return false
-  return new Date(dueDate) < new Date()
-}
-
 // ── Subtasks expand/collapse ──
 const expandedTasks = ref<Set<string>>(new Set())
 
@@ -312,12 +308,7 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
                   :class="{ 'meta-pill--overdue': isOverdue(task.dueDate) }"
                 >
                   <Calendar :size="10" />
-                  {{
-                    new Date(task.dueDate).toLocaleDateString('pt-BR', {
-                      day: '2-digit',
-                      month: 'short',
-                    })
-                  }}
+                  {{ formatDateOnly(task.dueDate, { month: 'short', year: undefined }) }}
                 </span>
               </div>
 

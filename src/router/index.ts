@@ -7,6 +7,8 @@ import BoardView from '@/features/board/BoardView.vue'
 import DashboardView from '@/features/dashboard/DashboardView.vue'
 import TasksView from '@/features/tasks/TasksView.vue'
 import TaskDetailsView from '@/features/tasks/TaskDetailsView.vue'
+import ActivityResolverView from '@/features/tasks/ActivityResolverView.vue'
+import NotFoundView from '@/features/errors/NotFoundView.vue'
 import ReportView from '@/features/reports/ReportView.vue'
 import SettingsView from '@/features/settings/SettingsView.vue'
 import LoginView from '@/features/auth/LoginView.vue'
@@ -67,8 +69,12 @@ const router = createRouter({
     { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView, meta: { requiredRole: 'WORKER' } },
     { path: '/repos', name: 'repos-list', component: ReposListView },
     { path: '/repos/:id', name: 'repo-browser', component: RepoBrowserView },
-    // Rota inexistente (ex.: /tickets removido) → volta pro início.
-    { path: '/:pathMatch(.*)*', redirect: '/' },
+    // Links antigos de notificações: `/activity/:id` resolve empresa+mês+task
+    // via backend e redireciona; `/bugs/:id` era o path antigo de bug reports.
+    { path: '/activity/:id', name: 'activity-resolver', component: ActivityResolverView },
+    { path: '/bugs/:id', redirect: (to) => `/bug-reports/${to.params.id}` },
+    // Rota inexistente (ex.: /tickets removido) → 404 amigável.
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
   ],
 })
 
@@ -80,6 +86,7 @@ const PUBLIC_ROUTES = new Set([
   'download',
   'bug-report',
   'report-status',
+  'public-board',
   'public-roadmap',
 ])
 
@@ -109,12 +116,22 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
-/** Papel do usuário na empresa ativa, lido do JWT. */
+/**
+ * Papel do usuário na empresa ativa, lido do JWT. Se ainda não há empresa
+ * ativa persistida (ex.: deep link logo após o login, antes de qualquer view
+ * popular o workspace), usa a primeira empresa do JWT como fallback e já
+ * persiste — sem isso o deep link pós-login caía na home por "sem papel".
+ */
 function activeCompanyRole(token: string): string | null {
   try {
     const decoded = jwtDecode<{ companies?: { companyId: string; role: string }[] }>(token)
-    const companyId = localStorage.getItem('activeCompany')
-    return decoded.companies?.find((c) => c.companyId === companyId)?.role ?? null
+    const companies = decoded.companies ?? []
+    let companyId = localStorage.getItem('activeCompany')
+    if (!companyId && companies.length > 0) {
+      companyId = companies[0]!.companyId
+      localStorage.setItem('activeCompany', companyId)
+    }
+    return companies.find((c) => c.companyId === companyId)?.role ?? null
   } catch {
     return null
   }
@@ -126,7 +143,8 @@ router.beforeEach((to, from) => {
   // Canvas escondido (feature flag off): qualquer rota de board de desenho
   // volta pra home. Reativar = VITE_CANVAS_ENABLED=true.
   if (!CANVAS_ENABLED && CANVAS_ROUTE_NAMES.has(to.name as string)) {
-    return { name: 'home' }
+    // `reason` vira toast no AppShell — redirect silencioso confundia o usuário.
+    return { name: 'home', query: { reason: 'canvas-off' } }
   }
 
   let token = localStorage.getItem('token')
@@ -152,7 +170,8 @@ router.beforeEach((to, from) => {
   if (required && token) {
     const role = activeCompanyRole(token)
     if (!role || (ROLE_RANK[role] ?? -1) < (ROLE_RANK[required] ?? 99)) {
-      return { name: 'home' }
+      // `reason` vira toast no AppShell — redirect silencioso confundia o usuário.
+      return { name: 'home', query: { reason: 'no-access' } }
     }
   }
 })

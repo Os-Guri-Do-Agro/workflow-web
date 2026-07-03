@@ -25,6 +25,14 @@ class activityService {
     )
   }
 
+  /** Localiza a atividade no workspace (empresa + mês) para resolver links antigos `/activity/:id`. */
+  locateActivity(id: string): Promise<{ companyId: string; monthId: string; taskId: string }> {
+    return this.handleRequest(
+      api.get(`/activity/${id}/locate`),
+      'Erro ao localizar atividade',
+    )
+  }
+
   getActivityById(id: string): Promise<any> {
     return this.handleRequest(
       api.get(`/activity/${id}`),

@@ -12,6 +12,7 @@ import {
   Handshake,
 } from 'lucide-vue-next'
 import companieService from '@/service/companies/companies-services'
+import { getApiErrorMessage } from '@/service/api'
 import AddUserModal from './components/AddUserModal.vue'
 import BulkAddUsersModal from './components/BulkAddUsersModal.vue'
 import CreateCompanyModal from './components/CreateCompanyModal.vue'
@@ -119,8 +120,8 @@ const fetchSystemCompanies = async () => {
       cnpj: company.cnpj,
       usersCount: 0,
     }))
-  } catch (error: any) {
-    showError(error.response?.message || 'Erro ao carregar empresas do sistema')
+  } catch (error) {
+    showError(getApiErrorMessage(error, 'Erro ao carregar empresas do sistema'))
   } finally {
     loadingSystem.value = false
   }
@@ -131,8 +132,8 @@ const fetchUserCompanies = async () => {
   try {
     const data = await companieService.getCompany()
     userCompanies.value = data
-  } catch (error: any) {
-    showError(error.response?.message || 'Erro ao carregar empresas do usuário')
+  } catch (error) {
+    showError(getApiErrorMessage(error, 'Erro ao carregar empresas do usuário'))
   } finally {
     loadingUser.value = false
   }
@@ -158,8 +159,12 @@ const onModalMsg = (msg: string, color: string) => {
   else showError(msg)
 }
 
-onMounted(async () => {
-  isWorkerRole.value = (await getInfoAuth()) || false
+onMounted(() => {
+  // Fetches independentes: o check de papel não pode segurar (nem quebrar) o
+  // carregamento das listas — loadingUser/loadingSystem sempre resolvem.
+  getInfoAuth().then((can) => {
+    isWorkerRole.value = can || false
+  })
   fetchSystemCompanies()
   fetchUserCompanies()
 })

@@ -35,6 +35,7 @@ import quarterService from '@/service/quarters/quarters-service'
 import exportService from '@/service/export/export-service'
 import shareService from '@/service/share/share-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import { todayDateOnly } from '@/utils/date'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -158,7 +159,7 @@ const activeQuarter = ref<QuarterFilter>('all')
 const selected = ref<RoadmapSelection | null>(null)
 const noteDraft = ref('')
 const noteMonthKey = ref(`${roadmapYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
-const noteDate = ref(new Date().toISOString().slice(0, 10))
+const noteDate = ref(todayDateOnly())
 const exportMonthKey = ref<'all' | string>('all')
 const selectedMonthDetailsKey = ref<string | null>(null)
 const annualRoadmapLoading = ref(false)
@@ -584,9 +585,13 @@ function normalizeRoadmapStatus(status: unknown): RoadmapStatus {
 
 function normalizeDateOnly(value: unknown): string | null {
   if (!value) return null
-  const date = new Date(String(value))
+  const raw = String(value)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const date = new Date(raw)
   if (Number.isNaN(date.getTime())) return null
-  return date.toISOString().slice(0, 10)
+  // Extrai o dia-calendário UTC (dueDates são gravados a meio-dia UTC)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
 }
 
 function fallbackLaneColor(index: number): string {

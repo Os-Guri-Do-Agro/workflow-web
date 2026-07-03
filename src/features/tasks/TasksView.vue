@@ -10,6 +10,7 @@ import quartersService from '@/service/quarters/quarters-service'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import { getInfoAuth } from '@/utils/authContent'
+import { dateOnlyToUtcNoonIso, isoToDateOnly, todayDateOnly } from '@/utils/date'
 import { useToast } from '@/composables/useToast'
 import { useCompanyBoards } from '@/composables/useCompanyBoards'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
@@ -136,18 +137,14 @@ const createActivity = async () => {
   if (!formActivity.value.title) return
   creating.value = true
   try {
-    const setNoonTime = (dateStr: string) => {
-      const date = new Date(dateStr)
-      date.setHours(12, 0, 0, 0)
-      return date.toISOString()
-    }
     const payload = {
       title: formActivity.value.title,
       description: formActivity.value.description || '',
       priorityNumber: Number(formActivity.value.priorityNumber) || 0,
-      dueDate: formActivity.value.dueDate
-        ? setNoonTime(formActivity.value.dueDate)
-        : setNoonTime(new Date().toISOString()),
+      // dueDate pode chegar como 'YYYY-MM-DD' ou ISO — normaliza para meio-dia UTC
+      dueDate: dateOnlyToUtcNoonIso(
+        formActivity.value.dueDate ? isoToDateOnly(formActivity.value.dueDate) : todayDateOnly(),
+      ),
       monthId: monthId.value,
       responsibleUserIds: formActivity.value.assignees || [],
     }

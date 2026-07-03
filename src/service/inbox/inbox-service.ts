@@ -16,6 +16,8 @@ export interface AppNotification {
   createdAt: string
   userId: string
   user: PublicUser | null
+  /** Empresa de origem da notificação (permite trocar de empresa ao abrir o link). */
+  companyId?: string
 }
 
 const inboxService = {

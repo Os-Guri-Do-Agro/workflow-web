@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import CommandShell from './CommandShell.vue'
 import FocusShell from './FocusShell.vue'
 import CanvasShell from './CanvasShell.vue'
@@ -11,12 +11,35 @@ import WelcomeGuide from '@/components/onboarding/WelcomeGuide.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useAssistant } from '@/composables/useAssistant'
 import { useOnboarding } from '@/composables/useOnboarding'
+import { useToast } from '@/composables/useToast'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const route = useRoute()
+const router = useRouter()
 const { shell } = useUiPreferences()
 const assistant = useAssistant()
 const onboarding = useOnboarding()
+const { info } = useToast()
+
+// Redirects do guard chegam com ?reason=... — traduz em toast e limpa a query
+// (router.replace) para o aviso não repetir em refresh/navegação.
+const REASON_MESSAGES: Record<string, string> = {
+  'no-access': 'Você não tem acesso a essa página nesta empresa',
+  'canvas-off': 'Este recurso está desativado no momento',
+}
+
+watch(
+  () => route.query.reason,
+  (reason) => {
+    const message = typeof reason === 'string' ? REASON_MESSAGES[reason] : undefined
+    if (!message) return
+    info(message)
+    const rest = { ...route.query }
+    delete rest.reason
+    void router.replace({ query: rest })
+  },
+  { immediate: true },
+)
 
 // Atalho global do Assistente (Ctrl/Cmd + I), estilo extensão do Claude.
 // Ignora quando o foco está em input/textarea/contentEditable (ex.: editor TipTap,
