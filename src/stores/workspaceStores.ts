@@ -3,6 +3,7 @@ export type CompanyRole = 'OWNER' | 'ADMIN' | 'WORKER' | 'CLIENT' | 'VIEWER'
 import dashboardService from '@/service/dashboard/dashboard-service'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
+import { isOverdue } from '@/utils/date'
 
 export interface CompanySummary {
   id: string
@@ -153,9 +154,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
       
       if (state.filterOverdue) {
-        const now = new Date().toISOString()
-        activities = activities.filter(a => 
-          a.dueDate && a.dueDate < now && a.status !== 'DONE'
+        activities = activities.filter(a =>
+          isOverdue(a.dueDate) && a.status !== 'DONE'
         )
       }
       

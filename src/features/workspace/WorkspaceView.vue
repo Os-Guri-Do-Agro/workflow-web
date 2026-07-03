@@ -5,6 +5,7 @@ import { Pin, Folder } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import dashboardService from '@/service/dashboard/dashboard-service'
 import { stripHtmlPreview } from '@/utils/html-preview'
+import { dateOnlyDiffDays } from '@/utils/date'
 import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
@@ -142,11 +143,8 @@ function filterByCompany(companyId: string | null) {
 
 function formatDate(dateString: string | null): string {
   if (!dateString) return 'Sem data'
-  const date = new Date(dateString)
-  const now = new Date()
-  const diff = date.getTime() - now.getTime()
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-  
+  const days = dateOnlyDiffDays(dateString)
+
   if (days < 0) return `Atrasada ${Math.abs(days)} dias`
   if (days === 0) return 'Hoje'
   if (days === 1) return 'Amanhã'

@@ -12,6 +12,7 @@ import {
   Check,
   Loader2,
 } from 'lucide-vue-next'
+import { dateOnlyToUtcNoonIso } from '@/utils/date'
 
 const emit = defineEmits<{
   close: []
@@ -84,9 +85,7 @@ const valid = computed(() => !!form.value?.title?.trim())
 const submit = () => {
   if (!valid.value) return
   if (form.value.dueDate && typeof form.value.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(form.value.dueDate)) {
-    const [y, m, d] = form.value.dueDate.split('-').map(Number)
-    const date = new Date(y, m - 1, d, 12, 0, 0)
-    emit('update:modelValue', { ...form.value, dueDate: date.toISOString() })
+    emit('update:modelValue', { ...form.value, dueDate: dateOnlyToUtcNoonIso(form.value.dueDate) })
   }
   emit('submit')
 }

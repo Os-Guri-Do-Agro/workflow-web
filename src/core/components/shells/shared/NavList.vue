@@ -7,6 +7,7 @@ import {
   KeyRound,
   StickyNote,
   CalendarDays,
+  Timer,
   Users,
   BarChart3,
   CalendarRange,
@@ -91,6 +92,7 @@ const taskItem = computed<NavItem | null>(() => {
 })
 
 const personalItems = computed<NavItem[]>(() => [
+  { title: 'Meu tempo', icon: Timer, to: '/time', section: 'Pessoal' },
   { title: 'Notas', icon: StickyNote, to: '/notes', section: 'Pessoal' },
   { title: 'Calendário', icon: CalendarDays, to: '/calendar', section: 'Pessoal' },
 ])

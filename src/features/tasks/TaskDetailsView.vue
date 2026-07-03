@@ -34,6 +34,12 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-vue-next'
+import {
+  dateOnlyToUtcNoonIso,
+  formatDateOnly,
+  isoToDateOnly,
+  todayDateOnly,
+} from '@/utils/date'
 import Pill from '@/components/ui/Pill.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -94,12 +100,13 @@ function dueDateForPlanningMonth(
   targetMonth: PlanningMonth,
 ): string {
   const current = new Date(currentDueDate)
-  const year = current.getFullYear()
-  const day = current.getDate()
+  const year = current.getUTCFullYear()
+  const day = current.getUTCDate()
   const monthIndex = targetMonth.number - 1
-  const lastDay = new Date(year, monthIndex + 1, 0).getDate()
+  const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
   const safeDay = Math.min(day, lastDay)
-  return new Date(year, monthIndex, safeDay, 12, 0, 0, 0).toISOString()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return dateOnlyToUtcNoonIso(`${year}-${pad(monthIndex + 1)}-${pad(safeDay)}`)
 }
 
 function moveExtrasForMonth(
@@ -188,7 +195,7 @@ const createQuickSubtask = async () => {
       title: quickSubtaskTitle.value,
       description: '',
       priorityNumber: 1,
-      dueDate: new Date().toISOString(),
+      dueDate: dateOnlyToUtcNoonIso(todayDateOnly()),
       monthId: activeMonthId.value,
       parentId: taskId.value,
       responsibleUserIds: [],
@@ -292,8 +299,8 @@ const createSubtask = async () => {
       description: formSubtask.value.description || '',
       priorityNumber: Number(formSubtask.value.priorityNumber) || 1,
       dueDate: formSubtask.value.dueDate
-        ? new Date(formSubtask.value.dueDate).toISOString()
-        : new Date().toISOString(),
+        ? dateOnlyToUtcNoonIso(formSubtask.value.dueDate)
+        : dateOnlyToUtcNoonIso(todayDateOnly()),
       monthId: activeMonthId.value,
       parentId: taskId.value,
       responsibleUserIds: formSubtask.value.responsibleUserIds,
@@ -422,13 +429,14 @@ const onFormMonthChange = (newMonthId: string) => {
   if (!targetMonth) return
 
   const sourceDueDate = formActivity.value.dueDate
-    ? new Date(`${formActivity.value.dueDate}T12:00:00`).toISOString()
+    ? dateOnlyToUtcNoonIso(formActivity.value.dueDate)
     : activityInfo.value?.dueDate
 
   if (!sourceDueDate) return
 
-  formActivity.value.dueDate =
-    dueDateForPlanningMonth(sourceDueDate, targetMonth).split('T')[0] ?? ''
+  formActivity.value.dueDate = isoToDateOnly(
+    dueDateForPlanningMonth(sourceDueDate, targetMonth),
+  )
 }
 
 const onFormQuarterChange = (quarterId: string) => {
@@ -450,7 +458,7 @@ const openEditActivityModal = () => {
     title: activityInfo.value.title,
     description: activityInfo.value.description || '',
     priorityNumber: activityInfo.value.priorityNumber ?? 1,
-    dueDate: activityInfo.value.dueDate ? activityInfo.value.dueDate.split('T')[0] : '',
+    dueDate: activityInfo.value.dueDate ? isoToDateOnly(activityInfo.value.dueDate) : '',
     quarterId: quarter?.id ?? '',
     monthId,
     responsibleUserIds: getResponsibleUserIds(activityInfo.value),
@@ -468,7 +476,7 @@ const updateActivity = async () => {
   const monthChanged = newMonthId !== previousMonthId
   try {
     const sourceDueDate = formActivity.value.dueDate
-      ? new Date(`${formActivity.value.dueDate}T12:00:00`).toISOString()
+      ? dateOnlyToUtcNoonIso(formActivity.value.dueDate)
       : activityInfo.value.dueDate
     const activityForMove = sourceDueDate
       ? { ...activityInfo.value, dueDate: sourceDueDate }
@@ -492,7 +500,7 @@ const updateActivity = async () => {
             description: formActivity.value.description || '',
             priorityNumber: Number(formActivity.value.priorityNumber) || 1,
             dueDate: formActivity.value.dueDate
-              ? new Date(formActivity.value.dueDate).toISOString()
+              ? dateOnlyToUtcNoonIso(formActivity.value.dueDate)
               : undefined,
             responsibleUserIds: formActivity.value.responsibleUserIds,
           }),
@@ -541,7 +549,7 @@ const openSubtaskModal = (task: any) => {
     title: task.title,
     description: task.description || '',
     priorityNumber: task.priorityNumber ?? 1,
-    dueDate: task.dueDate ? task.dueDate.split('T')[0] : '',
+    dueDate: task.dueDate ? isoToDateOnly(task.dueDate) : '',
     responsibleUserIds: task.responsibles?.map((r: any) => r.userId) ?? [],
     attachment: null,
   }
@@ -557,7 +565,7 @@ const updateSubtask = async () => {
       description: formSubtask.value.description || '',
       priorityNumber: Number(formSubtask.value.priorityNumber) || 1,
       dueDate: formSubtask.value.dueDate
-        ? new Date(formSubtask.value.dueDate).toISOString()
+        ? dateOnlyToUtcNoonIso(formSubtask.value.dueDate)
         : undefined,
       monthId: activeMonthId.value,
       parentId: taskId.value,
@@ -651,20 +659,28 @@ const toggleSubtaskStatus = async (task: any) => {
 
 const formatDate = (date: string | null) => {
   if (!date) return null
-  return new Date(date).toLocaleDateString('pt-BR')
+  return formatDateOnly(date)
 }
 
 const isImage = (filename: string) => /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(filename)
 
 const onActivityFileChange = (f: File | File[]) => {
   const file = Array.isArray(f) ? f[0] : f
-  if (file && file.size > 10 * 1024 * 1024) return
+  if (file && file.size > 10 * 1024 * 1024) {
+    showError('O arquivo excede o limite de 10MB')
+    formActivity.value.attachment = null
+    return
+  }
   formActivity.value.attachment = file ?? null
 }
 
 const onSubtaskFileChange = (f: File | File[]) => {
   const file = Array.isArray(f) ? f[0] : f
-  if (file && file.size > 10 * 1024 * 1024) return
+  if (file && file.size > 10 * 1024 * 1024) {
+    showError('O arquivo excede o limite de 10MB')
+    formSubtask.value.attachment = null
+    return
+  }
   formSubtask.value.attachment = file ?? null
 }
 
@@ -1126,7 +1142,6 @@ const deleteAttachment = async (attachmentId: string) => {
               label="Trimestre"
               density="compact"
               variant="outlined"
-              color="secondary"
               hide-details
               @update:model-value="onFormQuarterChange"
             />
@@ -1140,7 +1155,6 @@ const deleteAttachment = async (attachmentId: string) => {
               label="Mês"
               density="compact"
               variant="outlined"
-              color="secondary"
               hide-details
               @update:model-value="onFormMonthChange"
             />
@@ -1154,7 +1168,6 @@ const deleteAttachment = async (attachmentId: string) => {
           label="Responsáveis"
           density="compact"
           variant="outlined"
-          color="secondary"
           multiple
           chips
           closable-chips
@@ -1193,6 +1206,7 @@ const deleteAttachment = async (attachmentId: string) => {
           accept="*/*"
           hide-details
           class="mt-3"
+          :model-value="formActivity.attachment"
           @update:model-value="onActivityFileChange"
         >
           <template #prepend-inner><Paperclip :size="16" /></template>
@@ -1280,7 +1294,6 @@ const deleteAttachment = async (attachmentId: string) => {
           label="Responsáveis"
           density="compact"
           variant="outlined"
-          color="secondary"
           multiple
           chips
           closable-chips
@@ -1296,6 +1309,7 @@ const deleteAttachment = async (attachmentId: string) => {
           accept="*/*"
           hide-details
           class="mt-3"
+          :model-value="formSubtask.attachment"
           @update:model-value="onSubtaskFileChange"
         >
           <template #prepend-inner><Paperclip :size="16" /></template>
@@ -1478,7 +1492,6 @@ const deleteAttachment = async (attachmentId: string) => {
             label="Responsáveis"
             density="compact"
             variant="outlined"
-            color="secondary"
             multiple
             chips
             closable-chips
@@ -1527,6 +1540,7 @@ const deleteAttachment = async (attachmentId: string) => {
             accept="*/*"
             hide-details
             class="mt-3"
+            :model-value="formSubtask.attachment"
             @update:model-value="onSubtaskFileChange"
           >
             <template #prepend-inner><Paperclip :size="16" /></template>

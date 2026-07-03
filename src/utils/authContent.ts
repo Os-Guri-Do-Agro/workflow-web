@@ -19,8 +19,6 @@ interface DecodedToken {
 
 const EDITOR_ROLES: CompanyRole[] = ['OWNER', 'ADMIN', 'WORKER']
 
-const newToken = getUserToken()
-
 export function getUserToken() {
   const token = localStorage.getItem('token')
 
@@ -28,17 +26,27 @@ export function getUserToken() {
     return null
   }
 
-  const tokenDecoded = jwtDecode<DecodedToken>(token)
-
-  return tokenDecoded
+  // Token corrompido não pode derrubar o boot do app (tela branca).
+  try {
+    return jwtDecode<DecodedToken>(token)
+  } catch {
+    return null
+  }
 }
 
 
 export async function getInfoAuth() {
-  if (!newToken) return false
+  // Lê o token na hora da chamada — capturar em escopo de módulo congelava o
+  // estado do boot (sem token) e escondia botões até o F5 pós-login.
+  if (!getUserToken()) return false
   const activeCompanyId = localStorage.getItem('activeCompany')
-  const response = await userService.getInfoAuth()
-  const compareRole = response.companies.find((company: any) => company.companyId === activeCompanyId)
-  if (!compareRole) return false
-  return EDITOR_ROLES.includes(compareRole.role as CompanyRole)
+  try {
+    const response = await userService.getInfoAuth()
+    const compareRole = response.companies.find((company: any) => company.companyId === activeCompanyId)
+    if (!compareRole) return false
+    return EDITOR_ROLES.includes(compareRole.role as CompanyRole)
+  } catch {
+    // Check de papel: falha de rede não deve propagar e travar onMounted das views.
+    return false
+  }
 }

@@ -26,6 +26,8 @@ import {
   UnderlineIcon,
   List,
   ListOrdered,
+  Loader2,
+  AlertCircle,
   type LucideIcon,
 } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
@@ -42,6 +44,8 @@ type EventType =
 const props = defineProps<{
   modelValue: boolean
   event?: any
+  // Controlado pelo pai: mantém o modal aberto (com loading no botão) até a API confirmar.
+  saving?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -57,14 +61,24 @@ const isOpen = computed({
 
 const isEditing = computed(() => !!props.event?.id)
 
+// Ocorrência virtual de recorrência: read-only (edita a série via evento base).
+const isOccurrence = computed(() => !!props.event?.isOccurrence)
+
+// Link do Meet (backend já gera). Exibido no modo edição/view.
+const meetLink = computed<string | null>(() => props.event?.meetLink ?? null)
+
 const title = ref('')
 const description = ref('')
-const startDateText = ref('')
-const startTimeValue = ref('09:00')
-const endDateText = ref('')
-const endTimeValue = ref('09:00')
+const startDate = ref('') // YYYY-MM-DD (input type=date)
+const startTime = ref('09:00') // HH:MM (input type=time)
+const endDate = ref('')
+const endTime = ref('')
 const eventType = ref<EventType>('MEETING')
 const recurrence = ref('')
+
+// Erros de validação inline.
+const titleError = ref('')
+const dateError = ref('')
 
 const recurrenceOptions = [
   { value: '', label: 'Não se repete' },
@@ -115,33 +129,70 @@ onBeforeUnmount(() => {
 const resetForm = () => {
   title.value = ''
   description.value = ''
-  startDateText.value = ''
-  startTimeValue.value = '09:00'
-  endDateText.value = ''
-  endTimeValue.value = '09:00'
+  startDate.value = ''
+  startTime.value = '09:00'
+  endDate.value = ''
+  endTime.value = ''
   eventType.value = 'MEETING'
   recurrence.value = ''
+  titleError.value = ''
+  dateError.value = ''
 }
 
 const close = () => {
+  // Não fecha enquanto o pai está salvando (evita perder o form no meio do request).
+  if (props.saving) return
   isOpen.value = false
 }
 
-const save = () => {
-  const startDate = combineDateTime(startDateText.value, startTimeValue.value)
-  const endDate = endDateText.value ? combineDateTime(endDateText.value, endTimeValue.value) : null
+/** Valida o form e retorna os Date de início/fim, ou null se inválido (marca erros inline). */
+function validate(): { start: Date; end: Date | null } | null {
+  titleError.value = ''
+  dateError.value = ''
+  let ok = true
 
-  if (!title.value || !startDate) return
+  if (!title.value.trim()) {
+    titleError.value = 'Informe um título para o evento.'
+    ok = false
+  }
+
+  const start = combineDateTime(startDate.value, startTime.value)
+  if (!start) {
+    dateError.value = 'Informe uma data e hora de início válidas.'
+    ok = false
+  }
+
+  let end: Date | null = null
+  if (endDate.value) {
+    end = combineDateTime(endDate.value, endTime.value || startTime.value)
+    if (!end) {
+      dateError.value = 'Término inválido.'
+      ok = false
+    } else if (start && end <= start) {
+      dateError.value = 'O término deve ser depois do início.'
+      ok = false
+    }
+  }
+
+  if (!ok || !start) return null
+  return { start, end }
+}
+
+const save = () => {
+  if (props.saving || isOccurrence.value) return
+  const valid = validate()
+  if (!valid) return
+
+  // Emite e NÃO fecha: o pai fecha via v-model só no sucesso (mantém o form em caso de erro).
   emit('save', {
     id: props.event?.id,
-    title: title.value,
+    title: title.value.trim(),
     description: description.value,
-    startDate,
-    endDate,
+    startDate: valid.start.toISOString(),
+    endDate: valid.end ? valid.end.toISOString() : null,
     type: eventType.value,
     recurrence: recurrence.value || undefined,
   })
-  close()
 }
 
 const confirmDelete = ref(false)
@@ -162,12 +213,14 @@ watch(
       if (ev) {
         title.value = ev.title || ''
         description.value = ev.description || ''
-        startDateText.value = formatDateField(ev.startDate)
-        startTimeValue.value = formatTimeField(ev.startDate) || '09:00'
-        endDateText.value = formatDateField(ev.endDate)
-        endTimeValue.value = formatTimeField(ev.endDate) || startTimeValue.value
+        startDate.value = formatDateField(ev.startDate)
+        startTime.value = formatTimeField(ev.startDate) || '09:00'
+        endDate.value = formatDateField(ev.endDate)
+        endTime.value = formatTimeField(ev.endDate) || ''
         eventType.value = (ev.type as EventType) || 'MEETING'
         recurrence.value = ev.recurrence || ''
+        titleError.value = ''
+        dateError.value = ''
       } else {
         resetForm()
       }
@@ -186,13 +239,15 @@ const cmd = (fn: 'toggleBold' | 'toggleItalic' | 'toggleUnderline' | 'toggleBull
   chain?.[fn]().run()
 }
 
+/** ISO → 'YYYY-MM-DD' local (para <input type="date">). */
 function formatDateField(value?: string | null): string {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+/** ISO → 'HH:MM' local (para <input type="time">). */
 function formatTimeField(value?: string | null): string {
   if (!value) return ''
   const date = new Date(value)
@@ -200,56 +255,17 @@ function formatTimeField(value?: string | null): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-function parseDateField(value: string): { day: string; month: string; year: string } | null {
-  const trimmed = value.trim()
-  const br = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (br) {
-    return { day: br[1] ?? '', month: br[2] ?? '', year: br[3] ?? '' }
-  }
-
-  const iso = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
-  if (iso) {
-    return { day: iso[3] ?? '', month: iso[2] ?? '', year: iso[1] ?? '' }
-  }
-
-  return null
+/** Combina 'YYYY-MM-DD' + 'HH:MM' (hora local) num Date; null se inválido. */
+function combineDateTime(dateValue: string, timeValue: string): Date | null {
+  if (!dateValue) return null
+  const time = timeValue || '00:00'
+  const date = new Date(`${dateValue}T${time}`)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
-function normalizeTimeField(value: string): string | null {
-  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/)
-  if (!match) return null
-
-  const hour = Number(match[1])
-  const minute = Number(match[2])
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null
-
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-}
-
-function combineDateTime(dateValue: string, timeValue: string): string | null {
-  const dateParts = parseDateField(dateValue)
-  const time = normalizeTimeField(timeValue)
-  if (!dateParts || !time) return null
-
-  const day = Number(dateParts.day)
-  const month = Number(dateParts.month)
-  const year = Number(dateParts.year)
-  const [hourText, minuteText] = time.split(':')
-  const date = new Date(year, month - 1, day, Number(hourText), Number(minuteText), 0, 0)
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day ||
-    Number.isNaN(date.getTime())
-  ) {
-    return null
-  }
-
-  return date.toISOString()
-}
-
-const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.value, startTimeValue.value))
+const canSave = computed(
+  () => !isOccurrence.value && !!title.value.trim() && !!combineDateTime(startDate.value, startTime.value),
+)
 </script>
 
 <template>
@@ -283,6 +299,24 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
 
           <!-- Body -->
           <div class="body">
+            <!-- Aviso de ocorrência de série (read-only) -->
+            <div v-if="isOccurrence" class="occurrence-note">
+              <Repeat :size="13" />
+              Esta é uma ocorrência de um evento recorrente. Para alterá-la, edite a série no evento base.
+            </div>
+
+            <!-- Meet -->
+            <a
+              v-if="meetLink"
+              class="meet-link"
+              :href="meetLink"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Video :size="14" />
+              Entrar no Meet
+            </a>
+
             <!-- Title -->
             <label class="field">
               <span class="label">Título</span>
@@ -290,8 +324,14 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
                 v-model="title"
                 type="text"
                 class="input input--title"
+                :class="{ 'input--error': titleError }"
                 placeholder="Ex: Daily stand-up, review da sprint…"
+                @input="titleError = ''"
               />
+              <span v-if="titleError" class="field-error">
+                <AlertCircle :size="12" />
+                {{ titleError }}
+              </span>
             </label>
 
             <!-- Type -->
@@ -323,20 +363,20 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
                 </span>
                 <div class="datetime-control">
                   <input
-                    v-model="startDateText"
-                    type="text"
-                    inputmode="numeric"
+                    v-model="startDate"
+                    type="date"
                     class="input date-input"
-                    placeholder="dd/mm/aaaa"
+                    :class="{ 'input--error': dateError }"
                     aria-label="Data de início"
+                    @change="dateError = ''"
                   />
                   <input
-                    v-model="startTimeValue"
-                    type="text"
-                    inputmode="numeric"
+                    v-model="startTime"
+                    type="time"
                     class="input time-input"
-                    placeholder="09:00"
+                    :class="{ 'input--error': dateError }"
                     aria-label="Hora de início"
+                    @change="dateError = ''"
                   />
                 </div>
               </label>
@@ -347,24 +387,29 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
                 </span>
                 <div class="datetime-control">
                   <input
-                    v-model="endDateText"
-                    type="text"
-                    inputmode="numeric"
+                    v-model="endDate"
+                    type="date"
                     class="input date-input"
-                    placeholder="dd/mm/aaaa"
+                    :class="{ 'input--error': dateError }"
+                    :min="startDate || undefined"
                     aria-label="Data de término"
+                    @change="dateError = ''"
                   />
                   <input
-                    v-model="endTimeValue"
-                    type="text"
-                    inputmode="numeric"
+                    v-model="endTime"
+                    type="time"
                     class="input time-input"
-                    placeholder="10:00"
+                    :class="{ 'input--error': dateError }"
                     aria-label="Hora de término"
+                    @change="dateError = ''"
                   />
                 </div>
               </label>
             </div>
+            <span v-if="dateError" class="field-error field-error--dates">
+              <AlertCircle :size="12" />
+              {{ dateError }}
+            </span>
 
             <!-- Recurrence -->
             <div class="field">
@@ -441,10 +486,16 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
               </button>
             </div>
             <div class="foot-right">
-              <button class="btn btn-ghost" @click="close">Cancelar</button>
-              <button class="btn btn-primary" :disabled="!canSave" @click="save">
-                <component :is="isEditing ? Save : Plus" :size="13" />
-                {{ isEditing ? 'Salvar' : 'Criar evento' }}
+              <button class="btn btn-ghost" :disabled="saving" @click="close">Cancelar</button>
+              <button
+                v-if="!isOccurrence"
+                class="btn btn-primary"
+                :disabled="!canSave || saving"
+                @click="save"
+              >
+                <Loader2 v-if="saving" :size="13" class="spin" />
+                <component :is="isEditing ? Save : Plus" v-else :size="13" />
+                {{ saving ? 'Salvando…' : isEditing ? 'Salvar' : 'Criar evento' }}
               </button>
             </div>
           </footer>
@@ -620,6 +671,67 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+.input--error,
+.input--error:focus {
+  border-color: var(--err);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 20%, transparent);
+}
+
+.field-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--err);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.field-error--dates {
+  margin-top: -4px;
+}
+
+.occurrence-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info) 26%, transparent);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.meet-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  padding: 8px 13px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info) 32%, transparent);
+  color: var(--info);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+
+.meet-link:hover {
+  background: color-mix(in srgb, var(--info) 22%, transparent);
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .input--title {
   font-size: 14.5px;
   font-weight: 500;
@@ -627,7 +739,7 @@ const canSave = computed(() => !!title.value && !!combineDateTime(startDateText.
 
 .datetime-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 86px;
+  grid-template-columns: minmax(0, 1fr) 108px;
   gap: 8px;
 }
 

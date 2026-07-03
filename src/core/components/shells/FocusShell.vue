@@ -20,7 +20,9 @@ import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
 import ThemeToggle from './shared/ThemeToggle.vue'
+import XpToggle from './shared/XpToggle.vue'
 import InboxBell from './shared/InboxBell.vue'
+import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
@@ -216,7 +218,9 @@ const showTasks = computed(() =>
         <span class="slim-label">{{ currentLabel }}</span>
         <div class="spacer" />
         <HelpButton />
+        <TimerWidget />
         <InboxBell />
+        <XpToggle />
         <ThemeToggle />
       </header>
       <div class="main-scroll">

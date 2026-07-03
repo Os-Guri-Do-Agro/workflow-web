@@ -1,0 +1,322 @@
+{
+  "generatedAt": "2026-07-02T04:19:11.461Z",
+  "model": "Xenova/all-MiniLM-L6-v2",
+  "counts": {
+    "specs": 13,
+    "epics": 0,
+    "memories": 2,
+    "enriched": 0
+  },
+  "statusByName": {
+    "Desconhecido": 8,
+    "Em Implementação — F1–F4 entregues": 1,
+    "Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)": 1,
+    "Planejada (não iniciada)": 1,
+    "Pronto para implementar": 1,
+    "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)": 1
+  },
+  "specs": [
+    {
+      "path": "docs/specs/calendar-backend-contract.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Contrato do Calendário",
+      "status": "Desconhecido",
+      "lastUpdated": null,
+      "sections": [
+        "Estado no frontend",
+        "Diferença entre mock e API",
+        "Endpoints necessários",
+        "Tipos aceitos",
+        "Regras de backend esperadas",
+        "Pontos ainda pendentes",
+        "Comportamento atual de fallback"
+      ]
+    },
+    {
+      "path": "docs/specs/calendario_&_roadmap_mensal.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Integração Frontend — Calendário + Roadmap Mensal",
+      "status": "Desconhecido",
+      "lastUpdated": null,
+      "sections": [
+        "0. Convenções globais",
+        "1. Calendário — `/events`",
+        "2. Roadmap Mensal — `/roadmap/monthly`",
+        "3. Checklist de integração (frontend)"
+      ]
+    },
+    {
+      "path": "docs/specs/design-system-evolution.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Design System Evolution — work-flow",
+      "status": "Em Implementação — F1–F4 entregues",
+      "lastUpdated": "2026-04-22",
+      "sections": [
+        "Visão Geral",
+        "Discovery (consolidado)",
+        "1.1 Princípios (guardrails para todas as fases)",
+        "1.2 Fase F1 — Foundation (Tokens + Tipografia + Ícones)",
+        "1.3 Fase F2 — App Shell (3 variantes com toggle)",
+        "1.4 Fase F3 — Variables Rework",
+        "1.5 Fase F4 — Polish (Motion, Acessibilidade, Skeletons)",
+        "2.1 Árvore de arquivos nova",
+        "2.2 Decisões de arquitetura",
+        "2.3 Impacto em arquivos existentes",
+        "2.4 Não escopo (explícito)",
+        "F1 — Foundation",
+        "F2 — App Shell",
+        "F3 — Variables Rework",
+        "F4 — Polish",
+        "Acceptance Criteria (global)",
+        "Testes Manuais (Happy Path Global)",
+        "Definition of Done",
+        "Perguntas em aberto",
+        "P — Novas dependências",
+        "P — Tasks entregues",
+        "P — Não escopo (ainda)",
+        "P — Acceptance",
+        "Riscos"
+      ]
+    },
+    {
+      "path": "docs/specs/didactic-overhaul.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Overhaul Didatico do work-flow (branch develop)",
+      "status": "Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)",
+      "lastUpdated": null,
+      "sections": [
+        "1. Contexto e objetivo",
+        "2. Princípios (guardrails para todas as fases)",
+        "3. Visão geral das fases",
+        "4. F1 — Notas estilo Notion",
+        "5. F2 — Home `/` calma",
+        "6. F3 — Selects padronizados (AppSelect) + varredura de entities",
+        "7. F4 — Esconder o Canvas (manter Kanban)",
+        "8. F5 — Ajuda + Onboarding no topo",
+        "9. F6 — Texto da IA (renderização + prosa)",
+        "10. F7 — Acessibilidade 50+",
+        "11. F8 — Divida tecnica / itens incompletos",
+        "12. Backend: contrato consolidado",
+        "13. Ordem de execução sugerida + quick wins",
+        "14. Riscos e plano de rollback",
+        "15. Checklist mestre"
+      ]
+    },
+    {
+      "path": "docs/specs/FRONT-END_SPEC.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Frontend Spec — Workflow (completo, de um todo)",
+      "status": "Desconhecido",
+      "lastUpdated": null,
+      "sections": [
+        "0. Convenções globais (valem para TODAS as chamadas)",
+        "1. Calendário — `/events` (escopo híbrido)",
+        "2. Roadmap Mensal — `/roadmap/monthly` (x-company-id obrigatório)",
+        "3. Boards — canvas colaborativo (Yjs realtime)",
+        "4. Workspace Intelligence (busca + IA)",
+        "5. Inbox — notificações in-app",
+        "6. Share links públicos (read-only)",
+        "7. Colaboração — comentários, menções, reações, feed, digest",
+        "8. Realtime (socket.io) — push ao vivo + presença",
+        "9. Export PDF",
+        "10. Health",
+        "11. Catálogo rápido de endpoints (resumo)",
+        "12. Checklist macro de telas",
+        "13. Notas finais p/ o Cursor"
+      ]
+    },
+    {
+      "path": "docs/specs/handoff_frontend.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "HANDOFF — Frontend (Vue) · tudo que o app expõe",
+      "status": "Desconhecido",
+      "lastUpdated": null,
+      "sections": [
+        "Convenções (valem para tudo)",
+        "Mapa de features e docs",
+        "§1. Workspace Intelligence (IA sobre os dados da empresa)",
+        "§2. Share links públicos (read-only por token)",
+        "§3. Inbox — notificações in-app",
+        "Checklist macro de telas (esta jornada)",
+        "Libs novas no front"
+      ]
+    },
+    {
+      "path": "docs/specs/legacy-views-migration.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Legacy Views Migration — mdi → lucide + tokens",
+      "status": "Planejada (não iniciada)",
+      "lastUpdated": null,
+      "sections": [
+        "Visão Geral",
+        "Discovery",
+        "1.1 Fase L1 — Tasks Stack (TaskDetails + KanbanBoard + TasksView)",
+        "1.2 Fase L2 — Notes Stack (NoteModal + NoteEditorView + NotesView + TiptapEditor)",
+        "1.3 Fase L3 — Tickets + Reports + Workspace",
+        "1.4 Fase L4 — Modais administrativos e polish final",
+        "2.1 Novo primitive: `TipTapToolbar`",
+        "2.2 Não há novos composables",
+        "2.3 Decisões",
+        "2.4 Não escopo",
+        "L1 — Tasks Stack",
+        "L2 — Notes Stack",
+        "L3 — Tickets + Reports + Workspace",
+        "L4 — Admin modals + cleanup final",
+        "Por fase",
+        "Global (ao fechar L4)",
+        "Definition of Done",
+        "Perguntas em aberto"
+      ]
+    },
+    {
+      "path": "docs/specs/roadmap_mensal.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Spec Frontend — Roadmap Mensal (`/roadmap` → \"Calendários mensais\")",
+      "status": "Pronto para implementar",
+      "lastUpdated": null,
+      "sections": [
+        "1. Modelo mental",
+        "2. Carregamento da tela",
+        "3. Estados de cada card de mês",
+        "4. O padrão essencial: `ensureMonthId()`",
+        "5. Fluxos de escrita (todos exigem role **WORKER+**)",
+        "6. Erros e permissões",
+        "7. Calendário visual + PDF",
+        "8. Checklist de implementação",
+        "9. Decisões e não-objetivos"
+      ]
+    },
+    {
+      "path": "docs/specs/roadmap-backend-contract.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Roadmap — contrato esperado para backend",
+      "status": "Desconhecido",
+      "lastUpdated": null,
+      "sections": [
+        "Contexto",
+        "Objetivo da tela",
+        "Estado atual no frontend",
+        "Tipos usados no frontend",
+        "Resposta sugerida",
+        "Endpoints recomendados",
+        "Regras de negócio esperadas",
+        "Integração no frontend quando backend existir",
+        "Critérios de aceite para backend",
+        "Observações"
+      ]
+    },
+    {
+      "path": "docs/specs/roadmap-monthly-backend-contract.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Contrato do Roadmap Mensal",
+      "status": "Desconhecido",
+      "lastUpdated": null,
+      "sections": [
+        "Objetivo da tela",
+        "Estado atual no frontend",
+        "Conceitos da tela",
+        "Endpoints necessários",
+        "Endpoints de focos",
+        "Endpoints de imagens",
+        "Endpoints de agenda",
+        "Anotações rápidas",
+        "Exportação para PDF",
+        "Regras de validação esperadas",
+        "Ordenação esperada",
+        "Compatibilidade com a tela atual",
+        "Critérios de aceite para integração",
+        "Pontos pendentes de decisão"
+      ]
+    },
+    {
+      "path": "docs/specs/session-expiration-redirect.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Arquitetura — sessão expirada e redirect",
+      "status": "Desconhecido",
+      "lastUpdated": null,
+      "sections": [
+        "Objetivo",
+        "Escopo",
+        "Peças envolvidas",
+        "Fluxo esperado",
+        "Estados principais",
+        "Regras de segurança",
+        "Arquivos sugeridos para implementação",
+        "Critérios de aceite"
+      ]
+    },
+    {
+      "path": "docs/specs/shell-nav-unification.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Shell Navigation Unification + Dead Buttons + Modal Stability",
+      "status": "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)",
+      "lastUpdated": null,
+      "sections": [
+        "Visão Geral",
+        "Discovery",
+        "1.1 Navegação de Tarefas — unificação entre shells",
+        "1.2 Botões mortos — wire-up",
+        "1.3 EventModal — estabilidade e tokens",
+        "1.4 TaskForm — tokens + UX",
+        "2.1 Novo composable",
+        "2.2 Decisões",
+        "2.3 Arquivos alterados (commit `0d1ea7c`)",
+        "2.4 Não escopo",
+        "Testes manuais executados",
+        "Definition of Done"
+      ]
+    },
+    {
+      "path": "docs/specs/spec_frontend.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Frontend Spec — Workflow (completo, de um todo)",
+      "status": "Desconhecido",
+      "lastUpdated": null,
+      "sections": [
+        "0. Convenções globais (valem para TODAS as chamadas)",
+        "1. Calendário — `/events` (escopo híbrido)",
+        "2. Roadmap Mensal — `/roadmap/monthly` (x-company-id obrigatório)",
+        "3. Boards — canvas colaborativo (Yjs realtime)",
+        "4. Workspace Intelligence (busca + IA)",
+        "5. Inbox — notificações in-app",
+        "6. Share links públicos (read-only)",
+        "7. Colaboração — comentários, menções, reações, feed, digest",
+        "8. Realtime (socket.io) — push ao vivo + presença",
+        "9. Export PDF",
+        "10. Health",
+        "11. Catálogo rápido de endpoints (resumo)",
+        "12. Checklist macro de telas",
+        "13. Notas finais p/ o Cursor"
+      ]
+    }
+  ],
+  "memories": [
+    {
+      "path": "didactic-overhaul-program.md",
+      "kind": "memory",
+      "name": "didactic-overhaul-program",
+      "description": "Programa multi-fase para deixar o work-flow didático/acessível; spec em docs/specs/didactic-overhaul.md",
+      "type": "project"
+    },
+    {
+      "path": "user-nicolas-workstyle.md",
+      "kind": "memory",
+      "name": "user-nicolas-workstyle",
+      "description": "Como o Nicolas gosta de trabalhar — delega com alta confiança, spec-driven, PT-BR casual",
+      "type": "feedback"
+    }
+  ]
+}

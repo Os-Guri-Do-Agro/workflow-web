@@ -117,7 +117,9 @@ export function useComments(
       comments.value[index] = comment
       return
     }
-    comments.value = [comment, ...comments.value]
+    // Append: o servidor lista em ordem asc (mais antigo primeiro) — manter o
+    // novo comentário no fim preserva o thread-style consistente com o refresh.
+    comments.value = [...comments.value, comment]
   }
 
   onMounted(() => {

@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-vue-next'
 import aiService, { type SearchHit } from '@/service/ai/ai-service'
+import { clearSession } from '@/service/api'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
 import { getInfoAuth } from '@/utils/authContent'
@@ -219,7 +220,8 @@ function go(path: string) {
 
 function logout() {
   close()
-  localStorage.clear()
+  // clearSession preserva preferências de UI (tema, acento, shell).
+  clearSession()
   router.push('/login')
 }
 

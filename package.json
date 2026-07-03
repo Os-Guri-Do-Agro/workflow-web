@@ -12,7 +12,12 @@
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "format": "prettier --write --experimental-cli src/"
+    "format": "prettier --write --experimental-cli src/",
+    "spec:index": "node scripts/spec-rag/build-index.mjs",
+    "spec:embed": "node scripts/spec-rag/embed.mjs",
+    "spec:rag": "node scripts/spec-rag/build-index.mjs && node scripts/spec-rag/embed.mjs",
+    "spec:merge": "node scripts/spec-rag/merge-enrichment.mjs",
+    "spec:query": "node scripts/spec-rag/query.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
@@ -67,6 +72,7 @@
     "yjs": "^13.6.31"
   },
   "devDependencies": {
+    "@huggingface/transformers": "^3.0.0",
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.11.0",
     "@types/nprogress": "^0.2.3",

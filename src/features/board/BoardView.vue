@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { useWorkspaceStore, type ActivityItem } from '@/stores/workspaceStores'
+import { dateOnlyDiffDays, isOverdue as isDueDateOverdue } from '@/utils/date'
 import { useToast } from '@/composables/useToast'
 import activityService from '@/service/activities/activity-service'
 import AppSelect from '@/components/ui/AppSelect.vue'
@@ -135,10 +136,15 @@ watch(
 
 async function openTask(activity: any) {
   if (!activity.monthId) {
-    await workspace.fetchWorkspace()
+    try {
+      await workspace.fetchWorkspace()
+    } catch {
+      showError('Não foi possível abrir a atividade — recarregue a página')
+      return
+    }
     const fresh = workspace.workspaceData?.activities.find((a) => a.id === activity.id)
     if (!fresh?.monthId) {
-      console.error('monthId não encontrado para a atividade', activity.id)
+      showError('Não foi possível abrir a atividade — recarregue a página')
       return
     }
     activity = fresh
@@ -152,10 +158,7 @@ async function openTask(activity: any) {
 
 function formatDate(date: string | null) {
   if (!date) return 'Sem prazo'
-  const d = new Date(date)
-  const now = new Date()
-  const diff = d.getTime() - now.getTime()
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
+  const days = dateOnlyDiffDays(date)
 
   if (days < 0) return `Atrasada ${Math.abs(days)}d`
   if (days === 0) return 'Hoje'
@@ -164,8 +167,8 @@ function formatDate(date: string | null) {
 }
 
 function isOverdue(activity: any) {
-  if (!activity.dueDate || activity.status === 'DONE') return false
-  return new Date(activity.dueDate) < new Date()
+  if (activity.status === 'DONE') return false
+  return isDueDateOverdue(activity.dueDate)
 }
 
 async function updateTaskStatus(task: ActivityItem, newStatus: ColumnStatus) {

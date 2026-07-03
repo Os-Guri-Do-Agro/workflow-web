@@ -1,0 +1,116 @@
+/*
+ * Modo Windows XP (easter egg) — tema "Luna".
+ *
+ * Ativado por html[data-xp='true'] (ver applyXpMode em plugins/tokens.ts).
+ * Os tokens do design system são aplicados como inline style no <html>
+ * (applyThemeTokens), então as sobrescritas aqui precisam de !important —
+ * regra de autor !important vence inline style sem !important.
+ */
+
+html[data-xp='true'] {
+  /* Paleta Luna: janela bege, conteúdo branco, azul XP */
+  --bg: #ece9d8 !important;
+  --surface: #ffffff !important;
+  --surface-2: #f5f4ea !important;
+  --surface-3: #e3e0ce !important;
+  --border: #aca899 !important;
+  --border-strong: #716f64 !important;
+  --text: #1a1a1a !important;
+  --text-2: rgba(26, 26, 26, 0.78) !important;
+  --text-3: rgba(26, 26, 26, 0.64) !important;
+  --text-4: rgba(26, 26, 26, 0.5) !important;
+  --accent: #0054e3 !important;
+  --accent-fg: #ffffff !important;
+  --success: #3c8d2f !important;
+  --info: #316ac5 !important;
+  --radius-sm: 3px !important;
+  --radius: 4px !important;
+  --radius-lg: 6px !important;
+  --radius-xl: 8px !important;
+  --shadow-sm: 1px 1px 0 rgba(0, 0, 0, 0.18) !important;
+  --shadow: 2px 2px 4px rgba(0, 0, 0, 0.3) !important;
+  --shadow-overlay: 4px 4px 10px rgba(0, 0, 0, 0.4) !important;
+  --font-family: Tahoma, 'Segoe UI', Verdana, sans-serif !important;
+  color-scheme: light;
+}
+
+/* Vuetify lê --v-theme-* (triplas rgb) do :root — acompanha a paleta Luna */
+html[data-xp='true'] {
+  --v-theme-primary: 255, 255, 255 !important;
+  --v-theme-secondary: 26, 26, 26 !important;
+  --v-theme-background: 236, 233, 216 !important;
+  --v-theme-surface: 245, 244, 234 !important;
+  --v-theme-on-background: 26, 26, 26 !important;
+  --v-theme-on-surface: 26, 26, 26 !important;
+  --v-theme-on-primary: 26, 26, 26 !important;
+  --v-theme-on-secondary: 255, 255, 255 !important;
+}
+
+/* Papel de parede: substitui a aurora dos shells pelo Bliss */
+html[data-xp='true'] .aurora {
+  background: url('./xp-bliss.svg') center / cover no-repeat !important;
+}
+
+html[data-xp='true'] .aurora-blob,
+html[data-xp='true'] .aurora-grid,
+html[data-xp='true'] .aurora-noise {
+  display: none !important;
+}
+
+html[data-xp='true'] body {
+  background: url('./xp-bliss.svg') center / cover fixed no-repeat;
+}
+
+/* Chrome de janela: topbars/sidebars (.glass) viram title bar Luna */
+html[data-xp='true'] .glass,
+html[data-xp='true'] .glass-strong {
+  background: linear-gradient(
+    180deg,
+    #0997ff 0%,
+    #0053ee 8%,
+    #0050ee 40%,
+    #0055eb 60%,
+    #005bff 74%,
+    #0066ff 88%,
+    #0049b7 100%
+  ) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: #003cbe !important;
+  color: #ffffff;
+}
+
+/* Texto/ícones dentro do chrome Luna ficam brancos e legíveis */
+html[data-xp='true'] .glass :is(button, a, span, div, input, label, svg) {
+  --text: #ffffff;
+  --text-2: rgba(255, 255, 255, 0.92);
+  --text-3: rgba(255, 255, 255, 0.8);
+  --text-4: rgba(255, 255, 255, 0.65);
+}
+
+html[data-xp='true'] .glass input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Scrollbar estilo XP */
+html[data-xp='true'] ::-webkit-scrollbar {
+  width: 15px;
+  height: 15px;
+}
+
+html[data-xp='true'] ::-webkit-scrollbar-track {
+  background: #f0efe4;
+  border: 1px solid #dcdacb;
+}
+
+html[data-xp='true'] ::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #cfdcfb 0%, #b7cbf5 50%, #99b5ec 100%);
+  border: 1px solid #7a96df;
+  border-radius: 2px;
+}
+
+/* Seleção de texto azul XP */
+html[data-xp='true'] ::selection {
+  background: #316ac5;
+  color: #ffffff;
+}

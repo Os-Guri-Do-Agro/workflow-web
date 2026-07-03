@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
+import { isAxiosError } from 'axios'
 import { Loader2, MessageSquare, Send, Trash2, X } from 'lucide-vue-next'
 import { useComments } from '@/composables/useComments'
 import type { CommentEntityType } from '@/service/collaboration/collaboration-service'
-import type { CommentPayload } from '@/service/realtime/realtime-service'
+import type { CommentPayload, MentionedUser } from '@/service/realtime/realtime-service'
 import { useToast } from '@/composables/useToast'
 import userService from '@/service/user/user-service'
+import { getUserToken } from '@/utils/authContent'
 
 const props = defineProps<{
   entityType: CommentEntityType
@@ -22,17 +24,43 @@ const { comments, loading, sending, error, create, remove, toggleReaction } = us
   () => props.entityId,
 )
 
+// Id do usuário logado (mesma fonte que reactions/autor) — destaca comentários
+// em que ele foi mencionado.
+const currentUserId = getUserToken()?.sub ?? null
+
+const listRef = ref<HTMLElement | null>(null)
+
+// Thread em ordem asc: comentário novo entra no fim → rola até ele.
+watch(
+  () => comments.value.length,
+  async (next, prev) => {
+    if (next <= (prev ?? 0)) return
+    await nextTick()
+    listRef.value?.scrollTo({ top: listRef.value.scrollHeight })
+  },
+)
+
+function isMentioned(comment: CommentPayload) {
+  return Boolean(currentUserId && comment.mentions?.includes(currentUserId))
+}
+
+function mentionLabel(user: MentionedUser) {
+  return user.name || user.email || 'Colaborador'
+}
+
 // ─── @menção por nome (autocomplete escopado na empresa) ─────────────────────
 type MentionUser = { id: string; name: string; email: string }
 const mentionQuery = ref('')
 const mentionResults = ref<MentionUser[]>([])
 const selectedMentions = ref<MentionUser[]>([])
 const searchingMentions = ref(false)
+const mentionSearchError = ref<string | null>(null)
 const highlightIdx = ref(0)
 let mentionTimer: number | null = null
 
 function onMentionInput() {
   highlightIdx.value = 0
+  mentionSearchError.value = null
   if (mentionTimer) window.clearTimeout(mentionTimer)
   const q = mentionQuery.value.trim()
   if (q.length < 2) {
@@ -46,8 +74,12 @@ function onMentionInput() {
       const res = await userService.searchUsers(q)
       const chosen = new Set(selectedMentions.value.map((m) => m.id))
       mentionResults.value = (Array.isArray(res) ? res : []).filter((u) => !chosen.has(u.id))
-    } catch {
+    } catch (err) {
       mentionResults.value = []
+      // 403 = papel sem permissão de busca — mensagem específica ajuda mais que "ninguém encontrado".
+      if (isAxiosError(err) && err.response?.status === 403) {
+        mentionSearchError.value = 'Sem permissão para buscar usuários'
+      }
     } finally {
       searchingMentions.value = false
     }
@@ -57,6 +89,11 @@ function onMentionInput() {
 function addMention(user: MentionUser) {
   if (!selectedMentions.value.some((m) => m.id === user.id)) {
     selectedMentions.value.push(user)
+    // Injeta @Nome no texto para o comentário publicado mostrar quem foi marcado.
+    const tag = `@${user.name || user.email}`
+    if (!draft.value.includes(tag)) {
+      draft.value = draft.value.trimEnd() ? `${draft.value.trimEnd()} ${tag} ` : `${tag} `
+    }
   }
   mentionQuery.value = ''
   mentionResults.value = []
@@ -179,6 +216,7 @@ async function react(comment: CommentPayload, emoji: string) {
           />
           <ul v-if="mentionQuery.trim().length >= 2" class="mention-menu">
             <li v-if="searchingMentions" class="mention-empty">Buscando…</li>
+            <li v-else-if="mentionSearchError" class="mention-empty">{{ mentionSearchError }}</li>
             <li v-else-if="!mentionResults.length" class="mention-empty">Ninguém encontrado</li>
             <li
               v-for="(u, i) in mentionResults"
@@ -215,8 +253,13 @@ async function react(comment: CommentPayload, emoji: string) {
       <span>Nenhum comentário ainda.</span>
     </div>
 
-    <div v-else class="comments-list">
-      <article v-for="comment in comments" :key="comment.id" class="comment-card">
+    <div v-else ref="listRef" class="comments-list">
+      <article
+        v-for="comment in comments"
+        :key="comment.id"
+        class="comment-card"
+        :class="{ 'comment-card--mentioned': isMentioned(comment) }"
+      >
         <div class="comment-avatar">{{ initials(authorName(comment)) }}</div>
         <div class="comment-body">
           <div class="comment-meta">
@@ -227,6 +270,11 @@ async function react(comment: CommentPayload, emoji: string) {
             </button>
           </div>
           <p>{{ comment.body }}</p>
+          <div v-if="comment.mentionedUsers?.length" class="mention-chips mention-chips--card">
+            <span v-for="user in comment.mentionedUsers" :key="user.id" class="mention-chip">
+              @{{ mentionLabel(user) }}
+            </span>
+          </div>
           <div class="reaction-row">
             <button
               v-for="emoji in reactions"
@@ -506,6 +554,15 @@ async function react(comment: CommentPayload, emoji: string) {
   border-radius: var(--radius);
   background: var(--surface-2);
   padding: 12px;
+}
+
+/* Você foi mencionado neste comentário: destaque sutil na borda esquerda. */
+.comment-card--mentioned .comment-body {
+  border-left: 3px solid var(--accent);
+}
+
+.mention-chips--card {
+  margin: 0 0 12px;
 }
 
 .comment-meta {

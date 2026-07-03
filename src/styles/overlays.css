@@ -1,0 +1,40 @@
+/* Overlays do Vuetify (menus de select, autocomplete, combobox, v-menu) são
+   teleportados para fora do escopo dos componentes; sem estilo global a v-list
+   herda uma superfície transparente (o var(--v-theme-surface) não resolve fora
+   do .v-application) e o menu "some". Aqui pintamos o fundo pelo container do
+   overlay — selecionado pela classe de conteúdo, que é confiável no Vuetify 4 —
+   e deixamos a v-list transparente para o fundo do container aparecer. */
+.v-select__content,
+.v-autocomplete__content,
+.v-combobox__content,
+.v-menu > .v-overlay__content {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-overlay) !important;
+  border-radius: var(--radius) !important;
+  color: var(--text);
+}
+
+/* A v-list interna não deve pintar o próprio fundo (que pode vir transparente
+   fora do escopo do tema) — deixa o fundo do overlay acima aparecer. */
+.v-select__content .v-list,
+.v-autocomplete__content .v-list,
+.v-combobox__content .v-list,
+.v-menu > .v-overlay__content .v-list {
+  background: transparent !important;
+  color: var(--text);
+}
+
+.v-overlay__content .v-list-item-title,
+.v-overlay__content .v-list-item-subtitle {
+  color: var(--text);
+}
+
+/* Estado hover/selecionado dos itens usando o accent do design system. */
+.v-overlay__content .v-list-item__overlay {
+  opacity: 0;
+}
+.v-overlay__content .v-list-item:hover .v-list-item__overlay,
+.v-overlay__content .v-list-item--active .v-list-item__overlay {
+  opacity: 0.08;
+}

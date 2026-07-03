@@ -1,6 +1,8 @@
 import '@fontsource-variable/inter'
 import '@/styles/reset.css'
 import '@/styles/typography.css'
+import '@/styles/xp.css'
+import '@/styles/overlays.css'
 import 'vue-sonner/style.css'
 
 import { createApp } from 'vue'

@@ -4,10 +4,12 @@ import { useRouter } from 'vue-router'
 import { Bell, CheckCheck, Inbox, Loader2, Trash2 } from 'lucide-vue-next'
 import { useInbox } from '@/composables/useInbox'
 import { useToast } from '@/composables/useToast'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 import type { AppNotification } from '@/service/inbox/inbox-service'
 
 const router = useRouter()
 const { error: showError, success } = useToast()
+const workspaceStore = useWorkspaceStore()
 const { notifications, unreadCount, markRead, markAllRead, dismiss } = useInbox()
 
 const isOpen = ref(false)
@@ -35,10 +37,16 @@ function close() {
 }
 
 async function handleOpenNotification(notification: AppNotification) {
+  // Fire-and-forget: marcar como lida não pode atrasar (nem impedir) a navegação.
+  if (!notification.read) markRead.mutate(notification.id)
+  close()
+  if (!notification.link) return
+  // Notificação de outra empresa: ativa a empresa certa antes de navegar.
+  if (notification.companyId && notification.companyId !== workspaceStore.activeCompanyId) {
+    workspaceStore.setActiveCompany(notification.companyId)
+  }
   try {
-    if (!notification.read) await markRead.mutateAsync(notification.id)
-    close()
-    if (notification.link) await router.push(notification.link)
+    await router.push(notification.link)
   } catch {
     showError('Não foi possível abrir a notificação')
   }

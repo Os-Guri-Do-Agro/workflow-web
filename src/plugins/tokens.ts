@@ -98,7 +98,9 @@ const accentForeground: Record<ThemeName, string> = {
 
 export const vuetifyThemeColors = {
   dark: {
-    primary: darkTokens['--surface'],
+    // primary = cor de AÇÃO (azul). Antes apontava para --surface, o que deixava
+    // todo componente Vuetify com color="primary" invisível (superfície sobre superfície).
+    primary: accents.blue.dark,
     secondary: darkTokens['--text'],
     background: darkTokens['--bg'],
     surface: darkTokens['--surface-2'],
@@ -110,7 +112,8 @@ export const vuetifyThemeColors = {
     'secondary-lighten': '#424242',
   },
   light: {
-    primary: lightTokens['--surface'],
+    // primary = cor de AÇÃO (azul). Ver comentário no tema dark.
+    primary: accents.blue.light,
     secondary: lightTokens['--text'],
     background: lightTokens['--bg'],
     surface: lightTokens['--surface-2'],
@@ -147,6 +150,17 @@ export function applyFontScale(scale: FontScale = 1): void {
   root.setAttribute('data-font-scale', String(scale))
 }
 
+/**
+ * Modo Windows XP (easter egg). Liga/desliga o atributo `data-xp` no <html>;
+ * as sobrescritas visuais vivem em `styles/xp.css` (tema Luna + wallpaper
+ * Bliss). Convive com o tema normal: desligar volta exatamente ao que era.
+ */
+export function applyXpMode(on: boolean): void {
+  const root = document.documentElement
+  if (on) root.setAttribute('data-xp', 'true')
+  else root.removeAttribute('data-xp')
+}
+
 export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral'): void {
   const root = document.documentElement
   const tokens = themeTokens[theme]
@@ -175,7 +189,8 @@ export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral
     '--v-theme-warning': vt.warning,
     '--v-theme-on-background': vt.secondary,
     '--v-theme-on-surface': vt.secondary,
-    '--v-theme-on-primary': vt.secondary,
+    // Texto sobre a nova primary azul: branco garante legibilidade dos botões primary.
+    '--v-theme-on-primary': '#FFFFFF',
     '--v-theme-on-secondary': vt.primary,
   }
   for (const [key, value] of Object.entries(vMap)) {

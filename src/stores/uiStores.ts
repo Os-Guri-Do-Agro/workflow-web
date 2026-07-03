@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import {
   applyFontScale,
   applyThemeTokens,
+  applyXpMode,
   type AccentName,
   type Density,
   type FontScale,
@@ -16,6 +17,7 @@ const STORAGE = {
   density: 'ui.density',
   shell: 'ui.shell',
   fontScale: 'ui.fontScale',
+  xp: 'ui.xp',
 } as const
 
 const readTheme = (): ThemeName => {
@@ -46,12 +48,15 @@ const readFontScale = (): FontScale => {
   return (allowed as number[]).includes(v) ? (v as FontScale) : 1
 }
 
+const readXp = (): boolean => localStorage.getItem(STORAGE.xp) === 'true'
+
 export const useUiStore = defineStore('ui', () => {
   const theme = ref<ThemeName>(readTheme())
   const accent = ref<AccentName>(readAccent())
   const density = ref<Density>(readDensity())
   const shell = ref<ShellVariant>(readShell())
   const fontScale = ref<FontScale>(readFontScale())
+  const xp = ref<boolean>(readXp())
 
   watch(theme, (v) => {
     localStorage.setItem(STORAGE.theme, v)
@@ -77,8 +82,14 @@ export const useUiStore = defineStore('ui', () => {
     applyFontScale(v)
   })
 
+  watch(xp, (v) => {
+    localStorage.setItem(STORAGE.xp, String(v))
+    applyXpMode(v)
+  })
+
   // Aplica a escala salva já no boot (antes de qualquer watch disparar).
   applyFontScale(fontScale.value)
+  applyXpMode(xp.value)
 
-  return { theme, accent, density, shell, fontScale }
+  return { theme, accent, density, shell, fontScale, xp }
 })

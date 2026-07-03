@@ -26,5 +26,11 @@ export default createVuetify({
   },
   defaults: {
     VDialog: { scrimOpacity: 0.6 },
+    // Padroniza todos os selects/inputs: mesma variante, densidade e detalhes.
+    VSelect: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto' },
+    VAutocomplete: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto' },
+    VCombobox: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto' },
+    VTextField: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto' },
+    VFileInput: { variant: 'outlined', density: 'comfortable', hideDetails: 'auto' },
   },
 })

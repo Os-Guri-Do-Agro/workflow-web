@@ -1,10 +1,19 @@
 import { io, type Socket } from 'socket.io-client'
 import type { AppNotification } from '@/service/inbox/inbox-service'
+import type { TimeEntry } from '@/service/time/time-service'
+import type { SearchHit } from '@/service/ai/ai-service'
 
 export interface PublicUser {
   id: string
   name: string
   email: string
+}
+
+/** Usuário mencionado num comentário (attachComments) — name/email podem faltar. */
+export interface MentionedUser {
+  id: string
+  name?: string
+  email?: string
 }
 
 export interface CommentPayload {
@@ -16,6 +25,7 @@ export interface CommentPayload {
   author: PublicUser | null
   body: string
   mentions: string[]
+  mentionedUsers?: MentionedUser[]
   createdAt: string
   updatedAt: string
   reactions: Array<{ id: string; userId: string; emoji: string; user: PublicUser | null }>
@@ -37,11 +47,38 @@ export interface PresenceUpdatePayload {
   online: string[]
 }
 
+// ─── Copiloto agente (streaming) ────────────────────────────────────────────
+export interface AssistantDeltaPayload {
+  runId: string
+  text: string
+}
+export interface AssistantToolPayload {
+  runId: string
+  tool: string
+  label: string
+}
+export interface AssistantDonePayload {
+  runId: string
+  sources: SearchHit[]
+}
+export interface AssistantErrorPayload {
+  runId: string
+  message: string
+}
+
 export interface RealtimeHandlers {
   notificationNew?: (notification: AppNotification) => void
   feedNew?: (event: FeedEventPayload) => void
   commentNew?: (comment: CommentPayload) => void
   presenceUpdate?: (presence: PresenceUpdatePayload) => void
+  // Time tracking: sincroniza o widget entre abas/dispositivos do mesmo usuário.
+  timeStarted?: (entry: TimeEntry) => void
+  timeStopped?: (entry: TimeEntry) => void
+  // Copiloto agente: streaming da resposta em tempo real.
+  assistantDelta?: (payload: AssistantDeltaPayload) => void
+  assistantTool?: (payload: AssistantToolPayload) => void
+  assistantDone?: (payload: AssistantDonePayload) => void
+  assistantError?: (payload: AssistantErrorPayload) => void
   connect?: () => void
   disconnect?: () => void
 }
@@ -86,6 +123,12 @@ const realtimeService = {
     nextSocket.off('feed:new')
     nextSocket.off('comment:new')
     nextSocket.off('presence:update')
+    nextSocket.off('time:started')
+    nextSocket.off('time:stopped')
+    nextSocket.off('assistant:delta')
+    nextSocket.off('assistant:tool')
+    nextSocket.off('assistant:done')
+    nextSocket.off('assistant:error')
     nextSocket.off('connect')
     nextSocket.off('disconnect')
 
@@ -100,6 +143,24 @@ const realtimeService = {
     })
     nextSocket.on('presence:update', (presence: PresenceUpdatePayload) => {
       handlers.forEach((handler) => handler.presenceUpdate?.(presence))
+    })
+    nextSocket.on('time:started', (entry: TimeEntry) => {
+      handlers.forEach((handler) => handler.timeStarted?.(entry))
+    })
+    nextSocket.on('time:stopped', (entry: TimeEntry) => {
+      handlers.forEach((handler) => handler.timeStopped?.(entry))
+    })
+    nextSocket.on('assistant:delta', (payload: AssistantDeltaPayload) => {
+      handlers.forEach((handler) => handler.assistantDelta?.(payload))
+    })
+    nextSocket.on('assistant:tool', (payload: AssistantToolPayload) => {
+      handlers.forEach((handler) => handler.assistantTool?.(payload))
+    })
+    nextSocket.on('assistant:done', (payload: AssistantDonePayload) => {
+      handlers.forEach((handler) => handler.assistantDone?.(payload))
+    })
+    nextSocket.on('assistant:error', (payload: AssistantErrorPayload) => {
+      handlers.forEach((handler) => handler.assistantError?.(payload))
     })
     nextSocket.on('connect', () => {
       handlers.forEach((handler) => handler.connect?.())

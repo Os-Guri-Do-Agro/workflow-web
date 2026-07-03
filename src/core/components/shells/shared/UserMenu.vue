@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Settings, LogOut } from 'lucide-vue-next'
 import { getUserToken } from '@/utils/authContent'
+import { clearSession } from '@/service/api'
 
 withDefaults(
   defineProps<{
@@ -28,7 +29,8 @@ const userInitials = computed(() => {
 const firstName = computed(() => user?.name?.split(' ')[0] || '')
 
 const handleLogout = () => {
-  localStorage.clear()
+  // clearSession preserva preferências de UI (tema, acento, shell).
+  clearSession()
   router.push('/login')
 }
 </script>
