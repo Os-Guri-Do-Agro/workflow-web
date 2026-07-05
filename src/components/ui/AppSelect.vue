@@ -208,6 +208,22 @@ function onUpdate(key: string | undefined) {
   flex-shrink: 0;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .app-select__trigger {
+    transition-duration: 1ms;
+  }
+}
+</style>
+
+<!--
+  Estilos do DROPDOWN (SelectContent) em bloco GLOBAL, não scoped.
+  O <SelectPortal> da reka-ui teleporta o conteúdo para o <body>, FORA do #app.
+  O atributo data-v-* do <style scoped> NÃO viaja com o nó teleportado, então
+  regras scoped não alcançam o dropdown — era por isso que o fundo do menu
+  ficava transparente ("select invisível"). Aqui as regras são globais, com
+  prefixo próprio (.app-select__*) para não colidir com nada.
+-->
+<style>
 .app-select__content {
   z-index: 10000;
   min-width: var(--reka-select-trigger-width);
@@ -217,6 +233,7 @@ function onUpdate(key: string | undefined) {
   border-radius: var(--radius);
   box-shadow: var(--shadow-overlay);
   overflow: hidden;
+  color: var(--text);
 }
 
 .app-select__viewport {
@@ -269,7 +286,6 @@ function onUpdate(key: string | undefined) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-select__trigger,
   .app-select__item {
     transition-duration: 1ms;
   }
