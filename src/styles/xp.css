@@ -145,19 +145,22 @@ html[data-xp='true'] .canvas-shell > .topnav input::placeholder {
   color: rgba(255, 255, 255, 0.7);
 }
 
-/* ─── Painéis laterais Luna ─────────────────────────────────────────────────── */
-/* Sidebar (Command) + rail/context (Focus) = painel Luna azul-claro. */
+/* ─── Sem navegação lateral: o app vira UMA JANELA XP MAXIMIZADA ─────────────── */
+/* No Windows XP a navegação é pelo Menu Iniciar + ícones do desktop, não por um
+   drawer lateral. Escondemos a sidebar (Command) e o rail/context (Focus) e o
+   conteúdo passa a ocupar toda a largura do desktop. */
 html[data-xp='true'] .sidebar,
 html[data-xp='true'] .rail,
 html[data-xp='true'] .context {
-  background: #d6e5f5 !important;
-  border-color: #7a9fd6 !important;
+  display: none !important;
 }
 
-html[data-xp='true'] .sidebar-footer,
-html[data-xp='true'] .context-header,
-html[data-xp='true'] .context-footer {
-  border-color: #a7c1e6 !important;
+/* Grids dos shells viram 1 coluna (só o conteúdo). */
+html[data-xp='true'] .command-shell .body {
+  grid-template-columns: 1fr !important;
+}
+html[data-xp='true'] .focus-shell {
+  grid-template-columns: 1fr !important;
 }
 
 /* Scrollbar estilo XP */
