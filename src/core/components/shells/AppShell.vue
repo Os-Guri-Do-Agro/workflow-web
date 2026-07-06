@@ -9,7 +9,10 @@ import AssistantPanel from '@/components/assistant/AssistantPanel.vue'
 import AssistantLauncher from '@/components/assistant/AssistantLauncher.vue'
 import WelcomeGuide from '@/components/onboarding/WelcomeGuide.vue'
 import XpTaskbar from './shared/XpTaskbar.vue'
+import XpWindowChrome from './shared/XpWindowChrome.vue'
+import XpDesktop from './shared/XpDesktop.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useXpSounds } from '@/composables/useXpSounds'
 import { useAssistant } from '@/composables/useAssistant'
 import { useOnboarding } from '@/composables/useOnboarding'
 import { useToast } from '@/composables/useToast'
@@ -19,6 +22,14 @@ import { CANVAS_ENABLED } from '@/config/feature-flags'
 const route = useRoute()
 const router = useRouter()
 const { shell, xp } = useUiPreferences()
+const { playStartup } = useXpSounds()
+
+// Som de inicialização ao LIGAR o modo XP (só na transição off→on por gesto do
+// usuário — sem `immediate`, então nunca toca no boot/refresh com XP já ligado).
+watch(xp, (on, was) => {
+  if (on && !was) playStartup()
+})
+
 const assistant = useAssistant()
 const onboarding = useOnboarding()
 const { info } = useToast()
@@ -110,8 +121,13 @@ const openPalette = () => paletteRef.value?.open()
     <AssistantLauncher />
     <AssistantPanel />
     <WelcomeGuide />
-    <!-- Taskbar do easter egg Windows XP (só quando o modo XP está ligado). -->
-    <XpTaskbar v-if="xp" />
+    <!-- Easter egg Windows XP (só quando o modo XP está ligado): ícones de área
+         de trabalho, title bar da "janela" de conteúdo e barra de tarefas. -->
+    <template v-if="xp">
+      <XpDesktop />
+      <XpWindowChrome />
+      <XpTaskbar />
+    </template>
   </div>
 </template>
 

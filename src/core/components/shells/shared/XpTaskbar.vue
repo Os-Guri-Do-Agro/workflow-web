@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import XpStartMenu from './XpStartMenu.vue'
+import { useXpSounds } from '@/composables/useXpSounds'
 
 /*
  * Barra de tarefas do Windows XP (easter egg — tema Luna).
  * Componente AUTOCONTIDO: não é montado aqui; o AppShell monta quando xp está ligado.
  * As cores são literais do tema Luna (exceção permitida aos tokens do design system).
  */
+
+const { playMenuOpen } = useXpSounds()
 
 // Relógio ao vivo HH:MM na bandeja (atualiza a cada 1s; limpa no unmount).
 const now = ref('')
@@ -18,20 +22,63 @@ function tick() {
   now.value = `${hh}:${mm}`
 }
 
+// ── Menu Iniciar ──
+// A barra é dona do estado aberto/fechado; o XpStartMenu (renderizado dentro do
+// <footer>) emite `close` ao escolher um item. Fecha também clicando fora ou Esc.
+const startOpen = ref(false)
+const rootEl = ref<HTMLElement | null>(null)
+
+function toggleStart() {
+  startOpen.value = !startOpen.value
+  if (startOpen.value) playMenuOpen()
+}
+
+function closeStart() {
+  startOpen.value = false
+}
+
+function onDocPointerDown(e: PointerEvent) {
+  if (!startOpen.value) return
+  // O menu vive dentro do <footer> (rootEl), então clicar nele NÃO fecha.
+  if (rootEl.value && !rootEl.value.contains(e.target as Node)) closeStart()
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && startOpen.value) {
+    e.stopPropagation()
+    closeStart()
+  }
+}
+
 onMounted(() => {
   tick()
   timer = setInterval(tick, 1000)
+  document.addEventListener('pointerdown', onDocPointerDown, true)
+  document.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
+  document.removeEventListener('pointerdown', onDocPointerDown, true)
+  document.removeEventListener('keydown', onKeydown)
 })
 </script>
 
 <template>
-  <footer class="xp-taskbar" aria-label="Barra de tarefas do Windows XP">
+  <footer ref="rootEl" class="xp-taskbar" aria-label="Barra de tarefas do Windows XP">
+    <!-- Menu Iniciar (sobe do canto inferior esquerdo quando aberto) -->
+    <XpStartMenu v-if="startOpen" @close="closeStart" />
+
     <!-- Botão Start: pílula verde Luna + bandeirinha 4 cores -->
-    <button class="xp-start" type="button">
+    <button
+      class="xp-start"
+      :class="{ 'xp-start--open': startOpen }"
+      type="button"
+      :aria-expanded="startOpen"
+      aria-haspopup="menu"
+      aria-label="Menu Iniciar"
+      @click="toggleStart"
+    >
       <svg class="xp-start-flag" viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
         <path d="M4 11 C10 6.5 16 5.5 22 7.5 L22 21.5 C16 19.5 10 20.5 4 25 Z" fill="#F35325" />
         <path d="M26 8.5 C32 10 38 9.5 44 6.5 L44 20.5 C38 23.5 32 24 26 22.5 Z" fill="#81BC06" />
@@ -119,6 +166,14 @@ onBeforeUnmount(() => {
 
 .xp-start:active {
   filter: brightness(0.94);
+}
+
+/* Menu aberto: botão "afundado" (pressionado), como no XP. */
+.xp-start--open {
+  filter: brightness(0.9);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.4),
+    inset 2px 0 4px rgba(0, 0, 0, 0.25);
 }
 
 .xp-start-flag {

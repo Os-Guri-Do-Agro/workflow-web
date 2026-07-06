@@ -87,25 +87,31 @@ html[data-xp='true'] .main-scroll {
   background: transparent !important;
 }
 
-/* Container da view = "janela sobre o desktop": inset + moldura azul fina.
+/* Container da view = "janela XP sobre o desktop": inset + moldura azul.
+   - margem esquerda de 72px abre uma faixa de wallpaper p/ os ícones do desktop
+     (XpDesktop, montado no AppShell) aparecerem à esquerda da janela.
+   - padding-top reserva a title bar (XpWindowChrome, fixa sobre o topo da janela).
    Scroll real: .main no Command/Canvas, .main-scroll no Focus. */
 html[data-xp='true'] .command-shell .main,
 html[data-xp='true'] .canvas-shell .main,
 html[data-xp='true'] .focus-shell .main-scroll {
-  margin: 8px !important;
+  margin: 8px 8px 8px 72px !important;
+  padding-top: 29px !important;
   border: 1px solid #003cbe !important;
   border-radius: 4px !important;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35) !important;
+  transform-origin: center 42%;
 }
 
-/* ─── Title bar azul Luna na chrome REAL ───────────────────────────────────── */
-/* Alvos reais das barras de topo: .topbar (Command), .slim-top (Focus),
-   .topnav (Canvas) — + .glass/.glass-strong legado. */
-html[data-xp='true'] .glass,
-html[data-xp='true'] .glass-strong,
-html[data-xp='true'] .topbar,
-html[data-xp='true'] .slim-top,
-html[data-xp='true'] .topnav {
+/* ─── Title bar azul Luna nas barras de topo REAIS dos shells ───────────────── */
+/* Escopado por shell de propósito: .topbar/.slim-top/.topnav são nomes genéricos
+   que também aparecem em conteúdo (ex.: .topnav de preview na Settings) e o
+   .glass/.glass-strong é usado por overlays (AssistantPanel, WelcomeGuide). A
+   barra azul Luna deve mirar SÓ o topo real de cada shell — senão o azul + o
+   texto branco vazam pra painéis sobre fundo claro (o bug de "não dá pra ler"). */
+html[data-xp='true'] .command-shell > .topbar,
+html[data-xp='true'] .focus-shell .slim-top,
+html[data-xp='true'] .canvas-shell > .topnav {
   background: linear-gradient(
     180deg,
     #0997ff 0%,
@@ -122,21 +128,20 @@ html[data-xp='true'] .topnav {
   color: #ffffff;
 }
 
-/* Texto/ícones dentro do chrome Luna ficam brancos e legíveis */
-html[data-xp='true'] .glass :is(button, a, span, div, input, label, svg),
-html[data-xp='true'] .topbar :is(button, a, span, div, input, label, svg),
-html[data-xp='true'] .slim-top :is(button, a, span, div, input, label, svg),
-html[data-xp='true'] .topnav :is(button, a, span, div, input, label, svg) {
+/* Texto/ícones brancos SÓ dentro das barras de topo azuis (idem escopo por shell,
+   pra não pintar de branco texto que está sobre fundo claro no conteúdo). */
+html[data-xp='true'] .command-shell > .topbar :is(button, a, span, div, input, label, svg),
+html[data-xp='true'] .focus-shell .slim-top :is(button, a, span, div, input, label, svg),
+html[data-xp='true'] .canvas-shell > .topnav :is(button, a, span, div, input, label, svg) {
   --text: #ffffff;
   --text-2: rgba(255, 255, 255, 0.92);
   --text-3: rgba(255, 255, 255, 0.8);
   --text-4: rgba(255, 255, 255, 0.65);
 }
 
-html[data-xp='true'] .glass input::placeholder,
-html[data-xp='true'] .topbar input::placeholder,
-html[data-xp='true'] .slim-top input::placeholder,
-html[data-xp='true'] .topnav input::placeholder {
+html[data-xp='true'] .command-shell > .topbar input::placeholder,
+html[data-xp='true'] .focus-shell .slim-top input::placeholder,
+html[data-xp='true'] .canvas-shell > .topnav input::placeholder {
   color: rgba(255, 255, 255, 0.7);
 }
 
@@ -176,4 +181,68 @@ html[data-xp='true'] ::-webkit-scrollbar-thumb {
 html[data-xp='true'] ::selection {
   background: #316ac5;
   color: #ffffff;
+}
+
+/* ─── Rede de segurança: legibilidade dos campos de formulário ──────────────── */
+/* Garante contraste em inputs/selects/textarea em QUALQUER lugar do XP. Usa
+   var(--text): fora das barras de topo = escuro; dentro delas (raro) = branco.
+   Cobre também campos do Vuetify (v-text-field etc.) que renderiam texto claro. */
+html[data-xp='true'] input,
+html[data-xp='true'] textarea,
+html[data-xp='true'] select,
+html[data-xp='true'] .v-field__input,
+html[data-xp='true'] .v-field input,
+html[data-xp='true'] .v-field textarea,
+html[data-xp='true'] .v-label,
+html[data-xp='true'] .v-select__selection-text {
+  color: var(--text) !important;
+}
+
+/* Campos do app com superfície própria: fundo claro garantido no XP. O dropdown
+   do AppSelect é teleportado pro <body> (fora dos shells) — como data-xp está no
+   <html>, estas regras o alcançam mesmo assim. */
+html[data-xp='true'] .app-select__trigger,
+html[data-xp='true'] .app-select__content {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+html[data-xp='true'] .app-select__trigger {
+  background: var(--surface-2) !important;
+}
+
+/* ─── Animação "janela abrindo" (XP) ────────────────────────────────────────── */
+/* Respeita prefers-reduced-motion: as animações só existem quando o usuário não
+   pediu movimento reduzido. A classe .xp-anim-open é ligada por XpWindowChrome
+   ao abrir o modo e ao navegar; os diálogos animam via .v-overlay__content. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes xp-window-open {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  html[data-xp='true'] .xp-anim-open {
+    animation: xp-window-open 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  @keyframes xp-dialog-open {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  html[data-xp='true'] .v-overlay__content {
+    animation: xp-dialog-open 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
 }
