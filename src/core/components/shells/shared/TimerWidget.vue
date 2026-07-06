@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Play, Square, Timer as TimerIcon } from 'lucide-vue-next'
+import { AlertTriangle, DollarSign, Play, Square, Timer as TimerIcon } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { useTimeTracking } from '@/composables/useTimeTracking'
 import { useToast } from '@/composables/useToast'
@@ -17,11 +17,16 @@ const { running, isRunning, elapsedSec, start, stop } = useTimeTracking()
 const isOpen = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 
+// F3 — timer é considerado "esquecido" após 8h rodando (avisa, mas não para).
+const FORGOTTEN_SEC = 8 * 60 * 60
+
 // ─── Formulário de início ─────────────────────────────────────────────────────
 const description = ref('')
 // null = "Pessoal" (sem empresa). Default = empresa ativa, se houver.
 const companyId = ref<string | null>(workspace.activeCompanyId)
 const activityId = ref<string | null>(null)
+// F5 — faturável de ponta a ponta (a UI passa a enviar o billable).
+const billable = ref(false)
 
 // "Pessoal" + empresas do usuário.
 const companyOptions = computed(() => [
@@ -49,6 +54,10 @@ watch(companyId, () => {
 const clock = computed(() => formatTimer(elapsedSec.value))
 const runningLabel = computed(() => running.value?.description?.trim() || 'Sem descrição')
 
+// F3 — aviso de timer esquecido (>8h). Mostra há quantas horas está rodando.
+const forgotten = computed(() => isRunning.value && elapsedSec.value > FORGOTTEN_SEC)
+const runningHours = computed(() => Math.floor(elapsedSec.value / 3600))
+
 function toggleOpen() {
   isOpen.value = !isOpen.value
 }
@@ -63,9 +72,11 @@ async function handleStart() {
       description: description.value.trim() || undefined,
       companyId: companyId.value,
       activityId: activityId.value,
+      billable: billable.value,
     })
     description.value = ''
     activityId.value = null
+    billable.value = false
     close()
   } catch {
     showError('Não foi possível iniciar o timer')
@@ -117,9 +128,21 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
           <div class="timer-live">
             <span class="timer-live-clock">{{ clock }}</span>
             <span class="timer-live-desc">{{ runningLabel }}</span>
-            <span v-if="running?.company" class="timer-chip">{{ running.company.name }}</span>
-            <span v-else class="timer-chip timer-chip--muted">Pessoal</span>
+            <div class="timer-live-chips">
+              <span v-if="running?.company" class="timer-chip">{{ running.company.name }}</span>
+              <span v-else class="timer-chip timer-chip--muted">Pessoal</span>
+              <span v-if="running?.billable" class="timer-chip timer-chip--bill">
+                <DollarSign :size="11" /> Faturável
+              </span>
+            </div>
           </div>
+
+          <!-- F3 — aviso de timer esquecido (âmbar), sem parar automaticamente. -->
+          <div v-if="forgotten" class="timer-warn" role="alert">
+            <AlertTriangle :size="15" />
+            <span>Timer rodando há {{ runningHours }}h — ainda está trabalhando?</span>
+          </div>
+
           <button
             class="timer-btn timer-btn--stop"
             type="button"
@@ -164,6 +187,13 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
               label="Tarefa"
               density="compact"
             />
+          </label>
+
+          <!-- F5 — faturável -->
+          <label class="timer-toggle">
+            <input v-model="billable" type="checkbox" class="timer-toggle-input" />
+            <span class="timer-toggle-box"><DollarSign :size="13" /></span>
+            <span class="timer-toggle-text">Faturável</span>
           </label>
 
           <button
@@ -314,6 +344,84 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 .timer-chip--muted {
   background: var(--surface-2);
   color: var(--text-3);
+}
+
+.timer-live-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timer-chip--bill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+
+/* F3 — banner de timer esquecido (âmbar). */
+.timer-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* F5 — toggle "Faturável". */
+.timer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.timer-toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.timer-toggle-box {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-3);
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.timer-toggle-input:checked + .timer-toggle-box {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.timer-toggle-input:focus-visible + .timer-toggle-box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.timer-toggle-text {
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .timer-field {

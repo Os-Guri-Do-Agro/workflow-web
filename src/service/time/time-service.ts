@@ -12,6 +12,8 @@ export interface TimeEntry {
   companyId: string | null
   activityId: string | null
   billable: boolean
+  // true quando o timer foi encerrado automaticamente (esquecido >12h / cap 24h).
+  autoStopped: boolean
   source: TimeEntrySource
   createdAt: string
   updatedAt: string
@@ -56,6 +58,7 @@ export interface EntriesFilters {
 
 export interface TimeSummary {
   totalSec: number
+  billableSec: number
   byDay: Array<{ day: string; totalSec: number }>
   byCompany: Array<{ companyId: string | null; name: string; totalSec: number }>
 }
@@ -63,9 +66,17 @@ export interface TimeSummary {
 export interface CompanyReport {
   companyId: string
   totalSec: number
+  billableSec: number
   byUser: Array<{ userId: string; name: string; totalSec: number }>
   byActivity: Array<{ activityId: string | null; title: string; totalSec: number }>
   byDay: Array<{ day: string; totalSec: number }>
+}
+
+/** Filtros dos relatórios. `tzOffset` (minutos, getTimezoneOffset) agrupa byDay no fuso local. */
+export interface ReportFilters {
+  from?: string
+  to?: string
+  tzOffset?: number
 }
 
 const timeService = {
@@ -104,13 +115,13 @@ const timeService = {
     return response.data
   },
 
-  async summary(filters?: { from?: string; to?: string }) {
+  async summary(filters?: ReportFilters) {
     const response = await api.get<TimeSummary>('/time/summary', { params: filters })
     return response.data
   },
 
   // x-company-id é anexado automaticamente pelo interceptor (empresa ativa).
-  async companyReport(filters?: { from?: string; to?: string }) {
+  async companyReport(filters?: ReportFilters) {
     const response = await api.get<CompanyReport>('/time/company-report', { params: filters })
     return response.data
   },

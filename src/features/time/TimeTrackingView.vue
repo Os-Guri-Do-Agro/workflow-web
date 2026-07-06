@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Pencil, Play, Plus, Square, Trash2, X } from 'lucide-vue-next'
+import { AlertTriangle, DollarSign, Pencil, Play, Plus, Square, Trash2, X } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useTimeEntries, useTimeTracking } from '@/composables/useTimeTracking'
+import { getApiErrorMessage } from '@/service/api'
 import type { TimeEntry } from '@/service/time/time-service'
 import {
   dayKey,
@@ -14,6 +17,9 @@ import {
   formatDurationLong,
   formatTimer,
 } from '@/utils/duration'
+
+// F3 — timer é considerado "esquecido" após 8h rodando (avisa, não para).
+const FORGOTTEN_SEC = 8 * 60 * 60
 
 const { error: showError, success } = useToast()
 const workspace = useWorkspaceStore()
@@ -40,6 +46,7 @@ const timerForm = reactive({
   description: '',
   companyId: workspace.activeCompanyId as string | null,
   activityId: null as string | null,
+  billable: false, // F5
 })
 watch(
   () => timerForm.companyId,
@@ -50,17 +57,23 @@ watch(
 
 const liveClock = computed(() => formatTimer(elapsedSec.value))
 
+// F3 — aviso de timer esquecido (>8h).
+const forgotten = computed(() => isRunning.value && elapsedSec.value > FORGOTTEN_SEC)
+const runningHours = computed(() => Math.floor(elapsedSec.value / 3600))
+
 async function handleStart() {
   try {
     await start.mutateAsync({
       description: timerForm.description.trim() || undefined,
       companyId: timerForm.companyId,
       activityId: timerForm.activityId,
+      billable: timerForm.billable,
     })
     timerForm.description = ''
     timerForm.activityId = null
-  } catch {
-    showError('Não foi possível iniciar o timer')
+    timerForm.billable = false
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível iniciar o timer'))
   }
 }
 
@@ -69,6 +82,21 @@ async function handleStop() {
     await stop.mutateAsync()
   } catch {
     showError('Não foi possível parar o timer')
+  }
+}
+
+// F6 — "Continuar": reinicia um timer com a mesma descrição/empresa/tarefa.
+async function handleContinue(entry: TimeEntry) {
+  try {
+    await start.mutateAsync({
+      description: entry.description || undefined,
+      companyId: entry.companyId,
+      activityId: entry.activityId,
+      billable: entry.billable,
+    })
+    success('Timer retomado')
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível retomar o timer'))
   }
 }
 
@@ -93,9 +121,17 @@ function rangeFor(p: Preset): { from: string; to: string } {
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
+// F4 — paginação incremental. "Carregar mais" aumenta o take em blocos de 50.
+const PAGE_SIZE = 50
+const limit = ref(PAGE_SIZE)
+
 const entriesFilters = computed(() => {
   const { from, to } = rangeFor(preset.value)
-  const base: { from: string; to: string; companyId?: string } = { from, to }
+  const base: { from: string; to: string; companyId?: string; take: number } = {
+    from,
+    to,
+    take: limit.value,
+  }
   // 'all' e '__personal__' (recorte "sem empresa", aplicado no client) não
   // viram filtro de companyId no backend.
   const value = filterCompanyId.value
@@ -106,6 +142,18 @@ const entriesFilters = computed(() => {
 })
 
 const entries = useTimeEntries(entriesFilters)
+
+// Trocar de período/empresa reinicia a paginação.
+watch([preset, filterCompanyId], () => {
+  limit.value = PAGE_SIZE
+})
+
+// Há mais itens se o backend devolveu exatamente o take pedido.
+const hasMore = computed(() => (entries.data.value?.length ?? 0) >= limit.value)
+
+function loadMore() {
+  limit.value += PAGE_SIZE
+}
 
 const filterCompanyOptions = computed(() => [
   { label: 'Todas', value: 'all' as const },
@@ -152,6 +200,11 @@ const rangeTotalSec = computed(() =>
   visibleEntries.value.reduce((acc, e) => acc + (e.durationSec ?? 0), 0),
 )
 
+// F5 — total faturável do período (só entradas com billable=true).
+const rangeBillableSec = computed(() =>
+  visibleEntries.value.reduce((acc, e) => acc + (e.billable ? (e.durationSec ?? 0) : 0), 0),
+)
+
 const todayTotalSec = computed(() => {
   const today = dayKey(new Date().toISOString())
   return visibleEntries.value
@@ -167,7 +220,11 @@ const editForm = reactive({
   activityId: null as string | null,
   startedAt: '',
   endedAt: '',
+  billable: false, // F5
 })
+
+// F6 — preview de duração (fim − início) no formulário de edição.
+const editPreview = computed(() => durationPreview(editForm.startedAt, editForm.endedAt))
 
 function toLocalInput(iso: string): string {
   const d = new Date(iso)
@@ -179,6 +236,14 @@ function fromLocalInput(local: string): string {
   return new Date(local).toISOString()
 }
 
+// F6 — "2h 15m" a partir de dois datetime-local (ou null se inválido/negativo).
+function durationPreview(startLocal: string, endLocal: string): string | null {
+  const s = new Date(startLocal).getTime()
+  const e = new Date(endLocal).getTime()
+  if (Number.isNaN(s) || Number.isNaN(e) || e <= s) return null
+  return formatDurationLong(Math.round((e - s) / 1000))
+}
+
 function beginEdit(entry: TimeEntry) {
   editingId.value = entry.id
   editForm.description = entry.description
@@ -186,6 +251,7 @@ function beginEdit(entry: TimeEntry) {
   editForm.activityId = entry.activityId
   editForm.startedAt = toLocalInput(entry.startedAt)
   editForm.endedAt = entry.endedAt ? toLocalInput(entry.endedAt) : ''
+  editForm.billable = entry.billable
 }
 
 function cancelEdit() {
@@ -202,20 +268,38 @@ async function saveEdit(id: string) {
         activityId: editForm.activityId ?? '',
         startedAt: fromLocalInput(editForm.startedAt),
         endedAt: fromLocalInput(editForm.endedAt),
+        billable: editForm.billable,
       },
     })
     editingId.value = null
     success('Entrada atualizada')
-  } catch {
-    showError('Não foi possível salvar (verifique se o fim é maior que o início)')
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível salvar (verifique horários e sobreposição)'))
   }
 }
 
-async function handleDelete(id: string) {
+// ─── Exclusão com confirmação (F2) ────────────────────────────────────────────
+const deleteTarget = ref<string | null>(null)
+const showDeleteConfirm = computed({
+  get: () => deleteTarget.value !== null,
+  set: (v: boolean) => {
+    if (!v) deleteTarget.value = null
+  },
+})
+
+function handleDelete(id: string) {
+  deleteTarget.value = id
+}
+
+async function confirmDelete() {
+  const id = deleteTarget.value
+  if (!id) return
   try {
     await deleteEntry.mutateAsync(id)
-  } catch {
-    showError('Não foi possível excluir a entrada')
+    deleteTarget.value = null
+    success('Entrada excluída')
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível excluir a entrada'))
   }
 }
 
@@ -227,6 +311,7 @@ const manualForm = reactive({
   activityId: null as string | null,
   startedAt: '',
   endedAt: '',
+  billable: false, // F5
 })
 watch(
   () => manualForm.companyId,
@@ -234,6 +319,9 @@ watch(
     manualForm.activityId = null
   },
 )
+
+// F6 — preview de duração no formulário manual.
+const manualPreview = computed(() => durationPreview(manualForm.startedAt, manualForm.endedAt))
 
 function openManual() {
   const now = new Date()
@@ -243,6 +331,7 @@ function openManual() {
   manualForm.activityId = null
   manualForm.startedAt = toLocalInput(start.toISOString())
   manualForm.endedAt = toLocalInput(now.toISOString())
+  manualForm.billable = false
   showManual.value = true
 }
 
@@ -254,11 +343,12 @@ async function submitManual() {
       activityId: manualForm.activityId,
       startedAt: fromLocalInput(manualForm.startedAt),
       endedAt: fromLocalInput(manualForm.endedAt),
+      billable: manualForm.billable,
     })
     showManual.value = false
     success('Entrada adicionada')
-  } catch {
-    showError('Não foi possível adicionar (fim deve ser maior que início, até 24h)')
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível adicionar (fim > início, até 24h, sem sobrepor)'))
   }
 }
 
@@ -308,6 +398,13 @@ const presets: Array<{ id: Preset; label: string }> = [
         />
       </div>
 
+      <!-- F5 — faturável (só no estado parado) -->
+      <label v-if="!isRunning" class="tv-toggle" title="Marcar como faturável">
+        <input v-model="timerForm.billable" type="checkbox" class="tv-toggle-input" />
+        <span class="tv-toggle-box"><DollarSign :size="14" /></span>
+        <span class="tv-toggle-text">Faturável</span>
+      </label>
+
       <div class="tv-timer-clock">{{ liveClock }}</div>
 
       <button
@@ -332,9 +429,19 @@ const presets: Array<{ id: Preset; label: string }> = [
       </button>
     </section>
 
-    <div v-if="isRunning && running" class="tv-running-hint">
+    <!-- F3 — aviso de timer esquecido (>8h). -->
+    <div v-if="forgotten" class="tv-forgotten" role="alert">
+      <AlertTriangle :size="16" />
+      <span>Timer rodando há {{ runningHours }}h — ainda está trabalhando?</span>
+      <button class="tv-forgotten-btn" type="button" :disabled="stop.isPending.value" @click="handleStop">
+        Parar
+      </button>
+    </div>
+
+    <div v-else-if="isRunning && running" class="tv-running-hint">
       Rodando: <strong>{{ running.description || 'Sem descrição' }}</strong>
       <span v-if="running.company"> · {{ running.company.name }}</span>
+      <span v-if="running.billable" class="tv-inline-bill"><DollarSign :size="12" /> Faturável</span>
     </div>
 
     <!-- ─── Filtros + totais ───────────────────────────────────────────── -->
@@ -369,6 +476,10 @@ const presets: Array<{ id: Preset; label: string }> = [
         <div class="tv-total">
           <span class="tv-total-label">Período</span>
           <span class="tv-total-value">{{ formatDurationLong(rangeTotalSec) }}</span>
+        </div>
+        <div v-if="rangeBillableSec > 0" class="tv-total">
+          <span class="tv-total-label tv-total-label--bill">Faturável</span>
+          <span class="tv-total-value tv-total-value--bill">{{ formatDurationLong(rangeBillableSec) }}</span>
         </div>
       </div>
 
@@ -419,8 +530,16 @@ const presets: Array<{ id: Preset; label: string }> = [
           <span class="tv-label">Fim</span>
           <input v-model="manualForm.endedAt" class="tv-input" type="datetime-local" />
         </label>
+        <label class="tv-field tv-field--wide tv-toggle-field">
+          <input v-model="manualForm.billable" type="checkbox" class="tv-toggle-input" />
+          <span class="tv-toggle-box"><DollarSign :size="14" /></span>
+          <span class="tv-toggle-text">Faturável</span>
+        </label>
       </div>
       <div class="tv-manual-actions">
+        <span v-if="manualPreview" class="tv-preview">
+          Duração: <strong>{{ manualPreview }}</strong>
+        </span>
         <button class="tv-btn tv-btn--ghost" type="button" @click="showManual = false">
           Cancelar
         </button>
@@ -437,7 +556,24 @@ const presets: Array<{ id: Preset; label: string }> = [
     </section>
 
     <!-- ─── Lista agrupada por dia ─────────────────────────────────────── -->
-    <div v-if="entries.isLoading.value" class="tv-state">Carregando…</div>
+    <!-- F4 — loading: skeleton -->
+    <div v-if="entries.isLoading.value" class="tv-skeletons">
+      <Skeleton v-for="i in 4" :key="i" type="row" height="18px" />
+    </div>
+
+    <!-- F4 — erro: tentar de novo -->
+    <EmptyState
+      v-else-if="entries.isError.value"
+      :icon="AlertTriangle"
+      title="Não foi possível carregar"
+      description="Ocorreu um erro ao buscar suas entradas de tempo."
+    >
+      <template #action>
+        <button class="tv-btn tv-btn--ghost" type="button" @click="() => entries.refetch()">
+          Tentar de novo
+        </button>
+      </template>
+    </EmptyState>
 
     <EmptyState
       v-else-if="groups.length === 0"
@@ -464,6 +600,16 @@ const presets: Array<{ id: Preset; label: string }> = [
                   <span v-if="entry.activity" class="tv-tag tv-tag--task">
                     {{ entry.activity.title }}
                   </span>
+                  <span v-if="entry.billable" class="tv-tag tv-tag--bill">
+                    <DollarSign :size="11" /> Faturável
+                  </span>
+                  <span
+                    v-if="entry.autoStopped"
+                    class="tv-tag tv-tag--auto"
+                    title="Encerrado automaticamente (timer esquecido)"
+                  >
+                    auto
+                  </span>
                 </div>
               </div>
               <span class="tv-row-interval">
@@ -471,6 +617,15 @@ const presets: Array<{ id: Preset; label: string }> = [
               </span>
               <span class="tv-row-dur">{{ formatDurationLong(entry.durationSec ?? 0) }}</span>
               <div class="tv-row-actions">
+                <button
+                  class="tv-icon-btn"
+                  type="button"
+                  title="Continuar (iniciar novo timer igual)"
+                  :disabled="start.isPending.value"
+                  @click="handleContinue(entry)"
+                >
+                  <Play :size="15" />
+                </button>
                 <button class="tv-icon-btn" type="button" title="Editar" @click="beginEdit(entry)">
                   <Pencil :size="15" />
                 </button>
@@ -513,7 +668,15 @@ const presets: Array<{ id: Preset; label: string }> = [
                 <input v-model="editForm.startedAt" class="tv-input" type="datetime-local" />
                 <input v-model="editForm.endedAt" class="tv-input" type="datetime-local" />
               </div>
+              <label class="tv-toggle-field">
+                <input v-model="editForm.billable" type="checkbox" class="tv-toggle-input" />
+                <span class="tv-toggle-box"><DollarSign :size="14" /></span>
+                <span class="tv-toggle-text">Faturável</span>
+              </label>
               <div class="tv-edit-actions">
+                <span v-if="editPreview" class="tv-preview">
+                  Duração: <strong>{{ editPreview }}</strong>
+                </span>
                 <button class="tv-btn tv-btn--ghost" type="button" @click="cancelEdit">
                   Cancelar
                 </button>
@@ -530,7 +693,30 @@ const presets: Array<{ id: Preset; label: string }> = [
           </li>
         </ul>
       </section>
+
+      <!-- F4 — paginação incremental -->
+      <div v-if="hasMore" class="tv-loadmore">
+        <button
+          class="tv-btn tv-btn--ghost"
+          type="button"
+          :disabled="entries.isFetching.value"
+          @click="loadMore"
+        >
+          {{ entries.isFetching.value ? 'Carregando…' : 'Carregar mais' }}
+        </button>
+      </div>
     </div>
+
+    <!-- F2 — confirmação de exclusão -->
+    <ConfirmDialog
+      v-model="showDeleteConfirm"
+      title="Excluir entrada"
+      message="Excluir esta entrada de tempo? Ação irreversível."
+      confirm-label="Excluir"
+      danger
+      :loading="deleteEntry.isPending.value"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
 
@@ -978,6 +1164,167 @@ const presets: Array<{ id: Preset; label: string }> = [
   text-align: center;
   color: var(--text-3);
   font-size: 13px;
+}
+
+/* ── F4: skeletons + carregar mais ── */
+.tv-skeletons {
+  padding: 8px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.tv-loadmore {
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+/* ── F3: banner de timer esquecido ── */
+.tv-forgotten {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warn) 13%, var(--surface));
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tv-forgotten span {
+  flex: 1 1 auto;
+}
+
+.tv-forgotten-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--warn);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.tv-forgotten-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+
+.tv-forgotten-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── F5: faturável (toggle, chips, totais) ── */
+.tv-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+.tv-toggle-field {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tv-toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.tv-toggle-box {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-3);
+  flex: 0 0 auto;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.tv-toggle-input:checked + .tv-toggle-box {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.tv-toggle-input:focus-visible + .tv-toggle-box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tv-toggle-text {
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.tv-total-label--bill {
+  color: var(--success);
+}
+
+.tv-total-value--bill {
+  color: var(--success);
+}
+
+.tv-tag--bill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+}
+
+.tv-tag--auto {
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+
+.tv-inline-bill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* ── F6: preview de duração nos formulários ── */
+.tv-preview {
+  margin-right: auto;
+  align-self: center;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.tv-preview strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 720px) {

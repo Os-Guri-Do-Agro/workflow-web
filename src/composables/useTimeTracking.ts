@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { computed, onMounted, onUnmounted, ref, unref, type MaybeRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, unref, watch, type MaybeRef } from 'vue'
 import timeService, {
   type EntriesFilters,
   type ManualEntryInput,
@@ -16,8 +16,33 @@ export const timeKeys = {
   entries: ['time', 'entries'] as const,
   entriesList: (filters?: EntriesFilters) => ['time', 'entries', filters ?? {}] as const,
   summary: ['time', 'summary'] as const,
-  summaryFor: (filters?: { from?: string; to?: string }) =>
+  summaryFor: (filters?: { from?: string; to?: string; tzOffset?: number }) =>
     ['time', 'summary', filters ?? {}] as const,
+}
+
+// ─── Singleton compartilhado (F7) ─────────────────────────────────────────────
+// O relógio tickado (`sharedNow`) e a subscription realtime vivem no módulo:
+// widget + view + título compartilham 1 só interval e 1 só socket handler, em vez
+// de 2-3 intervals concorrentes. O interval só roda quando há timer em andamento
+// (economia de CPU quando parado) e é desligado quando o último consumer desmonta.
+const sharedNow = ref(Date.now())
+let consumerCount = 0
+let intervalId: number | null = null
+let realtimeUnsub: (() => boolean) | null = null
+
+function ensureTicker() {
+  if (intervalId === null) {
+    intervalId = window.setInterval(() => {
+      sharedNow.value = Date.now()
+    }, 1000)
+  }
+}
+
+function stopTicker() {
+  if (intervalId !== null) {
+    window.clearInterval(intervalId)
+    intervalId = null
+  }
 }
 
 /**
@@ -27,9 +52,6 @@ export const timeKeys = {
  */
 export function useTimeTracking() {
   const queryClient = useQueryClient()
-  let unsubscribeRealtime: (() => boolean) | null = null
-  let ticker: number | null = null
-  const now = ref(Date.now())
 
   const current = useQuery({
     queryKey: timeKeys.current,
@@ -42,7 +64,7 @@ export function useTimeTracking() {
 
   // Segundos decorridos = agora − startedAt (recalculado a cada tick de 1s).
   const elapsedSec = computed(() => {
-    void now.value // dependência reativa para o ticker
+    void sharedNow.value // dependência reativa para o ticker
     if (!running.value) return 0
     return elapsedSince(running.value.startedAt)
   })
@@ -86,26 +108,35 @@ export function useTimeTracking() {
     onSuccess: () => void invalidateAll(),
   })
 
-  onMounted(() => {
-    ticker = window.setInterval(() => {
-      now.value = Date.now()
-    }, 1000)
+  // Liga/desliga o ticker compartilhado conforme há timer rodando.
+  watch(isRunning, (v) => (v ? ensureTicker() : stopTicker()), { immediate: true })
 
-    unsubscribeRealtime = realtimeService.connect({
-      timeStarted: (entry) => {
-        queryClient.setQueryData(timeKeys.current, entry)
-        void invalidateAll()
-      },
-      timeStopped: () => {
-        queryClient.setQueryData(timeKeys.current, null)
-        void invalidateAll()
-      },
-    }) as (() => boolean) | null
+  onMounted(() => {
+    consumerCount += 1
+    // Só o primeiro consumer abre a subscription realtime (handler único).
+    if (consumerCount === 1) {
+      realtimeUnsub = realtimeService.connect({
+        timeStarted: (entry) => {
+          queryClient.setQueryData(timeKeys.current, entry)
+          void invalidateAll()
+        },
+        timeStopped: () => {
+          queryClient.setQueryData(timeKeys.current, null)
+          void invalidateAll()
+        },
+      }) as (() => boolean) | null
+    }
   })
 
   onUnmounted(() => {
-    if (ticker) window.clearInterval(ticker)
-    unsubscribeRealtime?.()
+    consumerCount -= 1
+    // Último consumer saiu: encerra socket handler e interval.
+    if (consumerCount <= 0) {
+      consumerCount = 0
+      realtimeUnsub?.()
+      realtimeUnsub = null
+      stopTicker()
+    }
   })
 
   return {
@@ -131,11 +162,21 @@ export function useTimeEntries(filters: MaybeRef<EntriesFilters> = {}) {
   })
 }
 
-/** Totais do usuário (por dia + por empresa) para a view. */
-export function useTimeSummary(filters: MaybeRef<{ from?: string; to?: string }> = {}) {
+/**
+ * Totais do usuário (por dia + por empresa) para a view. R12 — envia o
+ * `tzOffset` local por padrão (getTimezoneOffset em minutos), para o backend
+ * agrupar byDay no fuso do usuário; o caller pode sobrescrever no filtro.
+ */
+export function useTimeSummary(
+  filters: MaybeRef<{ from?: string; to?: string; tzOffset?: number }> = {},
+) {
+  const withTz = computed(() => {
+    const f = unref(filters)
+    return { tzOffset: new Date().getTimezoneOffset(), ...f }
+  })
   return useQuery({
-    queryKey: computed(() => timeKeys.summaryFor(unref(filters))),
-    queryFn: () => timeService.summary(unref(filters)),
+    queryKey: computed(() => timeKeys.summaryFor(withTz.value)),
+    queryFn: () => timeService.summary(withTz.value),
     staleTime: 1000 * 15,
   })
 }
