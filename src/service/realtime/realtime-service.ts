@@ -48,6 +48,22 @@ export interface PresenceUpdatePayload {
   online: string[]
 }
 
+// ─── Kanban realtime (arraste de atividades) ────────────────────────────────
+export type ActivityBoardStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+
+/** Contrato do evento `activity:moved` (emitido pelo backend em updateStatus/move). */
+export interface ActivityMovedPayload {
+  activityId: string
+  companyId: string
+  monthId: string
+  status: ActivityBoardStatus
+  previousStatus: ActivityBoardStatus
+  /** Índice 0-based na coluna destino; null quando não há ordem manual (troca de status). */
+  position: number | null
+  actorId: string
+  updatedAt: string
+}
+
 // ─── Copiloto agente (streaming) ────────────────────────────────────────────
 export interface AssistantDeltaPayload {
   runId: string
@@ -72,6 +88,8 @@ export interface RealtimeHandlers {
   feedNew?: (event: FeedEventPayload) => void
   commentNew?: (comment: CommentPayload) => void
   presenceUpdate?: (presence: PresenceUpdatePayload) => void
+  // Kanban: propaga arraste/reordenação de atividades entre abas/dispositivos.
+  activityMoved?: (payload: ActivityMovedPayload) => void
   // Time tracking: sincroniza o widget entre abas/dispositivos do mesmo usuário.
   timeStarted?: (entry: TimeEntry) => void
   timeStopped?: (entry: TimeEntry) => void
@@ -126,6 +144,7 @@ const realtimeService = {
     nextSocket.off('feed:new')
     nextSocket.off('comment:new')
     nextSocket.off('presence:update')
+    nextSocket.off('activity:moved')
     nextSocket.off('time:started')
     nextSocket.off('time:stopped')
     nextSocket.off('assistant:delta')
@@ -146,6 +165,9 @@ const realtimeService = {
     })
     nextSocket.on('presence:update', (presence: PresenceUpdatePayload) => {
       handlers.forEach((handler) => handler.presenceUpdate?.(presence))
+    })
+    nextSocket.on('activity:moved', (payload: ActivityMovedPayload) => {
+      handlers.forEach((handler) => handler.activityMoved?.(payload))
     })
     nextSocket.on('time:started', (entry: TimeEntry) => {
       handlers.forEach((handler) => handler.timeStarted?.(entry))

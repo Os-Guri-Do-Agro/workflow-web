@@ -24,7 +24,8 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  'update-status': [taskId: string, status: string]
+  // Único evento de arraste: cobre troca de coluna (@add) e reordenação (@update).
+  'move-task': [payload: { taskId: string; status: string; position: number }]
   'open-details': [task: Activity]
   'delete-task': [task: any]
   'rename-task': [taskId: string, title: string]
@@ -143,9 +144,13 @@ const getPriorityLabel = (priority: number) => {
   return labels[priority] ?? 'Sem prioridade'
 }
 
-const onAdd = (evt: any, apiStatus: string) => {
+// Arraste (add=cruzou coluna, update=reordenou na mesma): emite um único
+// move-task com o índice de destino (newIndex) p/ persistir a ordem manual.
+const onMove = (evt: any, apiStatus: string) => {
   const taskId = evt.item?.dataset?.id
-  if (taskId) emit('update-status', taskId, apiStatus)
+  if (!taskId) return
+  const position = typeof evt.newIndex === 'number' ? evt.newIndex : 0
+  emit('move-task', { taskId, status: apiStatus, position })
 }
 
 const getImageAttachment = (task: any) =>
@@ -239,7 +244,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
           drag-class="drag-moving"
           @start="onStart"
           @end="onEnd"
-          @add="(evt) => onAdd(evt, column.apiStatus)"
+          @add="(evt) => onMove(evt, column.apiStatus)"
+          @update="(evt) => onMove(evt, column.apiStatus)"
           @dragenter="onEnterColumn(column.status)"
           @dragleave="onLeaveColumn"
         >

@@ -6,7 +6,6 @@ import TaskForm from '@/components/tasks/TaskForm.vue'
 import KanbanBoard from '@/components/tasks/KanbanBoard.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import type { Activity } from '@/core/types'
-import quartersService from '@/service/quarters/quarters-service'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import { getInfoAuth } from '@/utils/authContent'
@@ -15,6 +14,8 @@ import { useToast } from '@/composables/useToast'
 import { useCompanyBoards } from '@/composables/useCompanyBoards'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { useBacklog } from '@/composables/useBacklog'
+import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
+import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import { useQueryClient } from '@tanstack/vue-query'
 
 // ── Tipos locais (shape real da API de tarefas/quarters deste módulo) ──
@@ -241,32 +242,54 @@ const totalTasks = computed(() => {
   return Object.values(tasks.value).flat().length
 })
 
-// ── Optimistic status update ──
-const handleUpdateStatus = async (taskId: string, apiStatus: string) => {
-  // Optimistic: move task in local data so watch doesn't snap it back
-  const statuses: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
-  let movedTask: BoardTask | null = null
-  for (const status of statuses) {
+const STATUSES: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
+
+/** Remove a atividade de todas as colunas locais e devolve o objeto (ou null). */
+const removeFromColumns = (taskId: string): BoardTask | null => {
+  let removed: BoardTask | null = null
+  for (const status of STATUSES) {
     const list = tasks.value[status]
     if (!list) continue
     const idx = list.findIndex((t) => t.id === taskId)
-    if (idx !== -1) {
-      movedTask = list.splice(idx, 1)[0] ?? null
-      break
-    }
+    if (idx !== -1) removed = list.splice(idx, 1)[0] ?? removed
   }
-  const target = tasks.value[apiStatus as BoardStatus]
+  return removed
+}
+
+// ── Arraste: update otimista (splice na posição) + persistência via /move ──
+const handleMove = async (payload: { taskId: string; status: string; position: number }) => {
+  const { taskId, status, position } = payload
+  const movedTask = removeFromColumns(taskId)
+  const target = tasks.value[status as BoardStatus]
   if (movedTask && target) {
-    target.push(movedTask)
+    const idx = Math.max(0, Math.min(position, target.length))
+    target.splice(idx, 0, movedTask)
   }
 
   try {
-    await quartersService.patchActivityStatus(taskId, apiStatus)
+    await activityService.moveActivity(taskId, { status, position })
   } catch (error: unknown) {
-    showError(apiErrorMessage(error, 'Erro ao atualizar status'))
+    showError(apiErrorMessage(error, 'Erro ao mover atividade'))
     await refreshTasks() // revert on failure
   }
 }
+
+// ── Realtime: aplica movimentos vindos de outras abas/usuários ──
+const applyRemoteMove = (p: ActivityMovedPayload) => {
+  if (p.monthId !== monthId.value) return // outro mês → ignora
+  const moved = removeFromColumns(p.activityId)
+  if (!moved) return // card não carregado neste cliente — o refresh do reconnect cobre
+  const target = tasks.value[p.status as BoardStatus]
+  if (!target) return
+  if (p.position === null) {
+    target.push(moved) // Fase 1 (sem ordem manual): joga no fim
+  } else {
+    const idx = Math.max(0, Math.min(p.position, target.length))
+    target.splice(idx, 0, moved)
+  }
+}
+
+useActivityBoardRealtime(applyRemoteMove, refreshTasks)
 
 // ── Rename task (inline editing) ──
 const handleRenameTask = async (taskId: string, newTitle: string) => {
@@ -436,7 +459,7 @@ const showFilters = ref(false)
       v-show="currentTab === 'board'"
       :tasks="filteredTasks"
       :readonly="!isWorkerRole"
-      @update-status="handleUpdateStatus"
+      @move-task="handleMove"
       @open-details="openDetails"
       @delete-task="openDeleteConfirm"
       @rename-task="handleRenameTask"

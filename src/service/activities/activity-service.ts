@@ -18,6 +18,14 @@ class activityService {
     )
   }
 
+  /** Move o card no kanban persistindo status + ordem manual (position 0-based). */
+  moveActivity(id: string, data: { status: string; position: number }): Promise<any> {
+    return this.handleRequest(
+      api.patch(`/activity/${id}/move`, data),
+      'Erro ao mover atividade',
+    )
+  }
+
   postActivity(data: any): Promise<any> {
     return this.handleRequest(
       api.post('/activity', data),

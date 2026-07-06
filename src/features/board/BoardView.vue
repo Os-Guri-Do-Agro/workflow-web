@@ -13,6 +13,8 @@ import { useWorkspaceStore, type ActivityItem } from '@/stores/workspaceStores'
 import { dateOnlyDiffDays, isOverdue as isDueDateOverdue } from '@/utils/date'
 import { useToast } from '@/composables/useToast'
 import activityService from '@/service/activities/activity-service'
+import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
+import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import AppSelect from '@/components/ui/AppSelect.vue'
 
 const { error: showError, success: showSuccess } = useToast()
@@ -123,6 +125,16 @@ async function loadData() {
 }
 
 onMounted(loadData)
+
+// ── Realtime: reflete arraste feito em outras abas/usuários na visão agregada ──
+// A store é reativa; setar .status faz getColumnTasks reordenar sozinho. Match
+// por id cobre todas as empresas do workspace (o usuário recebe eventos de todas).
+function applyRemoteMove(p: ActivityMovedPayload) {
+  const activity = workspace.workspaceData?.activities.find((a) => a.id === p.activityId)
+  if (activity) activity.status = p.status
+}
+
+useActivityBoardRealtime(applyRemoteMove, loadData)
 
 watch(
   () => workspace.activeCompanyId,
