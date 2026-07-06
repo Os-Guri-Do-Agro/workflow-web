@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   BarChart3,
   Ban,
+  Building2,
   Check,
   Copy,
   Download,
@@ -10,11 +11,12 @@ import {
   Eye,
   Pencil,
   Trash2,
+  User,
 } from 'lucide-vue-next'
 import QrPreview from './QrPreview.vue'
 import type { QrCode } from '@/service/qr/qr-service'
 import { useToast } from '@/composables/useToast'
-import { downloadJpg, downloadPng, downloadSvg } from '@/utils/qr-export'
+import { exportQr } from '@/utils/qr-styled'
 
 const props = defineProps<{ qr: QrCode }>()
 const emit = defineEmits<{
@@ -38,7 +40,7 @@ async function copyLink() {
   }
 }
 
-// ─── Menu de exportação ───────────────────────────────────────────────────────
+// ─── Menu de exportação (honra o style do QR) ─────────────────────────────────
 const exportOpen = ref(false)
 const exportRef = ref<HTMLElement | null>(null)
 
@@ -50,11 +52,12 @@ function baseName() {
 async function doExport(fmt: 'png' | 'jpg' | 'svg') {
   exportOpen.value = false
   try {
-    // Sempre exporta a partir do redirectUrl do backend (não uma URL montada).
+    // Sempre exporta a partir do redirectUrl do backend + o style persistido.
     const text = props.qr.redirectUrl
-    if (fmt === 'png') await downloadPng(text, `${baseName()}.png`)
-    else if (fmt === 'jpg') await downloadJpg(text, `${baseName()}.jpg`)
-    else await downloadSvg(text, `${baseName()}.svg`)
+    const style = props.qr.style
+    if (fmt === 'png') await exportQr(text, style, 'png', `${baseName()}.png`)
+    else if (fmt === 'jpg') await exportQr(text, style, 'jpeg', `${baseName()}.jpg`)
+    else await exportQr(text, style, 'svg', `${baseName()}.svg`)
     success(`QR exportado (${fmt.toUpperCase()})`)
   } catch (e) {
     showError(e instanceof Error ? e.message : 'Falha ao exportar o QR')
@@ -73,12 +76,23 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 <template>
   <article class="qc" :class="{ 'qc--inactive': !qr.active }">
     <div class="qc-top">
-      <QrPreview :text="qr.redirectUrl" :size="112" />
+      <QrPreview :text="qr.redirectUrl" :style="qr.style" :size="112" />
       <div class="qc-meta">
         <div class="qc-title-row">
           <h3 class="qc-label">{{ qr.label || 'Sem nome' }}</h3>
           <span class="qc-badge" :class="qr.active ? 'qc-badge--on' : 'qc-badge--off'">
             {{ qr.active ? 'Ativo' : 'Cancelado' }}
+          </span>
+        </div>
+
+        <!-- Escopo: pessoal x empresa (+ autor quando é QR de empresa de outra pessoa) -->
+        <div class="qc-scope">
+          <span class="qc-scope-chip" :class="qr.scope === 'company' ? 'qc-scope-chip--company' : ''">
+            <component :is="qr.scope === 'company' ? Building2 : User" :size="12" />
+            <span>{{ qr.scope === 'company' ? 'Empresa' : 'Pessoal' }}</span>
+          </span>
+          <span v-if="qr.scope === 'company' && !qr.isMine && qr.ownerName" class="qc-owner">
+            por {{ qr.ownerName }}
           </span>
         </div>
 
@@ -112,11 +126,13 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 
     <!-- Ações -->
     <div class="qc-actions">
-      <button class="qc-act qc-act--primary" type="button" @click="emit('edit')">
+      <!-- Editar destino: só o criador -->
+      <button v-if="qr.isMine" class="qc-act qc-act--primary" type="button" @click="emit('edit')">
         <Pencil :size="14" />
         <span>Editar destino</span>
       </button>
 
+      <!-- Exportar: qualquer um pode -->
       <div ref="exportRef" class="qc-export">
         <button
           class="qc-act"
@@ -135,13 +151,15 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
         </div>
       </div>
 
+      <!-- Métricas: qualquer um pode ver -->
       <button class="qc-act" type="button" @click="emit('metrics')">
         <BarChart3 :size="14" />
         <span>Métricas</span>
       </button>
 
+      <!-- Cancelar / excluir: só o criador -->
       <button
-        v-if="qr.active"
+        v-if="qr.isMine && qr.active"
         class="qc-act"
         type="button"
         @click="emit('cancel')"
@@ -150,7 +168,13 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
         <span>Cancelar</span>
       </button>
 
-      <button class="qc-act qc-act--danger" type="button" aria-label="Excluir QR" @click="emit('remove')">
+      <button
+        v-if="qr.isMine"
+        class="qc-act qc-act--danger"
+        type="button"
+        aria-label="Excluir QR"
+        @click="emit('remove')"
+      >
         <Trash2 :size="14" />
       </button>
     </div>
@@ -223,6 +247,35 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 
 .qc-badge--off {
   background: var(--surface-2);
+  color: var(--text-3);
+}
+
+.qc-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qc-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.qc-scope-chip--company {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.qc-owner {
+  font-size: 11.5px;
   color: var(--text-3);
 }
 
