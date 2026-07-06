@@ -375,7 +375,7 @@ function getPriorityLabel(priority: number): string {
 }
 
 .stat-card {
-  background: rgb(var(--v-theme-primary));
+  background: var(--surface);
   border: 1px solid rgba(var(--v-theme-secondary), 0.07);
   border-radius: 12px;
   padding: 14px;
@@ -448,7 +448,7 @@ function getPriorityLabel(priority: number): string {
 }
 
 .workspace-panel {
-  background: rgb(var(--v-theme-primary));
+  background: var(--surface);
   border: 1px solid rgba(var(--v-theme-secondary), 0.07);
   border-radius: 12px;
   overflow: hidden;

@@ -217,7 +217,7 @@ function selectFolder(folderId: string | null) {
   gap: 6px;
   padding: 8px 14px;
   background: rgb(var(--v-theme-secondary));
-  color: rgb(var(--v-theme-primary));
+  color: var(--surface);
   border: none;
   border-radius: 8px;
   font-size: 13px;
@@ -238,7 +238,7 @@ function selectFolder(folderId: string | null) {
 }
 
 .notes-sidebar {
-  background: rgb(var(--v-theme-primary));
+  background: var(--surface);
   border: 1px solid rgba(var(--v-theme-secondary), 0.08);
   border-radius: 12px;
   padding: 12px;
@@ -369,7 +369,7 @@ function selectFolder(folderId: string | null) {
 }
 
 .note-card {
-  background: rgb(var(--v-theme-primary));
+  background: var(--surface);
   border: 1px solid rgba(var(--v-theme-secondary), 0.08);
   border-radius: 10px;
   padding: 14px;
