@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Monitor, FolderClosed, Trash2, LayoutDashboard, Columns3, StickyNote } from 'lucide-vue-next'
+import XpIcon from './XpIcon.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 
 /*
@@ -16,21 +16,20 @@ import { useUiPreferences } from '@/composables/useUiPreferences'
 const router = useRouter()
 const { shell } = useUiPreferences()
 
-type Icon = typeof Monitor
 interface DeskIcon {
   id: string
   label: string
-  icon: Icon
+  icon: string // nome do XpIcon
   to?: string // sem `to` = decorativo
 }
 
 const icons: DeskIcon[] = [
-  { id: 'computer', label: 'Meu Computador', icon: Monitor },
-  { id: 'docs', label: 'Meus Documentos', icon: FolderClosed },
-  { id: 'trash', label: 'Lixeira', icon: Trash2 },
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
-  { id: 'board', label: 'Board', icon: Columns3, to: '/board' },
-  { id: 'notes', label: 'Notas', icon: StickyNote, to: '/notes' },
+  { id: 'computer', label: 'Meu Computador', icon: 'my-computer' },
+  { id: 'docs', label: 'Meus Documentos', icon: 'documents' },
+  { id: 'trash', label: 'Lixeira', icon: 'recycle-bin' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', to: '/dashboard' },
+  { id: 'board', label: 'Board', icon: 'board', to: '/board' },
+  { id: 'notes', label: 'Notas', icon: 'notes', to: '/notes' },
 ]
 
 const selected = ref<string | null>(null)
@@ -65,7 +64,7 @@ const laneStyle = computed(() => {
       @dblclick="activate(item)"
     >
       <span class="xp-desk-glyph">
-        <component :is="item.icon" :size="26" :stroke-width="1.75" />
+        <XpIcon :name="item.icon" :size="34" />
       </span>
       <span class="xp-desk-label">{{ item.label }}</span>
     </button>

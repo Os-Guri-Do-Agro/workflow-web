@@ -1,22 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  LayoutDashboard,
-  Columns3,
-  Milestone,
-  ListTodo,
-  StickyNote,
-  CalendarDays,
-  QrCode,
-  Clock,
-  Monitor,
-  Settings,
-  HelpCircle,
-  LogOut,
-  Power,
-  type LucideIcon,
-} from 'lucide-vue-next'
+import { LogOut, Power } from 'lucide-vue-next'
+import XpIcon from './XpIcon.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { getUserToken } from '@/utils/authContent'
@@ -53,25 +39,28 @@ const userInitials = computed(() =>
 
 interface MenuLink {
   label: string
-  icon: LucideIcon
+  icon: string // nome do XpIcon
   to: string
 }
 
-// Coluna esquerda: atalhos dos apps. Tarefas cai no primeiro mês disponível.
+// Coluna esquerda: TODOS os destinos de navegação (a sidebar some no XP, então
+// o Menu Iniciar é a navegação principal). Tarefas cai no primeiro mês.
 const appLinks = computed<MenuLink[]>(() => {
   const links: MenuLink[] = [
-    { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
-    { label: 'Board', icon: Columns3, to: '/board' },
-    { label: 'Roadmap', icon: Milestone, to: '/roadmap' },
+    { label: 'Dashboard', icon: 'dashboard', to: '/dashboard' },
+    { label: 'Board', icon: 'board', to: '/board' },
+    { label: 'Roadmap', icon: 'roadmap', to: '/roadmap' },
   ]
   if (firstMonth.value) {
-    links.push({ label: 'Tarefas', icon: ListTodo, to: `/tasks/${firstMonth.value.id}` })
+    links.push({ label: 'Tarefas', icon: 'documents', to: `/tasks/${firstMonth.value.id}` })
   }
   links.push(
-    { label: 'Notas', icon: StickyNote, to: '/notes' },
-    { label: 'Calendário', icon: CalendarDays, to: '/calendar' },
-    { label: 'QR Codes', icon: QrCode, to: '/qr' },
-    { label: 'Meu tempo', icon: Clock, to: '/time' },
+    { label: 'Notas', icon: 'notes', to: '/notes' },
+    { label: 'Calendário', icon: 'calendar', to: '/calendar' },
+    { label: 'Variáveis', icon: 'variables', to: '/variables' },
+    { label: 'Usuários', icon: 'users', to: '/company-users' },
+    { label: 'QR Codes', icon: 'qr', to: '/qr' },
+    { label: 'Meu tempo', icon: 'clock', to: '/time' },
   )
   return links
 })
@@ -120,8 +109,8 @@ function shutDown(): void {
           role="menuitem"
           @click="go(link.to)"
         >
-          <span class="xp-sm-item-ico xp-sm-item-ico--accent">
-            <component :is="link.icon" :size="18" />
+          <span class="xp-sm-item-ico">
+            <XpIcon :name="link.icon" :size="26" />
           </span>
           <span class="xp-sm-item-label">{{ link.label }}</span>
         </button>
@@ -129,17 +118,21 @@ function shutDown(): void {
 
       <div class="xp-sm-col xp-sm-col--right">
         <button class="xp-sm-item xp-sm-item--sys" type="button" role="menuitem" @click="decorative">
-          <span class="xp-sm-item-ico"><Monitor :size="18" /></span>
+          <span class="xp-sm-item-ico"><XpIcon name="my-computer" :size="26" /></span>
           <span class="xp-sm-item-label">Meu Computador</span>
         </button>
+        <button class="xp-sm-item xp-sm-item--sys" type="button" role="menuitem" @click="decorative">
+          <span class="xp-sm-item-ico"><XpIcon name="documents" :size="26" /></span>
+          <span class="xp-sm-item-label">Meus Documentos</span>
+        </button>
         <button class="xp-sm-item xp-sm-item--sys" type="button" role="menuitem" @click="go('/settings')">
-          <span class="xp-sm-item-ico"><Settings :size="18" /></span>
+          <span class="xp-sm-item-ico"><XpIcon name="settings" :size="26" /></span>
           <span class="xp-sm-item-label">Configurações</span>
         </button>
         <div class="xp-sm-sep" />
         <button class="xp-sm-item xp-sm-item--sys" type="button" role="menuitem" @click="decorative">
-          <span class="xp-sm-item-ico"><HelpCircle :size="18" /></span>
-          <span class="xp-sm-item-label">Ajuda</span>
+          <span class="xp-sm-item-ico"><XpIcon name="internet" :size="26" /></span>
+          <span class="xp-sm-item-label">Ajuda e Suporte</span>
         </button>
       </div>
     </div>
@@ -262,8 +255,7 @@ function shutDown(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  color: #1c4bb0;
+  width: 28px;
   flex-shrink: 0;
 }
 
