@@ -60,7 +60,16 @@ html[data-xp='true'] body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: url('/xp-bliss.jpg') center / cover no-repeat;
+  background: url('/xp-bliss.jpg') center / cover no-repeat fixed;
+}
+
+/* CADEIA OPACA: o App.vue força `.v-application{background:var(--bg)!important}`
+   e o #app cobre o viewport — isso tampava o wallpaper (body::before, z-index -1).
+   No modo XP tornamos a cadeia raiz transparente p/ o desktop aparecer atrás. */
+html[data-xp='true'] #app,
+html[data-xp='true'] .v-application,
+html[data-xp='true'] .v-application__wrap {
+  background: transparent !important;
 }
 
 /* Raízes dos 3 shells transparentes: o desktop aparece atrás do conteúdo.
