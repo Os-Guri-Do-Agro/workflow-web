@@ -37,6 +37,8 @@ export interface QrCode {
   scope: 'personal' | 'company'
   /** Nome do criador — exibido em QRs de empresa que não são meus. */
   ownerName: string | null
+  /** Nome da empresa dona do QR (null em QRs pessoais). Resolvido no backend. */
+  companyName: string | null
   /** Personalização visual persistida (null = sem estilo customizado). */
   style: QrStyle | null
 }

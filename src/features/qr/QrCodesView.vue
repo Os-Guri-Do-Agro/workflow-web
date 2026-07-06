@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, type Component } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Building2, Plus, QrCode as QrCodeIcon, RotateCw, User } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -8,18 +9,79 @@ import QrCard from './components/QrCard.vue'
 import QrEditDialog from './components/QrEditDialog.vue'
 import QrMetricsDialog from './components/QrMetricsDialog.vue'
 import { useQrList, useQrMutations } from '@/composables/useQrCodes'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 import type { QrCode, QrStyle } from '@/service/qr/qr-service'
 
 const list = useQrList()
 const { create, update, cancel, remove } = useQrMutations()
+const workspace = useWorkspaceStore()
 
 const qrs = computed<QrCode[]>(() => list.data.value ?? [])
 
-// Agrupamento visual: meus QRs pessoais x QRs de empresa (o backend já traz os dois).
-const personalQrs = computed(() => qrs.value.filter((q) => q.scope === 'personal'))
-const companyQrs = computed(() => qrs.value.filter((q) => q.scope === 'company'))
-// Só separa em seções quando existem os dois grupos; senão mostra uma grade única.
-const grouped = computed(() => personalQrs.value.length > 0 && companyQrs.value.length > 0)
+// ─── Agrupamento por escopo ────────────────────────────────────────────────────
+// Sempre agrupamos: "Pessoais" primeiro e depois UMA seção por empresa distinta.
+// Assim quem só tem QRs de empresa (ou só pessoais) também vê um header nomeado —
+// resolve o "cadê a listagem da empresa?".
+type QrGroup = { key: string; label: string; icon: Component; items: QrCode[] }
+
+const groups = computed<QrGroup[]>(() => {
+  const result: QrGroup[] = []
+
+  const personal = qrs.value.filter((q) => q.scope === 'personal')
+  if (personal.length) {
+    result.push({ key: 'personal', label: 'Pessoais', icon: User, items: personal })
+  }
+
+  // Uma entrada por companyId distinto (preservando a ordem de chegada).
+  const seen = new Set<string>()
+  for (const q of qrs.value) {
+    if (q.scope !== 'company' || !q.companyId || seen.has(q.companyId)) continue
+    seen.add(q.companyId)
+    const items = qrs.value.filter((x) => x.companyId === q.companyId)
+    // Nome vem do backend; fallback = nome no workspace store; senão "Empresa".
+    const label =
+      q.companyName ||
+      workspace.companies.find((c) => c.id === q.companyId)?.name ||
+      'Empresa'
+    result.push({ key: q.companyId, label, icon: Building2, items })
+  }
+
+  return result
+})
+
+// ─── Segmented control (abas): Todos | Pessoais | <Empresa A> | … ──────────────
+const route = useRoute()
+const router = useRouter()
+const activeScope = ref<string>(
+  typeof route.query.scope === 'string' ? route.query.scope : 'all',
+)
+
+const tabs = computed(() => [
+  { key: 'all', label: 'Todos', count: qrs.value.length },
+  ...groups.value.map((g) => ({ key: g.key, label: g.label, count: g.items.length })),
+])
+
+// Grupos visíveis conforme a aba ativa (em "Todos", todos; senão, só o escolhido).
+const shownGroups = computed(() =>
+  activeScope.value === 'all'
+    ? groups.value
+    : groups.value.filter((g) => g.key === activeScope.value),
+)
+
+// Se a aba ativa deixou de existir (ex.: excluí o último QR daquela empresa), volta p/ "Todos".
+watch(groups, (g) => {
+  if (activeScope.value !== 'all' && !g.some((x) => x.key === activeScope.value)) {
+    activeScope.value = 'all'
+  }
+})
+
+// Persiste a aba em ?scope= (compartilhar/recarregar mantém o filtro).
+watch(activeScope, (scope) => {
+  const query = { ...route.query }
+  if (scope === 'all') delete query.scope
+  else query.scope = scope
+  router.replace({ query })
+})
 
 // ─── Criar / editar ───────────────────────────────────────────────────────────
 const editOpen = ref(false)
@@ -144,36 +206,34 @@ async function confirmRemove() {
       </template>
     </EmptyState>
 
-    <!-- Lista agrupada (Pessoais | Da empresa) quando há os dois grupos -->
-    <template v-else-if="grouped">
-      <section class="qr-group">
-        <div class="qr-group-head">
-          <User :size="15" />
-          <h2 class="qr-group-title">Pessoais</h2>
-          <span class="qr-group-count">{{ personalQrs.length }}</span>
-        </div>
-        <div class="qr-grid">
-          <QrCard
-            v-for="qr in personalQrs"
-            :key="qr.id"
-            :qr="qr"
-            @edit="openEdit(qr)"
-            @metrics="metricsFor = qr"
-            @cancel="cancelTarget = qr"
-            @remove="removeTarget = qr"
-          />
-        </div>
-      </section>
+    <!-- Conteúdo: segmented control + seções por escopo (SEMPRE com header) -->
+    <template v-else>
+      <!-- Abas: Todos | Pessoais | <Empresa A> | … com contador em cada uma -->
+      <div class="qr-tabs" role="tablist" aria-label="Filtrar QR codes por escopo">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          type="button"
+          role="tab"
+          class="qr-tab"
+          :class="{ 'qr-tab--active': activeScope === tab.key }"
+          :aria-selected="activeScope === tab.key"
+          @click="activeScope = tab.key"
+        >
+          <span class="qr-tab-label">{{ tab.label }}</span>
+          <span class="qr-tab-count">{{ tab.count }}</span>
+        </button>
+      </div>
 
-      <section class="qr-group">
+      <section v-for="group in shownGroups" :key="group.key" class="qr-group">
         <div class="qr-group-head">
-          <Building2 :size="15" />
-          <h2 class="qr-group-title">Da empresa</h2>
-          <span class="qr-group-count">{{ companyQrs.length }}</span>
+          <component :is="group.icon" :size="15" />
+          <h2 class="qr-group-title">{{ group.label }}</h2>
+          <span class="qr-group-count">{{ group.items.length }}</span>
         </div>
         <div class="qr-grid">
           <QrCard
-            v-for="qr in companyQrs"
+            v-for="qr in group.items"
             :key="qr.id"
             :qr="qr"
             @edit="openEdit(qr)"
@@ -184,19 +244,6 @@ async function confirmRemove() {
         </div>
       </section>
     </template>
-
-    <!-- Grade única quando há só um grupo -->
-    <div v-else class="qr-grid">
-      <QrCard
-        v-for="qr in qrs"
-        :key="qr.id"
-        :qr="qr"
-        @edit="openEdit(qr)"
-        @metrics="metricsFor = qr"
-        @cancel="cancelTarget = qr"
-        @remove="removeTarget = qr"
-      />
-    </div>
 
     <!-- Dialogs -->
     <QrEditDialog
@@ -299,6 +346,65 @@ async function confirmRemove() {
 
 .qr-new:hover {
   filter: brightness(1.05);
+}
+
+/* Segmented control (abas por escopo) */
+.qr-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.qr-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.qr-tab:hover {
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
+}
+
+.qr-tab--active {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.qr-tab-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.qr-tab--active .qr-tab-count {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
 }
 
 .qr-group {

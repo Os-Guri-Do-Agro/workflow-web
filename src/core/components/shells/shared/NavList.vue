@@ -67,6 +67,11 @@ const mainItems = computed<NavItem[]>(() => [
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
+  // QR Codes é ferramenta premium (isFluvio) e agora vive em "Trabalho": abrange
+  // QRs pessoais + os das empresas do usuário (o segmented control da view separa por escopo).
+  ...(isFluvio.value
+    ? ([{ title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Trabalho' }] as NavItem[])
+    : []),
   { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },
 ])
 
@@ -96,12 +101,9 @@ const taskItem = computed<NavItem | null>(() => {
 })
 
 const personalItems = computed<NavItem[]>(() => [
-  // "Meu tempo" e "QR Codes" são ferramentas premium: só com isFluvio.
+  // "Meu tempo" é ferramenta premium: só com isFluvio. (QR Codes migrou p/ "Trabalho".)
   ...(isFluvio.value
     ? ([{ title: 'Meu tempo', icon: Timer, to: '/time', section: 'Pessoal' }] as NavItem[])
-    : []),
-  ...(isFluvio.value
-    ? ([{ title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Pessoal' }] as NavItem[])
     : []),
   { title: 'Notas', icon: StickyNote, to: '/notes', section: 'Pessoal' },
   { title: 'Calendário', icon: CalendarDays, to: '/calendar', section: 'Pessoal' },

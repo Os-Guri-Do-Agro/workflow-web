@@ -89,7 +89,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
         <div class="qc-scope">
           <span class="qc-scope-chip" :class="qr.scope === 'company' ? 'qc-scope-chip--company' : ''">
             <component :is="qr.scope === 'company' ? Building2 : User" :size="12" />
-            <span>{{ qr.scope === 'company' ? 'Empresa' : 'Pessoal' }}</span>
+            <span>{{ qr.scope === 'company' ? (qr.companyName || 'Empresa') : 'Pessoal' }}</span>
           </span>
           <span v-if="qr.scope === 'company' && !qr.isMine && qr.ownerName" class="qc-owner">
             por {{ qr.ownerName }}
