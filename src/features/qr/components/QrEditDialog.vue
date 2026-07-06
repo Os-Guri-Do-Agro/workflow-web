@@ -255,14 +255,15 @@ function submit() {
               </label>
 
               <label class="qed-field">
-                <span class="qed-label">Nome (opcional)</span>
-                <input
+                <span class="qed-label">Descrição (opcional)</span>
+                <textarea
                   v-model="form.label"
-                  class="qed-input qed-input--bare"
-                  type="text"
-                  placeholder="Ex.: Cartaz da campanha"
+                  class="qed-textarea"
+                  rows="2"
+                  placeholder="Ex.: Cartaz da campanha de verão — mesa 3"
                   maxlength="120"
                 />
+                <span class="qed-hint qed-hint--count">{{ form.label.length }}/120</span>
               </label>
 
               <!-- Escopo: pessoal x empresa -->
@@ -415,8 +416,8 @@ function submit() {
 }
 
 .qed {
-  width: min(760px, 100%);
-  max-height: min(92vh, 780px);
+  width: min(880px, 100%);
+  max-height: min(92vh, 820px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-strong);
@@ -471,14 +472,14 @@ function submit() {
 }
 
 .qed-body {
-  padding: 18px;
+  padding: 22px;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 240px 1fr;
   grid-template-areas:
     'preview controls'
     'actions actions';
-  gap: 18px 20px;
+  gap: 22px 26px;
   align-items: start;
 }
 
@@ -519,17 +520,17 @@ function submit() {
 }
 
 .qed-label {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 650;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 .qed-input-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 46px;
-  padding: 0 12px;
+  height: 48px;
+  padding: 0 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -558,24 +559,41 @@ function submit() {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   outline: none;
 }
 
-.qed-input--bare {
-  height: 46px;
-  padding: 0 12px;
+/* Descrição: campo maior (textarea), o "input pequeno" que o dono apontou. */
+.qed-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 11px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 
-.qed-input--bare:focus-visible {
+.qed-textarea:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
-.qed-input::placeholder {
+.qed-hint--count {
+  align-self: flex-end;
+  font-size: 11px;
+  color: var(--text-4);
+}
+
+.qed-input::placeholder,
+.qed-textarea::placeholder {
   color: var(--text-3);
 }
 

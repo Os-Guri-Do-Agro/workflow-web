@@ -7,7 +7,6 @@ import {
   Eye,
   EyeOff,
   Loader2,
-  Download,
   CheckCircle2,
   LineChart,
   Users2,
@@ -149,14 +148,6 @@ const features = [
             @click="router.push('/signup')"
           >
             Criar conta gratuita
-          </button>
-          <button
-            type="button"
-            class="btn-ghost"
-            @click="router.push('/download')"
-          >
-            <Download :size="14" />
-            Desktop App
           </button>
         </form>
 

@@ -48,8 +48,9 @@ html[data-xp='true'] {
 
 /* ─── Desktop: papel de parede Bliss ───────────────────────────────────────── */
 /* Body transparente + ::before fixo = área de trabalho de verdade atrás de tudo.
-   (SVG local, CSP-safe; sem imagem externa.) O body normalmente pinta var(--bg)
-   opaco — deixamos transparente p/ o desktop aparecer. */
+   Foto real do Bliss (1280x720) servida de /public (mesma origem — sem CSP nem
+   dependência externa em runtime). O body normalmente pinta var(--bg) opaco —
+   deixamos transparente p/ o desktop aparecer. */
 html[data-xp='true'] body {
   background: transparent !important;
 }
@@ -59,7 +60,7 @@ html[data-xp='true'] body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: url('./xp-bliss.svg') center / cover no-repeat;
+  background: url('/xp-bliss.jpg') center / cover no-repeat;
 }
 
 /* Raízes dos 3 shells transparentes: o desktop aparece atrás do conteúdo.
