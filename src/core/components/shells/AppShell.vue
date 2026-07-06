@@ -8,18 +8,24 @@ import CommandPalette from '@/components/CommandPalette.vue'
 import AssistantPanel from '@/components/assistant/AssistantPanel.vue'
 import AssistantLauncher from '@/components/assistant/AssistantLauncher.vue'
 import WelcomeGuide from '@/components/onboarding/WelcomeGuide.vue'
+import XpTaskbar from './shared/XpTaskbar.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useAssistant } from '@/composables/useAssistant'
 import { useOnboarding } from '@/composables/useOnboarding'
 import { useToast } from '@/composables/useToast'
+import { useTimerDocumentTitle } from '@/composables/useTimerDocumentTitle'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const route = useRoute()
 const router = useRouter()
-const { shell } = useUiPreferences()
+const { shell, xp } = useUiPreferences()
 const assistant = useAssistant()
 const onboarding = useOnboarding()
 const { info } = useToast()
+
+// Contador do timer no título da aba (persiste ao trocar de rota/shell — por isso
+// mora aqui, no ponto sempre presente, e não no TimerWidget que é por-shell).
+useTimerDocumentTitle()
 
 // Redirects do guard chegam com ?reason=... — traduz em toast e limpa a query
 // (router.replace) para o aviso não repetir em refresh/navegação.
@@ -104,6 +110,8 @@ const openPalette = () => paletteRef.value?.open()
     <AssistantLauncher />
     <AssistantPanel />
     <WelcomeGuide />
+    <!-- Taskbar do easter egg Windows XP (só quando o modo XP está ligado). -->
+    <XpTaskbar v-if="xp" />
   </div>
 </template>
 

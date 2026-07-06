@@ -46,24 +46,56 @@ html[data-xp='true'] {
   --v-theme-on-secondary: 255, 255, 255 !important;
 }
 
-/* Papel de parede: substitui a aurora dos shells pelo Bliss */
-html[data-xp='true'] .aurora {
-  background: url('./xp-bliss.svg') center / cover no-repeat !important;
-}
-
-html[data-xp='true'] .aurora-blob,
-html[data-xp='true'] .aurora-grid,
-html[data-xp='true'] .aurora-noise {
-  display: none !important;
-}
-
+/* ─── Desktop: papel de parede Bliss ───────────────────────────────────────── */
+/* Body transparente + ::before fixo = área de trabalho de verdade atrás de tudo.
+   (SVG local, CSP-safe; sem imagem externa.) O body normalmente pinta var(--bg)
+   opaco — deixamos transparente p/ o desktop aparecer. */
 html[data-xp='true'] body {
-  background: url('./xp-bliss.svg') center / cover fixed no-repeat;
+  background: transparent !important;
 }
 
-/* Chrome de janela: topbars/sidebars (.glass) viram title bar Luna */
+html[data-xp='true'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: url('./xp-bliss.svg') center / cover no-repeat;
+}
+
+/* Raízes dos 3 shells transparentes: o desktop aparece atrás do conteúdo.
+   E descontam 30px de altura p/ a XpTaskbar do rodapé (montada no AppShell). */
+html[data-xp='true'] .command-shell,
+html[data-xp='true'] .focus-shell,
+html[data-xp='true'] .canvas-shell {
+  background: transparent !important;
+  height: calc(100vh - 30px) !important;
+}
+
+/* Área de conteúdo respira sobre o desktop (scroll real dos 3 shells). */
+html[data-xp='true'] .main,
+html[data-xp='true'] .main-scroll {
+  background: transparent !important;
+}
+
+/* Container da view = "janela sobre o desktop": inset + moldura azul fina.
+   Scroll real: .main no Command/Canvas, .main-scroll no Focus. */
+html[data-xp='true'] .command-shell .main,
+html[data-xp='true'] .canvas-shell .main,
+html[data-xp='true'] .focus-shell .main-scroll {
+  margin: 8px !important;
+  border: 1px solid #003cbe !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35) !important;
+}
+
+/* ─── Title bar azul Luna na chrome REAL ───────────────────────────────────── */
+/* Alvos reais das barras de topo: .topbar (Command), .slim-top (Focus),
+   .topnav (Canvas) — + .glass/.glass-strong legado. */
 html[data-xp='true'] .glass,
-html[data-xp='true'] .glass-strong {
+html[data-xp='true'] .glass-strong,
+html[data-xp='true'] .topbar,
+html[data-xp='true'] .slim-top,
+html[data-xp='true'] .topnav {
   background: linear-gradient(
     180deg,
     #0997ff 0%,
@@ -81,15 +113,36 @@ html[data-xp='true'] .glass-strong {
 }
 
 /* Texto/ícones dentro do chrome Luna ficam brancos e legíveis */
-html[data-xp='true'] .glass :is(button, a, span, div, input, label, svg) {
+html[data-xp='true'] .glass :is(button, a, span, div, input, label, svg),
+html[data-xp='true'] .topbar :is(button, a, span, div, input, label, svg),
+html[data-xp='true'] .slim-top :is(button, a, span, div, input, label, svg),
+html[data-xp='true'] .topnav :is(button, a, span, div, input, label, svg) {
   --text: #ffffff;
   --text-2: rgba(255, 255, 255, 0.92);
   --text-3: rgba(255, 255, 255, 0.8);
   --text-4: rgba(255, 255, 255, 0.65);
 }
 
-html[data-xp='true'] .glass input::placeholder {
+html[data-xp='true'] .glass input::placeholder,
+html[data-xp='true'] .topbar input::placeholder,
+html[data-xp='true'] .slim-top input::placeholder,
+html[data-xp='true'] .topnav input::placeholder {
   color: rgba(255, 255, 255, 0.7);
+}
+
+/* ─── Painéis laterais Luna ─────────────────────────────────────────────────── */
+/* Sidebar (Command) + rail/context (Focus) = painel Luna azul-claro. */
+html[data-xp='true'] .sidebar,
+html[data-xp='true'] .rail,
+html[data-xp='true'] .context {
+  background: #d6e5f5 !important;
+  border-color: #7a9fd6 !important;
+}
+
+html[data-xp='true'] .sidebar-footer,
+html[data-xp='true'] .context-header,
+html[data-xp='true'] .context-footer {
+  border-color: #a7c1e6 !important;
 }
 
 /* Scrollbar estilo XP */
