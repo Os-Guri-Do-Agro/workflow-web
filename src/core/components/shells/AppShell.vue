@@ -22,13 +22,30 @@ import { CANVAS_ENABLED } from '@/config/feature-flags'
 const route = useRoute()
 const router = useRouter()
 const { shell, xp } = useUiPreferences()
-const { playStartup } = useXpSounds()
+const { playStartup, playClick } = useXpSounds()
 
 // Som de inicialização ao LIGAR o modo XP (só na transição off→on por gesto do
 // usuário — sem `immediate`, então nunca toca no boot/refresh com XP já ligado).
 watch(xp, (on, was) => {
   if (on && !was) playStartup()
 })
+
+// Clique do mouse a cada clique NA TELA enquanto o XP está ligado — como no
+// Windows clássico. Listener global em capture; ligado/desligado conforme o modo.
+function onGlobalPointerDown(e: PointerEvent) {
+  // Só botão principal; ignora scrollbar/arrasto secundário.
+  if (e.button !== 0) return
+  playClick()
+}
+watch(
+  xp,
+  (on) => {
+    window.removeEventListener('pointerdown', onGlobalPointerDown, true)
+    if (on) window.addEventListener('pointerdown', onGlobalPointerDown, true)
+  },
+  { immediate: true },
+)
+onUnmounted(() => window.removeEventListener('pointerdown', onGlobalPointerDown, true))
 
 const assistant = useAssistant()
 const onboarding = useOnboarding()
