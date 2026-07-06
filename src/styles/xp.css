@@ -186,6 +186,79 @@ html[data-xp='true'] ::selection {
   color: #ffffff;
 }
 
+/* ─── Modais viram JANELA XP: title bar azul + X vermelho + animação de abrir ── */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes xp-window-open {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  /* Diálogos do Vuetify (nova tarefa, confirmar, variável) e modais custom
+     (evento, QR) crescem ao abrir, como uma janelinha do XP. */
+  html[data-xp='true'] .v-overlay__content,
+  html[data-xp='true'] .modal,
+  html[data-xp='true'] .qed {
+    animation: xp-window-open 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transform-origin: center center;
+  }
+}
+
+/* Header de cada modal = barra de título azul Luna. Alvos dos modais reais:
+   .form-card>.head (Nova atividade), .modal>.head (evento), .qed>.qed-head (QR),
+   .create-card>.header (variável). Escopados p/ não vazar em outros ".head". */
+html[data-xp='true'] .form-card > .head,
+html[data-xp='true'] .modal > .head,
+html[data-xp='true'] .qed > .qed-head,
+html[data-xp='true'] .create-card > .header {
+  background: linear-gradient(180deg, #0a9bff 0%, #0257e4 48%, #0146c8 100%) !important;
+  border-bottom: 1px solid #003cbe !important;
+  border-radius: 7px 7px 0 0;
+  padding: 6px 8px 6px 12px !important;
+}
+
+/* Texto do título branco. */
+html[data-xp='true'] .form-card > .head :is(h2, p, span, .head-title, .head-sub),
+html[data-xp='true'] .modal > .head :is(h2, p, span, .head-title, .head-sub),
+html[data-xp='true'] .qed > .qed-head :is(h2, p, span, .qed-title, .qed-eyebrow),
+html[data-xp='true'] .create-card > .header :is(span, .title) {
+  color: #ffffff !important;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+/* O ícone-badge do header some (a barra XP já é a identidade da janela). */
+html[data-xp='true'] .form-card > .head .head-icon,
+html[data-xp='true'] .modal > .head .head-icon {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Botão fechar = X vermelho estilo XP (relevo, brilho no topo). */
+html[data-xp='true'] .form-card > .head .close-btn,
+html[data-xp='true'] .modal > .head .close-btn,
+html[data-xp='true'] .qed > .qed-head .qed-icon-btn,
+html[data-xp='true'] .create-card > .header .close-btn {
+  background: linear-gradient(180deg, #f08a80 0%, #d5433a 45%, #b4231b 100%) !important;
+  border: 1px solid #7a1610 !important;
+  border-radius: 3px !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+  width: 26px !important;
+  height: 22px !important;
+}
+
+html[data-xp='true'] .form-card > .head .close-btn:hover,
+html[data-xp='true'] .modal > .head .close-btn:hover,
+html[data-xp='true'] .qed > .qed-head .qed-icon-btn:hover,
+html[data-xp='true'] .create-card > .header .close-btn:hover {
+  background: linear-gradient(180deg, #ff9d92 0%, #e04a41 45%, #c62a20 100%) !important;
+}
+
 /* ─── Rede de segurança: legibilidade dos campos de formulário ──────────────── */
 /* Garante contraste em inputs/selects/textarea em QUALQUER lugar do XP. Usa
    var(--text): fora das barras de topo = escuro; dentro delas (raro) = branco.
