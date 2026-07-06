@@ -6,11 +6,15 @@
  * - Opções renderizam como TEXTO (nunca v-html), evitando markup/entities cruas.
  * - Tokenizado (var(--surface), var(--border), var(--text), var(--accent)…), sem hex.
  * - Acessível por teclado (abrir, setas, Enter, Esc) com foco visível.
- * - Alvo de toque do trigger >= 44px de altura.
+ * - Alvo de toque do trigger >= 44px de altura (comfortable) / 36px (compact).
+ *
+ * Modo single (default): `modelValue` é `SelectValuePrimitive` (string | number | null).
+ * Modo `multiple`: `modelValue` é `SelectValuePrimitive[]` (array de valores originais)
+ * e o trigger renderiza CHIPS removíveis em vez do valor único.
  *
  * Internamente cada item recebe uma chave string estável; o reka-ui opera sobre
- * essas chaves e o componente emite de volta o VALOR ORIGINAL (string | number |
- * null), preservando valores falsy como 0 e null sem ambiguidade.
+ * essas chaves e o componente emite de volta o VALOR ORIGINAL (ou array deles),
+ * preservando valores falsy como 0 e null sem ambiguidade.
  */
 import { computed } from 'vue'
 import {
@@ -25,7 +29,7 @@ import {
   SelectItemText,
   SelectItemIndicator,
 } from 'reka-ui'
-import { ChevronDown, Check } from 'lucide-vue-next'
+import { ChevronDown, Check, X } from 'lucide-vue-next'
 
 type SelectValuePrimitive = string | number | null
 
@@ -38,22 +42,28 @@ type ItemsProp = ReadonlyArray<string> | ReadonlyArray<SelectOption>
 
 const props = withDefaults(
   defineProps<{
-    modelValue: SelectValuePrimitive
+    /**
+     * Single: SelectValuePrimitive. Multiple: SelectValuePrimitive[] (array de valores).
+     */
+    modelValue: SelectValuePrimitive | SelectValuePrimitive[]
     items: ItemsProp
     placeholder?: string
     label?: string
     density?: 'compact' | 'comfortable'
     disabled?: boolean
+    /** Habilita seleção múltipla com chips no trigger. */
+    multiple?: boolean
   }>(),
   {
     placeholder: 'Selecione…',
     density: 'comfortable',
     disabled: false,
+    multiple: false,
   },
 )
 
 const emit = defineEmits<{
-  'update:modelValue': [value: SelectValuePrimitive]
+  'update:modelValue': [value: SelectValuePrimitive | SelectValuePrimitive[]]
 }>()
 
 // Normaliza items (string[] ou {label,value}[]) para uma forma única com chave estável.
@@ -89,31 +99,96 @@ const valueById = computed(() => {
 })
 
 // reka-ui opera sobre a chave string; convertemos de/para o valor original.
+// Modo single: chave única selecionada.
 const selectedKey = computed<string | undefined>(() => {
-  const key = keyOf(props.modelValue)
+  if (props.multiple) return undefined
+  const key = keyOf(props.modelValue as SelectValuePrimitive)
   return labelById.value.has(key) ? key : undefined
 })
 
-function onUpdate(key: string | undefined) {
-  if (key == null) return
+// Modo multiple: array de chaves selecionadas (só as que existem em items).
+const selectedKeys = computed<string[]>(() => {
+  if (!props.multiple) return []
+  const arr = Array.isArray(props.modelValue) ? props.modelValue : []
+  return arr.map((v) => keyOf(v)).filter((k) => labelById.value.has(k))
+})
+
+// Chips renderizados no trigger (modo multiple).
+const selectedChips = computed(() =>
+  selectedKeys.value.map((key) => ({
+    key,
+    label: labelById.value.get(key) as string,
+  })),
+)
+
+// model-value passado ao reka-ui: string|undefined (single) ou string[] (multiple).
+const rootModelValue = computed<string | string[] | undefined>(() =>
+  props.multiple ? selectedKeys.value : selectedKey.value,
+)
+
+// Converte chaves → valores originais e emite (usado no modo multiple).
+function emitKeys(keys: string[]) {
+  const values = keys
+    .filter((k) => valueById.value.has(k))
+    .map((k) => valueById.value.get(k) as SelectValuePrimitive)
+  emit('update:modelValue', values)
+}
+
+function onUpdate(payload: string | string[] | undefined) {
+  if (props.multiple) {
+    emitKeys(Array.isArray(payload) ? payload : [])
+    return
+  }
+  if (payload == null) return
+  const key = payload as string
   if (valueById.value.has(key)) {
     emit('update:modelValue', valueById.value.get(key) as SelectValuePrimitive)
   }
+}
+
+// Remove um valor específico do array (botão X do chip) e re-emite.
+function removeKey(key: string) {
+  emitKeys(selectedKeys.value.filter((k) => k !== key))
 }
 </script>
 
 <template>
   <SelectRoot
-    :model-value="selectedKey"
+    :model-value="rootModelValue"
+    :multiple="multiple"
     :disabled="disabled"
-    @update:model-value="onUpdate($event as string | undefined)"
+    @update:model-value="onUpdate($event as string | string[] | undefined)"
   >
     <SelectTrigger
       class="app-select__trigger"
-      :class="`app-select__trigger--${density}`"
+      :class="[`app-select__trigger--${density}`, { 'app-select__trigger--multiple': multiple }]"
       :aria-label="label"
     >
-      <SelectValue class="app-select__value" :placeholder="placeholder" />
+      <!-- Modo single: valor único via reka SelectValue -->
+      <SelectValue v-if="!multiple" class="app-select__value" :placeholder="placeholder" />
+
+      <!-- Modo multiple: chips removíveis (ou placeholder se vazio) -->
+      <template v-else>
+        <span v-if="selectedChips.length" class="app-select__chips">
+          <span v-for="chip in selectedChips" :key="chip.key" class="app-select__chip">
+            <span class="app-select__chip-label">{{ chip.label }}</span>
+            <span
+              class="app-select__chip-x"
+              role="button"
+              tabindex="-1"
+              :aria-label="`Remover ${chip.label}`"
+              @pointerdown.stop.prevent
+              @click.stop="removeKey(chip.key)"
+            >
+              <X :size="12" />
+            </span>
+          </span>
+        </span>
+        <span v-else class="app-select__value app-select__value--placeholder">
+          {{ placeholder }}
+        </span>
+      </template>
+
       <SelectIcon class="app-select__chev">
         <ChevronDown :size="15" />
       </SelectIcon>
@@ -168,8 +243,15 @@ function onUpdate(key: string | undefined) {
     background var(--motion-fast) var(--motion-ease);
 }
 
-.app-select__trigger--compact {
+/* comfortable: mantém 44px (default confortável de toque) */
+.app-select__trigger--comfortable {
   min-height: 44px;
+}
+
+/* compact: alvo mais denso (~36px) mantendo legibilidade e padding proporcional */
+.app-select__trigger--compact {
+  min-height: 36px;
+  padding: 0 10px;
   font-size: 12px;
 }
 
@@ -195,10 +277,68 @@ function onUpdate(key: string | undefined) {
   color: var(--text-3);
 }
 
+/* Multiple: chips podem quebrar linha; padding vertical p/ crescer verticalmente */
+.app-select__trigger--multiple {
+  height: auto;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
 .app-select__value {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-select__value--placeholder {
+  color: var(--text-3);
+}
+
+/* Container de chips: cresce e quebra linha; chevron fica sempre à direita */
+.app-select__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.app-select__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 8px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.app-select__chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-select__chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
+}
+
+.app-select__chip-x:hover {
+  color: var(--text);
+  background: var(--surface-2);
 }
 
 .app-select__chev {
@@ -209,7 +349,8 @@ function onUpdate(key: string | undefined) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-select__trigger {
+  .app-select__trigger,
+  .app-select__chip-x {
     transition-duration: 1ms;
   }
 }

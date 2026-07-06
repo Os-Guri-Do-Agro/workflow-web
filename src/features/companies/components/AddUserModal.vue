@@ -2,6 +2,8 @@
 import { ref, watch, onMounted } from 'vue'
 import userService from '@/service/user/user-service'
 import companieService from '@/service/companies/companies-services'
+import AppSelect from '@/components/ui/AppSelect.vue'
+import { ShieldUser } from 'lucide-vue-next'
 
 type Company = {
   id: string
@@ -126,18 +128,21 @@ onMounted(() => {
           <div class="text-body-2 font-weight-bold" style="color: var(--text)">{{ company.name }}</div>
         </div>
 
-        <v-select
-          v-model="selectedRole"
-          label="Função"
-          :items="[
-            { title: 'Cliente', value: 'CLIENT' },
-            { title: 'Trabalhador', value: 'WORKER' },
-          ]"
-          variant="outlined"
-          density="comfortable"
-          prepend-inner-icon="mdi-shield-account"
-          class="mb-4"
-        />
+        <div class="role-field mb-4">
+          <span class="role-label">
+            <ShieldUser :size="15" />
+            Função
+          </span>
+          <AppSelect
+            :model-value="selectedRole"
+            :items="[
+              { label: 'Cliente', value: 'CLIENT' },
+              { label: 'Trabalhador', value: 'WORKER' },
+            ]"
+            label="Função"
+            @update:model-value="selectedRole = ($event as 'CLIENT' | 'WORKER')"
+          />
+        </div>
 
         <v-text-field
           v-model="search"
@@ -194,3 +199,21 @@ onMounted(() => {
     </v-card>
   </v-dialog>
 </template>
+
+<style scoped>
+/* Campo "Função" com label visível (ícone lucide + texto), tokenizado. */
+.role-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.role-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+</style>

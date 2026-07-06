@@ -24,13 +24,17 @@
             @click:append-inner="showPassword = !showPassword"
             required
           />
-          <v-select
-            v-model="formData.role"
-            label="Tipo de Usuário"
-            :items="roles"
-            :rules="[rules.required]"
-            required
-          />
+          <div class="field-block">
+            <span class="field-label">Tipo de Usuário</span>
+            <AppSelect
+              :model-value="formData.role"
+              :items="roles"
+              label="Tipo de Usuário"
+              placeholder="Selecione o tipo"
+              @update:model-value="onRoleChange(String($event))"
+            />
+            <span v-if="roleError" class="field-error">{{ roleError }}</span>
+          </div>
         </v-form>
       </v-card-text>
       <v-card-actions>
@@ -46,6 +50,7 @@
 import { ref } from 'vue'
 import userService from '@/service/user/user-service'
 import { useToast } from '@/composables/useToast'
+import AppSelect from '@/components/ui/AppSelect.vue'
 
 const { success, error: showError } = useToast()
 
@@ -56,11 +61,18 @@ const loading = ref(false)
 const showPassword = ref(false)
 const form = ref()
 const formData = ref({ name: '', email: '', password: '', role: '' })
+// Erro de "obrigatório" do tipo de usuário (AppSelect não usa :rules do Vuetify).
+const roleError = ref('')
 
 const roles = [
-  { title: 'Cliente', value: 'CLIENT' },
-  { title: 'Trabalhador', value: 'WORKER' },
+  { label: 'Cliente', value: 'CLIENT' },
+  { label: 'Trabalhador', value: 'WORKER' },
 ]
+
+const onRoleChange = (value: string) => {
+  formData.value.role = value
+  if (value) roleError.value = ''
+}
 
 const rules = {
   required: (v: string) => !!v || 'Campo obrigatório',
@@ -77,6 +89,11 @@ const rules = {
 
 const handleSubmit = async () => {
   const { valid } = await form.value.validate()
+  // Validação do tipo de usuário (obrigatório) feita à mão — AppSelect não tem :rules.
+  if (!formData.value.role) {
+    roleError.value = 'Campo obrigatório'
+    return
+  }
   if (!valid) return
 
   loading.value = true
@@ -84,6 +101,7 @@ const handleSubmit = async () => {
     await userService.postUser(formData.value)
     dialog.value = false
     formData.value = { name: '', email: '', password: '', role: '' }
+    roleError.value = ''
     form.value.reset()
     emit('created')
     success('Usuário criado com sucesso')
@@ -94,3 +112,24 @@ const handleSubmit = async () => {
   }
 }
 </script>
+
+<style scoped>
+/* Bloco de campo do AppSelect (label visível + erro inline), tokenizado. */
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 4px;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.field-error {
+  font-size: 11px;
+  color: var(--err);
+}
+</style>

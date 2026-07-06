@@ -250,6 +250,14 @@ const monthSelectItems = computed<{ label: string; value: string }[]>(() =>
   selectedQuarterMonths.value.map((m: any) => ({ label: m.name, value: m.id })),
 )
 
+// Membros como { label, value } para os AppSelect de "Responsáveis" (multiple).
+const memberItems = computed<{ label: string; value: string }[]>(() =>
+  members.value.map((m: any) => ({
+    label: m.user?.name ?? m.name,
+    value: m.user?.id ?? m.id,
+  })),
+)
+
 const currentMonthData = computed(() => {
   const monthId = activeMonthId.value
   for (const quarter of quartersList.value) {
@@ -359,6 +367,11 @@ const formQuarterMonths = computed(() => {
   const quarter = quartersList.value.find((q: any) => q.id === formActivity.value.quarterId)
   return quarter?.months ?? []
 })
+
+// Meses do trimestre selecionado no FORM, como { label, value } para o AppSelect.
+const formMonthSelectItems = computed<{ label: string; value: string }[]>(() =>
+  formQuarterMonths.value.map((m: any) => ({ label: m.name, value: m.id })),
+)
 
 const changingMonth = ref(false)
 
@@ -1134,46 +1147,38 @@ const deleteAttachment = async (attachmentId: string) => {
         </v-row>
         <v-row v-if="quarterOptions.length" class="mt-3">
           <v-col cols="6">
-            <v-select
+            <span class="view-label">Trimestre</span>
+            <AppSelect
               :model-value="formActivity.quarterId"
-              :items="quarterOptions"
-              item-title="label"
-              item-value="id"
+              :items="quarterSelectItems"
               label="Trimestre"
               density="compact"
-              variant="outlined"
-              hide-details
-              @update:model-value="onFormQuarterChange"
+              @update:model-value="onFormQuarterChange(String($event))"
             />
           </v-col>
           <v-col cols="6">
-            <v-select
+            <span class="view-label">Mês</span>
+            <AppSelect
               :model-value="formActivity.monthId"
-              :items="formQuarterMonths"
-              item-title="name"
-              item-value="id"
+              :items="formMonthSelectItems"
               label="Mês"
               density="compact"
-              variant="outlined"
-              hide-details
-              @update:model-value="onFormMonthChange"
+              @update:model-value="onFormMonthChange(String($event))"
             />
           </v-col>
         </v-row>
-        <v-select
-          v-model="formActivity.responsibleUserIds"
-          :items="members"
-          :item-title="(m) => m.user?.name ?? m.name"
-          :item-value="(m) => m.user?.id ?? m.id"
-          label="Responsáveis"
-          density="compact"
-          variant="outlined"
-          multiple
-          chips
-          closable-chips
-          class="mt-3"
-          hide-details
-        />
+        <div class="mt-3">
+          <span class="view-label">Responsáveis</span>
+          <AppSelect
+            multiple
+            :model-value="formActivity.responsibleUserIds"
+            :items="memberItems"
+            label="Responsáveis"
+            density="compact"
+            placeholder="Selecione os responsáveis"
+            @update:model-value="formActivity.responsibleUserIds = ($event as string[])"
+          />
+        </div>
         <div v-if="activityInfo.attachments?.length" class="view-field">
           <span class="view-label">Anexos atuais</span>
           <div class="attachment-grid" style="padding: 0">
@@ -1286,20 +1291,18 @@ const deleteAttachment = async (attachmentId: string) => {
             />
           </v-col>
         </v-row>
-        <v-select
-          v-model="formSubtask.responsibleUserIds"
-          :items="members"
-          :item-title="(m) => m.user?.name ?? m.name"
-          :item-value="(m) => m.user?.id ?? m.id"
-          label="Responsáveis"
-          density="compact"
-          variant="outlined"
-          multiple
-          chips
-          closable-chips
-          class="mt-3"
-          hide-details
-        />
+        <div class="mt-3">
+          <span class="view-label">Responsáveis</span>
+          <AppSelect
+            multiple
+            :model-value="formSubtask.responsibleUserIds"
+            :items="memberItems"
+            label="Responsáveis"
+            density="compact"
+            placeholder="Selecione os responsáveis"
+            @update:model-value="formSubtask.responsibleUserIds = ($event as string[])"
+          />
+        </div>
         <v-file-input
           label="Anexo"
           density="compact"
@@ -1484,20 +1487,18 @@ const deleteAttachment = async (attachmentId: string) => {
               />
             </v-col>
           </v-row>
-          <v-select
-            v-model="formSubtask.responsibleUserIds"
-            :items="members"
-            :item-title="(m) => m.user?.name ?? m.name"
-            :item-value="(m) => m.user?.id ?? m.id"
-            label="Responsáveis"
-            density="compact"
-            variant="outlined"
-            multiple
-            chips
-            closable-chips
-            class="mt-3"
-            hide-details
-          />
+          <div class="mt-3">
+            <span class="view-label">Responsáveis</span>
+            <AppSelect
+              multiple
+              :model-value="formSubtask.responsibleUserIds"
+              :items="memberItems"
+              label="Responsáveis"
+              density="compact"
+              placeholder="Selecione os responsáveis"
+              @update:model-value="formSubtask.responsibleUserIds = ($event as string[])"
+            />
+          </div>
           <div v-if="selectedSubtask.attachments?.length" class="view-field">
             <span class="view-label">Anexos atuais</span>
             <div class="attachment-grid" style="padding: 0">
