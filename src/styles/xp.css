@@ -95,12 +95,20 @@ html[data-xp='true'] .main-scroll {
 html[data-xp='true'] .command-shell .main,
 html[data-xp='true'] .canvas-shell .main,
 html[data-xp='true'] .focus-shell .main-scroll {
-  margin: 8px 8px 8px 72px !important;
+  /* margem esquerda de 104px = faixa de wallpaper p/ os ícones do desktop. */
+  margin: 6px 8px 6px 104px !important;
   padding-top: 29px !important;
   border: 1px solid #003cbe !important;
   border-radius: 4px !important;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35) !important;
   transform-origin: center 42%;
+}
+
+/* Belt-and-suspenders: mesmo que a coluna vazia da sidebar (248px) persista no
+   grid do .body, força o .main a ATRAVESSAR todas as colunas — assim o conteúdo
+   preenche a janela em vez de ficar espremido à direita. */
+html[data-xp='true'] .command-shell .main {
+  grid-column: 1 / -1 !important;
 }
 
 /* ─── Title bar azul Luna nas barras de topo REAIS dos shells ───────────────── */

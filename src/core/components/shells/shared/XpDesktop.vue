@@ -20,16 +20,18 @@ interface DeskIcon {
   id: string
   label: string
   icon: string // nome do XpIcon
-  to?: string // sem `to` = decorativo
+  to: string // TODOS navegam (duplo clique)
 }
 
+// Atalhos de área de trabalho — todos abrem uma tela real (duplo clique, como no
+// XP). Nomes clássicos com destinos úteis.
 const icons: DeskIcon[] = [
-  { id: 'computer', label: 'Meu Computador', icon: 'my-computer' },
-  { id: 'docs', label: 'Meus Documentos', icon: 'documents' },
-  { id: 'trash', label: 'Lixeira', icon: 'recycle-bin' },
-  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', to: '/dashboard' },
+  { id: 'computer', label: 'Meu Computador', icon: 'my-computer', to: '/dashboard' },
+  { id: 'docs', label: 'Meus Documentos', icon: 'documents', to: '/notes' },
   { id: 'board', label: 'Board', icon: 'board', to: '/board' },
-  { id: 'notes', label: 'Notas', icon: 'notes', to: '/notes' },
+  { id: 'calendar', label: 'Calendário', icon: 'calendar', to: '/calendar' },
+  { id: 'qr', label: 'QR Codes', icon: 'qr', to: '/qr' },
+  { id: 'time', label: 'Meu tempo', icon: 'clock', to: '/time' },
 ]
 
 const selected = ref<string | null>(null)
@@ -39,15 +41,14 @@ function select(id: string): void {
 }
 
 function activate(item: DeskIcon): void {
-  if (item.to) void router.push(item.to)
+  void router.push(item.to)
 }
 
-// Posição da faixa por shell: encaixa nos 72px de wallpaper à esquerda da janela.
-// (larguras dos painéis são fixas nos shells, então constantes bastam.)
+// A sidebar some no XP, então a faixa de wallpaper com os ícones fica na borda
+// ESQUERDA da tela (~96px), logo abaixo do topbar (56px), em qualquer shell.
 const laneStyle = computed(() => {
-  if (shell.value === 'focus') return { left: '300px', top: '58px' }
-  if (shell.value === 'canvas') return { left: '6px', top: '66px' }
-  return { left: '252px', top: '66px' } // command (padrão)
+  const top = shell.value === 'focus' ? '58px' : '64px'
+  return { left: '12px', top }
 })
 </script>
 
@@ -76,11 +77,11 @@ const laneStyle = computed(() => {
    empilhamento (z-index baixo), acima do wallpaper (que fica em z-index -1). */
 .xp-desktop {
   position: fixed;
-  z-index: 1;
-  width: 64px;
+  z-index: 2;
+  width: 80px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   font-family: Tahoma, 'Segoe UI', Verdana, sans-serif;
 }
 
