@@ -1,19 +1,16 @@
 import { useQuery } from '@tanstack/vue-query'
-import { computed } from 'vue'
 import api from '@/service/api'
 
 /**
  * Usuário logado (GET /user/me), cacheado via TanStack Query com a chave ['me'].
  *
- * Fonte única para gatear as "ferramentas premium" na UI (QR, Meu tempo, widget
- * do timer). `isFluvio` é `false` enquanto carrega — o front só ESCONDE o que é
- * gated; o backend é quem barra de verdade (403 sem o flag).
+ * As ferramentas (QR, Meu tempo, timer) não têm mais gate por-usuário: o acesso
+ * é por membership (estar vinculado a uma empresa). O backend barra por role/escopo.
  */
 export interface CurrentUser {
   id: string
   name?: string
   email?: string
-  isFluvio?: boolean
   [key: string]: unknown
 }
 
@@ -35,7 +32,6 @@ export function useCurrentUser() {
   })
 
   const me = query.data
-  const isFluvio = computed<boolean>(() => me.value?.isFluvio === true)
 
-  return { query, me, isFluvio }
+  return { query, me }
 }

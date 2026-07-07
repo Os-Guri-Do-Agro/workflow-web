@@ -65,8 +65,8 @@ const formData = ref({ name: '', email: '', password: '', role: '' })
 const roleError = ref('')
 
 const roles = [
-  { label: 'Cliente', value: 'CLIENT' },
   { label: 'Trabalhador', value: 'WORKER' },
+  { label: 'Admin', value: 'ADMIN' },
 ]
 
 const onRoleChange = (value: string) => {

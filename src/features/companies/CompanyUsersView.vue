@@ -6,10 +6,7 @@ import {
   Users2,
   Search,
   Briefcase,
-  Crown,
   Shield,
-  Eye,
-  Handshake,
 } from 'lucide-vue-next'
 import companieService from '@/service/companies/companies-services'
 import { getApiErrorMessage } from '@/service/api'
@@ -58,11 +55,8 @@ const roleMeta: Record<
   string,
   { label: string; token: string; icon: typeof Briefcase }
 > = {
-  OWNER: { label: 'Proprietário', token: 'var(--err)', icon: Crown },
   ADMIN: { label: 'Admin', token: 'var(--warn)', icon: Shield },
   WORKER: { label: 'Membro', token: 'var(--info)', icon: Briefcase },
-  VIEWER: { label: 'Visualizador', token: 'var(--text-3)', icon: Eye },
-  CLIENT: { label: 'Cliente', token: 'var(--success)', icon: Handshake },
 }
 
 const tabs: { key: TabKey; label: string; icon: typeof Building2 }[] = [

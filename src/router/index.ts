@@ -61,7 +61,7 @@ const router = createRouter({
     { path: '/notes/:id', name: 'note-editor', component: NoteEditorView },
     { path: '/calendar', name: 'calendar', component: CalendarView },
     { path: '/time', name: 'time', component: TimeTrackingView },
-    // Gate de acesso é do backend (isFluvio → 403). No front só escondemos o nav.
+    // Acesso por membership (login basta). Escopo por empresa é via x-company-id.
     { path: '/qr', name: 'qr', component: QrCodesView },
     { path: '/roadmap', name: 'roadmap', component: RoadmapView },
     { path: '/tasks/:month', name: 'tasks', component: TasksView },
@@ -97,11 +97,8 @@ const PUBLIC_ROUTES = new Set([
 
 
 const ROLE_RANK: Record<string, number> = {
-  VIEWER: 0,
-  CLIENT: 1,
-  WORKER: 2,
-  ADMIN: 3,
-  OWNER: 4,
+  WORKER: 0,
+  ADMIN: 1,
 }
 
 /**

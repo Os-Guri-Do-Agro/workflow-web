@@ -8,8 +8,8 @@ import { useCurrentUser } from '@/composables/useCurrentUser'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { formatTimer } from '@/utils/duration'
 
-// Ferramenta premium: o widget some dos 3 shells de uma vez para quem não é Fluvio.
-const { isFluvio } = useCurrentUser()
+// Acesso por membership: o widget aparece para qualquer usuário logado.
+const { me } = useCurrentUser()
 const { error: showError } = useToast()
 const workspace = useWorkspaceStore()
 const { running, isRunning, elapsedSec, start, stop } = useTimeTracking()
@@ -102,7 +102,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 </script>
 
 <template>
-  <div v-if="isFluvio" ref="rootRef" class="timer">
+  <div v-if="me" ref="rootRef" class="timer">
     <!-- Trigger: pílula com cronômetro quando rodando; botão play quando parado -->
     <button
       class="timer-trigger"

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-export type CompanyRole = 'OWNER' | 'ADMIN' | 'WORKER' | 'CLIENT' | 'VIEWER'
+export type CompanyRole = 'ADMIN' | 'WORKER'
 import dashboardService from '@/service/dashboard/dashboard-service'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
@@ -128,17 +128,12 @@ export const useWorkspaceStore = defineStore('workspace', {
       return state.companies.find(c => c.id === state.activeCompanyId) || null
     },
     
-    canEdit: (state) => {
-      const editableRoles: CompanyRole[] = ['OWNER', 'ADMIN', 'WORKER']
-      return state.activeRole ? editableRoles.includes(state.activeRole) : false
-    },
-    
-    canManageUsers: (state) => {
-      const manageRoles: CompanyRole[] = ['OWNER', 'ADMIN']
-      return state.activeRole ? manageRoles.includes(state.activeRole) : false
-    },
-    
-    isOwner: (state) => state.activeRole === 'OWNER',
+    // Todos os membros (ADMIN e WORKER) editam; só ADMIN gerencia usuários/empresa.
+    canEdit: (state) => state.activeRole !== null,
+
+    canManageUsers: (state) => state.activeRole === 'ADMIN',
+
+    isAdmin: (state) => state.activeRole === 'ADMIN',
     
     filteredActivities: (state) => {
       if (!state.workspaceData) return []
@@ -265,11 +260,8 @@ export const useWorkspaceStore = defineStore('workspace', {
     // Helpers de permissão
     hasPermission(requiredRole: CompanyRole): boolean {
       const hierarchy: Record<CompanyRole, number> = {
-        'OWNER': 3,
-        'ADMIN': 2,
-        'WORKER': 1,
-        'CLIENT': 0,
-        'VIEWER': 0,
+        'ADMIN': 1,
+        'WORKER': 0,
       }
       
       const role = this.activeRole

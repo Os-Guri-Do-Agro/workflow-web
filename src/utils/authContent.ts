@@ -1,7 +1,7 @@
 import userService from '@/service/user/user-service'
 import { jwtDecode } from 'jwt-decode'
 
-type CompanyRole = 'OWNER' | 'ADMIN' | 'WORKER' | 'CLIENT' | 'VIEWER'
+type CompanyRole = 'ADMIN' | 'WORKER'
 
 interface DecodedToken {
   sub: string
@@ -17,7 +17,7 @@ interface DecodedToken {
   exp: number
 }
 
-const EDITOR_ROLES: CompanyRole[] = ['OWNER', 'ADMIN', 'WORKER']
+const EDITOR_ROLES: CompanyRole[] = ['ADMIN', 'WORKER']
 
 export function getUserToken() {
   const token = localStorage.getItem('token')

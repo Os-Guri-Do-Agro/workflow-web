@@ -115,11 +115,8 @@ const statusConfig: Record<string, { color: string; label: string }> = {
 }
 
 const roleConfig: Record<string, { color: string; label: string }> = {
-  'OWNER': { color: 'var(--err)', label: 'Proprietário' },
   'ADMIN': { color: 'var(--warn)', label: 'Admin' },
   'WORKER': { color: 'var(--info)', label: 'Membro' },
-  'VIEWER': { color: 'var(--text-3)', label: 'Visualizador' },
-  'CLIENT': { color: 'var(--success)', label: 'Cliente' },
 }
 
 onMounted(async () => {

@@ -30,7 +30,7 @@ const emit = defineEmits<{
 
 const search = ref('')
 const users = ref<User[]>([])
-const selectedRole = ref<'CLIENT' | 'WORKER'>('WORKER')
+const selectedRole = ref<'ADMIN' | 'WORKER'>('WORKER')
 const snackbar = ref(false)
 const snackbarMessage = ref('')
 const snackbarColor = ref('success')
@@ -127,11 +127,11 @@ onMounted(() => {
           <AppSelect
             :model-value="selectedRole"
             :items="[
-              { label: 'Cliente', value: 'CLIENT' },
               { label: 'Trabalhador', value: 'WORKER' },
+              { label: 'Admin', value: 'ADMIN' },
             ]"
             label="Função"
-            @update:model-value="selectedRole = ($event as 'CLIENT' | 'WORKER')"
+            @update:model-value="selectedRole = ($event as 'ADMIN' | 'WORKER')"
           />
         </div>
 

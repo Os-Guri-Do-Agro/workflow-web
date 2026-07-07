@@ -20,7 +20,6 @@ import {
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useUiPreferences } from '@/composables/useUiPreferences'
-import { useCurrentUser } from '@/composables/useCurrentUser'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const { density } = useUiPreferences()
@@ -32,21 +31,16 @@ export type NavItem = {
   icon: LucideIcon
   to?: string
   children?: NavItem[]
-  role?: 'WORKER' | 'ADMIN' | 'OWNER'
+  role?: 'WORKER' | 'ADMIN'
   section?: 'Trabalho' | 'Pessoal'
 }
 
 const { quarters } = useNavQuarters()
 const workspace = useWorkspaceStore()
-// Ferramentas premium (Meu tempo, QR) só aparecem no nav para quem é Fluvio.
-const { isFluvio } = useCurrentUser()
 
 const ROLE_RANK: Record<string, number> = {
-  VIEWER: 0,
-  CLIENT: 1,
-  WORKER: 2,
-  ADMIN: 3,
-  OWNER: 4,
+  WORKER: 0,
+  ADMIN: 1,
 }
 
 function userMeetsRole(required?: string): boolean {
@@ -67,11 +61,9 @@ const mainItems = computed<NavItem[]>(() => [
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
-  // QR Codes é ferramenta premium (isFluvio) e agora vive em "Trabalho": abrange
-  // QRs pessoais + os das empresas do usuário (o segmented control da view separa por escopo).
-  ...(isFluvio.value
-    ? ([{ title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Trabalho' }] as NavItem[])
-    : []),
+  // QR Codes vive em "Trabalho": abrange QRs pessoais + os das empresas do usuário
+  // (o segmented control da view separa por escopo). Acesso por membership.
+  { title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Trabalho' },
   { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },
 ])
 
@@ -101,10 +93,7 @@ const taskItem = computed<NavItem | null>(() => {
 })
 
 const personalItems = computed<NavItem[]>(() => [
-  // "Meu tempo" é ferramenta premium: só com isFluvio. (QR Codes migrou p/ "Trabalho".)
-  ...(isFluvio.value
-    ? ([{ title: 'Meu tempo', icon: Timer, to: '/time', section: 'Pessoal' }] as NavItem[])
-    : []),
+  { title: 'Meu tempo', icon: Timer, to: '/time', section: 'Pessoal' },
   { title: 'Notas', icon: StickyNote, to: '/notes', section: 'Pessoal' },
   { title: 'Calendário', icon: CalendarDays, to: '/calendar', section: 'Pessoal' },
 ])
