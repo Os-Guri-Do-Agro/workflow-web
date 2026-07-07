@@ -38,7 +38,12 @@ export function useQrMutations() {
   const queryClient = useQueryClient()
   const { success, error: showError } = useToast()
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: qrKeys.all })
+  // Invalida a lista de QR E a de pastas: criar/mover/excluir QR muda o qrCount
+  // das pastas (badge). Sem isso o contador da pasta fica defasado até o staleTime.
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: qrKeys.all })
+    void queryClient.invalidateQueries({ queryKey: ['qr-folders'] })
+  }
 
   const create = useMutation({
     mutationFn: (input: CreateQrInput) => qrService.create(input),

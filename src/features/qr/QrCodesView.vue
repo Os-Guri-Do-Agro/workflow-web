@@ -262,6 +262,11 @@ const canManageFolders = computed(
 
 // ─── Tokens de API (microserviço) ────────────────────────────────────────────
 const tokensOpen = ref(false)
+// Se a empresa ativa some (troca de aba / empresa saiu do store), fecha o dialog
+// para ele não "reabrir sozinho" quando outra empresa virar ativa.
+watch(activeCompany, (c) => {
+  if (!c) tokensOpen.value = false
+})
 </script>
 
 <template>
