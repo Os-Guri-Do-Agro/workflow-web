@@ -1,22 +1,39 @@
 <script setup lang="ts">
 import { computed, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Building2, Plus, QrCode as QrCodeIcon, RotateCw, User } from 'lucide-vue-next'
+import {
+  Building2,
+  FolderPlus,
+  Folder,
+  KeyRound,
+  Plus,
+  QrCode as QrCodeIcon,
+  RotateCw,
+  Trash2,
+  User,
+  X,
+} from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import PasswordConfirmDialog from '@/components/ui/PasswordConfirmDialog.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import QrCard from './components/QrCard.vue'
 import QrEditDialog from './components/QrEditDialog.vue'
 import QrMetricsDialog from './components/QrMetricsDialog.vue'
+import QrApiTokensDialog from './components/QrApiTokensDialog.vue'
 import { useQrList, useQrMutations } from '@/composables/useQrCodes'
+import { useQrFolders, useQrFolderMutations } from '@/composables/useQrFolders'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
-import type { QrCode, QrStyle } from '@/service/qr/qr-service'
+import type { QrCode, QrFolder, QrStyle } from '@/service/qr/qr-service'
 
 const list = useQrList()
 const { create, update, cancel, remove } = useQrMutations()
+const foldersQuery = useQrFolders()
+const { create: createFolder, remove: removeFolder } = useQrFolderMutations()
 const workspace = useWorkspaceStore()
 
 const qrs = computed<QrCode[]>(() => list.data.value ?? [])
+const allFolders = computed<QrFolder[]>(() => foldersQuery.data.value ?? [])
 
 // ─── Agrupamento por escopo ────────────────────────────────────────────────────
 // Sempre agrupamos: "Pessoais" primeiro e depois UMA seção por empresa distinta.
@@ -61,12 +78,55 @@ const tabs = computed(() => [
   ...groups.value.map((g) => ({ key: g.key, label: g.label, count: g.items.length })),
 ])
 
-// Grupos visíveis conforme a aba ativa (em "Todos", todos; senão, só o escolhido).
-const shownGroups = computed(() =>
-  activeScope.value === 'all'
-    ? groups.value
-    : groups.value.filter((g) => g.key === activeScope.value),
-)
+// ─── Contexto da empresa da aba ativa (p/ pastas + tokens) ─────────────────────
+// activeScope vira um companyId quando a aba de uma empresa está selecionada.
+const activeCompany = computed(() => {
+  if (activeScope.value === 'all' || activeScope.value === 'personal') return null
+  const c = workspace.companies.find((x) => x.id === activeScope.value)
+  if (!c) return null
+  return { id: c.id, name: c.name, role: c.myRole }
+})
+const isAdminOfActive = computed(() => activeCompany.value?.role === 'ADMIN')
+
+// ─── Pastas ────────────────────────────────────────────────────────────────────
+// Pastas relevantes à aba: empresa → pastas daquela empresa; pessoal → pessoais.
+// Em "Todos" não mostramos a barra de pastas (ficaria ambígua entre escopos).
+const scopeFolders = computed<QrFolder[]>(() => {
+  if (activeScope.value === 'personal') {
+    return allFolders.value.filter((f) => f.scope === 'personal')
+  }
+  if (activeCompany.value) {
+    return allFolders.value.filter((f) => f.companyId === activeCompany.value!.id)
+  }
+  return []
+})
+
+// Filtro de pasta: 'all' | 'none' (sem pasta) | <folderId>.
+const activeFolderId = ref<string>('all')
+// Trocar de aba reseta o filtro de pasta (as pastas mudam de escopo).
+watch(activeScope, () => {
+  activeFolderId.value = 'all'
+})
+
+// Grupos visíveis conforme a aba ativa (em "Todos", todos; senão, só o escolhido),
+// já aplicando o filtro de pasta.
+const shownGroups = computed<QrGroup[]>(() => {
+  const base =
+    activeScope.value === 'all'
+      ? groups.value
+      : groups.value.filter((g) => g.key === activeScope.value)
+  if (activeFolderId.value === 'all') return base
+  return base
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((q) =>
+        activeFolderId.value === 'none'
+          ? !q.folderId
+          : q.folderId === activeFolderId.value,
+      ),
+    }))
+    .filter((g) => g.items.length)
+})
 
 // Se a aba ativa deixou de existir (ex.: excluí o último QR daquela empresa), volta p/ "Todos".
 watch(groups, (g) => {
@@ -103,6 +163,7 @@ async function handleSubmit(payload: {
   label: string
   active: boolean
   companyId: string | null
+  folderId: string | null
   style: QrStyle
 }) {
   try {
@@ -114,6 +175,7 @@ async function handleSubmit(payload: {
           label: payload.label,
           active: payload.active,
           companyId: payload.companyId,
+          folderId: payload.folderId,
           style: payload.style,
         },
       })
@@ -123,6 +185,7 @@ async function handleSubmit(payload: {
         label: payload.label || undefined,
         active: payload.active,
         companyId: payload.companyId,
+        folderId: payload.folderId,
         style: payload.style,
       })
     }
@@ -147,17 +210,58 @@ async function confirmCancel() {
   }
 }
 
-// ─── Excluir ──────────────────────────────────────────────────────────────────
+// ─── Excluir QR (exige senha) ──────────────────────────────────────────────────
 const removeTarget = ref<QrCode | null>(null)
-async function confirmRemove() {
+async function confirmRemove(password: string) {
   if (!removeTarget.value) return
   try {
-    await remove.mutateAsync(removeTarget.value.id)
+    await remove.mutateAsync({ id: removeTarget.value.id, password })
     removeTarget.value = null
+  } catch {
+    /* toast já disparado — mantém o dialog aberto p/ nova tentativa */
+  }
+}
+
+// ─── Criar pasta ────────────────────────────────────────────────────────────────
+// Escopo da nova pasta = empresa da aba ativa (só ADMIN) ou pessoal.
+const creatingFolder = ref(false)
+const newFolderName = ref('')
+async function submitFolder() {
+  const name = newFolderName.value.trim()
+  if (!name) return
+  try {
+    await createFolder.mutateAsync({
+      name,
+      companyId: activeCompany.value?.id ?? null,
+    })
+    newFolderName.value = ''
+    creatingFolder.value = false
   } catch {
     /* toast já disparado */
   }
 }
+
+// ─── Excluir pasta (exige senha) ────────────────────────────────────────────────
+const folderRemoveTarget = ref<QrFolder | null>(null)
+async function confirmFolderRemove(password: string) {
+  if (!folderRemoveTarget.value) return
+  try {
+    await removeFolder.mutateAsync({ id: folderRemoveTarget.value.id, password })
+    if (activeFolderId.value === folderRemoveTarget.value.id) {
+      activeFolderId.value = 'all'
+    }
+    folderRemoveTarget.value = null
+  } catch {
+    /* toast já disparado */
+  }
+}
+// Pessoal: dono gerencia. Empresa: só ADMIN pode excluir pasta.
+const canManageFolders = computed(
+  () => activeScope.value === 'personal' || isAdminOfActive.value,
+)
+
+// ─── Tokens de API (microserviço) ────────────────────────────────────────────
+const tokensOpen = ref(false)
 </script>
 
 <template>
@@ -168,10 +272,21 @@ async function confirmRemove() {
         <h1 class="qr-title">QR Codes</h1>
         <p class="qr-sub">Imprima uma vez e troque o destino quando quiser — com métricas de leitura.</p>
       </div>
-      <button class="qr-new" type="button" @click="openCreate">
-        <Plus :size="16" />
-        <span>Novo QR</span>
-      </button>
+      <div class="qr-head-actions">
+        <button
+          v-if="activeCompany && isAdminOfActive"
+          class="qr-secondary"
+          type="button"
+          @click="tokensOpen = true"
+        >
+          <KeyRound :size="15" />
+          <span>Tokens de API</span>
+        </button>
+        <button class="qr-new" type="button" @click="openCreate">
+          <Plus :size="16" />
+          <span>Novo QR</span>
+        </button>
+      </div>
     </header>
 
     <!-- Loading -->
@@ -225,6 +340,70 @@ async function confirmRemove() {
         </button>
       </div>
 
+      <!-- Barra de pastas: só dentro de um escopo específico (pessoal/empresa) -->
+      <div v-if="activeScope !== 'all'" class="qr-folders">
+        <button
+          type="button"
+          class="qr-fchip"
+          :class="{ 'qr-fchip--active': activeFolderId === 'all' }"
+          @click="activeFolderId = 'all'"
+        >
+          Todas
+        </button>
+        <button
+          v-for="folder in scopeFolders"
+          :key="folder.id"
+          type="button"
+          class="qr-fchip"
+          :class="{ 'qr-fchip--active': activeFolderId === folder.id }"
+          @click="activeFolderId = folder.id"
+        >
+          <Folder :size="13" />
+          <span>{{ folder.name }}</span>
+          <span class="qr-fchip-count">{{ folder.qrCount }}</span>
+          <span
+            v-if="canManageFolders"
+            class="qr-fchip-del"
+            role="button"
+            aria-label="Excluir pasta"
+            @click.stop="folderRemoveTarget = folder"
+          >
+            <Trash2 :size="12" />
+          </span>
+        </button>
+        <button
+          type="button"
+          class="qr-fchip"
+          :class="{ 'qr-fchip--active': activeFolderId === 'none' }"
+          @click="activeFolderId = 'none'"
+        >
+          Sem pasta
+        </button>
+
+        <!-- Criar pasta (empresa exige ADMIN — backend valida; front esconde) -->
+        <template v-if="canManageFolders">
+          <form v-if="creatingFolder" class="qr-fnew" @submit.prevent="submitFolder">
+            <input
+              v-model="newFolderName"
+              class="qr-fnew-input"
+              placeholder="Nome da pasta"
+              maxlength="80"
+              autofocus
+            />
+            <button type="submit" class="qr-fnew-ok" :disabled="!newFolderName.trim() || createFolder.isPending.value">
+              Criar
+            </button>
+            <button type="button" class="qr-fnew-x" aria-label="Cancelar" @click="creatingFolder = false; newFolderName = ''">
+              <X :size="14" />
+            </button>
+          </form>
+          <button v-else type="button" class="qr-fchip qr-fchip--add" @click="creatingFolder = true">
+            <FolderPlus :size="13" />
+            <span>Nova pasta</span>
+          </button>
+        </template>
+      </div>
+
       <section v-for="group in shownGroups" :key="group.key" class="qr-group">
         <div class="qr-group-head">
           <component :is="group.icon" :size="15" />
@@ -250,6 +429,7 @@ async function confirmRemove() {
       v-model="editOpen"
       :editing="editing"
       :loading="saving"
+      :folders="allFolders"
       @submit="handleSubmit"
     />
 
@@ -271,16 +451,31 @@ async function confirmRemove() {
       @confirm="confirmCancel"
     />
 
-    <ConfirmDialog
+    <PasswordConfirmDialog
       :model-value="!!removeTarget"
       title="Excluir este QR?"
-      message="Esta ação apaga o QR e todas as suas métricas de leitura. Não dá para desfazer."
-      confirm-label="Excluir"
-      cancel-label="Voltar"
-      danger
+      message="Esta ação apaga o QR e todas as suas métricas de leitura. Não dá para desfazer. Confirme com sua senha."
+      confirm-label="Excluir QR"
       :loading="remove.isPending.value"
       @update:model-value="(v) => { if (!v) removeTarget = null }"
       @confirm="confirmRemove"
+    />
+
+    <PasswordConfirmDialog
+      :model-value="!!folderRemoveTarget"
+      title="Excluir esta pasta?"
+      message="Os QR codes NÃO são apagados — eles apenas saem da pasta. Confirme com sua senha."
+      confirm-label="Excluir pasta"
+      :loading="removeFolder.isPending.value"
+      @update:model-value="(v) => { if (!v) folderRemoveTarget = null }"
+      @confirm="confirmFolderRemove"
+    />
+
+    <QrApiTokensDialog
+      v-if="tokensOpen && activeCompany"
+      :company-id="activeCompany.id"
+      :company-name="activeCompany.name"
+      @close="tokensOpen = false"
     />
   </div>
 </template>
@@ -346,6 +541,155 @@ async function confirmRemove() {
 
 .qr-new:hover {
   filter: brightness(1.05);
+}
+
+.qr-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qr-secondary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--motion-ease);
+}
+
+.qr-secondary:hover {
+  border-color: var(--border-strong);
+}
+
+/* Barra de pastas */
+.qr-folders {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.qr-fchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.qr-fchip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.qr-fchip--active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+}
+
+.qr-fchip--add {
+  border-style: dashed;
+  color: var(--text-3);
+}
+
+.qr-fchip-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.qr-fchip-del {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  color: var(--text-4);
+}
+
+.qr-fchip-del:hover {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+}
+
+.qr-fnew {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qr-fnew-input {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.qr-fnew-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.qr-fnew-ok {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.qr-fnew-ok:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.qr-fnew-x {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  cursor: pointer;
 }
 
 /* Segmented control (abas por escopo) */

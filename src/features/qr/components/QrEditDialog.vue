@@ -11,7 +11,7 @@ import {
 } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import QrPreview from './QrPreview.vue'
-import type { QrCode, QrStyle } from '@/service/qr/qr-service'
+import type { QrCode, QrFolder, QrStyle } from '@/service/qr/qr-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useToast } from '@/composables/useToast'
 
@@ -25,6 +25,8 @@ const props = defineProps<{
   /** QR em edição; null = criação. */
   editing: QrCode | null
   loading?: boolean
+  /** Pastas disponíveis (todas as visíveis do usuário). */
+  folders?: QrFolder[]
 }>()
 
 const emit = defineEmits<{
@@ -35,6 +37,7 @@ const emit = defineEmits<{
       label: string
       active: boolean
       companyId: string | null
+      folderId: string | null
       style: QrStyle
     },
   ]
@@ -75,6 +78,7 @@ const form = reactive({
   label: '',
   active: true,
   companyId: null as string | null,
+  folderId: null as string | null,
   colorDark: '#000000',
   colorLight: '#ffffff',
   dotStyle: 'square' as DotStyle,
@@ -90,6 +94,31 @@ const companyOptions = computed(() => [
   { label: 'Pessoal (só eu)', value: null as string | null },
   ...workspace.companies.map((c) => ({ label: c.name, value: c.id })),
 ])
+
+// Pastas do MESMO escopo do QR: empresa selecionada → pastas da empresa; sem
+// empresa → pastas pessoais. Sempre inclui "Sem pasta".
+const folderOptions = computed(() => {
+  const scoped = (props.folders ?? []).filter((f) =>
+    form.companyId ? f.companyId === form.companyId : f.scope === 'personal',
+  )
+  return [
+    { label: 'Sem pasta', value: null as string | null },
+    ...scoped.map((f) => ({ label: f.name, value: f.id })),
+  ]
+})
+
+// Trocar de escopo pode invalidar a pasta escolhida — zera se saiu do escopo.
+watch(
+  () => form.companyId,
+  () => {
+    if (
+      form.folderId &&
+      !folderOptions.value.some((o) => o.value === form.folderId)
+    ) {
+      form.folderId = null
+    }
+  },
+)
 
 // Carrega as empresas se ainda não estiverem no store (best-effort).
 onMounted(() => {
@@ -108,6 +137,7 @@ watch(
     form.label = props.editing?.label ?? ''
     form.active = props.editing?.active ?? true
     form.companyId = props.editing?.companyId ?? null
+    form.folderId = props.editing?.folderId ?? null
 
     const st = props.editing?.style
     form.colorDark = st?.colorDark ?? '#000000'
@@ -199,6 +229,7 @@ function submit() {
     label: form.label.trim(),
     active: form.active,
     companyId: form.companyId,
+    folderId: form.folderId,
     style: buildStyle(),
   })
 }
@@ -280,6 +311,18 @@ function submit() {
                   <component :is="form.companyId ? Building2 : User" :size="12" />
                   {{ form.companyId ? 'Compartilhado com a empresa selecionada.' : 'Visível só para você.' }}
                 </span>
+              </label>
+
+              <!-- Pasta (organiza dentro do escopo) -->
+              <label v-if="folderOptions.length > 1" class="qed-field">
+                <span class="qed-label">Pasta (opcional)</span>
+                <AppSelect
+                  :model-value="form.folderId"
+                  :items="folderOptions"
+                  placeholder="Sem pasta"
+                  label="Pasta"
+                  @update:model-value="(v) => (form.folderId = v as string | null)"
+                />
               </label>
 
               <label class="qed-toggle">

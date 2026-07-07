@@ -70,7 +70,8 @@ export function useQrMutations() {
   })
 
   const remove = useMutation({
-    mutationFn: (id: string) => qrService.remove(id),
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      qrService.remove(id, password),
     onSuccess: () => {
       success('QR excluído')
       void invalidate()

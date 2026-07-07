@@ -23,6 +23,8 @@ export interface QrCode {
   code: string
   ownerId: string
   companyId?: string | null
+  /** Pasta onde o QR está (null = fora de pasta). */
+  folderId?: string | null
   label: string
   targetUrl: string
   active: boolean
@@ -66,6 +68,8 @@ export interface CreateQrInput {
   label?: string
   /** Setar = QR compartilhado com a empresa; null/omitido = pessoal. */
   companyId?: string | null
+  /** Pasta (mesmo escopo do QR). */
+  folderId?: string | null
   active?: boolean
   /** Personalização visual (só os campos preenchidos). */
   style?: QrStyle
@@ -76,8 +80,37 @@ export type UpdateQrInput = Partial<{
   label: string
   active: boolean
   companyId: string | null
+  folderId: string | null
   style: QrStyle
 }>
+
+// ─── Pastas ────────────────────────────────────────────────────────────────
+export interface QrFolder {
+  id: string
+  name: string
+  companyId: string | null
+  scope: 'personal' | 'company'
+  qrCount: number
+  createdAt: string
+}
+
+// ─── Tokens de API (microserviço) ────────────────────────────────────────────
+export interface QrApiToken {
+  id: string
+  name: string
+  tokenPrefix: string
+  companyId: string
+  defaultFolderId: string | null
+  lastUsedAt: string | null
+  revoked: boolean
+  revokedAt: string | null
+  createdAt: string
+}
+
+/** Resposta da criação: `token` (valor cru) só existe AQUI, uma vez. */
+export interface QrApiTokenCreated extends QrApiToken {
+  token: string
+}
 
 const qrService = {
   async list() {
@@ -110,8 +143,62 @@ const qrService = {
     return response.data
   },
 
-  async remove(id: string) {
-    const response = await api.delete<{ message: string }>(`/qr/${id}`)
+  /** Exclusão exige a senha do usuário (confirmação estilo git). */
+  async remove(id: string, password: string) {
+    const response = await api.delete<{ message: string }>(`/qr/${id}`, {
+      data: { password },
+    })
+    return response.data
+  },
+
+  // ─── Pastas ─────────────────────────────────────────────────────────────
+  async listFolders(companyId?: string | null) {
+    const response = await api.get<QrFolder[]>('/qr/folders', {
+      params: companyId ? { companyId } : undefined,
+    })
+    return response.data
+  },
+
+  async createFolder(data: { name: string; companyId?: string | null }) {
+    const response = await api.post<QrFolder>('/qr/folders', data)
+    return response.data
+  },
+
+  async renameFolder(id: string, name: string) {
+    const response = await api.patch<QrFolder>(`/qr/folders/${id}`, { name })
+    return response.data
+  },
+
+  async removeFolder(id: string, password: string) {
+    const response = await api.delete<{ message: string }>(`/qr/folders/${id}`, {
+      data: { password },
+    })
+    return response.data
+  },
+
+  // ─── Tokens de API (microserviço) — ADMIN, escopo via x-company-id ─────────
+  async listTokens(companyId: string) {
+    const response = await api.get<QrApiToken[]>('/qr/api-tokens', {
+      headers: { 'x-company-id': companyId },
+    })
+    return response.data
+  },
+
+  async createToken(
+    companyId: string,
+    data: { name: string; defaultFolderId?: string | null },
+  ) {
+    const response = await api.post<QrApiTokenCreated>('/qr/api-tokens', data, {
+      headers: { 'x-company-id': companyId },
+    })
+    return response.data
+  },
+
+  async revokeToken(companyId: string, id: string) {
+    const response = await api.delete<{ message: string }>(
+      `/qr/api-tokens/${id}`,
+      { headers: { 'x-company-id': companyId } },
+    )
     return response.data
   },
 }
