@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   BarChart3,
   Ban,
@@ -9,22 +9,35 @@ import {
   Download,
   ExternalLink,
   Eye,
+  Folder,
+  FolderOpen,
   Pencil,
   Trash2,
   User,
 } from 'lucide-vue-next'
 import QrPreview from './QrPreview.vue'
-import type { QrCode } from '@/service/qr/qr-service'
+import type { QrCode, QrFolder } from '@/service/qr/qr-service'
 import { useToast } from '@/composables/useToast'
 import { exportQr } from '@/utils/qr-styled'
 
-const props = defineProps<{ qr: QrCode }>()
+const props = defineProps<{
+  qr: QrCode
+  /** Pastas disponíveis no MESMO escopo deste QR (para o menu "mover"). */
+  folders?: QrFolder[]
+}>()
 const emit = defineEmits<{
   edit: []
   metrics: []
   cancel: []
   remove: []
+  // Move o QR para uma pasta (id) ou tira da pasta (null).
+  move: [folderId: string | null]
 }>()
+
+// Nome da pasta atual (mostrado como chip no card).
+const currentFolderName = computed(
+  () => props.folders?.find((f) => f.id === props.qr.folderId)?.name ?? null,
+)
 
 const { success, error: showError } = useToast()
 
@@ -64,9 +77,22 @@ async function doExport(fmt: 'png' | 'jpg' | 'svg') {
   }
 }
 
+// ─── Menu "mover para pasta" ──────────────────────────────────────────────────
+const moveOpen = ref(false)
+const moveRef = ref<HTMLElement | null>(null)
+
+function moveTo(folderId: string | null) {
+  moveOpen.value = false
+  if (folderId === (props.qr.folderId ?? null)) return // já está nela
+  emit('move', folderId)
+}
+
 function onDocClick(e: MouseEvent) {
   if (exportOpen.value && exportRef.value && !exportRef.value.contains(e.target as Node)) {
     exportOpen.value = false
+  }
+  if (moveOpen.value && moveRef.value && !moveRef.value.contains(e.target as Node)) {
+    moveOpen.value = false
   }
 }
 onMounted(() => document.addEventListener('mousedown', onDocClick))
@@ -93,6 +119,11 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
           </span>
           <span v-if="qr.scope === 'company' && !qr.isMine && qr.ownerName" class="qc-owner">
             por {{ qr.ownerName }}
+          </span>
+          <!-- Pasta atual (separação visível) -->
+          <span v-if="currentFolderName" class="qc-folder-chip">
+            <Folder :size="11" />
+            <span>{{ currentFolderName }}</span>
           </span>
         </div>
 
@@ -148,6 +179,50 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
           <button class="qc-menu-item" type="button" role="menuitem" @click="doExport('png')">PNG</button>
           <button class="qc-menu-item" type="button" role="menuitem" @click="doExport('jpg')">JPG</button>
           <button class="qc-menu-item" type="button" role="menuitem" @click="doExport('svg')">SVG</button>
+        </div>
+      </div>
+
+      <!-- Mover para pasta: só o criador -->
+      <div v-if="qr.isMine" ref="moveRef" class="qc-export">
+        <button
+          class="qc-act"
+          type="button"
+          aria-haspopup="menu"
+          :aria-expanded="moveOpen"
+          title="Mover para pasta"
+          @click="moveOpen = !moveOpen"
+        >
+          <FolderOpen :size="14" />
+          <span>Pasta</span>
+        </button>
+        <div v-if="moveOpen" class="qc-menu qc-menu--wide" role="menu">
+          <button
+            class="qc-menu-item"
+            type="button"
+            role="menuitem"
+            :class="{ 'qc-menu-item--active': !qr.folderId }"
+            @click="moveTo(null)"
+          >
+            <Check :size="13" :class="{ 'qc-menu-check--hidden': !!qr.folderId }" />
+            <span>Sem pasta</span>
+          </button>
+          <div v-if="folders && folders.length" class="qc-menu-sep" />
+          <button
+            v-for="f in folders"
+            :key="f.id"
+            class="qc-menu-item"
+            type="button"
+            role="menuitem"
+            :class="{ 'qc-menu-item--active': qr.folderId === f.id }"
+            @click="moveTo(f.id)"
+          >
+            <Check :size="13" :class="{ 'qc-menu-check--hidden': qr.folderId !== f.id }" />
+            <Folder :size="13" />
+            <span class="qc-menu-item-label">{{ f.name }}</span>
+          </button>
+          <div v-if="!folders || !folders.length" class="qc-menu-empty">
+            Nenhuma pasta neste escopo ainda.
+          </div>
         </div>
       </div>
 
@@ -277,6 +352,25 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 .qc-owner {
   font-size: 11.5px;
   color: var(--text-3);
+}
+
+.qc-folder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 650;
+  max-width: 160px;
+}
+
+.qc-folder-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .qc-target {
@@ -432,5 +526,46 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 .qc-menu-item:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+
+/* Menu "mover para pasta": mais largo, itens com ícone + check */
+.qc-menu--wide {
+  min-width: 200px;
+  max-width: 260px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.qc-menu--wide .qc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.qc-menu-item--active {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.qc-menu-check--hidden {
+  visibility: hidden;
+}
+
+.qc-menu-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+.qc-menu-empty {
+  padding: 8px 10px;
+  color: var(--text-4);
+  font-size: 11.5px;
 }
 </style>

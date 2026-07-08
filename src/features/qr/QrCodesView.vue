@@ -260,6 +260,21 @@ const canManageFolders = computed(
   () => activeScope.value === 'personal' || isAdminOfActive.value,
 )
 
+// ─── Mover QR para pasta (ação direta no card) ──────────────────────────────────
+// Pastas do MESMO escopo do QR (empresa dele, ou pessoais se for pessoal).
+function foldersForQr(qr: QrCode): QrFolder[] {
+  return qr.companyId
+    ? allFolders.value.filter((f) => f.companyId === qr.companyId)
+    : allFolders.value.filter((f) => f.scope === 'personal')
+}
+async function moveQr(qr: QrCode, folderId: string | null) {
+  try {
+    await update.mutateAsync({ id: qr.id, data: { folderId } })
+  } catch {
+    /* toast já disparado */
+  }
+}
+
 // ─── Tokens de API (microserviço) ────────────────────────────────────────────
 const tokensOpen = ref(false)
 // Se a empresa ativa some (troca de aba / empresa saiu do store), fecha o dialog
@@ -420,10 +435,12 @@ watch(activeCompany, (c) => {
             v-for="qr in group.items"
             :key="qr.id"
             :qr="qr"
+            :folders="foldersForQr(qr)"
             @edit="openEdit(qr)"
             @metrics="metricsFor = qr"
             @cancel="cancelTarget = qr"
             @remove="removeTarget = qr"
+            @move="(folderId) => moveQr(qr, folderId)"
           />
         </div>
       </section>
