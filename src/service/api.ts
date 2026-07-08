@@ -73,7 +73,10 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`
   }
 
-  if (companyId) {
+  // x-company-id: respeita o que a requisição já definiu explicitamente (ex.: o
+  // dialog de Tokens/pastas opera numa empresa específica que pode ≠ da ativa
+  // global). Só cai no activeCompany do localStorage quando a request não mandou.
+  if (companyId && config.headers['x-company-id'] == null) {
     config.headers['x-company-id'] = companyId
   }
 
