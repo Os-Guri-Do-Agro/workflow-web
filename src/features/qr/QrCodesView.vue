@@ -89,8 +89,8 @@ const activeCompany = computed(() => {
 const isAdminOfActive = computed(() => activeCompany.value?.role === 'ADMIN')
 
 // ─── Pastas ────────────────────────────────────────────────────────────────────
-// Pastas relevantes à aba: empresa → pastas daquela empresa; pessoal → pessoais.
-// Em "Todos" não mostramos a barra de pastas (ficaria ambígua entre escopos).
+// Pastas relevantes à aba: empresa → pastas daquela empresa; pessoal → pessoais;
+// "Todos" → todas (só p/ filtrar; criar/excluir exige entrar num escopo).
 const scopeFolders = computed<QrFolder[]>(() => {
   if (activeScope.value === 'personal') {
     return allFolders.value.filter((f) => f.scope === 'personal')
@@ -98,7 +98,7 @@ const scopeFolders = computed<QrFolder[]>(() => {
   if (activeCompany.value) {
     return allFolders.value.filter((f) => f.companyId === activeCompany.value!.id)
   }
-  return []
+  return allFolders.value // aba "Todos": mostra todas para filtrar
 })
 
 // Filtro de pasta: 'all' | 'none' (sem pasta) | <folderId>.
@@ -360,8 +360,9 @@ watch(activeCompany, (c) => {
         </button>
       </div>
 
-      <!-- Barra de pastas: só dentro de um escopo específico (pessoal/empresa) -->
-      <div v-if="activeScope !== 'all'" class="qr-folders">
+      <!-- Barra de pastas: filtra em qualquer aba; criar/excluir só num escopo -->
+      <div v-if="scopeFolders.length || canManageFolders" class="qr-folders">
+        <span class="qr-folders-label"><Folder :size="13" /> Pastas:</span>
         <button
           type="button"
           class="qr-fchip"
@@ -599,6 +600,16 @@ watch(activeCompany, (c) => {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.qr-folders-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .qr-fchip {
