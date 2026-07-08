@@ -9,6 +9,7 @@ import {
   X,
   Trash2,
   ShieldCheck,
+  BookOpen,
 } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import { apiBaseUrl } from '@/service/api'
@@ -93,6 +94,8 @@ async function copy(text: string, key: string) {
 
 // Exemplo de chamada do microserviço (endpoint fixo /api/v1/qr).
 const endpoint = computed(() => `${apiBaseUrl()}/api/v1/qr`)
+// Página de docs dedicada (Scalar) — abre em outra aba.
+const docsUrl = computed(() => `${apiBaseUrl()}/qr-docs`)
 const curlExample = computed(
   () =>
     `curl -X POST ${endpoint.value} \\\n` +
@@ -111,6 +114,10 @@ const curlExample = computed(
           <div class="tok-head-txt">
             <h2>Tokens de API — {{ companyName }}</h2>
             <p>Gere QRs por webhook/integração usando 1 token. O valor completo aparece só na criação.</p>
+            <a class="tok-docs-link" :href="docsUrl" target="_blank" rel="noopener">
+              <BookOpen :size="13" />
+              <span>Ver documentação da API</span>
+            </a>
           </div>
           <button class="tok-x" type="button" aria-label="Fechar" @click="emit('close')">
             <X :size="16" />
@@ -265,6 +272,21 @@ const curlExample = computed(
   color: var(--text-3);
   font-size: 12.5px;
   line-height: 1.5;
+}
+
+.tok-docs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.tok-docs-link:hover {
+  text-decoration: underline;
 }
 
 .tok-x {
