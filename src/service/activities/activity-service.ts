@@ -50,16 +50,25 @@ class activityService {
     )
   }
 
-  getActivityById(id: string): Promise<any> {
+  /** `companyId` explícito: o painel do /board abre cards de QUALQUER empresa. */
+  getActivityById(id: string, companyId?: string): Promise<any> {
     return this.handleRequest(
-      api.get(`/activity/${id}`),
+      api.get(
+        `/activity/${id}`,
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
       'Erro ao buscar atividade',
     )
   }
 
-  patchActivity(id: string, data: any): Promise<any> {
+  /** Aceita patch parcial (`{ title }` sozinho, `{ dueDate: null }` para limpar). */
+  patchActivity(id: string, data: any, companyId?: string): Promise<any> {
     return this.handleRequest(
-      api.patch(`/activity/${id}`, data),
+      api.patch(
+        `/activity/${id}`,
+        data,
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
       'Erro ao atualizar atividade',
     )
   }

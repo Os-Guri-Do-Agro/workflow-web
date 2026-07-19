@@ -1,0 +1,907 @@
+<script setup lang="ts">
+/**
+ * Painel de detalhe da atividade: o "card grande" que abre SOBRE o board.
+ *
+ * Por que painel e não página: abrir a tarefa não pode custar o board. Aqui a
+ * view de trás continua montada, com filtros, scroll e posição intactos; fechar
+ * é só tirar `?task=` da URL. A rota de página cheia (`/tasks/:month/:taskId`)
+ * continua existindo para links antigos e para quem quer a tela inteira.
+ *
+ * Toda edição salva sozinha: texto com debounce, o resto no próprio change.
+ */
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue'
+import { useQuery } from '@tanstack/vue-query'
+import {
+  AlertCircle,
+  CalendarClock,
+  ExternalLink,
+  File as FileIcon,
+  FileText,
+  Flag,
+  ListChecks,
+  Paperclip,
+  Users,
+  X,
+} from 'lucide-vue-next'
+import companiesServices from '@/service/companies/companies-services'
+import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
+import { getUserToken } from '@/utils/authContent'
+import { useToast } from '@/composables/useToast'
+import {
+  dateOnlyToUtcNoonIso,
+  formatDateOnly,
+  isoToDateOnly,
+} from '@/utils/date'
+import Pill from '@/components/ui/Pill.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import SaveStatus from '@/components/ui/SaveStatus.vue'
+import InlineEditText from '@/components/ui/InlineEditText.vue'
+import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
+import { useActivityDetail } from '../useActivityDetail'
+import { ACTIVITY_PRIORITIES, ACTIVITY_STATUSES, prioritySpec, statusSpec } from '../task-meta'
+import type { ActivityResponsible } from '../activity-types'
+
+const props = defineProps<{
+  taskId: string
+  /** Empresa do card: o /board é agregado e o x-company-id precisa ser o dela. */
+  companyId?: string | null
+  companyName?: string | null
+}>()
+
+const emit = defineEmits<{ close: [] }>()
+
+const { error: showError } = useToast()
+
+const taskIdRef = toRef(props, 'taskId')
+const companyIdRef = computed(() => props.companyId ?? null)
+
+const {
+  activity,
+  isLoading,
+  refetch,
+  fieldState,
+  fieldError,
+  failedFields,
+  overallState,
+  savedAt,
+  saveFields,
+  saveStatus: commitStatus,
+  retry,
+  retryAll,
+  waitForIdle,
+} = useActivityDetail(taskIdRef, companyIdRef)
+
+// ── Papel na empresa DO CARD (o board mistura empresas) ──────────────────────
+const canEdit = computed(() => {
+  const token = getUserToken()
+  if (!token) return false
+  const target = props.companyId ?? localStorage.getItem('activeCompany')
+  const role = token.companies?.find((c) => c.companyId === target)?.role
+  return role === 'ADMIN' || role === 'WORKER'
+})
+
+// ── Membros da empresa (responsáveis) ────────────────────────────────────────
+interface MemberLike {
+  id?: string
+  name?: string
+  user?: { id: string; name: string }
+}
+
+const membersQuery = useQuery({
+  queryKey: computed(() => ['company-members', companyIdRef.value]),
+  queryFn: async (): Promise<MemberLike[]> => {
+    // O endpoint responde ora com array, ora com `{ data: [...] }`.
+    const raw: unknown = await companiesServices.getCompanyMembers(companyIdRef.value!)
+    if (Array.isArray(raw)) return raw as MemberLike[]
+    return ((raw as { data?: MemberLike[] } | null)?.data ?? []) as MemberLike[]
+  },
+  enabled: computed(() => !!companyIdRef.value),
+  staleTime: 60_000,
+})
+
+const memberItems = computed(() =>
+  (membersQuery.data.value ?? []).map((m) => ({
+    label: m.user?.name ?? m.name ?? 'Sem nome',
+    value: (m.user?.id ?? m.id ?? '') as string,
+  })),
+)
+
+// ── Meses de planejamento (trimestres da empresa do card) ────────────────────
+interface PlanningMonth {
+  id: string
+  name: string
+}
+interface PlanningQuarter {
+  id: string
+  label: string
+  months?: PlanningMonth[]
+}
+
+const { data: quartersData } = useCompanyQuarters(companyIdRef)
+
+const quartersList = computed<PlanningQuarter[]>(() => {
+  const raw = quartersData.value as PlanningQuarter[] | { data: PlanningQuarter[] } | undefined
+  if (!raw) return []
+  return Array.isArray(raw) ? raw : (raw.data ?? [])
+})
+
+const monthItems = computed(() =>
+  quartersList.value.flatMap((q) =>
+    (q.months ?? []).map((m) => ({ label: `${q.label} · ${m.name}`, value: m.id })),
+  ),
+)
+
+const currentMonthId = computed(() => activity.value?.monthId ?? '')
+
+// ── Derivados de apresentação ────────────────────────────────────────────────
+const statusValue = computed(() => statusSpec(activity.value?.status).value)
+const priorityValue = computed(() => prioritySpec(activity.value?.priorityNumber).value)
+const responsibleIds = computed<string[]>(
+  () => activity.value?.responsibles?.map((r) => r.userId ?? r.user.id) ?? [],
+)
+const dueDateInput = computed(() =>
+  activity.value?.dueDate ? isoToDateOnly(activity.value.dueDate) : '',
+)
+const subtasks = computed(() => activity.value?.subtasks ?? [])
+const doneSubtasks = computed(() => subtasks.value.filter((s) => s.status === 'DONE').length)
+const attachments = computed(() => activity.value?.attachments ?? [])
+
+const fullPageLink = computed(() => {
+  const monthId = activity.value?.monthId
+  if (!monthId) return null
+  return {
+    path: `/tasks/${monthId}/${props.taskId}`,
+    query: props.companyId ? { company: props.companyId } : undefined,
+  }
+})
+
+const isImage = (filename: string) => /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(filename)
+
+// ── Gravações ────────────────────────────────────────────────────────────────
+function saveTitle(value: string) {
+  const title = value.trim()
+  if (!title) {
+    showError('O título não pode ficar vazio')
+    // Sem isto o campo fica visualmente vazio para sempre: nada foi gravado, o
+    // `modelValue` não mudou e o watcher do InlineEditText não redesenha nada.
+    titleField.value?.reset()
+    return
+  }
+  void saveFields('title', { title }, { title })
+}
+
+function saveDescription(value: string) {
+  void saveFields('description', { description: value }, { description: value })
+}
+
+function saveStatus(value: string) {
+  if (value === activity.value?.status) return
+  void commitStatus(value)
+}
+
+function savePriority(value: number) {
+  if (value === activity.value?.priorityNumber) return
+  void saveFields('priority', { priorityNumber: value }, { priorityNumber: value })
+}
+
+function saveDueDate(dateOnly: string) {
+  // String vazia precisa virar `null` explícito: `undefined` some do JSON e a
+  // data nunca seria limpa (o campo virava via de mão única).
+  const dueDate = dateOnly ? dateOnlyToUtcNoonIso(dateOnly) : null
+  void saveFields('dueDate', { dueDate }, { dueDate })
+}
+
+function saveResponsibles(ids: string[]) {
+  const known = membersQuery.data.value ?? []
+  const optimistic: ActivityResponsible[] = ids.map((id) => {
+    const member = known.find((m) => (m.user?.id ?? m.id) === id)
+    return { userId: id, user: { id, name: member?.user?.name ?? member?.name ?? '…' } }
+  })
+  void saveFields('responsibles', { responsibleUserIds: ids }, { responsibles: optimistic })
+}
+
+function saveMonth(monthId: string) {
+  if (!monthId || monthId === currentMonthId.value) return
+  const quarter = quartersList.value.find((q) => q.months?.some((m) => m.id === monthId))
+  const month = quarter?.months?.find((m) => m.id === monthId)
+  void saveFields(
+    'month',
+    { monthId },
+    { monthId, month: month ? { id: month.id, name: month.name } : null },
+  )
+}
+
+// ── Fechamento: nunca fecha em cima de gravação pendente ─────────────────────
+const titleField = ref<InstanceType<typeof InlineEditText> | null>(null)
+const descriptionField = ref<InstanceType<typeof InlineEditText> | null>(null)
+const closing = ref(false)
+const panelRef = ref<HTMLElement | null>(null)
+
+async function close() {
+  if (closing.value) return
+  closing.value = true
+  titleField.value?.flush()
+  descriptionField.value?.flush()
+  await nextTick()
+  await waitForIdle()
+  closing.value = false
+  emit('close')
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  // O dropdown do AppSelect é teleportado para o body: quando ele está aberto,
+  // Esc significa "fechar a lista", não "fechar o painel".
+  if (document.querySelector('.app-select__content')) return
+  void close()
+}
+
+let previousOverflow = ''
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  previousOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+  void nextTick(() => panelRef.value?.focus())
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  document.body.style.overflow = previousOverflow
+})
+</script>
+
+<template>
+  <Teleport to="body">
+    <div class="task-panel-root">
+      <div class="task-panel__scrim" @click="close" />
+
+      <aside
+        ref="panelRef"
+        class="task-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Detalhe da atividade"
+        tabindex="-1"
+      >
+        <header class="task-panel__head">
+          <div class="task-panel__head-main">
+            <span class="eyebrow">
+              <FileText :size="11" />
+              {{ companyName || 'Atividade' }}
+            </span>
+            <SaveStatus
+              :state="overallState"
+              :saved-at="savedAt"
+              :message="fieldError[failedFields[0] ?? ''] ?? ''"
+              @retry="retryAll()"
+            />
+          </div>
+
+          <div class="task-panel__head-actions">
+            <RouterLink
+              v-if="fullPageLink"
+              :to="fullPageLink"
+              class="icon-btn"
+              title="Abrir em página cheia"
+              aria-label="Abrir em página cheia"
+            >
+              <ExternalLink :size="15" />
+            </RouterLink>
+            <button
+              type="button"
+              class="icon-btn"
+              title="Fechar (Esc)"
+              aria-label="Fechar painel"
+              @click="close"
+            >
+              <X :size="16" />
+            </button>
+          </div>
+        </header>
+
+        <div v-if="isLoading" class="task-panel__body">
+          <Skeleton type="text" :lines="2" />
+          <Skeleton type="block" height="120px" />
+          <Skeleton type="card" />
+        </div>
+
+        <div v-else-if="!activity" class="task-panel__body">
+          <EmptyState
+            :icon="AlertCircle"
+            title="Não foi possível abrir a atividade"
+            description="Ela pode ter sido removida, ou você não tem acesso à empresa dela."
+          >
+            <template #action>
+              <button type="button" class="btn-secondary" @click="refetch()">
+                Tentar de novo
+              </button>
+            </template>
+          </EmptyState>
+        </div>
+
+        <div v-else class="task-panel__body">
+          <!-- Título -->
+          <InlineEditText
+            ref="titleField"
+            :model-value="activity.title"
+            field-label="Título da atividade"
+            variant="title"
+            placeholder="Título da atividade"
+            :state="fieldState.title ?? 'idle'"
+            :disabled="!canEdit"
+            @save="saveTitle"
+          />
+
+          <!-- Status -->
+          <section class="block">
+            <h3 class="block-label">Status</h3>
+            <div class="segmented" role="group" aria-label="Status da atividade">
+              <button
+                v-for="option in ACTIVITY_STATUSES"
+                :key="option.value"
+                type="button"
+                class="segmented__item"
+                :class="{ 'segmented__item--on': statusValue === option.value }"
+                :style="{ '--seg-c': option.token }"
+                :aria-pressed="statusValue === option.value"
+                :disabled="!canEdit || fieldState.status === 'saving'"
+                @click="saveStatus(option.value)"
+              >
+                <component :is="option.icon" :size="13" />
+                {{ option.label }}
+              </button>
+            </div>
+          </section>
+
+          <!-- Campos -->
+          <section class="block">
+            <div class="field">
+              <h3 class="block-label">
+                <Flag :size="12" />
+                Prioridade
+              </h3>
+              <div class="chips" role="group" aria-label="Prioridade">
+                <button
+                  v-for="option in ACTIVITY_PRIORITIES"
+                  :key="option.value"
+                  type="button"
+                  class="chip"
+                  :class="{ 'chip--on': priorityValue === option.value }"
+                  :style="{ '--chip-c': option.token }"
+                  :aria-pressed="priorityValue === option.value"
+                  :disabled="!canEdit"
+                  @click="savePriority(option.value)"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="field">
+              <h3 class="block-label">
+                <CalendarClock :size="12" />
+                Entrega
+              </h3>
+              <div class="date-row">
+                <input
+                  type="date"
+                  class="date-input"
+                  aria-label="Data de entrega"
+                  :value="dueDateInput"
+                  :disabled="!canEdit"
+                  @change="saveDueDate(($event.target as HTMLInputElement).value)"
+                />
+                <button
+                  v-if="dueDateInput && canEdit"
+                  type="button"
+                  class="btn-ghost"
+                  @click="saveDueDate('')"
+                >
+                  Limpar
+                </button>
+                <SaveStatus
+                  compact
+                  :state="fieldState.dueDate ?? 'idle'"
+                  :saved-at="savedAt"
+                  @retry="retry('dueDate')"
+                />
+              </div>
+            </div>
+
+            <div class="field">
+              <h3 class="block-label">
+                <Users :size="12" />
+                Responsáveis
+              </h3>
+              <AppSelect
+                multiple
+                :model-value="responsibleIds"
+                :items="memberItems"
+                label="Responsáveis"
+                placeholder="Ninguém atribuído"
+                density="compact"
+                :disabled="!canEdit || fieldState.responsibles === 'saving'"
+                @update:model-value="saveResponsibles(($event as string[]) ?? [])"
+              />
+            </div>
+
+            <div v-if="monthItems.length" class="field">
+              <h3 class="block-label">Mês de entrega</h3>
+              <AppSelect
+                :model-value="currentMonthId"
+                :items="monthItems"
+                label="Mês de planejamento"
+                placeholder="Selecione o mês"
+                density="compact"
+                :disabled="!canEdit || fieldState.month === 'saving'"
+                @update:model-value="saveMonth(String($event))"
+              />
+            </div>
+          </section>
+
+          <!-- Descrição -->
+          <section class="block">
+            <h3 class="block-label">Descrição</h3>
+            <InlineEditText
+              ref="descriptionField"
+              multiline
+              :model-value="activity.description ?? ''"
+              field-label="Descrição da atividade"
+              placeholder="Descreva o trabalho, critérios de aceitação, links…"
+              :min-rows="4"
+              :state="fieldState.description ?? 'idle'"
+              :disabled="!canEdit"
+              @save="saveDescription"
+            />
+          </section>
+
+          <!-- Subtarefas (leitura; edição completa na página cheia) -->
+          <section v-if="subtasks.length" class="block">
+            <h3 class="block-label">
+              <ListChecks :size="12" />
+              Subtarefas
+              <span class="count">{{ doneSubtasks }}/{{ subtasks.length }}</span>
+            </h3>
+            <ul class="subtasks">
+              <li v-for="sub in subtasks" :key="sub.id" class="subtask">
+                <Pill :icon="statusSpec(sub.status).icon" :color="statusSpec(sub.status).token">
+                  {{ statusSpec(sub.status).label }}
+                </Pill>
+                <span class="subtask__title" :class="{ 'subtask__title--done': sub.status === 'DONE' }">
+                  {{ sub.title }}
+                </span>
+              </li>
+            </ul>
+          </section>
+
+          <!-- Anexos -->
+          <section v-if="attachments.length" class="block">
+            <h3 class="block-label">
+              <Paperclip :size="12" />
+              Anexos
+            </h3>
+            <div class="attachments">
+              <a
+                v-for="att in attachments"
+                :key="att.id"
+                :href="att.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="attachment"
+              >
+                <img v-if="isImage(att.filename)" :src="att.url" :alt="att.filename" />
+                <span v-else class="attachment__file">
+                  <FileIcon :size="18" />
+                  {{ att.filename }}
+                </span>
+              </a>
+            </div>
+          </section>
+
+          <p class="created-at">Criada em {{ formatDateOnly(activity.createdAt) }}</p>
+
+          <CommentsPanel
+            entity-type="ACTIVITY"
+            :entity-id="taskId"
+            title="Comentários"
+            compact
+          />
+        </div>
+      </aside>
+    </div>
+  </Teleport>
+</template>
+
+<style scoped>
+.task-panel-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+}
+
+.task-panel__scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(2px);
+  animation: panel-fade var(--motion) var(--motion-ease);
+}
+
+.task-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(760px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-overlay);
+  outline: none;
+  animation: panel-in var(--motion) var(--motion-ease);
+}
+
+.task-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.task-panel__head-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.task-panel__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.task-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  scrollbar-width: thin;
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.block-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.count {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field + .field {
+  margin-top: 14px;
+}
+
+/* Status: o controle mais proeminente do painel, como num work item. */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.segmented__item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 0 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.segmented__item:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.segmented__item--on {
+  background: color-mix(in srgb, var(--seg-c) 16%, transparent);
+  border-color: color-mix(in srgb, var(--seg-c) 45%, transparent);
+  color: var(--seg-c);
+}
+
+.segmented__item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.segmented__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  min-height: 32px;
+  padding: 0 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.chip--on {
+  background: color-mix(in srgb, var(--chip-c) 16%, transparent);
+  border-color: color-mix(in srgb, var(--chip-c) 45%, transparent);
+  color: var(--chip-c);
+}
+
+.chip:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.date-input {
+  min-height: 36px;
+  padding: 0 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
+  color-scheme: light dark;
+}
+
+.date-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.btn-ghost,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+
+.btn-ghost:hover,
+.btn-secondary:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subtask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.subtask__title {
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtask__title--done {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.attachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.attachment {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.attachment img {
+  display: block;
+  width: 100%;
+  height: 84px;
+  object-fit: cover;
+}
+
+.attachment__file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 10px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.created-at {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-4);
+}
+
+@keyframes panel-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+@keyframes panel-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .task-panel {
+    width: 100vw;
+  }
+  .segmented {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-panel,
+  .task-panel__scrim {
+    animation-duration: 1ms;
+  }
+  .segmented__item,
+  .chip,
+  .icon-btn,
+  .btn-ghost,
+  .btn-secondary {
+    transition-duration: 1ms;
+  }
+}
+</style>

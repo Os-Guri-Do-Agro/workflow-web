@@ -16,6 +16,7 @@ import activityService from '@/service/activities/activity-service'
 import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import TaskDetailPanel from '@/features/tasks/components/TaskDetailPanel.vue'
 
 const { error: showError, success: showSuccess } = useToast()
 
@@ -49,7 +50,7 @@ const priorityMeta: Record<number, PrioritySpec> = {
   2: { label: 'P2', token: 'var(--info)' },
   3: { label: 'P3', token: 'var(--text-3)' },
 }
-const PRIORITY_FALLBACK: PrioritySpec = { label: '—', token: 'var(--text-3)' }
+const PRIORITY_FALLBACK: PrioritySpec = { label: 'P?', token: 'var(--text-3)' }
 const prio = (p: number): PrioritySpec => priorityMeta[p] ?? PRIORITY_FALLBACK
 
 const allActivities = computed(() => {
@@ -249,10 +250,13 @@ watch(
 )
 
 async function loadData() {
-  loading.value = true
+  const hasStaleData = workspace.workspaceData?.activities.some((a) => !a.monthId)
+  if (hasStaleData) workspace.workspaceData = null
+  // Skeleton só quando não há nada para mostrar. Com o painel de detalhe aberto
+  // por cima, cada autosave devolve um `activity:updated` que cai aqui: trocar o
+  // board inteiro por skeleton a cada gravação piscava a tela atrás do painel.
+  loading.value = !workspace.workspaceData?.activities?.length
   try {
-    const hasStaleData = workspace.workspaceData?.activities.some((a) => !a.monthId)
-    if (hasStaleData) workspace.workspaceData = null
     await workspace.fetchWorkspace()
   } catch (err) {
     showError('Erro ao carregar atividades')
@@ -286,26 +290,39 @@ watch(
   },
 )
 
-async function openTask(activity: any) {
-  if (!activity.monthId) {
-    try {
-      await workspace.fetchWorkspace()
-    } catch {
-      showError('Não foi possível abrir a atividade — recarregue a página')
-      return
-    }
-    const fresh = workspace.workspaceData?.activities.find((a) => a.id === activity.id)
-    if (!fresh?.monthId) {
-      showError('Não foi possível abrir a atividade — recarregue a página')
-      return
-    }
-    activity = fresh
-  }
+// ── Painel de detalhe sobre o board ──────────────────────────────────────────
+// A tarefa aberta vive na URL (`?task=&company=`), não em estado local: o link
+// continua compartilhável e sobrevive ao F5, sem trocar de página. Como a view
+// não desmonta, fechar devolve o board com filtros, scroll e posição intactos.
+// A rota de página cheia (`/tasks/:month/:taskId`) segue viva para links antigos.
+const PANEL_KEYS = ['task', 'company'] as const
 
-  router.push({
-    path: `/tasks/${activity.monthId}/${activity.id}`,
-    query: activity.companyId ? { company: activity.companyId } : undefined,
-  })
+const openTaskId = computed(() =>
+  typeof route.query.task === 'string' && route.query.task ? route.query.task : null,
+)
+
+const openTaskCompanyId = computed(() =>
+  typeof route.query.company === 'string' && route.query.company ? route.query.company : null,
+)
+
+const openTaskCompanyName = computed(() => {
+  const id = openTaskCompanyId.value
+  if (!id) return null
+  return companies.value.find((c) => c.id === id)?.name ?? null
+})
+
+function openTask(activity: ActivityItem) {
+  router.push({ query: { ...route.query, task: activity.id, company: activity.companyId } })
+}
+
+function closeTask() {
+  const query: Record<string, string> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (!PANEL_KEYS.includes(key as (typeof PANEL_KEYS)[number]) && typeof value === 'string') {
+      query[key] = value
+    }
+  }
+  router.replace({ query })
 }
 
 function formatDate(date: string | null) {
@@ -538,6 +555,15 @@ function handleDrop(columnId: ColumnStatus) {
         </div>
       </section>
     </div>
+
+    <TaskDetailPanel
+      v-if="openTaskId"
+      :key="openTaskId"
+      :task-id="openTaskId"
+      :company-id="openTaskCompanyId"
+      :company-name="openTaskCompanyName"
+      @close="closeTask"
+    />
   </div>
 </template>
 
