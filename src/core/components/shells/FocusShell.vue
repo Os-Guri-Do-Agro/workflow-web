@@ -15,7 +15,12 @@ import {
   BarChart3,
   CalendarRange,
   Paintbrush,
+  Bug,
+  QrCode,
+  Timer,
 } from 'lucide-vue-next'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
+import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
@@ -33,28 +38,66 @@ defineEmits<{
 
 const route = useRoute()
 const router = useRouter()
+const workspace = useWorkspaceStore()
 
 const { quarters, firstMonth } = useNavQuarters()
 
-const railItems = computed(() => {
-  const items: Array<{ to: string; icon: Component; label: string }> = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/board', icon: Columns3, label: 'Board' },
+// Mesma regra de papel do NavList: sem isso o rail oferecia "Usuários" para
+// quem não é ADMIN e a rota barrava depois, virando beco sem saída.
+const ROLE_RANK: Record<string, number> = { WORKER: 0, ADMIN: 1 }
+
+function userMeetsRole(required?: 'WORKER' | 'ADMIN'): boolean {
+  if (!required) return true
+  const active = workspace.activeRole
+  if (!active) return false
+  return (ROLE_RANK[active] ?? -1) >= (ROLE_RANK[required] ?? -1)
+}
+
+type RailItem = {
+  to: string
+  icon: Component
+  label: string
+  role?: 'WORKER' | 'ADMIN'
+  section: 'Trabalho' | 'Pessoal'
+}
+
+/**
+ * Espelha a navegação do CommandShell (shared/NavList.vue). Trocar de shell é
+ * preferência visual, não deve esconder features: Bug reports, QR Codes e Meu
+ * tempo existiam só lá e sumiam para quem usa o Focus.
+ */
+const railItems = computed<RailItem[]>(() => {
+  const items: RailItem[] = [
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', section: 'Trabalho' },
+    { to: '/board', icon: Columns3, label: 'Board', section: 'Trabalho' },
     // Canvas escondido via feature flag (ver feature-flags.ts).
-    ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas' }] : []),
-    { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
+    ...(CANVAS_ENABLED
+      ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas', section: 'Trabalho' as const }]
+      : []),
+    { to: '/roadmap', icon: Milestone, label: 'Roadmap', section: 'Trabalho' },
+    { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER', section: 'Trabalho' },
   ]
   if (firstMonth.value) {
-    items.push({ to: `/tasks/${firstMonth.value.id}`, icon: ListTodo, label: 'Tarefas' })
+    items.push({
+      to: `/tasks/${firstMonth.value.id}`,
+      icon: ListTodo,
+      label: 'Tarefas',
+      section: 'Trabalho',
+    })
   }
   items.push(
-    { to: '/variables', icon: KeyRound, label: 'Variáveis' },
-    { to: '/notes', icon: StickyNote, label: 'Notas' },
-    { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
-    { to: '/company-users', icon: Users, label: 'Usuários' },
+    { to: '/variables', icon: KeyRound, label: 'Variáveis', section: 'Trabalho' },
+    { to: '/qr', icon: QrCode, label: 'QR Codes', section: 'Trabalho' },
+    { to: '/company-users', icon: Users, label: 'Usuários', role: 'ADMIN', section: 'Trabalho' },
+    { to: '/time', icon: Timer, label: 'Meu tempo', section: 'Pessoal' },
+    { to: '/notes', icon: StickyNote, label: 'Notas', section: 'Pessoal' },
+    { to: '/calendar', icon: CalendarDays, label: 'Calendário', section: 'Pessoal' },
   )
-  return items
+  return items.filter((i) => userMeetsRole(i.role))
 })
+
+const workItems = computed(() => railItems.value.filter((i) => i.section === 'Trabalho'))
+const personalItems = computed(() => railItems.value.filter((i) => i.section === 'Pessoal'))
 
 const isActive = (to: string) => {
   if (to === '/dashboard') return route.path === '/' || route.path === '/dashboard'
@@ -95,7 +138,7 @@ const showTasks = computed(() =>
   <div class="focus-shell">
     <!-- Rail -->
     <aside class="rail">
-      <div class="rail-logo">w.</div>
+      <BrandMark class="rail-brand" />
       <nav class="rail-nav">
         <button
           v-for="item in railItems"
@@ -164,45 +207,33 @@ const showTasks = computed(() =>
           </div>
         </template>
 
-        <!-- Default atalhos -->
+        <!-- Default atalhos: mesma fonte do rail, para as duas listas nunca divergirem -->
         <template v-else>
-          <div class="eyebrow">Visão rápida</div>
+          <div class="eyebrow">Trabalho</div>
           <div class="quick-list">
-            <button class="quick-item" @click="router.push('/dashboard')">
-              <LayoutDashboard :size="12" class="quick-icon" />
-              <span class="quick-label">Dashboard</span>
-            </button>
-            <button class="quick-item" @click="router.push('/board')">
-              <Columns3 :size="12" class="quick-icon" />
-              <span class="quick-label">Board</span>
-            </button>
-            <button v-if="CANVAS_ENABLED" class="quick-item" @click="router.push('/boards')">
-              <Paintbrush :size="12" class="quick-icon" />
-              <span class="quick-label">Canvas</span>
-            </button>
-            <button class="quick-item" @click="router.push('/roadmap')">
-              <Milestone :size="12" class="quick-icon" />
-              <span class="quick-label">Roadmap</span>
-            </button>
             <button
-              v-if="firstMonth"
+              v-for="item in workItems"
+              :key="item.to"
               class="quick-item"
-              @click="router.push(`/tasks/${firstMonth.id}`)"
+              :class="{ 'quick-item--active': isActive(item.to) }"
+              @click="router.push(item.to)"
             >
-              <ListTodo :size="12" class="quick-icon" />
-              <span class="quick-label">Tarefas</span>
+              <component :is="item.icon" :size="12" class="quick-icon" />
+              <span class="quick-label">{{ item.label }}</span>
             </button>
           </div>
 
           <div class="eyebrow eyebrow--spaced">Pessoal</div>
           <div class="quick-list">
-            <button class="quick-item" @click="router.push('/notes')">
-              <StickyNote :size="12" class="quick-icon" />
-              <span class="quick-label">Notas</span>
-            </button>
-            <button class="quick-item" @click="router.push('/calendar')">
-              <CalendarDays :size="12" class="quick-icon" />
-              <span class="quick-label">Calendário</span>
+            <button
+              v-for="item in personalItems"
+              :key="item.to"
+              class="quick-item"
+              :class="{ 'quick-item--active': isActive(item.to) }"
+              @click="router.push(item.to)"
+            >
+              <component :is="item.icon" :size="12" class="quick-icon" />
+              <span class="quick-label">{{ item.label }}</span>
             </button>
           </div>
         </template>
@@ -250,17 +281,7 @@ const showTasks = computed(() =>
   gap: 6px;
 }
 
-.rail-logo {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 13px;
+.rail-brand {
   margin-bottom: 6px;
 }
 
@@ -377,6 +398,21 @@ const showTasks = computed(() =>
 
 .quick-item:hover {
   background: var(--surface-2);
+  color: var(--text);
+}
+
+.quick-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.quick-item--active {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.quick-item--active .quick-icon {
   color: var(--text);
 }
 
