@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-vue-next'
 import { useWorkspaceStore, type ActivityItem } from '@/stores/workspaceStores'
+import { getUserToken } from '@/utils/authContent'
 import { dateOnlyDiffDays, isOverdue as isDueDateOverdue } from '@/utils/date'
 import { useToast } from '@/composables/useToast'
 import activityService from '@/service/activities/activity-service'
@@ -223,17 +224,20 @@ const clearFilters = () => {
   filterMonth.value = null
 }
 
-/** Atalho para a pergunta mais comum de gestão: "o que é meu?". */
-const myUserId = computed(
-  () =>
-    workspace.workspaceData?.activities
-      .flatMap((a) => a.responsibles || [])
-      .find((r) => r.isMe)?.id ?? null,
-)
+/**
+ * Atalho para a pergunta mais comum de gestão: "o que é meu?".
+ *
+ * O id sai do token, não das atividades. Derivar de `responsibles.isMe` fazia
+ * o atalho falhar exatamente quando mais importa: se nenhuma atividade visível
+ * tivesse você como responsável, o id resolvia para null, o filtro virava
+ * "todas as pessoas" e o board mostrava tudo, inclusive tarefa sem dono.
+ */
+const myUserId = computed(() => getUserToken()?.sub ?? null)
 
 const onlyMine = computed(() => !!myUserId.value && filterPerson.value === myUserId.value)
 
 const toggleMine = () => {
+  if (!myUserId.value) return
   filterPerson.value = onlyMine.value ? null : myUserId.value
 }
 
