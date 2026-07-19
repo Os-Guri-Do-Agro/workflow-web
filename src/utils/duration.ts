@@ -5,9 +5,17 @@
  * lidamos com INSTANTES reais e com durações em segundos.
  */
 
+/**
+ * Normaliza segundos vindos de fora. `Math.max(0, NaN)` é NaN, não 0, então sem
+ * este guarda uma data inválida da API vazava "NaN:NaN" direto para a topbar.
+ */
+function safeSec(totalSec: number): number {
+  return Number.isFinite(totalSec) ? Math.max(0, Math.floor(totalSec)) : 0
+}
+
 /** Segundos → cronômetro "H:MM:SS" (com horas) ou "MM:SS" (sem). */
 export function formatTimer(totalSec: number): string {
-  const sec = Math.max(0, Math.floor(totalSec))
+  const sec = safeSec(totalSec)
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
   const s = sec % 60
@@ -19,7 +27,7 @@ export function formatTimer(totalSec: number): string {
 
 /** Segundos → duração legível "2h 15m" / "15m" / "45s". */
 export function formatDurationLong(totalSec: number): string {
-  const sec = Math.max(0, Math.floor(totalSec))
+  const sec = safeSec(totalSec)
   const h = Math.floor(sec / 3600)
   const m = Math.floor((sec % 3600) / 60)
   if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`
@@ -29,7 +37,9 @@ export function formatDurationLong(totalSec: number): string {
 
 /** Segundos entre agora e um `startedAt` ISO (fonte de verdade = servidor). */
 export function elapsedSince(startedAtIso: string): number {
-  return Math.max(0, Math.round((Date.now() - new Date(startedAtIso).getTime()) / 1000))
+  const started = new Date(startedAtIso).getTime()
+  if (!Number.isFinite(started)) return 0
+  return Math.max(0, Math.round((Date.now() - started) / 1000))
 }
 
 /** Instante ISO → "HH:MM" local (ex.: 14:05). */

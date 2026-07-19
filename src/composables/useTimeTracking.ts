@@ -59,7 +59,14 @@ export function useTimeTracking() {
     staleTime: 1000 * 10,
   })
 
-  const running = computed<TimeEntry | null>(() => current.data.value ?? null)
+  // Só consideramos "rodando" quando veio de fato um entry com startedAt. Uma
+  // resposta inesperada (array vazio, objeto sem data) é truthy e fazia o widget
+  // entrar em modo cronômetro sem ter de onde contar.
+  const running = computed<TimeEntry | null>(() => {
+    const entry = current.data.value
+    if (!entry || Array.isArray(entry) || typeof entry.startedAt !== 'string') return null
+    return entry
+  })
   const isRunning = computed(() => !!running.value && !running.value.endedAt)
 
   // Segundos decorridos = agora − startedAt (recalculado a cada tick de 1s).
