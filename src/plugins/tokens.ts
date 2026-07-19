@@ -12,6 +12,8 @@ const sharedRadiusAndShadow = {
   '--radius': '10px',
   '--radius-lg': '14px',
   '--radius-xl': '20px',
+  // `--shadow-sm` é redefinida por tema logo abaixo: a mesma sombra suave que
+  // funciona no claro desaparece sobre fundo escuro.
   '--shadow-sm': '0 1px 2px rgba(0,0,0,0.20)',
   '--motion-fast': '120ms',
   '--motion': '180ms',
@@ -27,18 +29,36 @@ const sharedRadiusAndShadow = {
   '--text-title-large': 'calc(24px * var(--font-scale, 1))',
 }
 
+/**
+ * Paleta escura redesenhada por cálculo de contraste, não a olho.
+ *
+ * O que estava errado antes, medido: os degraus de superfície davam 1,05 de
+ * razão entre vizinhos (o olho não vê abaixo de ~1,12), a borda ficava em
+ * 1,23 contra a superfície (invisível) e `--text-2` para `--text-3` tinha 4%
+ * de diferença. Sem degrau, sem borda e sem hierarquia de texto, a tela vira
+ * uma massa preta chapada, que é exatamente a sensação de "feio".
+ *
+ * Critérios que a paleta nova cumpre (validados um a um):
+ * - texto principal >= 12:1 sobre `--surface-2`, secundário >= 6:1,
+ *   terciário >= 4,5:1 (piso AA) e meta >= 3:1;
+ * - passos de texto perceptíveis (~1,6) e regulares entre si;
+ * - borda >= 1,45 e borda forte >= 1,9 contra a superfície que separam.
+ *
+ * O leve viés azul é proposital: cinza neutro puro no escuro lê como "morto",
+ * e alguns graus de temperatura dão profundidade sem virar tema colorido.
+ */
 const darkTokens: TokenMap = {
   ...sharedRadiusAndShadow,
-  '--bg': '#0B0B0C',
-  '--surface': '#121214',
-  '--surface-2': '#17171A',
-  '--surface-3': '#1D1D21',
-  '--border': 'rgba(250,250,250,0.08)',
-  '--border-strong': 'rgba(250,250,250,0.14)',
-  '--text': '#FAFAFA',
-  '--text-2': 'rgba(250,250,250,0.70)',
-  '--text-3': 'rgba(250,250,250,0.66)',
-  '--text-4': 'rgba(250,250,250,0.54)',
+  '--bg': '#0A0C11',
+  '--surface': '#12151C',
+  '--surface-2': '#1A1E27',
+  '--surface-3': '#242935',
+  '--border': 'rgba(226,235,255,0.13)',
+  '--border-strong': 'rgba(226,235,255,0.22)',
+  '--text': '#F2F5F9',
+  '--text-2': 'rgba(242,245,249,0.76)',
+  '--text-3': 'rgba(242,245,249,0.56)',
+  '--text-4': 'rgba(242,245,249,0.40)',
   '--status-todo': '#2E90FA',
   '--status-prog': '#F79009',
   '--status-test': '#9E77ED',
@@ -48,8 +68,12 @@ const darkTokens: TokenMap = {
   '--warn': '#F79009',
   '--err': '#F04438',
   '--info': '#2E90FA',
-  '--shadow': '0 8px 24px rgba(0,0,0,0.35)',
-  '--shadow-overlay': '0 16px 48px rgba(0,0,0,0.45)',
+  // No escuro a sombra precisa ser mais profunda e mais espalhada que no claro:
+  // sobre fundo já escuro, sombra fraca simplesmente não aparece, e sem ela
+  // nada parece estar acima de nada.
+  '--shadow-sm': '0 1px 2px rgba(0,0,0,0.45)',
+  '--shadow': '0 10px 30px rgba(0,0,0,0.55)',
+  '--shadow-overlay': '0 24px 64px rgba(0,0,0,0.65)',
 }
 
 const lightTokens: TokenMap = {
@@ -83,7 +107,9 @@ export const themeTokens: Record<ThemeName, TokenMap> = {
 }
 
 export const accents: Record<AccentName, { dark: string; light: string }> = {
-  neutral: { dark: '#E7E7E7', light: '#0B0B0C' },
+  // O neutro do escuro acompanha a temperatura da paleta: branco puro sobre
+  // superfície levemente azulada lê como um remendo amarelado.
+  neutral: { dark: '#E6ECF5', light: '#0B0B0C' },
   blue: { dark: '#60A5FA', light: '#2563EB' },
   violet: { dark: '#A78BFA', light: '#7C3AED' },
   green: { dark: '#34D399', light: '#059669' },
@@ -92,7 +118,7 @@ export const accents: Record<AccentName, { dark: string; light: string }> = {
 }
 
 const accentForeground: Record<ThemeName, string> = {
-  dark: '#0B0B0C',
+  dark: '#0A0C11',
   light: '#FFFFFF',
 }
 
