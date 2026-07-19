@@ -140,7 +140,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
           <!-- F3 — aviso de timer esquecido (âmbar), sem parar automaticamente. -->
           <div v-if="forgotten" class="timer-warn" role="alert">
             <AlertTriangle :size="15" />
-            <span>Timer rodando há {{ runningHours }}h — ainda está trabalhando?</span>
+            <span>Timer rodando há {{ runningHours }}h. Ainda está trabalhando?</span>
           </div>
 
           <button

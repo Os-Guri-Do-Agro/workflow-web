@@ -50,7 +50,7 @@ const steps: Step[] = [
   ...(CANVAS_ENABLED
     ? [{ id: 'canvas', icon: Paintbrush, title: 'Desenhe e colabore', desc: 'Boards de canvas em tempo real com o seu time.', cta: 'Abrir Canvas', to: '/boards' } as Step]
     : []),
-  { id: 'ai', icon: Sparkles, title: 'Pergunte à IA', desc: 'Tire dúvidas sobre o workspace — atalho Ctrl/Cmd + I.', cta: 'Abrir assistente', action: 'assistant' },
+  { id: 'ai', icon: Sparkles, title: 'Pergunte à IA', desc: 'Tire dúvidas sobre o workspace. Atalho: Ctrl/Cmd + I.', cta: 'Abrir assistente', action: 'assistant' },
   { id: 'variables', icon: KeyRound, title: 'Centralize credenciais', desc: 'Guarde URLs, chaves e secrets por empresa.', cta: 'Abrir Variáveis', to: '/variables' },
   { id: 'settings', icon: Settings, title: 'Deixe com a sua cara', desc: 'Tema, cor de destaque, densidade e shell.', cta: 'Abrir Configurações', to: '/settings' },
 ]
@@ -104,7 +104,7 @@ watch(isOpen, (open) => {
             </span>
             <h2 id="guide-title" class="guide-title">Bem-vindo ao Workflow</h2>
             <p class="guide-sub">
-              Um tour rápido pelo que dá pra fazer aqui. Clique pra ir direto — marcamos o que você já explorou.
+              Um tour rápido pelo que dá pra fazer aqui. Clique pra ir direto. Marcamos o que você já explorou.
             </p>
           </header>
 

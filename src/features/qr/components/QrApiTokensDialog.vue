@@ -112,7 +112,7 @@ const curlExample = computed(
         <header class="tok-head">
           <span class="tok-head-icon"><KeyRound :size="18" /></span>
           <div class="tok-head-txt">
-            <h2>Tokens de API — {{ companyName }}</h2>
+            <h2>Tokens de API: {{ companyName }}</h2>
             <p>Gere QRs por webhook/integração usando 1 token. O valor completo aparece só na criação.</p>
             <a class="tok-docs-link" :href="docsUrl" target="_blank" rel="noopener">
               <BookOpen :size="13" />
@@ -129,7 +129,7 @@ const curlExample = computed(
           <div v-if="justCreated" class="tok-reveal">
             <div class="tok-reveal-top">
               <ShieldCheck :size="15" />
-              <span>Copie agora — não será exibido de novo.</span>
+              <span>Copie agora, não será exibido de novo.</span>
             </div>
             <div class="tok-reveal-value">
               <code>{{ justCreated.token }}</code>

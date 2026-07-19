@@ -432,7 +432,7 @@ const presets: Array<{ id: Preset; label: string }> = [
     <!-- F3 — aviso de timer esquecido (>8h). -->
     <div v-if="forgotten" class="tv-forgotten" role="alert">
       <AlertTriangle :size="16" />
-      <span>Timer rodando há {{ runningHours }}h — ainda está trabalhando?</span>
+      <span>Timer rodando há {{ runningHours }}h. Ainda está trabalhando?</span>
       <button class="tv-forgotten-btn" type="button" :disabled="stop.isPending.value" @click="handleStop">
         Parar
       </button>

@@ -195,7 +195,7 @@ function onClose(): void {
         class="xp-winbtn xp-winbtn--close"
         type="button"
         aria-label="Fechar (sair do modo Windows XP)"
-        title="Fechar — sai do modo Windows XP"
+        title="Fechar (sai do modo Windows XP)"
         @click="onClose"
       >
         <span class="glyph-close" aria-hidden="true">✕</span>

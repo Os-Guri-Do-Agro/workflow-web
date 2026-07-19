@@ -290,7 +290,7 @@ watch(activeCompany, (c) => {
       <div>
         <p class="qr-eyebrow">Ferramentas</p>
         <h1 class="qr-title">QR Codes</h1>
-        <p class="qr-sub">Imprima uma vez e troque o destino quando quiser — com métricas de leitura.</p>
+        <p class="qr-sub">Imprima uma vez e troque o destino quando quiser, com métricas de leitura.</p>
       </div>
       <div class="qr-head-actions">
         <button
@@ -466,7 +466,7 @@ watch(activeCompany, (c) => {
     <ConfirmDialog
       :model-value="!!cancelTarget"
       title="Cancelar este QR?"
-      message="O link vai parar de redirecionar (responde como inativo). O QR não é apagado e as métricas continuam disponíveis — você pode reativá-lo editando."
+      message="O link vai parar de redirecionar (responde como inativo). O QR não é apagado e as métricas continuam disponíveis. Você pode reativá-lo editando."
       confirm-label="Cancelar QR"
       cancel-label="Voltar"
       :loading="cancel.isPending.value"
@@ -487,7 +487,7 @@ watch(activeCompany, (c) => {
     <PasswordConfirmDialog
       :model-value="!!folderRemoveTarget"
       title="Excluir esta pasta?"
-      message="Os QR codes NÃO são apagados — eles apenas saem da pasta. Confirme com sua senha."
+      message="Os QR codes NÃO são apagados, eles apenas saem da pasta. Confirme com sua senha."
       confirm-label="Excluir pasta"
       :loading="removeFolder.isPending.value"
       @update:model-value="(v) => { if (!v) folderRemoveTarget = null }"

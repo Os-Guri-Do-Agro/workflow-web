@@ -291,7 +291,7 @@ function submit() {
                   v-model="form.label"
                   class="qed-textarea"
                   rows="2"
-                  placeholder="Ex.: Cartaz da campanha de verão — mesa 3"
+                  placeholder="Ex.: Cartaz da campanha de verão, mesa 3"
                   maxlength="120"
                 />
                 <span class="qed-hint qed-hint--count">{{ form.label.length }}/120</span>
