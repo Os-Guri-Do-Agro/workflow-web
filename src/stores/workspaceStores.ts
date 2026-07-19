@@ -220,7 +220,8 @@ export const useWorkspaceStore = defineStore('workspace', {
       this.activeCompanyId = companyId
       localStorage.setItem('activeCompany', companyId)
 
-      // Sincronizar authStore (fonte única para todos os watchers)
+      // Sincronizar authStore (fonte única para todos os watchers; é lá que o
+      // cache do Vue Query da empresa anterior é descartado)
       const authStore = useActiveCompanyId()
       authStore.setCompanyId(companyId)
 

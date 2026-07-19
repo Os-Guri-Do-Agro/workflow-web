@@ -22,6 +22,12 @@ export function useCompanyFeed(take = 50) {
   }
 
   function prepend(event: FeedEventPayload) {
+    // O socket recebe eventos de TODAS as empresas do usuário; a timeline é da
+    // empresa ativa. Sem este filtro, quem é membro de 2+ empresas via evento de
+    // uma aparecer na outra, contradizendo o que o GET /feed devolveu.
+    const activeCompany = localStorage.getItem('activeCompany')
+    if (activeCompany && event.companyId && event.companyId !== activeCompany) return
+
     feed.value = [event, ...feed.value.filter((item) => item.id !== event.id)].slice(0, take)
   }
 
@@ -29,7 +35,9 @@ export function useCompanyFeed(take = 50) {
     void refresh()
     unsubscribeRealtime = realtimeService.connect({
       feedNew: prepend,
-      connect: () => void refresh(),
+      // Só na RE-conexão: o `connect` também dispara no load frio e duplicava
+      // o fetch inicial da timeline.
+      reconnect: () => void refresh(),
     })
   })
 

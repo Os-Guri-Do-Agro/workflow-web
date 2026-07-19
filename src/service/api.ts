@@ -83,10 +83,18 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-/** Limpa as chaves de sessão (token + empresa ativa). Preserva preferências de UI. */
+/**
+ * Limpa as chaves de sessão (token + empresa ativa), derruba o socket e zera o
+ * cache do Vue Query. Preserva preferências de UI.
+ *
+ * O import é dinâmico de propósito: `session-reset` puxa o realtime-service, que
+ * puxa este módulo de volta (apiBaseUrl). Resolver isso em runtime evita o ciclo
+ * estático entre os três.
+ */
 export function clearSession() {
   localStorage.removeItem('token')
   localStorage.removeItem('activeCompany')
+  void import('@/service/realtime/session-reset').then((m) => m.resetSessionState())
 }
 
 let handlingSessionExpiry = false

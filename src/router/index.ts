@@ -37,8 +37,46 @@ import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
 
+// ─── Restauração de scroll ──────────────────────────────────────────────────
+// O conteúdo NÃO rola no body: cada shell tem seu próprio container com
+// overflow-y (`.main` no Command/Canvas, `.main-scroll` no Focus). Por isso o
+// `savedPosition` do vue-router sozinho não restaura nada — ele mexe na janela,
+// que está sempre em zero. Guardamos a posição do container por rota e a
+// devolvemos na volta.
+const SCROLL_MEMORY_MS = 30 * 60 * 1000
+const scrollMemory = new Map<string, { top: number; at: number }>()
+
+function scrollContainer(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-scroll-container], .main-scroll, main.main')
+}
+
+/**
+ * O container é do shell e sobrevive à troca de rota: a view nova entra com o
+ * scroll da anterior. Como o conteúdo chega por fetch, tentamos restaurar por
+ * alguns frames até a página ter altura suficiente.
+ */
+function restoreScroll(top: number) {
+  const deadline = Date.now() + 800
+  const tick = () => {
+    const el = scrollContainer()
+    if (!el) return
+    el.scrollTop = top
+    // Alvo ainda inalcançável (conteúdo menor do que era): espera renderizar.
+    if (el.scrollTop < top && Date.now() < deadline) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
+  scrollBehavior(to, _from, savedPosition) {
+    const remembered = scrollMemory.get(to.fullPath)
+    const isFresh = !!remembered && Date.now() - remembered.at < SCROLL_MEMORY_MS
+    const top = savedPosition?.top ?? (isFresh ? remembered!.top : 0)
+    restoreScroll(top)
+    // Devolvido pro vue-router só por completude: a janela em si não rola.
+    return { top: savedPosition?.top ?? 0, left: 0 }
+  },
   routes: [
     { path: '/login', name: 'login', component: LoginView },
     { path: '/signup', name: 'signup', component: SignupView },
@@ -142,6 +180,12 @@ function activeCompanyRole(token: string): string | null {
 
 router.beforeEach((to, from) => {
   if (to.path !== from.path) NProgress.start()
+
+  // Guarda onde a rota que está saindo parou, para a volta cair no mesmo ponto.
+  if (from.fullPath && to.fullPath !== from.fullPath) {
+    const el = scrollContainer()
+    if (el) scrollMemory.set(from.fullPath, { top: el.scrollTop, at: Date.now() })
+  }
 
   // Canvas escondido (feature flag off): qualquer rota de board de desenho
   // volta pra home. Reativar = VITE_CANVAS_ENABLED=true.

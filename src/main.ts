@@ -18,6 +18,8 @@ import { TitleComponent, TooltipComponent, LegendComponent } from 'echarts/compo
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import { MotionPlugin } from '@vueuse/motion'
 import { applyThemeTokens, type AccentName, type ThemeName } from '@/plugins/tokens'
+import { queryClient } from '@/service/query-client'
+import { startRealtimeQuerySync } from '@/composables/useRealtimeQuerySync'
 
 use([CanvasRenderer, PieChart, TitleComponent, TooltipComponent, LegendComponent])
 
@@ -46,17 +48,14 @@ app.use(pinia)
 app.use(vuetify)
 app.use(router)
 app.use(MotionPlugin)
-app.use(VueQueryPlugin, {
-  queryClientConfig: {
-    defaultOptions: {
-      queries: {
-        staleTime: 1000 * 60 * 2,
-        gcTime: 1000 * 60 * 10,
-        refetchOnWindowFocus: false,
-      },
-    },
-  },
-})
+// A instância vem de service/query-client para que logout, troca de empresa e a
+// sincronização por socket possam mexer no mesmo cache que os componentes usam.
+app.use(VueQueryPlugin, { queryClient })
+
+// Liga os eventos de socket no cache (invalidação por empresa, catch-up na
+// reconexão e ao voltar pra aba). Fora de componente porque a view que precisa
+// do dado nem sempre está montada quando o evento chega.
+startRealtimeQuerySync()
 
 // Sincronizar authStore com localStorage na inicialização
 import('@/stores/authStores').then(({ useActiveCompanyId }) => {

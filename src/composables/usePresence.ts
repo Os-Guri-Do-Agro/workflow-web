@@ -27,8 +27,12 @@ export function usePresence() {
   onMounted(() => {
     void refresh()
     unsubscribeRealtime = realtimeService.connect({
-      connect: () => void refresh(),
-      presenceUpdate: ({ online }) => {
+      reconnect: () => void refresh(),
+      presenceUpdate: ({ companyId, online }) => {
+        // Presença é por empresa e o socket ouve todas as do usuário: sem o
+        // filtro, a lista da empresa ativa era sobrescrita pela de outra.
+        const activeCompany = localStorage.getItem('activeCompany')
+        if (activeCompany && companyId !== activeCompany) return
         onlineUserIds.value = online
       },
     }) as (() => boolean) | null

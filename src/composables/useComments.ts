@@ -1,6 +1,6 @@
 import { computed, onMounted, onUnmounted, ref, watch, type MaybeRefOrGetter, toValue } from 'vue'
 import collaborationService, { type CommentEntityType } from '@/service/collaboration/collaboration-service'
-import type { CommentPayload } from '@/service/realtime/realtime-service'
+import type { CommentDeletedPayload, CommentPayload } from '@/service/realtime/realtime-service'
 import realtimeService from '@/service/realtime/realtime-service'
 import { getUserToken } from '@/utils/authContent'
 
@@ -111,6 +111,11 @@ export function useComments(
 
   function upsertComment(comment: CommentPayload) {
     if (comment.entityType !== resolvedEntityType.value || comment.entityId !== resolvedEntityId.value) return
+    // Contrato explícito: o socket entrega as rooms de todas as empresas do
+    // usuário, e hoje só a improbabilidade de dois cuid colidirem evitava um
+    // comentário de outra empresa entrar aqui.
+    const activeCompany = localStorage.getItem('activeCompany')
+    if (activeCompany && comment.companyId && comment.companyId !== activeCompany) return
 
     const index = comments.value.findIndex((item) => item.id === comment.id)
     if (index >= 0) {
@@ -122,10 +127,21 @@ export function useComments(
     comments.value = [...comments.value, comment]
   }
 
+  function removeComment(payload: CommentDeletedPayload) {
+    if (payload.entityType !== resolvedEntityType.value || payload.entityId !== resolvedEntityId.value) return
+    comments.value = comments.value.filter((item) => item.id !== payload.id)
+  }
+
   onMounted(() => {
     void refresh()
     unsubscribeRealtime = realtimeService.connect({
       commentNew: upsertComment,
+      // Edição e reação chegam como o comentário inteiro: o upsert por id serve
+      // para os dois. Antes, editar/reagir só aparecia depois de um refresh.
+      commentUpdated: upsertComment,
+      commentDeleted: removeComment,
+      // Comentários postados enquanto o socket esteve fora não têm replay.
+      reconnect: () => void refresh(),
     })
   })
 
