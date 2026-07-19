@@ -81,7 +81,12 @@ const allActivities = computed(() => {
   }
 
   if (filterMonth.value) {
-    activities = activities.filter((a) => a.monthId === filterMonth.value)
+    // Compara por nome canônico do mês. Aceita monthId também, para não quebrar
+    // link antigo que tenha sido compartilhado com o id na query string.
+    const wanted = filterMonth.value
+    activities = activities.filter(
+      (a) => monthKey(a.month || '') === wanted || a.monthId === wanted,
+    )
   }
 
   return activities
@@ -146,17 +151,45 @@ const personItems = computed(() => {
   ]
 })
 
+const MONTH_ORDER = [
+  'janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+]
+
+/** Chave canônica do mês: sem acento, sem caixa, sem espaço em volta. */
+function monthKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+}
+
+const monthRank = (key: string) => {
+  const i = MONTH_ORDER.indexOf(key)
+  return i === -1 ? 99 : i
+}
+
+const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s)
+
+/**
+ * Agrupamos por NOME do mês, não por monthId: cada empresa tem o próprio
+ * conjunto de meses (Month pertence a Quarter, que pertence a Company), então
+ * agrupar por id repetia "Março" uma vez por empresa. A ordenação é pelo mês do
+ * calendário, não alfabética (que colocava Junho antes de Maio).
+ */
 const monthItems = computed(() => {
-  const byId = new Map<string, { label: string; count: number; order: string }>()
+  const byMonth = new Map<string, { label: string; count: number }>()
   for (const a of scopeForOptions.value) {
-    if (!a.monthId) continue
-    const cur = byId.get(a.monthId)
+    if (!a.month) continue
+    const key = monthKey(a.month)
+    const cur = byMonth.get(key)
     if (cur) cur.count++
-    else byId.set(a.monthId, { label: a.month, count: 1, order: `${a.quarter}${a.month}` })
+    else byMonth.set(key, { label: capitalize(a.month.trim()), count: 1 })
   }
-  const months = [...byId.entries()]
-    .sort((a, b) => a[1].order.localeCompare(b[1].order, 'pt-BR'))
-    .map(([id, v]) => ({ label: `${v.label} (${v.count})`, value: id as string | null }))
+  const months = [...byMonth.entries()]
+    .sort(([ka], [kb]) => monthRank(ka) - monthRank(kb) || ka.localeCompare(kb, 'pt-BR'))
+    .map(([key, v]) => ({ label: `${v.label} (${v.count})`, value: key as string | null }))
   return [{ label: 'Todos os meses', value: null as string | null }, ...months]
 })
 
