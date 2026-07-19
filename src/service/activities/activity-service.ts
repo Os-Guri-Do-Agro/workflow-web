@@ -11,9 +11,18 @@ class activityService {
     }
   }
 
-  patchActivityStatus(id: string, status: string): Promise<any> {
+  /**
+   * `companyId` explícito é obrigatório em telas agregadas (o /board mostra
+   * atividades de TODAS as empresas). Sem ele o interceptor cai na empresa ativa
+   * do localStorage e a API responde 404 ao mover card de outra empresa.
+   */
+  patchActivityStatus(id: string, status: string, companyId?: string): Promise<any> {
     return this.handleRequest(
-      api.patch(`/activity/${id}/status`, { status }),
+      api.patch(
+        `/activity/${id}/status`,
+        { status },
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
       'Erro ao atualizar atividade',
     )
   }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   Search,
   Calendar,
@@ -20,12 +20,17 @@ import AppSelect from '@/components/ui/AppSelect.vue'
 const { error: showError, success: showSuccess } = useToast()
 
 const router = useRouter()
+const route = useRoute()
 const workspace = useWorkspaceStore()
 
 const loading = ref(true)
 const searchQuery = ref('')
 const filterCompany = ref<string | null>(null)
 const filterPriority = ref<number | null>(null)
+// Filtros combinaveis: pessoa responsavel e mes de entrega. Os dados ja vem no
+// payload de /dashboard/workspace, entao o recorte e todo no cliente.
+const filterPerson = ref<string | null>(null)
+const filterMonth = ref<string | null>(null)
 const draggedTask = ref<ActivityItem | null>(null)
 
 type ColumnStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
@@ -66,6 +71,18 @@ const allActivities = computed(() => {
     activities = activities.filter((a) => a.priority === filterPriority.value)
   }
 
+  if (filterPerson.value) {
+    activities = activities.filter((a) =>
+      filterPerson.value === UNASSIGNED
+        ? !a.responsibles?.length
+        : a.responsibles?.some((r) => r.id === filterPerson.value),
+    )
+  }
+
+  if (filterMonth.value) {
+    activities = activities.filter((a) => a.monthId === filterMonth.value)
+  }
+
   return activities
 })
 
@@ -88,6 +105,60 @@ const companies = computed(() => {
   )
 })
 
+/** Valor sentinela: "sem responsável" precisa ser selecionável, e null já é "todos". */
+const UNASSIGNED = '__unassigned__'
+
+/**
+ * Pessoas e meses saem das atividades visíveis, respeitando os OUTROS filtros
+ * ativos. Assim as opções nunca levam a um board vazio (se o filtro de empresa
+ * está em PetJourney, só aparece quem tem tarefa lá).
+ */
+const scopeForOptions = computed(() => {
+  let activities = workspace.workspaceData?.activities || []
+  if (filterCompany.value) {
+    activities = activities.filter((a) => a.companyId === filterCompany.value)
+  }
+  return activities
+})
+
+const personItems = computed(() => {
+  const byId = new Map<string, { name: string; count: number }>()
+  let unassigned = 0
+  for (const a of scopeForOptions.value) {
+    if (!a.responsibles?.length) {
+      unassigned++
+      continue
+    }
+    for (const r of a.responsibles) {
+      const cur = byId.get(r.id)
+      if (cur) cur.count++
+      else byId.set(r.id, { name: r.name, count: 1 })
+    }
+  }
+  const people = [...byId.entries()]
+    .sort((a, b) => a[1].name.localeCompare(b[1].name, 'pt-BR'))
+    .map(([id, v]) => ({ label: `${v.name} (${v.count})`, value: id as string | null }))
+  return [
+    { label: 'Todas as pessoas', value: null as string | null },
+    ...people,
+    ...(unassigned ? [{ label: `Sem responsável (${unassigned})`, value: UNASSIGNED as string | null }] : []),
+  ]
+})
+
+const monthItems = computed(() => {
+  const byId = new Map<string, { label: string; count: number; order: string }>()
+  for (const a of scopeForOptions.value) {
+    if (!a.monthId) continue
+    const cur = byId.get(a.monthId)
+    if (cur) cur.count++
+    else byId.set(a.monthId, { label: a.month, count: 1, order: `${a.quarter}${a.month}` })
+  }
+  const months = [...byId.entries()]
+    .sort((a, b) => a[1].order.localeCompare(b[1].order, 'pt-BR'))
+    .map(([id, v]) => ({ label: `${v.label} (${v.count})`, value: id as string | null }))
+  return [{ label: 'Todos os meses', value: null as string | null }, ...months]
+})
+
 const companyItems = computed(() => [
   { label: 'Todas empresas', value: null as string | null },
   ...companies.value.map((c) => ({ label: c.name, value: c.id })),
@@ -102,14 +173,80 @@ const priorityItems: { label: string; value: number | null }[] = [
 ]
 
 const hasFilters = computed(
-  () => !!searchQuery.value || !!filterCompany.value || filterPriority.value !== null,
+  () =>
+    !!searchQuery.value ||
+    !!filterCompany.value ||
+    filterPriority.value !== null ||
+    !!filterPerson.value ||
+    !!filterMonth.value,
 )
 
 const clearFilters = () => {
   searchQuery.value = ''
   filterCompany.value = null
   filterPriority.value = null
+  filterPerson.value = null
+  filterMonth.value = null
 }
+
+/** Atalho para a pergunta mais comum de gestão: "o que é meu?". */
+const myUserId = computed(
+  () =>
+    workspace.workspaceData?.activities
+      .flatMap((a) => a.responsibles || [])
+      .find((r) => r.isMe)?.id ?? null,
+)
+
+const onlyMine = computed(() => !!myUserId.value && filterPerson.value === myUserId.value)
+
+const toggleMine = () => {
+  filterPerson.value = onlyMine.value ? null : myUserId.value
+}
+
+// Trocar de empresa pode invalidar a pessoa/mês escolhidos (a opção some da
+// lista e o board fica vazio "sem motivo"). Limpamos o que não existe mais.
+// A guarda de lista vazia é essencial: ao entrar por URL com filtros, este
+// watcher dispara antes dos dados chegarem e apagaria os filtros recém-lidos.
+watch(filterCompany, () => {
+  if (!workspace.workspaceData?.activities?.length) return
+  const people = personItems.value.map((i) => i.value)
+  if (filterPerson.value && !people.includes(filterPerson.value)) filterPerson.value = null
+  const months = monthItems.value.map((i) => i.value)
+  if (filterMonth.value && !months.includes(filterMonth.value)) filterMonth.value = null
+})
+
+// Filtros na URL: sobrevivem ao voltar da tela de detalhe da tarefa e tornam a
+// visão compartilhável ("olha o que está atrasado do cliente X").
+const FILTER_KEYS = ['q', 'empresa', 'prioridade', 'pessoa', 'mes'] as const
+
+function readFiltersFromUrl() {
+  const q = route.query
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
+  searchQuery.value = str(q.q) ?? ''
+  filterCompany.value = str(q.empresa)
+  filterPerson.value = str(q.pessoa)
+  filterMonth.value = str(q.mes)
+  const p = str(q.prioridade)
+  filterPriority.value = p !== null && /^[0-3]$/.test(p) ? Number(p) : null
+}
+
+watch(
+  [searchQuery, filterCompany, filterPriority, filterPerson, filterMonth],
+  () => {
+    const query: Record<string, string> = {}
+    for (const [key, value] of Object.entries(route.query)) {
+      if (!FILTER_KEYS.includes(key as (typeof FILTER_KEYS)[number]) && typeof value === 'string') {
+        query[key] = value
+      }
+    }
+    if (searchQuery.value) query.q = searchQuery.value
+    if (filterCompany.value) query.empresa = filterCompany.value
+    if (filterPriority.value !== null) query.prioridade = String(filterPriority.value)
+    if (filterPerson.value) query.pessoa = filterPerson.value
+    if (filterMonth.value) query.mes = filterMonth.value
+    router.replace({ query })
+  },
+)
 
 async function loadData() {
   loading.value = true
@@ -124,7 +261,10 @@ async function loadData() {
   }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  readFiltersFromUrl()
+  loadData()
+})
 
 // ── Realtime: reflete arraste feito em outras abas/usuários na visão agregada ──
 // A store é reativa; setar .status faz getColumnTasks reordenar sozinho. Match
@@ -188,7 +328,7 @@ async function updateTaskStatus(task: ActivityItem, newStatus: ColumnStatus) {
   // Update otimista: o card move na hora.
   task.status = newStatus
   try {
-    await activityService.patchActivityStatus(task.id, newStatus)
+    await activityService.patchActivityStatus(task.id, newStatus, task.companyId)
     showSuccess('Atividade movida')
   } catch {
     // Reverte em caso de erro.
@@ -209,15 +349,6 @@ function handleDrop(columnId: ColumnStatus) {
   draggedTask.value = null
 }
 
-function initials(name: string) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0])
-    .join('')
-    .toUpperCase()
-}
 </script>
 
 <template>
@@ -249,12 +380,45 @@ function initials(name: string) {
       </div>
 
       <div class="filter-group">
+        <button
+          v-if="myUserId"
+          class="mine-btn"
+          :class="{ 'mine-btn--on': onlyMine }"
+          type="button"
+          :aria-pressed="onlyMine"
+          title="Mostrar apenas as atividades em que eu sou responsável"
+          @click="toggleMine"
+        >
+          <User :size="13" />
+          Minhas
+        </button>
+
         <div class="filter-select-wrap">
           <AppSelect
             v-model="filterCompany"
             :items="companyItems"
             placeholder="Todas empresas"
             label="Filtrar por empresa"
+            density="compact"
+          />
+        </div>
+
+        <div class="filter-select-wrap">
+          <AppSelect
+            v-model="filterPerson"
+            :items="personItems"
+            placeholder="Todas as pessoas"
+            label="Filtrar por pessoa"
+            density="compact"
+          />
+        </div>
+
+        <div class="filter-select-wrap">
+          <AppSelect
+            v-model="filterMonth"
+            :items="monthItems"
+            placeholder="Todos os meses"
+            label="Filtrar por mês"
             density="compact"
           />
         </div>
@@ -331,7 +495,7 @@ function initials(name: string) {
             >
               <div class="card-top">
                 <span class="company-chip" :title="task.companyName">
-                  <span class="company-initials">{{ initials(task.companyName) }}</span>
+                  <img src="/brand/caneca-circulo.svg" alt="" class="company-logo" draggable="false" />
                   <span class="company-name">{{ task.companyName }}</span>
                 </span>
                 <span
@@ -481,10 +645,50 @@ function initials(name: string) {
   align-items: center;
   gap: 8px;
   margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .filter-select-wrap {
-  min-width: 160px;
+  min-width: 150px;
+}
+
+/* Atalho "Minhas": vira toggle sólido quando ligado, para o estado ser óbvio. */
+.mine-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.mine-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.mine-btn--on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+
+.mine-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .clear-btn {
@@ -701,17 +905,11 @@ function initials(name: string) {
   overflow: hidden;
 }
 
-.company-initials {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.company-logo {
   width: 18px;
   height: 18px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--accent);
-  font-size: 9px;
-  font-weight: 700;
+  border-radius: 50%;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
