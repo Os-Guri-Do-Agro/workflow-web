@@ -8,6 +8,7 @@ import companiesServices from '@/service/companies/companies-services'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useToast } from '@/composables/useToast'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
+import { normalizePriority } from '@/utils/priority'
 import {
   AlertCircle,
   ArrowLeft,
@@ -61,7 +62,7 @@ function buildActivityPayload(activity: any, overrides: Record<string, unknown> 
   return {
     title: activity.title,
     description: activity.description || '',
-    priorityNumber: Number(activity.priorityNumber) || 1,
+    priorityNumber: normalizePriority(activity.priorityNumber, 1),
     dueDate: activity.dueDate || undefined,
     monthId: getActivityMonthId(activity),
     responsibleUserIds: getResponsibleUserIds(activity),
@@ -77,7 +78,7 @@ function buildActivityMovePayload(
   return {
     title: activity.title,
     description: activity.description || '',
-    priorityNumber: Number(activity.priorityNumber) || 1,
+    priorityNumber: normalizePriority(activity.priorityNumber, 1),
     monthId,
     responsibleUserIds: getResponsibleUserIds(activity),
     ...overrides,
@@ -305,7 +306,7 @@ const createSubtask = async () => {
     const created = await activityService.postActivity({
       title: formSubtask.value.title,
       description: formSubtask.value.description || '',
-      priorityNumber: Number(formSubtask.value.priorityNumber) || 1,
+      priorityNumber: normalizePriority(formSubtask.value.priorityNumber, 1),
       dueDate: formSubtask.value.dueDate
         ? dateOnlyToUtcNoonIso(formSubtask.value.dueDate)
         : dateOnlyToUtcNoonIso(todayDateOnly()),
@@ -504,14 +505,14 @@ const updateActivity = async () => {
             moveExtrasForMonth(activityForMove, newMonthId, quartersList.value, {
               title: formActivity.value.title,
               description: formActivity.value.description || '',
-              priorityNumber: Number(formActivity.value.priorityNumber) || 1,
+              priorityNumber: normalizePriority(formActivity.value.priorityNumber, 1),
               responsibleUserIds: formActivity.value.responsibleUserIds,
             }),
           )
         : buildActivityPayload(activityInfo.value, {
             title: formActivity.value.title,
             description: formActivity.value.description || '',
-            priorityNumber: Number(formActivity.value.priorityNumber) || 1,
+            priorityNumber: normalizePriority(formActivity.value.priorityNumber, 1),
             dueDate: formActivity.value.dueDate
               ? dateOnlyToUtcNoonIso(formActivity.value.dueDate)
               : undefined,
@@ -576,7 +577,7 @@ const updateSubtask = async () => {
     await activityService.patchActivity(selectedSubtask.value.id, {
       title: formSubtask.value.title,
       description: formSubtask.value.description || '',
-      priorityNumber: Number(formSubtask.value.priorityNumber) || 1,
+      priorityNumber: normalizePriority(formSubtask.value.priorityNumber, 1),
       dueDate: formSubtask.value.dueDate
         ? dateOnlyToUtcNoonIso(formSubtask.value.dueDate)
         : undefined,

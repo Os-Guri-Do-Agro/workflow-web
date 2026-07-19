@@ -10,6 +10,7 @@ import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import { getInfoAuth } from '@/utils/authContent'
 import { dateOnlyToUtcNoonIso, isoToDateOnly, todayDateOnly } from '@/utils/date'
+import { normalizePriority } from '@/utils/priority'
 import { useToast } from '@/composables/useToast'
 import { useCompanyBoards } from '@/composables/useCompanyBoards'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
@@ -141,7 +142,7 @@ const createActivity = async () => {
     const payload = {
       title: formActivity.value.title,
       description: formActivity.value.description || '',
-      priorityNumber: Number(formActivity.value.priorityNumber) || 0,
+      priorityNumber: normalizePriority(formActivity.value.priorityNumber, 0),
       // dueDate pode chegar como 'YYYY-MM-DD' ou ISO — normaliza para meio-dia UTC
       dueDate: dateOnlyToUtcNoonIso(
         formActivity.value.dueDate ? isoToDateOnly(formActivity.value.dueDate) : todayDateOnly(),
