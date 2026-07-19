@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   LineChart,
   Users2,
-  Sparkles,
   ArrowRight,
 } from 'lucide-vue-next'
 import authService from '@/service/auth/auth-service'
@@ -87,7 +86,7 @@ const features = [
       <div class="form-inner">
         <header class="form-head">
           <div class="logo-wrap">
-            <Sparkles :size="18" />
+            <img src="/brand/marca.svg" alt="Workflow" class="logo-img" draggable="false" />
           </div>
           <h1 class="form-title">Bem-vindo de volta</h1>
           <p class="form-sub">Entre com suas credenciais para acessar sua conta.</p>
@@ -162,14 +161,25 @@ const features = [
       <div class="hero-bg" />
       <div class="hero-grid" />
       <div class="hero-inner">
-        <div class="hero-logo">
-          <img src="/icone.png" alt="" />
+        <header class="hero-copy">
+          <span class="hero-eyebrow">Workflow · Stack Roads</span>
+          <h2 class="hero-title">Seu trabalho, organizado de verdade.</h2>
+          <p class="hero-sub">
+            Tarefas, board, roadmap e time no mesmo lugar, com a clareza que o dia a dia pede.
+          </p>
+        </header>
+
+        <div class="hero-stage">
+          <div class="laptop">
+            <div class="laptop-lid">
+              <span class="laptop-cam" />
+              <img src="/print-dashboard.png" alt="" class="laptop-shot" draggable="false" />
+            </div>
+            <div class="laptop-base" />
+          </div>
+          <img src="/brand/mascote.png" alt="" class="hero-mascot" draggable="false" />
         </div>
-        <h2 class="hero-title">Stack Roads</h2>
-        <p class="hero-sub">
-          Gerencie suas tarefas de forma inteligente. Organize, priorize e acompanhe seu trabalho
-          com a clareza que o time merece.
-        </p>
+
         <ul class="hero-features">
           <li v-for="f in features" :key="f.label" class="hero-feature">
             <span class="hero-feature-icon">
@@ -221,17 +231,20 @@ const features = [
   gap: 10px;
 }
 
+/* O selo ja carrega o proprio fundo creme, entao nao vai tile dentro de tile. */
 .logo-wrap {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--accent);
   margin-bottom: 6px;
+}
+
+.logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 11px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
 }
 
 .form-title {
@@ -471,57 +484,166 @@ const features = [
   position: relative;
   z-index: 2;
   padding: 48px;
-  max-width: 520px;
+  max-width: 660px;
+  width: 100%;
   text-align: center;
 }
 
-.hero-logo {
-  width: 68px;
-  height: 68px;
-  margin: 0 auto 20px;
-  padding: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-overlay);
+.hero-copy {
+  margin-bottom: 36px;
 }
 
-.hero-logo img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.25));
+.hero-eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 12px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .hero-title {
-  font-size: 36px;
-  line-height: 1.05;
+  font-size: 32px;
+  line-height: 1.1;
   letter-spacing: -0.03em;
   font-weight: 700;
   color: var(--text);
-  margin: 0 0 14px;
+  margin: 0 0 12px;
 }
 
 .hero-sub {
-  font-size: 15px;
+  font-size: 14.5px;
   line-height: 1.6;
   color: var(--text-2);
+  margin: 0 auto;
+  max-width: 440px;
+}
+
+/* ---- Notebook mockup ---- */
+.hero-stage {
+  position: relative;
   margin: 0 auto 34px;
-  max-width: 420px;
+  width: min(540px, 100%);
+}
+
+.laptop {
+  animation: laptop-float 8s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Hardware do notebook: near-black fixo de propósito (não acompanha o tema). */
+.laptop-lid {
+  position: relative;
+  background: color-mix(in srgb, white 7%, black);
+  border: 1px solid color-mix(in srgb, white 16%, transparent);
+  border-bottom: none;
+  border-radius: 16px 16px 4px 4px;
+  padding: 14px 12px 12px;
+  box-shadow:
+    0 40px 70px -24px rgba(0, 0, 0, 0.5),
+    0 12px 28px rgba(0, 0, 0, 0.25);
+}
+
+.laptop-lid::after {
+  content: '';
+  position: absolute;
+  inset: 14px 12px 12px;
+  border-radius: 7px;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.09) 0%, transparent 32%);
+  pointer-events: none;
+}
+
+.laptop-cam {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.laptop-shot {
+  display: block;
+  width: 100%;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.laptop-base {
+  position: relative;
+  width: 116%;
+  margin-left: -8%;
+  height: 14px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, white 26%, black),
+    color-mix(in srgb, white 10%, black) 60%,
+    color-mix(in srgb, white 4%, black)
+  );
+  border-radius: 3px 3px 16px 16px;
+  box-shadow: 0 18px 32px -12px rgba(0, 0, 0, 0.45);
+}
+
+.laptop-base::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 84px;
+  height: 6px;
+  border-radius: 0 0 9px 9px;
+  background: color-mix(in srgb, white 4%, black);
+}
+
+.hero-mascot {
+  position: absolute;
+  right: -34px;
+  bottom: -30px;
+  width: 148px;
+  z-index: 3;
+  filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.35));
+  animation: mascot-float 6s ease-in-out 0.9s infinite;
+  will-change: transform;
+}
+
+@keyframes laptop-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-9px);
+  }
+}
+
+@keyframes mascot-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(-2.5deg);
+  }
 }
 
 .hero-features {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
   list-style: none;
   padding: 0;
   margin: 0;
-  max-width: 260px;
-  margin-inline: auto;
 }
 
 .hero-feature {
@@ -560,6 +682,10 @@ const features = [
 @media (prefers-reduced-motion: reduce) {
   .spin {
     animation-duration: 1.8s;
+  }
+  .laptop,
+  .hero-mascot {
+    animation: none;
   }
   .input,
   .btn-primary,

@@ -6,26 +6,6 @@ import companiesServices from '@/service/companies/companies-services'
 import { getInfoAuth } from '@/utils/authContent'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 
-const AVATAR_COLORS = [
-  '#60A5FA', '#A78BFA', '#34D399', '#FB923C',
-  '#F472B6', '#22D3EE', '#FACC15', '#F87171',
-]
-
-function hashColor(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  }
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length]!
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return '·'
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
-  return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-}
-
 type Company = {
   id: string
   name: string
@@ -95,12 +75,9 @@ onMounted(() => {
     class="switch-btn switch-btn--full press"
     @click="showDialog = true"
   >
-    <div
-      v-if="activeCompany"
-      class="avatar-mark"
-      :style="{ background: hashColor(activeCompany.name) }"
-    >{{ initials(activeCompany.name) }}</div>
-    <div v-else class="avatar-mark avatar-mark--empty">w.</div>
+    <div class="avatar-mark">
+      <img src="/brand/caneca-circulo.svg" alt="" class="avatar-logo" draggable="false" />
+    </div>
     <div class="switch-info">
       <span class="switch-eyebrow">Empresa</span>
       <span class="switch-name">{{ activeCompany?.name || 'Selecione' }}</span>
@@ -113,22 +90,17 @@ onMounted(() => {
     class="switch-btn switch-btn--compact press"
     @click="showDialog = true"
   >
-    <div
-      v-if="activeCompany"
-      class="avatar-mark avatar-mark--sm"
-      :style="{ background: hashColor(activeCompany.name) }"
-    >{{ initials(activeCompany.name) }}</div>
-    <div v-else class="avatar-mark avatar-mark--sm avatar-mark--empty">w.</div>
+    <div class="avatar-mark avatar-mark--sm">
+      <img src="/brand/caneca-circulo.svg" alt="" class="avatar-logo" draggable="false" />
+    </div>
     <span class="switch-name-inline">{{ activeCompany?.name || 'Empresa' }}</span>
     <ChevronsUpDown :size="12" class="switch-chevron" />
   </button>
 
   <button v-else class="switch-btn switch-btn--inline press" @click="showDialog = true">
-    <div
-      v-if="activeCompany"
-      class="avatar-mark avatar-mark--sm"
-      :style="{ background: hashColor(activeCompany.name) }"
-    >{{ initials(activeCompany.name) }}</div>
+    <div class="avatar-mark avatar-mark--sm">
+      <img src="/brand/caneca-circulo.svg" alt="" class="avatar-logo" draggable="false" />
+    </div>
     <span class="switch-name-inline">{{ activeCompany?.name || 'Empresa' }}</span>
     <ChevronsUpDown :size="12" class="switch-chevron" />
   </button>
@@ -149,10 +121,9 @@ onMounted(() => {
           :class="{ 'company-row--active': company.active }"
           @click="switchCompany(company)"
         >
-          <div
-            class="company-row-avatar"
-            :style="{ background: hashColor(company.name) }"
-          >{{ initials(company.name) }}</div>
+          <div class="company-row-avatar">
+            <img src="/brand/caneca-circulo.svg" alt="" class="avatar-logo" draggable="false" />
+          </div>
           <div class="company-row-info">
             <span class="company-row-name">{{ company.name }}</span>
             <span class="company-row-cnpj">{{ company.cnpj }}</span>
@@ -205,40 +176,31 @@ onMounted(() => {
 .avatar-mark {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
-  color: #0B0B0C;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 10.5px;
-  letter-spacing: -0.01em;
   flex-shrink: 0;
 }
 
 .avatar-mark--sm {
   width: 20px;
   height: 20px;
-  border-radius: 5px;
-  font-size: 9.5px;
-}
-
-.avatar-mark--empty {
-  background: var(--accent);
-  color: var(--accent-fg);
 }
 
 .company-row-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  color: #0B0B0C;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 12px;
   flex-shrink: 0;
+}
+
+.avatar-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
 }
 
 .switch-info {

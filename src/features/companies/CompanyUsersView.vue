@@ -63,25 +63,6 @@ const tabs: { key: TabKey; label: string; icon: typeof Building2 }[] = [
   { key: 'user', label: 'Minhas empresas', icon: Building2 },
 ]
 
-const accentForName = (name: string): string => {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  const hue = Math.abs(hash) % 360
-  return `hsl(${hue}, 62%, 55%)`
-}
-
-const initials = (name: string): string => {
-  return (
-    name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s) => s[0])
-      .join('')
-      .toUpperCase() || '—'
-  )
-}
-
 const formatCnpj = (cnpj: string): string => {
   const d = (cnpj || '').replace(/\D/g, '')
   if (d.length !== 14) return cnpj || '—'
@@ -238,11 +219,8 @@ onMounted(() => {
           class="company-card"
         >
           <header class="card-top">
-            <span
-              class="avatar"
-              :style="{ background: accentForName(item.company.name) }"
-            >
-              {{ initials(item.company.name) }}
+            <span class="avatar">
+              <img src="/brand/caneca-circulo.svg" alt="" class="avatar-logo" draggable="false" />
             </span>
             <div class="card-ident">
               <h3 class="card-name">{{ item.company.name }}</h3>
@@ -301,11 +279,8 @@ onMounted(() => {
           class="company-card"
         >
           <header class="card-top">
-            <span
-              class="avatar"
-              :style="{ background: accentForName(company.name) }"
-            >
-              {{ initials(company.name) }}
+            <span class="avatar">
+              <img src="/brand/caneca-circulo.svg" alt="" class="avatar-logo" draggable="false" />
             </span>
             <div class="card-ident">
               <h3 class="card-name">{{ company.name }}</h3>
@@ -539,16 +514,17 @@ onMounted(() => {
 .avatar {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 0.02em;
   flex-shrink: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.avatar-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
 }
 
 .card-ident {

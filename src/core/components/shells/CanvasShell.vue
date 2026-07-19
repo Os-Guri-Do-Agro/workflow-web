@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Paintbrush,
 } from 'lucide-vue-next'
+import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
@@ -99,7 +100,7 @@ const handleNew = () => {
     <header class="topnav">
       <div class="topnav-inner">
         <div class="brand">
-          <div class="logo-mark">w.</div>
+          <BrandMark />
           <CompanySwitcher variant="inline" />
         </div>
 
@@ -231,19 +232,6 @@ const handleNew = () => {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.logo-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 13px;
 }
 
 .tabs {

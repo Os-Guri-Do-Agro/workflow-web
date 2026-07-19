@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { ChevronRight, Sparkles } from 'lucide-vue-next'
+import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
 import CmdKButton from './shared/CmdKButton.vue'
@@ -65,6 +66,7 @@ function crumbTooltip(crumb: string): string | undefined {
 <template>
   <div class="command-shell">
     <header class="topbar">
+      <BrandMark />
       <CompanySwitcher variant="compact" />
       <div class="topbar-sep" />
       <div class="breadcrumbs">

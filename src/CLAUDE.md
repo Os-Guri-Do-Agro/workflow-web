@@ -81,7 +81,8 @@ Trocar a variante é feito em `/settings` e é aplicada em runtime (sem reload).
 
 **Componentes shared dos shells** em [`core/components/shells/shared/`](./core/components/shells/shared/):
 
-- `CompanySwitcher.vue` — toggle de empresa (3 variantes: full / compact / inline)
+- `BrandMark.vue` — logo do mascote (icone-rosto-detalhes.png) clicável, leva ao Dashboard; usado nos 3 shells
+- `CompanySwitcher.vue` — toggle de empresa (3 variantes: full / compact / inline); avatar é a logo do mascote (icone-cabeca-circulo.png)
 - `UserMenu.vue` — avatar + dropdown com Settings / Logout
 - `CmdKButton.vue` — disparador da Command Palette (full / compact / icon)
 - `ThemeToggle.vue` — botão sol/lua que usa `useUiPreferences`
