@@ -98,7 +98,11 @@ const recentActivities = computed(() => {
 }
 
 .panel {
-  background: var(--surface);
+  background-color: var(--surface);
+  background-image: var(--elev-1);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 var(--elev-hi);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;

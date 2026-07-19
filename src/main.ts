@@ -29,7 +29,7 @@ const initialTheme: ThemeName =
   'dark'
 
 const initialAccent: AccentName =
-  (localStorage.getItem('ui.accent') as AccentName | null) || 'neutral'
+  (localStorage.getItem('ui.accent') as AccentName | null) || 'teal'
 
 applyThemeTokens(initialTheme === 'light' ? 'light' : 'dark', initialAccent)
 

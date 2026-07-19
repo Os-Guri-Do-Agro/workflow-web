@@ -87,7 +87,8 @@ const {
 } = useUiPreferences()
 
 const accentOptions: { name: AccentName; label: string }[] = [
-  { name: 'neutral', label: 'Padrão' },
+  { name: 'teal', label: 'Padrão' },
+  { name: 'neutral', label: 'Neutro' },
   { name: 'blue', label: 'Azul' },
   { name: 'violet', label: 'Violeta' },
   { name: 'green', label: 'Verde' },

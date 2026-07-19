@@ -1,5 +1,5 @@
 export type ThemeName = 'dark' | 'light'
-export type AccentName = 'neutral' | 'blue' | 'violet' | 'green' | 'orange' | 'pink'
+export type AccentName = 'teal' | 'neutral' | 'blue' | 'violet' | 'green' | 'orange' | 'pink'
 export type Density = 'compact' | 'comfortable'
 export type ShellVariant = 'command' | 'focus' | 'canvas'
 /** Escala de fonte do app ("Aumento de fonte" — acessibilidade 50+). */
@@ -49,16 +49,21 @@ const sharedRadiusAndShadow = {
  */
 const darkTokens: TokenMap = {
   ...sharedRadiusAndShadow,
-  '--bg': '#0A0C11',
-  '--surface': '#12151C',
-  '--surface-2': '#1A1E27',
-  '--surface-3': '#242935',
-  '--border': 'rgba(226,235,255,0.13)',
-  '--border-strong': 'rgba(226,235,255,0.22)',
-  '--text': '#F2F5F9',
-  '--text-2': 'rgba(242,245,249,0.76)',
-  '--text-3': 'rgba(242,245,249,0.56)',
-  '--text-4': 'rgba(242,245,249,0.40)',
+  '--bg': '#111317',
+  '--surface': '#181B21',
+  '--surface-2': '#20242C',
+  '--surface-3': '#2A2F39',
+  '--border': 'rgba(230,238,250,0.14)',
+  '--border-strong': 'rgba(230,238,250,0.24)',
+  '--text': '#F0F3F7',
+  '--text-2': 'rgba(240,243,247,0.78)',
+  '--text-3': 'rgba(240,243,247,0.58)',
+  '--text-4': 'rgba(240,243,247,0.42)',
+  // Elevação: no escuro o que "levanta" um card é luz vindo de cima, não sombra
+  // (sombra preta sobre fundo preto não aparece). O gradiente e o fio de luz na
+  // borda superior fazem o papel que a sombra faz no tema claro.
+  '--elev-1': 'linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.014) 42%, rgba(255,255,255,0) 100%)',
+  '--elev-hi': 'rgba(255,255,255,0.10)',
   '--status-todo': '#2E90FA',
   '--status-prog': '#F79009',
   '--status-test': '#9E77ED',
@@ -71,9 +76,9 @@ const darkTokens: TokenMap = {
   // No escuro a sombra precisa ser mais profunda e mais espalhada que no claro:
   // sobre fundo já escuro, sombra fraca simplesmente não aparece, e sem ela
   // nada parece estar acima de nada.
-  '--shadow-sm': '0 1px 2px rgba(0,0,0,0.45)',
-  '--shadow': '0 10px 30px rgba(0,0,0,0.55)',
-  '--shadow-overlay': '0 24px 64px rgba(0,0,0,0.65)',
+  '--shadow-sm': '0 1px 2px rgba(0,0,0,0.40)',
+  '--shadow': '0 10px 30px rgba(0,0,0,0.50)',
+  '--shadow-overlay': '0 24px 64px rgba(0,0,0,0.60)',
 }
 
 const lightTokens: TokenMap = {
@@ -97,6 +102,10 @@ const lightTokens: TokenMap = {
   '--warn': '#F79009',
   '--err': '#F04438',
   '--info': '#2E90FA',
+  // No claro a superfície já é branca: a elevação vem da sombra, então o
+  // gradiente é quase imperceptível e serve só para tirar o aspecto chapado.
+  '--elev-1': 'linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(11,11,12,0.012) 100%)',
+  '--elev-hi': 'rgba(255,255,255,0.9)',
   '--shadow': '0 6px 18px rgba(0,0,0,0.08)',
   '--shadow-overlay': '0 12px 32px rgba(0,0,0,0.14)',
 }
@@ -107,6 +116,14 @@ export const themeTokens: Record<ThemeName, TokenMap> = {
 }
 
 export const accents: Record<AccentName, { dark: string; light: string }> = {
+  /*
+   * Teal é o acento padrão por eliminação, não por gosto: as cinco cores de
+   * status já ocupam azul (a fazer), laranja (em andamento), violeta (em teste),
+   * verde (concluído) e vermelho (bloqueado). Qualquer acento nessas famílias
+   * competiria com o significado de status dentro do mesmo card. Teal fica de
+   * fora dessa lista e ainda é a cor da seta na marca Stack Roads.
+   */
+  teal: { dark: '#2DD4BF', light: '#0D9488' },
   // O neutro do escuro acompanha a temperatura da paleta: branco puro sobre
   // superfície levemente azulada lê como um remendo amarelado.
   neutral: { dark: '#E6ECF5', light: '#0B0B0C' },

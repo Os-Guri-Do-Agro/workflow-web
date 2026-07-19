@@ -27,8 +27,8 @@ const readTheme = (): ThemeName => {
 
 const readAccent = (): AccentName => {
   const v = localStorage.getItem(STORAGE.accent) as AccentName | null
-  const allowed: AccentName[] = ['neutral', 'blue', 'violet', 'green', 'orange', 'pink']
-  return v && allowed.includes(v) ? v : 'neutral'
+  const allowed: AccentName[] = ['teal', 'neutral', 'blue', 'violet', 'green', 'orange', 'pink']
+  return v && allowed.includes(v) ? v : 'teal'
 }
 
 const readDensity = (): Density => {

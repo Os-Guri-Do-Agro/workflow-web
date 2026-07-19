@@ -48,7 +48,13 @@ defineProps<{
 }
 
 .stat-card {
-  background: var(--surface);
+  /* Mesma elevação dos cards do board: cor de base, gradiente de luz e fio
+     claro no topo, para o cartão não ficar chapado no tema escuro. */
+  background-color: var(--surface);
+  background-image: var(--elev-1);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 var(--elev-hi);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 14px 16px 12px;

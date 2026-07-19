@@ -796,9 +796,12 @@ function handleDrop(columnId: ColumnStatus) {
     background var(--motion-fast) var(--motion-ease);
 }
 
+/* Coluna de destino durante o arraste: além da cor, um anel do acento deixa
+   claro onde o card vai cair, mesmo em tela grande com o cursor longe. */
 .col--drop {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .col-header {
@@ -914,20 +917,38 @@ function handleDrop(columnId: ColumnStatus) {
   flex-direction: column;
   gap: 8px;
   padding: 11px 12px;
-  background: var(--surface-2);
+  /* Elevação: cor de base + gradiente de luz + fio claro na borda de cima.
+     No escuro é isso que levanta o card, já que sombra preta sobre fundo
+     escuro praticamente não aparece. */
+  background-color: var(--surface-2);
+  background-image: var(--elev-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 var(--elev-hi);
   cursor: grab;
   position: relative;
   transition:
     border-color var(--motion-fast) var(--motion-ease),
-    background var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+    background-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion) var(--motion-ease),
+    transform var(--motion) var(--motion-ease);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .card:hover {
   border-color: var(--border-strong);
-  background: var(--surface-3);
+  background-color: var(--surface-3);
+  /* Sobe 2px e ganha sombra: o card "descola" da coluna em vez de só mudar de cor. */
+  transform: translateY(-2px);
+  box-shadow:
+    var(--shadow),
+    inset 0 1px 0 var(--elev-hi);
 }
 
 .card:active {
@@ -942,9 +963,17 @@ function handleDrop(columnId: ColumnStatus) {
   border-left: 2px solid var(--err);
 }
 
-.card--drag {
-  opacity: 0.45;
-  transform: rotate(1.5deg);
+/* Card sendo arrastado: fica "erguido" e levemente torto, e some a sombra de
+   repouso para não competir com a coluna de destino, que acende embaixo.
+   A dupla classe é proposital: durante o arraste o cursor está sobre o card,
+   então `:hover` continua casando e, com a mesma especificidade, quem vencesse
+   dependeria da ordem no arquivo. */
+.card.card--drag {
+  opacity: 0.5;
+  transform: rotate(2deg) scale(1.02);
+  box-shadow: var(--shadow-overlay);
+  border-color: var(--accent);
+  cursor: grabbing;
 }
 
 .card-top {
@@ -1072,6 +1101,14 @@ function handleDrop(columnId: ColumnStatus) {
   .search-input,
   .col-bar-fill {
     transition-duration: 1ms;
+  }
+  /* Quem pediu menos movimento continua tendo o feedback, só que por cor e
+     sombra: o deslocamento vertical é o que incomoda, não o destaque. */
+  .card:hover {
+    transform: none;
+  }
+  .card--drag {
+    transform: none;
   }
   .card-skel {
     animation-duration: 2s;
