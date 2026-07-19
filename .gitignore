@@ -39,8 +39,11 @@ __screenshots__/
 *.timestamp-*-*.mjs
 
 # Envs
-.env
+# `*.env` pega "prod.env" mas nao pega ".env.production" nem ".env copy", que
+# carregam os mesmos segredos. A regra ampla cobre os dois formatos.
+.env*
 *.env
+!.env.example
 
 # Cursor — rules locais (não versionar)
 .cursor/rules/
