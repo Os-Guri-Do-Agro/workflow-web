@@ -16,6 +16,35 @@ export function isoToDateOnly(iso: string): string {
   return iso.slice(0, 10)
 }
 
+/**
+ * Valor de `dueDate` para o corpo do PATCH, a partir do que está no
+ * `<input type="date">`.
+ *
+ * Campo vazio precisa virar `null` explícito: `undefined` some do JSON e o
+ * backend nunca entra no ramo que apaga a data, então o campo virava via de
+ * mão única (entrou, nunca mais saía).
+ */
+export function dueDatePatchValue(dateOnly: string | null | undefined): string | null {
+  return dateOnly ? dateOnlyToUtcNoonIso(dateOnly) : null
+}
+
+/**
+ * Reposiciona um 'YYYY-MM-DD' no mês informado (1-12), mantendo dia e ano.
+ *
+ * Aritmética em cima da string, nunca de um `Date` local: fuso negativo não
+ * pode fazer o dia recuar no caminho. Dia que não existe no mês destino
+ * (31 -> fevereiro) é recortado para o último dia do mês.
+ */
+export function dateOnlyInMonth(dateOnly: string, monthNumber: number): string {
+  const year = Number(dateOnly.slice(0, 4))
+  const day = Number(dateOnly.slice(8, 10))
+  const monthIndex = monthNumber - 1
+  const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+  const safeDay = Math.min(day, lastDay)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${year}-${pad(monthNumber)}-${pad(safeDay)}`
+}
+
 /** Formata o dia-calendário UTC do ISO em pt-BR, imune a fuso. */
 export function formatDateOnly(
   iso: string | null | undefined,

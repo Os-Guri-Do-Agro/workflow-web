@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useQueryClient } from '@tanstack/vue-query'
 import { useTasks } from '@/features/tasks/useTasks'
+import { useActivityPublish } from '@/features/tasks/useActivityPublish'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
@@ -36,7 +36,9 @@ import {
   type LucideIcon,
 } from 'lucide-vue-next'
 import {
+  dateOnlyInMonth,
   dateOnlyToUtcNoonIso,
+  dueDatePatchValue,
   formatDateOnly,
   isoToDateOnly,
   todayDateOnly,
@@ -58,30 +60,14 @@ function getResponsibleUserIds(activity: any): string[] {
   )
 }
 
-function buildActivityPayload(activity: any, overrides: Record<string, unknown> = {}) {
-  return {
-    title: activity.title,
-    description: activity.description || '',
-    priorityNumber: normalizePriority(activity.priorityNumber, 1),
-    dueDate: activity.dueDate || undefined,
-    monthId: getActivityMonthId(activity),
-    responsibleUserIds: getResponsibleUserIds(activity),
-    ...overrides,
-  }
-}
-
-function buildActivityMovePayload(
-  activity: any,
-  monthId: string,
-  overrides: Record<string, unknown> = {},
-) {
+/** Payload da troca de mês: sem `dueDate`, para a API não encostar na data. */
+function buildActivityMovePayload(activity: any, monthId: string) {
   return {
     title: activity.title,
     description: activity.description || '',
     priorityNumber: normalizePriority(activity.priorityNumber, 1),
     monthId,
     responsibleUserIds: getResponsibleUserIds(activity),
-    ...overrides,
   }
 }
 
@@ -95,38 +81,24 @@ function findMonthInQuarters(monthId: string, quarters: any[]): PlanningMonth | 
   return null
 }
 
-/** Ajusta só o mês da data de entrega para o mês de planejamento (mantém dia e ano). */
+/**
+ * Sugestão de data ao trocar o mês de planejamento: mantém dia e ano, troca só
+ * o mês. Vale como SUGESTÃO visível no formulário, nunca como reescrita
+ * silenciosa: quem decide a data de entrega é o usuário.
+ *
+ * Aceita 'YYYY-MM-DD' (valor do input) ou ISO completo (valor da API) e devolve
+ * 'YYYY-MM-DD', que é o formato do `<input type="date">`.
+ */
 function dueDateForPlanningMonth(
   currentDueDate: string,
   targetMonth: PlanningMonth,
 ): string {
-  const current = new Date(currentDueDate)
-  const year = current.getUTCFullYear()
-  const day = current.getUTCDate()
-  const monthIndex = targetMonth.number - 1
-  const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
-  const safeDay = Math.min(day, lastDay)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return dateOnlyToUtcNoonIso(`${year}-${pad(monthIndex + 1)}-${pad(safeDay)}`)
-}
-
-function moveExtrasForMonth(
-  activity: any,
-  newMonthId: string,
-  quarters: any[],
-  overrides: Record<string, unknown> = {},
-) {
-  const targetMonth = findMonthInQuarters(newMonthId, quarters)
-  const extras = { ...overrides }
-  if (activity.dueDate && targetMonth) {
-    extras.dueDate = dueDateForPlanningMonth(activity.dueDate, targetMonth)
-  }
-  return extras
+  return dateOnlyInMonth(isoToDateOnly(currentDueDate), targetMonth.number)
 }
 
 const route = useRoute()
 const router = useRouter()
-const queryClient = useQueryClient()
+const { publishActivity } = useActivityPublish()
 const { companies } = useTasks()
 const workspaceStore = useWorkspaceStore()
 
@@ -201,7 +173,7 @@ const createQuickSubtask = async () => {
       parentId: taskId.value,
       responsibleUserIds: [],
     })
-    await InfoActivity()
+    await reloadAndPublish()
     showQuickSubtaskModal.value = false
     showSuccess('Subtarefa criada com sucesso')
   } catch (error: any) {
@@ -280,12 +252,32 @@ const syncPlacementSelection = () => {
 
 watch([activityInfo, quartersList], syncPlacementSelection, { immediate: true })
 
-const InfoActivity = async () => {
+const InfoActivity = async (): Promise<boolean> => {
   try {
     activityInfo.value = await activityService.getActivityById(taskId.value)
+    return true
   } catch (error: any) {
     showError(error.response?.data?.message || 'Erro ao buscar atividade')
+    return false
   }
+}
+
+/**
+ * Toda gravação desta tela termina aqui: sem isto o board de destino repinta o
+ * card com o valor antigo até a própria request dele voltar.
+ */
+const publishCurrentActivity = (previousMonthId?: string | null) => {
+  publishActivity(activityInfo.value, previousMonthId)
+}
+
+/**
+ * Recarrega a atividade (subtarefas/anexos) e publica o resultado no board.
+ *
+ * Recarga que falhou deixa `activityInfo` com o estado ANTERIOR à gravação:
+ * publicar nesse caso gravaria o dado velho no cache como se fosse novidade.
+ */
+const reloadAndPublish = async () => {
+  if (await InfoActivity()) publishCurrentActivity()
 }
 
 const findMembers = async () => {
@@ -319,7 +311,7 @@ const createSubtask = async () => {
       fd.append('file', formSubtask.value.attachment)
       await activityService.postActivityAttachment(created.id, fd)
     }
-    await InfoActivity()
+    await reloadAndPublish()
     formSubtask.value = {
       title: '',
       description: '',
@@ -376,13 +368,6 @@ const formMonthSelectItems = computed<{ label: string; value: string }[]>(() =>
 
 const changingMonth = ref(false)
 
-const invalidateBoards = (monthIds: string[]) => {
-  for (const id of monthIds) {
-    if (id) queryClient.invalidateQueries({ queryKey: ['boards', id] })
-  }
-  queryClient.invalidateQueries({ queryKey: ['dashboard', 'workspace'] })
-}
-
 const applyActivityResponse = (updated: any, monthId: string) => {
   activityInfo.value = {
     ...activityInfo.value,
@@ -406,18 +391,16 @@ const changeActivityMonth = async (newMonthId: string) => {
   const previousMonthId = activeMonthId.value
   changingMonth.value = true
   try {
+    // Troca rápida de mês pela barra lateral: move só o planejamento. A data de
+    // entrega fica como está, porque o usuário não pediu para mexer nela.
     const updated = await activityService.patchActivity(
       taskId.value,
-      buildActivityMovePayload(
-        activityInfo.value,
-        newMonthId,
-        moveExtrasForMonth(activityInfo.value, newMonthId, quartersList.value),
-      ),
+      buildActivityMovePayload(activityInfo.value, newMonthId),
     )
     applyActivityResponse(updated, newMonthId)
     await navigateToMonth(newMonthId)
     syncPlacementSelection()
-    invalidateBoards([previousMonthId, newMonthId])
+    publishCurrentActivity(previousMonthId)
     showSuccess('Mês atualizado com sucesso')
   } catch (error: any) {
     syncPlacementSelection()
@@ -437,20 +420,30 @@ const onPlacementQuarterChange = (quarterId: string) => {
   }
 }
 
+/**
+ * A data digitada nesta edição manda. Sem esta trava, qualquer emissão do
+ * select de mês (inclusive escolher o mês que já estava lá) reescrevia por
+ * baixo a data de entrega que o usuário tinha acabado de selecionar.
+ */
+const dueDateTouched = ref(false)
+
+const onFormDueDateChange = (value: string) => {
+  formActivity.value.dueDate = value
+  dueDateTouched.value = true
+}
+
 const onFormMonthChange = (newMonthId: string) => {
+  const monthReallyChanged = newMonthId !== formActivity.value.monthId
   formActivity.value.monthId = newMonthId
+  if (!monthReallyChanged || dueDateTouched.value) return
+
   const targetMonth = findMonthInQuarters(newMonthId, quartersList.value)
   if (!targetMonth) return
 
-  const sourceDueDate = formActivity.value.dueDate
-    ? dateOnlyToUtcNoonIso(formActivity.value.dueDate)
-    : activityInfo.value?.dueDate
-
+  const sourceDueDate = formActivity.value.dueDate || activityInfo.value?.dueDate
   if (!sourceDueDate) return
 
-  formActivity.value.dueDate = isoToDateOnly(
-    dueDateForPlanningMonth(sourceDueDate, targetMonth),
-  )
+  formActivity.value.dueDate = dueDateForPlanningMonth(sourceDueDate, targetMonth)
 }
 
 const onFormQuarterChange = (quarterId: string) => {
@@ -459,8 +452,11 @@ const onFormQuarterChange = (quarterId: string) => {
   formActivity.value.quarterId = quarterId
   if (!keepMonth) {
     const newMonthId = months[0]?.id ?? ''
-    formActivity.value.monthId = newMonthId
+    // Quem grava `monthId` é o `onFormMonthChange`: gravar aqui antes fazia a
+    // guarda de "o mês mudou mesmo?" ver os dois iguais e pular o realinhamento,
+    // deixando a troca de trimestre com um comportamento diferente da troca de mês.
     if (newMonthId) onFormMonthChange(newMonthId)
+    else formActivity.value.monthId = ''
   }
 }
 
@@ -478,6 +474,7 @@ const openEditActivityModal = () => {
     responsibleUserIds: getResponsibleUserIds(activityInfo.value),
     attachment: null,
   }
+  dueDateTouched.value = false
   suggest.value = null
   showEditActivityModal.value = true
 }
@@ -489,36 +486,17 @@ const updateActivity = async () => {
   const newMonthId = formActivity.value.monthId || previousMonthId
   const monthChanged = newMonthId !== previousMonthId
   try {
-    const sourceDueDate = formActivity.value.dueDate
-      ? dateOnlyToUtcNoonIso(formActivity.value.dueDate)
-      : activityInfo.value.dueDate
-    const activityForMove = sourceDueDate
-      ? { ...activityInfo.value, dueDate: sourceDueDate }
-      : activityInfo.value
-
-    const updated = await activityService.patchActivity(
-      taskId.value,
-      monthChanged
-        ? buildActivityMovePayload(
-            activityForMove,
-            newMonthId,
-            moveExtrasForMonth(activityForMove, newMonthId, quartersList.value, {
-              title: formActivity.value.title,
-              description: formActivity.value.description || '',
-              priorityNumber: normalizePriority(formActivity.value.priorityNumber, 1),
-              responsibleUserIds: formActivity.value.responsibleUserIds,
-            }),
-          )
-        : buildActivityPayload(activityInfo.value, {
-            title: formActivity.value.title,
-            description: formActivity.value.description || '',
-            priorityNumber: normalizePriority(formActivity.value.priorityNumber, 1),
-            dueDate: formActivity.value.dueDate
-              ? dateOnlyToUtcNoonIso(formActivity.value.dueDate)
-              : undefined,
-            responsibleUserIds: formActivity.value.responsibleUserIds,
-          }),
-    )
+    // A data que vai para a API é exatamente a que está no formulário, com ou
+    // sem troca de mês: nada de recalcular por baixo depois que o usuário
+    // escolheu o dia. Campo vazio vira `null` para conseguir apagar a data.
+    const updated = await activityService.patchActivity(taskId.value, {
+      title: formActivity.value.title,
+      description: formActivity.value.description || '',
+      priorityNumber: normalizePriority(formActivity.value.priorityNumber, 1),
+      dueDate: dueDatePatchValue(formActivity.value.dueDate),
+      monthId: newMonthId,
+      responsibleUserIds: formActivity.value.responsibleUserIds,
+    })
     if (formActivity.value.attachment) {
       const fd = new FormData()
       fd.append('file', formActivity.value.attachment)
@@ -527,12 +505,15 @@ const updateActivity = async () => {
     applyActivityResponse(updated, newMonthId)
     if (monthChanged) {
       await navigateToMonth(newMonthId)
-      invalidateBoards([previousMonthId, newMonthId])
     }
     syncPlacementSelection()
     if (formActivity.value.attachment) {
       await InfoActivity()
     }
+    // Fora do `if (monthChanged)` de propósito: era exatamente esse recuo que
+    // deixava a edição comum (título, prioridade, data, responsáveis) sem
+    // atualizar nada no board de destino.
+    publishCurrentActivity(monthChanged ? previousMonthId : null)
     showEditActivityModal.value = false
     showSuccess('Atividade atualizada com sucesso')
   } catch (error: any) {
@@ -546,7 +527,7 @@ const deleteSubtask = async (task: any) => {
   deleting.value = task.id
   try {
     await activityService.deleteActivity(task.id)
-    await InfoActivity()
+    await reloadAndPublish()
     showSubtaskModal.value = false
     showSuccess('Subtarefa deletada com sucesso')
   } catch (error: any) {
@@ -578,9 +559,8 @@ const updateSubtask = async () => {
       title: formSubtask.value.title,
       description: formSubtask.value.description || '',
       priorityNumber: normalizePriority(formSubtask.value.priorityNumber, 1),
-      dueDate: formSubtask.value.dueDate
-        ? dateOnlyToUtcNoonIso(formSubtask.value.dueDate)
-        : undefined,
+      // Campo vazio limpa a data (null explicito), não mantém a antiga.
+      dueDate: dueDatePatchValue(formSubtask.value.dueDate),
       monthId: activeMonthId.value,
       parentId: taskId.value,
       responsibleUserIds: formSubtask.value.responsibleUserIds,
@@ -590,7 +570,7 @@ const updateSubtask = async () => {
       fd.append('file', formSubtask.value.attachment)
       await activityService.postActivityAttachment(selectedSubtask.value.id, fd)
     }
-    await InfoActivity()
+    await reloadAndPublish()
     showSubtaskModal.value = false
     showSuccess('Subtarefa atualizada com sucesso')
   } catch (error: any) {
@@ -665,6 +645,9 @@ const toggleSubtaskStatus = async (task: any) => {
   task.status = newStatus
   try {
     await activityService.patchActivityStatus(task.id, newStatus)
+    // O card do board mostra o progresso das subtarefas: publicar mantém o
+    // contador certo sem esperar o refetch do board.
+    publishCurrentActivity()
     showSuccess('Status atualizado com sucesso')
   } catch (error: any) {
     showError(error.response?.data?.message || 'Erro ao atualizar status')
@@ -704,7 +687,7 @@ const deleteAttachment = async (attachmentId: string) => {
   deletingAttachment.value = attachmentId
   try {
     await activityService.deleteAttachment(attachmentId)
-    await InfoActivity()
+    await reloadAndPublish()
     if (selectedSubtask.value) {
       const updatedSubtask = activityInfo.value?.subtasks?.find(
         (s: any) => s.id === selectedSubtask.value.id,
@@ -1136,13 +1119,14 @@ const deleteAttachment = async (attachmentId: string) => {
           </v-col>
           <v-col cols="6">
             <v-text-field
-              v-model="formActivity.dueDate"
+              :model-value="formActivity.dueDate"
               label="Data de Entrega"
               type="date"
               density="compact"
               variant="outlined"
               color="secondary"
               hide-details
+              @update:model-value="onFormDueDateChange(String($event ?? ''))"
             />
           </v-col>
         </v-row>

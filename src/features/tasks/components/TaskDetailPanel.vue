@@ -27,11 +27,7 @@ import companiesServices from '@/service/companies/companies-services'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { getUserToken } from '@/utils/authContent'
 import { useToast } from '@/composables/useToast'
-import {
-  dateOnlyToUtcNoonIso,
-  formatDateOnly,
-  isoToDateOnly,
-} from '@/utils/date'
+import { dueDatePatchValue, formatDateOnly, isoToDateOnly } from '@/utils/date'
 import Pill from '@/components/ui/Pill.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -187,9 +183,10 @@ function savePriority(value: number) {
 }
 
 function saveDueDate(dateOnly: string) {
-  // String vazia precisa virar `null` explícito: `undefined` some do JSON e a
-  // data nunca seria limpa (o campo virava via de mão única).
-  const dueDate = dateOnly ? dateOnlyToUtcNoonIso(dateOnly) : null
+  // `dueDatePatchValue` é o único lugar que traduz o `<input type="date">` para
+  // o corpo do PATCH (meio-dia UTC, ou `null` explícito para apagar a data).
+  const dueDate = dueDatePatchValue(dateOnly)
+  if (dueDate === (activity.value?.dueDate ?? null)) return
   void saveFields('dueDate', { dueDate }, { dueDate })
 }
 
