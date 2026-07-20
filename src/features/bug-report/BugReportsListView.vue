@@ -20,6 +20,7 @@ import {
 import bugReportService from '@/service/bug-report/bug-report-service'
 import companieService from '@/service/companies/companies-services'
 import { useToast } from '@/composables/useToast'
+import { bugReportTitle } from './bug-report-title'
 
 const router = useRouter()
 const { error: showError } = useToast()
@@ -210,9 +211,7 @@ onMounted(() => {
           <FileText v-else :size="16" />
         </div>
         <div class="card-body">
-          <h3 class="card-title">
-            {{ r.extractedTitle || r.spec?.title || r.rawTitle || '(sem título ainda)' }}
-          </h3>
+          <h3 class="card-title">{{ bugReportTitle(r) }}</h3>
           <div class="card-meta">
             <span class="meta-status" :style="{ color: statusMeta[r.status]?.color }">
               <component :is="statusMeta[r.status]?.icon" :size="11" />

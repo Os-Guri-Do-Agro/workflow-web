@@ -57,16 +57,100 @@ const canSubmit = computed(
 const statusUrl = computed(() =>
   submittedId.value ? `${window.location.origin}/r/${submittedId.value}` : '',
 )
-const copied = ref(false)
+
+type CopyState = 'idle' | 'copied' | 'failed'
+const copyState = ref<CopyState>('idle')
+const statusLinkTextRef = ref<HTMLElement | null>(null)
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null
+
+const COPY_FEEDBACK_MS = 2600
+
+const copyLabel = computed(() => {
+  if (copyState.value === 'copied') return 'Link copiado'
+  if (copyState.value === 'failed') return 'Copie com Ctrl+C'
+  return 'Copiar link'
+})
+
+// O nome acessível precisa começar pelo rótulo visível (WCAG 2.5.3): quem usa
+// comando de voz ativa o botão falando exatamente o que está escrito nele.
+const copyAriaLabel = computed(() => {
+  if (copyState.value === 'copied') return 'Link copiado para a área de transferência'
+  if (copyState.value === 'failed') return 'Copie com Ctrl+C: o link já está selecionado'
+  return 'Copiar link de acompanhamento do report'
+})
+
+const copyFeedback = computed(() => {
+  if (copyState.value === 'copied') return 'Link copiado para a área de transferência.'
+  if (copyState.value === 'failed')
+    return 'Não conseguimos copiar sozinhos. O link já está selecionado: use Ctrl+C (ou Cmd+C).'
+  return ''
+})
+
+function scheduleCopyReset() {
+  if (copyResetTimer) clearTimeout(copyResetTimer)
+  copyResetTimer = setTimeout(() => {
+    copyState.value = 'idle'
+    copyResetTimer = null
+  }, COPY_FEEDBACK_MS)
+}
+
+// Fallback pra navegador antigo ou contexto sem permissão de clipboard (http, iframe).
+function copyViaTempInput(text: string): boolean {
+  const previousFocus = document.activeElement as HTMLElement | null
+  const temp = document.createElement('textarea')
+  temp.value = text
+  temp.setAttribute('readonly', '')
+  temp.setAttribute('aria-hidden', 'true')
+  temp.style.position = 'fixed'
+  temp.style.top = '0'
+  temp.style.left = '-9999px'
+  document.body.appendChild(temp)
+
+  let ok = false
+  try {
+    temp.select()
+    temp.setSelectionRange(0, text.length)
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  } finally {
+    temp.remove()
+    // Devolve o foco pro botão pra navegação por teclado não se perder.
+    previousFocus?.focus?.()
+  }
+  return ok
+}
+
+// Último recurso: deixa o link já selecionado na tela pro usuário só copiar.
+function selectStatusLinkText() {
+  const el = statusLinkTextRef.value
+  if (!el) return
+  const selection = window.getSelection()
+  if (!selection) return
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
 async function copyStatusLink() {
   if (!statusUrl.value) return
+
+  let ok = false
   try {
-    await navigator.clipboard.writeText(statusUrl.value)
-    copied.value = true
-    setTimeout(() => (copied.value = false), 1500)
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(statusUrl.value)
+      ok = true
+    }
   } catch {
-    /* ignora */
+    ok = false
   }
+
+  if (!ok) ok = copyViaTempInput(statusUrl.value)
+
+  copyState.value = ok ? 'copied' : 'failed'
+  if (!ok) selectStatusLinkText()
+  scheduleCopyReset()
 }
 
 onMounted(async () => {
@@ -127,7 +211,10 @@ function setFile(f: File | null) {
   if (f.type.startsWith('image/')) previewUrl.value = URL.createObjectURL(f)
 }
 
-onBeforeUnmount(clearPreview)
+onBeforeUnmount(() => {
+  clearPreview()
+  if (copyResetTimer) clearTimeout(copyResetTimer)
+})
 
 function onDrop(ev: DragEvent) {
   ev.preventDefault()
@@ -175,6 +262,11 @@ async function submit() {
 
 function reset() {
   submittedId.value = null
+  copyState.value = 'idle'
+  if (copyResetTimer) {
+    clearTimeout(copyResetTimer)
+    copyResetTimer = null
+  }
   file.value = null
   reporterName.value = ''
   reporterContact.value = ''
@@ -210,27 +302,46 @@ function reset() {
         <h1 class="card-title">Recebemos! Obrigado.</h1>
         <p class="card-sub">
           Vamos dar uma olhada nisso agora. Salve o link abaixo pra acompanhar
-          o andamento sempre que quiser — sem precisar de login.
+          o andamento sempre que quiser, sem precisar de login.
         </p>
 
-        <a
-          class="status-link"
-          :href="statusUrl"
-          target="_blank"
-          rel="noopener"
-        >
-          <span class="status-link-text">{{ statusUrl }}</span>
-          <span class="status-link-action">Abrir</span>
-        </a>
+        <div class="status-link" :class="{ 'status-link--failed': copyState === 'failed' }">
+          <span ref="statusLinkTextRef" class="status-link-text">{{ statusUrl }}</span>
+          <a
+            class="status-link-action"
+            :href="statusUrl"
+            target="_blank"
+            rel="noopener"
+            aria-label="Abrir o link de acompanhamento em uma nova aba"
+          >
+            Abrir
+          </a>
+        </div>
 
         <div class="status-actions">
-          <button class="btn-copy-link" @click="copyStatusLink">
-            <Check v-if="copied" :size="13" />
-            <Copy v-else :size="13" />
-            <span>{{ copied ? 'Copiado' : 'Copiar link' }}</span>
+          <button
+            type="button"
+            class="btn-copy-link"
+            :class="{ 'btn-copy-link--done': copyState === 'copied' }"
+            :aria-label="copyAriaLabel"
+            @click="copyStatusLink"
+          >
+            <Check v-if="copyState === 'copied'" :size="15" aria-hidden="true" />
+            <AlertCircle v-else-if="copyState === 'failed'" :size="15" aria-hidden="true" />
+            <Copy v-else :size="15" aria-hidden="true" />
+            <span>{{ copyLabel }}</span>
           </button>
-          <button class="btn-secondary" @click="reset">Reportar outro</button>
+          <button type="button" class="btn-secondary" @click="reset">Reportar outro</button>
         </div>
+
+        <p
+          class="copy-feedback"
+          :class="{ 'copy-feedback--failed': copyState === 'failed' }"
+          role="status"
+          aria-live="polite"
+        >
+          {{ copyFeedback }}
+        </p>
       </div>
     </section>
 
@@ -250,7 +361,7 @@ function reset() {
       </header>
 
       <p class="intro">
-        Conta o que aconteceu — pode mostrar pela tela ou só escrever. A gente
+        Conta o que aconteceu: pode mostrar pela tela ou só escrever. A gente
         cuida do resto.
       </p>
 
@@ -751,8 +862,8 @@ function reset() {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 36px;
-  padding: 0 16px;
+  height: 42px;
+  padding: 0 18px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -769,9 +880,63 @@ function reset() {
 }
 
 .btn-secondary:focus-visible,
-.btn-copy-link:focus-visible {
+.btn-copy-link:focus-visible,
+.status-link-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Caixa do link de acompanhamento: texto selecionável + atalho pra abrir. */
+.status-link {
+  width: 100%;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: left;
+  transition: border-color var(--motion-fast) var(--motion-ease);
+}
+
+.status-link--failed {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.status-link-text {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.45;
+  word-break: break-all;
+  user-select: all;
+}
+
+.status-link-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.status-link-action:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 .status-actions {
@@ -779,6 +944,7 @@ function reset() {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
+  margin-top: 4px;
 }
 
 /* Ação principal do card de sucesso (espelha .btn-secondary, mas em accent). */
@@ -786,19 +952,21 @@ function reset() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 16px;
+  gap: 7px;
+  height: 42px;
+  padding: 0 18px;
   background: var(--accent);
   color: var(--accent-fg);
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
   transition:
     filter var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
     transform var(--motion-fast) var(--motion-ease);
 }
 
@@ -808,6 +976,32 @@ function reset() {
 
 .btn-copy-link:active {
   transform: scale(0.97);
+}
+
+.btn-copy-link--done {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--accent-fg);
+}
+
+/* Região viva: anuncia o resultado da cópia pra leitor de tela. */
+.copy-feedback {
+  margin: 0;
+  min-height: 17px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-3);
+  max-width: 340px;
+}
+
+.copy-feedback--failed {
+  color: var(--text-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-copy-link:active {
+    transform: none;
+  }
 }
 
 .file-thumb {

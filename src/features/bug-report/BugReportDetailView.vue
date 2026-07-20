@@ -15,6 +15,7 @@ import {
 import bugReportService from '@/service/bug-report/bug-report-service'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
+import { bugReportTitle } from './bug-report-title'
 
 const route = useRoute()
 const router = useRouter()
@@ -89,9 +90,7 @@ watch(reportId, (newId) => {
       <div class="title-block">
         <div class="title-row">
           <Bug :size="18" class="title-icon" />
-          <h1 class="title-text">
-            {{ report.extractedTitle || report.spec?.title || report.rawTitle || 'Bug sem título' }}
-          </h1>
+          <h1 class="title-text">{{ bugReportTitle(report, 200) }}</h1>
         </div>
         <div class="title-meta">
           <span class="status-pill" :style="{ color: statusMeta[report.status]?.color }">
