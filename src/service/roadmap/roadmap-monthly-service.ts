@@ -28,6 +28,25 @@ export interface RoadmapEntry {
   source: string
 }
 
+export type RoadmapDeliveryStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+
+/**
+ * Entrega real do mês: uma atividade com `dueDate` no mês, derivada pela API a
+ * partir do próprio `Activity`. Não é anotação manual e não tem `RoadmapEntry`.
+ */
+export interface RoadmapDelivery {
+  activityId: string
+  /** Mês do board da tarefa, usado na rota `/tasks/:monthId/:taskId`. */
+  monthId: string
+  /** Dia-calendário UTC do `dueDate`, no formato 'YYYY-MM-DD'. */
+  date: string
+  title: string
+  status: RoadmapDeliveryStatus
+  priorityNumber: number
+  overdue: boolean
+  responsibles: { id: string; name: string }[]
+}
+
 export interface RoadmapMonth {
   id: string | null
   key: string
@@ -40,6 +59,8 @@ export interface RoadmapMonth {
   focusItems: RoadmapFocus[]
   photos: RoadmapPhoto[]
   entries: RoadmapEntry[]
+  /** Opcional: o payload público (`/share`) não traz entregas. */
+  deliveries?: RoadmapDelivery[]
 }
 
 export interface RoadmapYearResponse {

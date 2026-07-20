@@ -24,9 +24,12 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import roadmapMonthlyService, {
   type RoadmapCategory,
+  type RoadmapDelivery,
+  type RoadmapDeliveryStatus,
   type RoadmapEntry,
   type RoadmapMonth,
   type RoadmapPhoto,
@@ -43,9 +46,13 @@ import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import aiService from '@/service/ai/ai-service'
+// Rótulo e cor de status vêm do mesmo lugar que o board e o detalhe da tarefa:
+// duplicar aqui deixaria o roadmap divergir quando alguém renomear um status.
+import { statusSpec } from '@/features/tasks/task-meta'
 
 const { success, error: showError, info } = useToast()
 const workspace = useWorkspaceStore()
+const router = useRouter()
 
 type RoadmapStatus = 'done' | 'active' | 'planned' | 'risk'
 
@@ -117,6 +124,27 @@ type CalendarEntry = {
   category: CalendarCategory
 }
 
+/** Entrega real (atividade com data de entrega) projetada no calendário do mês. */
+type CalendarDelivery = {
+  activityId: string
+  monthId: string
+  date: string
+  title: string
+  status: RoadmapDeliveryStatus
+  priorityNumber: number
+  overdue: boolean
+  responsibles: string[]
+}
+
+/**
+ * Item da agenda do mês. A anotação manual e a entrega convivem na mesma lista
+ * ordenada por data, mas nunca viram o mesmo tipo: a origem tem que ficar
+ * óbvia para quem lê a tela e para quem lê o código.
+ */
+type MonthAgendaItem =
+  | { kind: 'entry'; key: string; date: string; entry: CalendarEntry }
+  | { kind: 'delivery'; key: string; date: string; delivery: CalendarDelivery }
+
 type MonthlyPlan = {
   id: string | null
   key: string
@@ -128,6 +156,7 @@ type MonthlyPlan = {
   persisted: boolean
   bullets: string[]
   entries: CalendarEntry[]
+  deliveries: CalendarDelivery[]
 }
 
 type CalendarCategoryMeta = {
@@ -848,6 +877,7 @@ function applyRoadmapApiMonths(months: RoadmapMonth[]) {
       persisted: month.persisted,
       bullets: focusItems.map((focus) => focus.text),
       entries: month.entries.map(mapRoadmapEntry),
+      deliveries: (month.deliveries ?? []).map(mapRoadmapDelivery),
     }
   })
 
@@ -882,6 +912,19 @@ function mapRoadmapEntry(entry: RoadmapEntry): CalendarEntry {
     title: entry.title,
     description: entry.description ?? undefined,
     category: normalizeRoadmapCategory(entry.category),
+  }
+}
+
+function mapRoadmapDelivery(delivery: RoadmapDelivery): CalendarDelivery {
+  return {
+    activityId: delivery.activityId,
+    monthId: delivery.monthId,
+    date: delivery.date,
+    title: delivery.title,
+    status: delivery.status,
+    priorityNumber: delivery.priorityNumber,
+    overdue: delivery.overdue,
+    responsibles: delivery.responsibles.map((person) => person.name),
   }
 }
 
@@ -928,8 +971,79 @@ async function ensureMonthId(month: MonthlyPlan): Promise<string> {
   return ensured.id
 }
 
+/** Dias com alguma marcação: anotação manual ou entrega de tarefa. */
 function monthMarkedDays(month: MonthlyPlan): number {
-  return new Set(month.entries.map((entry) => entry.date)).size
+  return new Set([
+    ...month.entries.map((entry) => entry.date),
+    ...month.deliveries.map((delivery) => delivery.date),
+  ]).size
+}
+
+/** Total de itens da agenda do mês (anotações + entregas). */
+function monthItemsCount(month: MonthlyPlan): number {
+  return month.entries.length + month.deliveries.length
+}
+
+function monthOverdueCount(month: MonthlyPlan): number {
+  return month.deliveries.filter((delivery) => delivery.overdue).length
+}
+
+function deliveryTone(delivery: CalendarDelivery): string {
+  return delivery.overdue ? 'var(--err)' : statusSpec(delivery.status).token
+}
+
+function deliveryStatusLabel(delivery: CalendarDelivery): string {
+  const label = statusSpec(delivery.status).label
+  return delivery.overdue ? `${label} · atrasada` : label
+}
+
+/** Agenda unificada do mês, ordenada por data; empate mantém a anotação antes. */
+function monthAgenda(month: MonthlyPlan): MonthAgendaItem[] {
+  const items: MonthAgendaItem[] = [
+    ...month.entries.map<MonthAgendaItem>((entry) => ({
+      kind: 'entry',
+      key: `entry-${entry.id}`,
+      date: entry.date,
+      entry,
+    })),
+    ...month.deliveries.map<MonthAgendaItem>((delivery) => ({
+      kind: 'delivery',
+      key: `delivery-${delivery.activityId}`,
+      date: delivery.date,
+      delivery,
+    })),
+  ]
+  return items.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+function agendaItemStyle(item: MonthAgendaItem) {
+  return {
+    '--entry-c':
+      item.kind === 'entry'
+        ? calendarCategoryMeta[item.entry.category].tone
+        : deliveryTone(item.delivery),
+  }
+}
+
+function visibleMonthAgenda(month: MonthlyPlan): MonthAgendaItem[] {
+  return monthAgenda(month).slice(0, monthEntryPreviewLimit)
+}
+
+function monthAgendaForCard(month: MonthlyPlan): MonthAgendaItem[] {
+  return isRoadmapPrinting.value ? monthAgenda(month) : visibleMonthAgenda(month)
+}
+
+function hiddenMonthAgendaCount(month: MonthlyPlan): number {
+  return Math.max(monthAgenda(month).length - visibleMonthAgenda(month).length, 0)
+}
+
+/** Abre a tarefa da entrega no detalhe, preservando a empresa ativa. */
+function openDelivery(delivery: CalendarDelivery) {
+  const companyId = workspace.activeCompanyId ?? localStorage.getItem('activeCompany')
+  void router.push({
+    path: `/tasks/${delivery.monthId}/${delivery.activityId}`,
+    ...(companyId ? { query: { company: companyId } } : {}),
+  })
 }
 
 function monthCategories(month: MonthlyPlan): Array<{ category: CalendarCategory; count: number; meta: CalendarCategoryMeta }> {
@@ -940,22 +1054,6 @@ function monthCategories(month: MonthlyPlan): Array<{ category: CalendarCategory
       meta,
     }))
     .filter((item) => item.count > 0)
-}
-
-function sortedMonthEntries(month: MonthlyPlan): CalendarEntry[] {
-  return [...month.entries].sort((a, b) => a.date.localeCompare(b.date))
-}
-
-function visibleMonthEntries(month: MonthlyPlan): CalendarEntry[] {
-  return sortedMonthEntries(month).slice(0, monthEntryPreviewLimit)
-}
-
-function monthEntriesForCard(month: MonthlyPlan): CalendarEntry[] {
-  return isRoadmapPrinting.value ? sortedMonthEntries(month) : visibleMonthEntries(month)
-}
-
-function hiddenMonthEntriesCount(month: MonthlyPlan): number {
-  return Math.max(sortedMonthEntries(month).length - visibleMonthEntries(month).length, 0)
 }
 
 const selectedMonthDetails = computed(() =>
@@ -974,7 +1072,7 @@ function closeMonthDetails() {
 
 /** Clique num dia do calendário: abre o mês já filtrado naquela data. */
 function openDayDetails(month: MonthlyPlan, date?: string) {
-  if (!date || !entriesForDate(month, date).length) return
+  if (!date || !dayItemsCount(month, date)) return
   openMonthDetails(month.key, date)
 }
 
@@ -983,12 +1081,12 @@ function selectDrawerDay(date?: string) {
   selectedDayKey.value = selectedDayKey.value === date ? null : date
 }
 
-const drawerEntries = computed<CalendarEntry[]>(() => {
+const drawerAgenda = computed<MonthAgendaItem[]>(() => {
   const month = selectedMonthDetails.value
   if (!month) return []
-  const all = sortedMonthEntries(month)
+  const all = monthAgenda(month)
   if (!selectedDayKey.value) return all
-  return all.filter((entry) => entry.date === selectedDayKey.value)
+  return all.filter((item) => item.date === selectedDayKey.value)
 })
 
 function focusItemsFor(month: MonthlyPlan): string[] {
@@ -1179,15 +1277,53 @@ function primaryEntry(month: MonthlyPlan, date?: string): CalendarEntry | null {
   return entriesForDate(month, date)[0] ?? null
 }
 
-function calendarEntryStyle(entry: CalendarEntry) {
-  return {
-    '--entry-c': calendarCategoryMeta[entry.category].tone,
-  }
+function deliveriesForDate(month: MonthlyPlan, date?: string): CalendarDelivery[] {
+  if (!date) return []
+  return month.deliveries.filter((delivery) => delivery.date === date)
 }
 
-function primaryEntryStyle(month: MonthlyPlan, date?: string) {
+function dayItemsCount(month: MonthlyPlan, date?: string): number {
+  return entriesForDate(month, date).length + deliveriesForDate(month, date).length
+}
+
+function dayHasOverdue(month: MonthlyPlan, date?: string): boolean {
+  return deliveriesForDate(month, date).some((delivery) => delivery.overdue)
+}
+
+/**
+ * Cor de fundo do dia: atraso manda em tudo, depois a anotação (que o usuário
+ * escolheu o tipo) e por último o status da entrega.
+ */
+function dayCellStyle(month: MonthlyPlan, date?: string) {
+  const deliveries = deliveriesForDate(month, date)
   const entry = primaryEntry(month, date)
-  return entry ? calendarEntryStyle(entry) : undefined
+  const deliveryToneValue = deliveries[0] ? deliveryTone(deliveries[0]) : 'var(--accent)'
+  const tone = dayHasOverdue(month, date)
+    ? 'var(--err)'
+    : entry
+      ? calendarCategoryMeta[entry.category].tone
+      : deliveries.length
+        ? deliveryToneValue
+        : 'var(--accent)'
+
+  return { '--entry-c': tone, '--deliv-c': deliveryToneValue }
+}
+
+/** Texto do dia no calendário: precisa dizer o que tem lá sem precisar clicar. */
+function dayCellLabel(month: MonthlyPlan, date?: string): string | undefined {
+  if (!date) return undefined
+  const entries = entriesForDate(month, date)
+  const deliveries = deliveriesForDate(month, date)
+  if (!entries.length && !deliveries.length) return undefined
+
+  const parts: string[] = []
+  if (deliveries.length) {
+    parts.push(`${deliveries.length} entrega${deliveries.length > 1 ? 's' : ''} de tarefa`)
+  }
+  if (entries.length) {
+    parts.push(`${entries.length} anotaç${entries.length > 1 ? 'ões' : 'ão'}`)
+  }
+  return `${formatDayMonth(date)}: ${parts.join(' e ')}. Abrir detalhes.`
 }
 
 function formatDayMonth(date: string): string {
@@ -1463,7 +1599,7 @@ async function removeSelectedMilestone() {
               <CalendarClock :size="14" />
               <div>
                 <span>Agenda do mês</span>
-                <strong>{{ selectedNoteMonth.entries.length }} itens planejados</strong>
+                <strong>{{ monthItemsCount(selectedNoteMonth) }} itens planejados</strong>
               </div>
             </article>
             <article>
@@ -1523,6 +1659,14 @@ async function removeSelectedMilestone() {
             >
               <component :is="meta.icon" :size="12" />
               {{ meta.label }}
+            </span>
+            <span class="monthly-legend-item monthly-legend-item--delivery">
+              <CalendarCheck :size="12" />
+              Entrega de tarefa (quadrado no dia)
+            </span>
+            <span class="monthly-legend-item" :style="{ '--entry-c': 'var(--err)' }">
+              <Flag :size="12" />
+              Entrega atrasada
             </span>
           </section>
         </div>
@@ -1651,8 +1795,12 @@ async function removeSelectedMilestone() {
                 <small>datas</small>
               </span>
               <span>
-                <strong>{{ month.entries.length }}</strong>
+                <strong>{{ monthItemsCount(month) }}</strong>
                 <small>itens</small>
+              </span>
+              <span :class="{ 'month-head-metrics--danger': monthOverdueCount(month) > 0 }">
+                <strong>{{ month.deliveries.length }}</strong>
+                <small>entregas</small>
               </span>
               <span>
                 <strong>{{ monthCategories(month).length }}</strong>
@@ -1672,24 +1820,24 @@ async function removeSelectedMilestone() {
                 class="day-cell"
                 :class="{
                   'day-cell--empty': !cell.day,
-                  'day-cell--marked': primaryEntry(month, cell.date),
-                  'day-cell--busy': entriesForDate(month, cell.date).length > 1,
+                  'day-cell--marked': dayItemsCount(month, cell.date) > 0,
+                  'day-cell--busy': dayItemsCount(month, cell.date) > 1,
+                  'day-cell--overdue': dayHasOverdue(month, cell.date),
                 }"
-                :style="primaryEntryStyle(month, cell.date)"
-                :title="primaryEntry(month, cell.date)?.title"
-                :disabled="!cell.day || !entriesForDate(month, cell.date).length"
-                :aria-label="
-                  cell.date && entriesForDate(month, cell.date).length
-                    ? `${formatDayMonth(cell.date)}: ${entriesForDate(month, cell.date).length} item(ns). Abrir detalhes.`
-                    : undefined
-                "
+                :style="dayCellStyle(month, cell.date)"
+                :title="dayCellLabel(month, cell.date)"
+                :disabled="!cell.day || !dayItemsCount(month, cell.date)"
+                :aria-label="dayCellLabel(month, cell.date)"
                 @click="openDayDetails(month, cell.date)"
               >
                 <span class="day-number">{{ cell.day }}</span>
-                <span v-if="entriesForDate(month, cell.date).length > 1" class="day-count">
-                  {{ entriesForDate(month, cell.date).length }}
+                <span class="day-marks">
+                  <i v-if="deliveriesForDate(month, cell.date).length" class="day-mark--delivery" />
+                  <i v-if="entriesForDate(month, cell.date).length" class="day-mark--entry" />
                 </span>
-                <i v-else-if="primaryEntry(month, cell.date)" />
+                <span v-if="dayItemsCount(month, cell.date) > 1" class="day-count">
+                  {{ dayItemsCount(month, cell.date) }}
+                </span>
               </button>
             </div>
 
@@ -1744,30 +1892,44 @@ async function removeSelectedMilestone() {
                   <CalendarClock :size="14" />
                   Agenda do mês
                 </span>
-                <small>{{ monthEntriesForCard(month).length }} de {{ month.entries.length }}</small>
+                <small>{{ monthAgendaForCard(month).length }} de {{ monthItemsCount(month) }}</small>
               </div>
               <div class="month-entry-scroll">
                 <article
-                  v-for="entry in monthEntriesForCard(month)"
-                  :key="entry.id"
+                  v-for="item in monthAgendaForCard(month)"
+                  :key="item.key"
                   class="month-entry"
-                  :style="calendarEntryStyle(entry)"
+                  :class="{ 'month-entry--delivery': item.kind === 'delivery' }"
+                  :style="agendaItemStyle(item)"
                 >
-                  <span class="month-entry-date">{{ formatDayMonth(entry.date) }}</span>
-                  <span class="month-entry-dot" />
-                  <div>
-                    <strong>{{ entry.title }}</strong>
-                    <small v-if="entry.description">{{ entry.description }}</small>
+                  <span class="month-entry-date">{{ formatDayMonth(item.date) }}</span>
+                  <span class="month-entry-dot" :class="{ 'month-entry-dot--delivery': item.kind === 'delivery' }" />
+                  <div v-if="item.kind === 'entry'">
+                    <strong>{{ item.entry.title }}</strong>
+                    <small v-if="item.entry.description">{{ item.entry.description }}</small>
                   </div>
+                  <button
+                    v-else
+                    class="month-entry-task"
+                    type="button"
+                    :aria-label="`Abrir a tarefa ${item.delivery.title}`"
+                    @click="openDelivery(item.delivery)"
+                  >
+                    <strong>{{ item.delivery.title }}</strong>
+                    <small>
+                      <span class="month-entry-tag">Tarefa</span>
+                      {{ deliveryStatusLabel(item.delivery) }}
+                    </small>
+                  </button>
                 </article>
               </div>
               <button
-                v-if="hiddenMonthEntriesCount(month)"
+                v-if="hiddenMonthAgendaCount(month)"
                 class="month-entry-toggle press"
                 type="button"
                 @click="openMonthDetails(month.key)"
               >
-                Ver mais {{ hiddenMonthEntriesCount(month) }} itens
+                Ver mais {{ hiddenMonthAgendaCount(month) }} itens
               </button>
               <button
                 v-else
@@ -1800,8 +1962,12 @@ async function removeSelectedMilestone() {
                 datas
               </span>
               <span>
-                <strong>{{ month.entries.length }}</strong>
+                <strong>{{ monthItemsCount(month) }}</strong>
                 itens
+              </span>
+              <span>
+                <strong>{{ month.deliveries.length }}</strong>
+                entregas
               </span>
               <span>
                 <strong>{{ monthCategories(month).length }}</strong>
@@ -1837,21 +2003,26 @@ async function removeSelectedMilestone() {
           <section class="print-panel print-agenda-panel">
             <div class="print-section-head">
               <h3>Agenda completa</h3>
-              <span>{{ sortedMonthEntries(month).length }} itens</span>
+              <span>{{ monthItemsCount(month) }} itens</span>
             </div>
             <div class="print-entry-list">
               <article
-                v-for="entry in sortedMonthEntries(month)"
-                :key="`print-${month.key}-${entry.id}`"
+                v-for="item in monthAgenda(month)"
+                :key="`print-${month.key}-${item.key}`"
                 class="print-entry"
-                :style="calendarEntryStyle(entry)"
+                :style="agendaItemStyle(item)"
               >
-                <span class="print-entry-date">{{ formatDayMonth(entry.date) }}</span>
-                <div>
-                  <strong>{{ entry.title }}</strong>
-                  <small v-if="entry.description">{{ entry.description }}</small>
+                <span class="print-entry-date">{{ formatDayMonth(item.date) }}</span>
+                <div v-if="item.kind === 'entry'">
+                  <strong>{{ item.entry.title }}</strong>
+                  <small v-if="item.entry.description">{{ item.entry.description }}</small>
                 </div>
-                <em>{{ calendarCategoryMeta[entry.category].label }}</em>
+                <div v-else>
+                  <strong>{{ item.delivery.title }}</strong>
+                  <small>{{ deliveryStatusLabel(item.delivery) }}</small>
+                </div>
+                <em v-if="item.kind === 'entry'">{{ calendarCategoryMeta[item.entry.category].label }}</em>
+                <em v-else>Tarefa</em>
               </article>
             </div>
           </section>
@@ -1885,8 +2056,12 @@ async function removeSelectedMilestone() {
                 datas marcadas
               </span>
               <span>
-                <strong>{{ selectedMonthDetails.entries.length }}</strong>
+                <strong>{{ monthItemsCount(selectedMonthDetails) }}</strong>
                 itens
+              </span>
+              <span>
+                <strong>{{ selectedMonthDetails.deliveries.length }}</strong>
+                entregas
               </span>
               <span>
                 <strong>{{ monthCategories(selectedMonthDetails).length }}</strong>
@@ -1904,20 +2079,25 @@ async function removeSelectedMilestone() {
                 class="day-cell"
                 :class="{
                   'day-cell--empty': !cell.day,
-                  'day-cell--marked': primaryEntry(selectedMonthDetails, cell.date),
-                  'day-cell--busy': entriesForDate(selectedMonthDetails, cell.date).length > 1,
+                  'day-cell--marked': dayItemsCount(selectedMonthDetails, cell.date) > 0,
+                  'day-cell--busy': dayItemsCount(selectedMonthDetails, cell.date) > 1,
+                  'day-cell--overdue': dayHasOverdue(selectedMonthDetails, cell.date),
                   'day-cell--active': !!cell.date && cell.date === selectedDayKey,
                 }"
-                :style="primaryEntryStyle(selectedMonthDetails, cell.date)"
-                :title="primaryEntry(selectedMonthDetails, cell.date)?.title"
-                :disabled="!cell.day || !entriesForDate(selectedMonthDetails, cell.date).length"
+                :style="dayCellStyle(selectedMonthDetails, cell.date)"
+                :title="dayCellLabel(selectedMonthDetails, cell.date)"
+                :aria-label="dayCellLabel(selectedMonthDetails, cell.date)"
+                :disabled="!cell.day || !dayItemsCount(selectedMonthDetails, cell.date)"
                 @click="selectDrawerDay(cell.date)"
               >
                 <span class="day-number">{{ cell.day }}</span>
-                <span v-if="entriesForDate(selectedMonthDetails, cell.date).length > 1" class="day-count">
-                  {{ entriesForDate(selectedMonthDetails, cell.date).length }}
+                <span class="day-marks">
+                  <i v-if="deliveriesForDate(selectedMonthDetails, cell.date).length" class="day-mark--delivery" />
+                  <i v-if="entriesForDate(selectedMonthDetails, cell.date).length" class="day-mark--entry" />
                 </span>
-                <i v-else-if="primaryEntry(selectedMonthDetails, cell.date)" />
+                <span v-if="dayItemsCount(selectedMonthDetails, cell.date) > 1" class="day-count">
+                  {{ dayItemsCount(selectedMonthDetails, cell.date) }}
+                </span>
               </button>
             </div>
           </section>
@@ -2012,7 +2192,7 @@ async function removeSelectedMilestone() {
                 <CalendarClock :size="14" />
                 {{ selectedDayKey ? `Agenda de ${formatDayMonth(selectedDayKey)}` : 'Agenda completa' }}
               </span>
-              <small>{{ drawerEntries.length }} de {{ selectedMonthDetails.entries.length }}</small>
+              <small>{{ drawerAgenda.length }} de {{ monthItemsCount(selectedMonthDetails) }}</small>
             </div>
             <button
               v-if="selectedDayKey"
@@ -2024,28 +2204,45 @@ async function removeSelectedMilestone() {
               Ver o mês inteiro
             </button>
             <article
-              v-for="entry in drawerEntries"
-              :key="`${selectedMonthDetails.key}-drawer-entry-${entry.id}`"
+              v-for="item in drawerAgenda"
+              :key="`${selectedMonthDetails.key}-drawer-${item.key}`"
               class="month-entry drawer-entry"
-              :style="calendarEntryStyle(entry)"
+              :class="{ 'month-entry--delivery': item.kind === 'delivery' }"
+              :style="agendaItemStyle(item)"
             >
-              <span class="month-entry-date">{{ formatDayMonth(entry.date) }}</span>
-              <span class="month-entry-dot" />
-              <div>
-                <strong>{{ entry.title }}</strong>
-                <small v-if="entry.description">{{ entry.description }}</small>
+              <span class="month-entry-date">{{ formatDayMonth(item.date) }}</span>
+              <span class="month-entry-dot" :class="{ 'month-entry-dot--delivery': item.kind === 'delivery' }" />
+              <div v-if="item.kind === 'entry'">
+                <strong>{{ item.entry.title }}</strong>
+                <small v-if="item.entry.description">{{ item.entry.description }}</small>
               </div>
               <button
-                v-if="canEditMonthlyRoadmap"
+                v-else
+                class="month-entry-task"
+                type="button"
+                :aria-label="`Abrir a tarefa ${item.delivery.title}`"
+                @click="openDelivery(item.delivery)"
+              >
+                <strong>{{ item.delivery.title }}</strong>
+                <small>
+                  <span class="month-entry-tag">Tarefa</span>
+                  {{ deliveryStatusLabel(item.delivery) }}
+                  <template v-if="item.delivery.responsibles.length">
+                    · {{ item.delivery.responsibles.join(', ') }}
+                  </template>
+                </small>
+              </button>
+              <button
+                v-if="canEditMonthlyRoadmap && item.kind === 'entry'"
                 class="drawer-entry-remove"
                 type="button"
                 aria-label="Remover item da agenda"
-                @click="removeMonthEntry(selectedMonthDetails, entry)"
+                @click="removeMonthEntry(selectedMonthDetails, item.entry)"
               >
                 <X :size="12" />
               </button>
             </article>
-            <p v-if="!drawerEntries.length" class="monthly-readonly-hint">
+            <p v-if="!drawerAgenda.length" class="monthly-readonly-hint">
               Nenhum item nesta seleção.
             </p>
           </section>
@@ -3801,6 +3998,11 @@ async function removeSelectedMilestone() {
   padding: 5px 8px;
 }
 
+.monthly-legend-item--delivery {
+  --entry-c: var(--accent);
+  border-radius: var(--radius-sm);
+}
+
 .monthly-filter-bar {
   display: flex;
   align-items: center;
@@ -3889,7 +4091,7 @@ async function removeSelectedMilestone() {
 
 .month-head-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(48px, auto));
+  grid-template-columns: repeat(4, minmax(44px, auto));
   gap: 8px;
   align-items: stretch;
   padding: 10px 12px;
@@ -3915,6 +4117,11 @@ async function removeSelectedMilestone() {
   font-size: 10.5px;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.month-head-metrics--danger strong,
+.month-head-metrics--danger small {
+  color: var(--err);
 }
 
 .month-card-body {
@@ -3999,25 +4206,46 @@ async function removeSelectedMilestone() {
     color-mix(in srgb, var(--entry-c) 12%, var(--surface));
 }
 
-.day-cell--marked i,
-.day-count {
+/* Dia com entrega atrasada: o contorno vermelho tem que gritar mais que o tipo. */
+.day-cell--overdue {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--err) 55%, transparent);
+}
+
+.day-marks {
   position: absolute;
-  right: 7px;
+  left: 7px;
   bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Anotação manual é bolinha; entrega de tarefa é quadrado. A forma diferencia
+   as duas origens mesmo para quem não distingue as cores. */
+.day-mark--entry {
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
   background: var(--entry-c);
 }
 
-.day-cell--marked i {
-  width: 6px;
-  height: 6px;
+.day-mark--delivery {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--deliv-c, var(--accent));
 }
 
 .day-count {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
   min-width: 18px;
   height: 18px;
   display: inline-grid;
   place-items: center;
+  border-radius: 999px;
+  background: var(--entry-c);
   color: var(--surface);
   font-size: 10px;
   font-weight: 900;
@@ -4292,6 +4520,50 @@ async function removeSelectedMilestone() {
   margin-top: 2px;
   border-radius: 999px;
   background: var(--entry-c);
+}
+
+/* Mesma linguagem do calendário: quadrado é entrega, círculo é anotação. */
+.month-entry-dot--delivery {
+  border-radius: 3px;
+}
+
+.month-entry--delivery {
+  border-style: solid;
+  border-left: 3px solid var(--entry-c);
+}
+
+.month-entry-task {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.month-entry-task:hover strong,
+.month-entry-task:focus-visible strong {
+  text-decoration: underline;
+}
+
+.month-entry-task:focus-visible {
+  outline: 2px solid var(--entry-c);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.month-entry-tag {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--entry-c) 18%, transparent);
+  color: var(--entry-c);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .month-entry strong {
