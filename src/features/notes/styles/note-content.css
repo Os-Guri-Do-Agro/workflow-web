@@ -1,0 +1,266 @@
+/**
+ * Tipografia e blocos do conteúdo de uma nota.
+ *
+ * Fica fora do SFC porque é compartilhado: o editor usa em modo de escrita e a
+ * visualização pública (P2) usa em modo de leitura, sobre o mesmo HTML. Todas
+ * as cores saem de tokens, inclusive o destaque de sintaxe - o editor antigo
+ * tinha nove hex soltos aqui.
+ */
+
+.note-prose {
+  color: var(--text);
+  font-size: var(--text-body-large, 16px);
+  line-height: 1.75;
+  overflow-wrap: break-word;
+}
+
+.note-prose .ProseMirror {
+  outline: none;
+  min-height: 320px;
+}
+
+.note-prose .ProseMirror > * + * {
+  margin-top: 0.85em;
+}
+
+/* Placeholder do parágrafo vazio. */
+.note-prose .ProseMirror p.is-editor-empty:first-child::before,
+.note-prose .ProseMirror .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--text-4);
+  pointer-events: none;
+}
+
+/* ── Títulos ─────────────────────────────────────────────────────────────── */
+
+.note-prose h1,
+.note-prose h2,
+.note-prose h3,
+.note-prose h4 {
+  margin-top: 1.6em;
+  margin-bottom: 0.4em;
+  color: var(--text);
+  font-weight: 640;
+  letter-spacing: -0.018em;
+  line-height: 1.25;
+}
+
+.note-prose h1 { font-size: 1.75em; }
+.note-prose h2 { font-size: 1.4em; }
+.note-prose h3 { font-size: 1.18em; }
+.note-prose h4 { font-size: 1.04em; }
+
+.note-prose h1:first-child,
+.note-prose h2:first-child,
+.note-prose h3:first-child {
+  margin-top: 0;
+}
+
+/* ── Texto ───────────────────────────────────────────────────────────────── */
+
+.note-prose strong { font-weight: 650; }
+
+.note-prose .editor-link,
+.note-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+}
+
+.note-prose mark {
+  padding: 0.1em 0.22em;
+  background: color-mix(in srgb, var(--warn) 34%, transparent);
+  border-radius: 3px;
+  color: inherit;
+}
+
+.note-prose code {
+  padding: 0.14em 0.36em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.87em;
+}
+
+/* ── Listas ──────────────────────────────────────────────────────────────── */
+
+.note-prose ul,
+.note-prose ol {
+  padding-left: 1.4em;
+}
+
+.note-prose li + li {
+  margin-top: 0.28em;
+}
+
+.note-prose li p {
+  margin: 0;
+}
+
+.note-prose ul[data-type='taskList'] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.note-prose ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.note-prose ul[data-type='taskList'] li > label {
+  margin-top: 0.36em;
+  user-select: none;
+}
+
+.note-prose ul[data-type='taskList'] input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.note-prose ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+/* ── Blocos ──────────────────────────────────────────────────────────────── */
+
+.note-prose blockquote {
+  padding: 0.15em 0 0.15em 1em;
+  border-left: 3px solid var(--accent);
+  color: var(--text-2);
+  font-style: italic;
+}
+
+.note-prose hr {
+  margin: 1.8em 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.note-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+}
+
+.note-prose pre {
+  padding: 14px 16px;
+  overflow-x: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.note-prose pre code {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: inherit;
+}
+
+/* Destaque de sintaxe: tudo derivado de tokens semânticos, sem hex. */
+.note-prose .hljs-comment,
+.note-prose .hljs-quote { color: var(--text-4); font-style: italic; }
+
+.note-prose .hljs-keyword,
+.note-prose .hljs-selector-tag,
+.note-prose .hljs-literal { color: var(--accent); }
+
+.note-prose .hljs-string,
+.note-prose .hljs-attr { color: var(--success); }
+
+.note-prose .hljs-number,
+.note-prose .hljs-built_in { color: var(--warn); }
+
+.note-prose .hljs-title,
+.note-prose .hljs-name,
+.note-prose .hljs-function { color: var(--info); }
+
+.note-prose .hljs-deletion { color: var(--err); }
+.note-prose .hljs-variable,
+.note-prose .hljs-tag { color: var(--text-2); }
+
+/* ── Bloco recolhível ────────────────────────────────────────────────────── */
+
+.note-prose .note-details {
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.note-prose .note-details summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.note-prose .note-details > div:last-child {
+  margin-top: 6px;
+}
+
+/* ── Tabela ──────────────────────────────────────────────────────────────── */
+
+.note-prose table {
+  width: 100%;
+  margin: 1em 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  overflow: hidden;
+}
+
+.note-prose th,
+.note-prose td {
+  position: relative;
+  min-width: 80px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.note-prose th {
+  background: var(--surface-2);
+  font-weight: 600;
+  text-align: left;
+}
+
+.note-prose .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  pointer-events: none;
+}
+
+.note-prose .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 4px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+/* ── Seleção e cursor de arraste ─────────────────────────────────────────── */
+
+.note-prose .ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.note-prose .ProseMirror-gapcursor::after {
+  border-top-color: var(--text);
+}

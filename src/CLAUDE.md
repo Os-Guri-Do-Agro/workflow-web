@@ -18,7 +18,8 @@ Guia interno para navegar e evoluir o código.
 - Motion: **@vueuse/motion** (instalado via `MotionPlugin`) + `motion-v` (disponível para uso)
 - Toast: **vue-sonner** (consumido via `useToast()` bridge)
 - Charts: `vue-echarts` (line, bar, pie)
-- Headless primitives disponíveis: `reka-ui` (não usado ainda, reservado para componentes customizados)
+- Headless primitives: `reka-ui` — em uso em `components/ui/AppSelect.vue`. Preferir para menus/popovers/selects novos.
+- Editor de texto rico: **TipTap 3.28** (MIT). Configuração de notas centralizada em `features/notes/composables/useNoteEditor.ts`. Toolbar compartilhada em `components/ui/TipTapToolbar.vue`. **Link e Underline vêm dentro do StarterKit no v3** — declarar por fora derruba o editor com "duplicate extension names".
 
 ## Design System
 
@@ -98,6 +99,10 @@ Em [`components/ui/`](./components/ui/):
 | `Skeleton.vue`         | Loading. Types: `row`, `card`, `text`, `block`.                                                                      |
 | `Pill.vue`             | Chip monocromático com ícone. Variants: `soft`, `outline`, `solid`.                                                  |
 | `AuroraBackground.vue` | Gradient blobs animados + noise + grid mask. Props: `intensity="subtle\|medium\|bold"`. Usado no fundo dos 3 shells. |
+| `SaveStatus.vue` + `save-state.ts` | Indicador de autosave ("Salvando… / Salvo às HH:MM / Erro + Tentar de novo"). Nunca diz "salvo" antes do servidor confirmar. |
+| `InlineEditText.vue`   | Campo com autosave debounced, flush no blur, Esc desfaz.                                                             |
+| `ConfirmDialog.vue`    | Modal de confirmação (Teleport + tokens). É o padrão de overlay: **não use `v-dialog` em código novo**.              |
+| `TipTapToolbar.vue`    | Toolbar tokenizada de editor. Prop `groups` escolhe o que aparece; `bare` para uso dentro de popover.                |
 
 ## Colaboração
 
@@ -132,13 +137,31 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês                                                   |
 | Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         | Rota registrada na navegação                                           |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
-| Notas           | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | TipTap editor                                                         |
+| **Notas** ★     | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | Redesenhada na P1 do épico de notas colaborativas. Autosave, pastas com CRUD e aninhamento, bubble/slash menu, modo imersivo. Sub-components em `features/notes/` |
 | Calendário      | [`features/calendar/CalendarView.vue`](./features/calendar/CalendarView.vue)                   | `/calendar`        | Google Calendar integration                                           |
 | Time Tracking   | [`features/time/TimeTrackingView.vue`](./features/time/TimeTrackingView.vue)                   | `/time`            | Timer estilo Clockify. Widget global nos 3 shells + `useTimeTracking` (Vue Query + socket `time:*`) |
 | Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only                                                            |
 | Configurações   | [`features/settings/SettingsView.vue`](./features/settings/SettingsView.vue)                   | `/settings`        | Tema, acento, densidade, shell variant                                |
 
 ★ = redesign completo entregue pelo design-system-evolution spec.
+
+### Estrutura de Notas (P1 do épico de notas colaborativas)
+
+```
+features/notes/
+  NotesView.vue           lista, busca com debounce, filtros, seções fixadas/outras
+  NoteEditorView.vue      orquestrador (~250 linhas); no imersivo é teleportado pro body
+  types.ts                Note, NoteListItem, NoteFolder, NoteFolderNode
+  note-palette.ts         cores e emojis (hex aqui é dado persistido, não tema)
+  components/             NoteHeader, NoteMetaMenu, NoteBubbleMenu, NoteSlashMenu,
+                          NoteCard, NoteFolderTree (recursivo), NoteFolderDialog
+  composables/            useNotes (Vue Query + buildFolderTree), useNote,
+                          useNoteEditor, useNoteAutosave, useNoteImmersive
+  extensions/             slash-command.ts (menu "/" via @tiptap/suggestion)
+  styles/note-content.css tipografia e blocos do conteúdo, reusável na leitura
+```
+
+Especificações: [épico](../docs/specs/epicos/notas-colaborativas-premium.md) · [P1](../docs/specs/notas-p1-editor-premium.md) · [P2](../docs/specs/notas-p2-compartilhamento.md) · [P3](../docs/specs/notas-p3-edicao-ao-vivo.md) · [P4](../docs/specs/notas-p4-rabisco.md)
 
 ### Sub-components de Variables (F3)
 
@@ -177,6 +200,7 @@ Atalhos globais na página Variables: `/` (foca busca), `N` (abre criação), `E
 
 - `rgb(var(--v-theme-X))` — só use para compor com estilos internos do Vuetify (quando um componente Vuetify toca `color` prop). Para estilo próprio, sempre tokens `var(--text)` / `var(--surface)` etc.
 - Componentes shared dos shells **não devem** importar de `features/*`. Features podem importar de `components/`, `components/ui/`, `composables/`, `stores/`.
+- **Conteúdo de rota não cobre a topbar por `z-index`.** A view renderiza dentro do `main` do shell, que cria contexto de empilhamento próprio: nenhum `z-index` de dentro passa por cima do chrome do shell. Para overlay de tela cheia (modo imersivo, viewer), use `Teleport to="body"` — funciona igual nas três variantes de shell sem que a feature precise conhecê-las. Ver `features/notes/NoteEditorView.vue`.
 
 ## Como adicionar uma feature nova
 

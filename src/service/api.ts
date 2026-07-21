@@ -25,9 +25,14 @@ function headerValue(headers: ResponseHeaders | undefined, key: string) {
 export function getApiErrorMessage(error: unknown, fallback = 'Não foi possível concluir a operação') {
   if (!axios.isAxiosError<ApiErrorEnvelope>(error)) return error instanceof Error ? error.message : fallback
 
-  const message = error.response?.data?.message
+  // Sem resposta = falha de rede ou timeout. O `error.message` do axios aqui é
+  // "Network Error" / "timeout of Xms exceeded": texto em inglês, do jeito que
+  // nunca deve chegar ao usuário. O fallback de quem chamou é mais útil.
+  if (!error.response) return fallback
+
+  const message = error.response.data?.message
   if (Array.isArray(message)) return message.join(', ')
-  return message || error.message || fallback
+  return message || fallback
 }
 
 export function getApiRequestId(error: unknown) {

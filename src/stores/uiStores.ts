@@ -18,7 +18,11 @@ const STORAGE = {
   shell: 'ui.shell',
   fontScale: 'ui.fontScale',
   xp: 'ui.xp',
+  notesViewMode: 'ui.notesViewMode',
 } as const
+
+/** Grade ou lista na listagem de notas. */
+export type NotesViewMode = 'grid' | 'list'
 
 const readTheme = (): ThemeName => {
   const v = localStorage.getItem(STORAGE.theme) || localStorage.getItem('theme')
@@ -50,6 +54,9 @@ const readFontScale = (): FontScale => {
 
 const readXp = (): boolean => localStorage.getItem(STORAGE.xp) === 'true'
 
+const readNotesViewMode = (): NotesViewMode =>
+  localStorage.getItem(STORAGE.notesViewMode) === 'list' ? 'list' : 'grid'
+
 export const useUiStore = defineStore('ui', () => {
   const theme = ref<ThemeName>(readTheme())
   const accent = ref<AccentName>(readAccent())
@@ -57,6 +64,7 @@ export const useUiStore = defineStore('ui', () => {
   const shell = ref<ShellVariant>(readShell())
   const fontScale = ref<FontScale>(readFontScale())
   const xp = ref<boolean>(readXp())
+  const notesViewMode = ref<NotesViewMode>(readNotesViewMode())
 
   watch(theme, (v) => {
     localStorage.setItem(STORAGE.theme, v)
@@ -87,9 +95,13 @@ export const useUiStore = defineStore('ui', () => {
     applyXpMode(v)
   })
 
+  watch(notesViewMode, (v) => {
+    localStorage.setItem(STORAGE.notesViewMode, v)
+  })
+
   // Aplica a escala salva já no boot (antes de qualquer watch disparar).
   applyFontScale(fontScale.value)
   applyXpMode(xp.value)
 
-  return { theme, accent, density, shell, fontScale, xp }
+  return { theme, accent, density, shell, fontScale, xp, notesViewMode }
 })

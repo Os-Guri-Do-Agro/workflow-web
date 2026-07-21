@@ -2,10 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
-import Underline from '@tiptap/extension-underline'
 import {
   X,
   Save,
@@ -111,11 +109,11 @@ const currentType = computed<TypeMeta>(
 const editor = useEditor({
   content: '',
   extensions: [
-    StarterKit,
-    Link.configure({ openOnClick: false }),
+    // Link e Underline fazem parte do StarterKit no TipTap 3; declarar por fora
+    // duplicaria a extensão.
+    StarterKit.configure({ link: { openOnClick: false } }),
     Placeholder.configure({ placeholder: 'Adicione uma descrição detalhada...' }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
-    Underline,
   ],
   onUpdate: ({ editor: ed }) => {
     description.value = ed.getHTML()

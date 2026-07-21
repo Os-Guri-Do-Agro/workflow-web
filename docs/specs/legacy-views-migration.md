@@ -92,7 +92,15 @@ Depois da Fase P e da rodada de shell-nav-unification, o app tem duas camadas co
 - Toolbar (botões de view toggle / filtros / nova atividade) já está 80% tokenizada; restam `<v-icon>mdi-*</v-icon>` dentro dos botões — trocar.
 - Dialog de delete — migrar para padrão inline confirm (igual ao do novo EventModal).
 
-## 1.2 Fase L2 — Notes Stack (NoteModal + NoteEditorView + NotesView + TiptapEditor)
+## 1.2 Fase L2 — Notes Stack (ABSORVIDA)
+
+> **Status: absorvida por [notas-p1-editor-premium.md](./notas-p1-editor-premium.md) em 2026-07-21.**
+> A P1 reescreveu `NoteEditorView.vue` e `NotesView.vue` do zero (tokens, lucide, zero `mdi-*`),
+> criou o `components/ui/TipTapToolbar.vue` previsto aqui e migrou `components/reports/TiptapEditor.vue`
+> para consumi-lo. `components/modals/NoteModal.vue` não existe mais no repo.
+> O que resta desta fase é apenas a contagem de `mdi-*` das outras views.
+
+### Escopo original (histórico)
 
 **Escopo total:**
 - `components/modals/NoteModal.vue` (31)

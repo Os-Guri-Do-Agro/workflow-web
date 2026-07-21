@@ -1,1410 +1,626 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useEditor, EditorContent } from '@tiptap/vue-3'
-import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
-import Placeholder from '@tiptap/extension-placeholder'
-import TextAlign from '@tiptap/extension-text-align'
-import Underline from '@tiptap/extension-underline'
-import TaskList from '@tiptap/extension-task-list'
-import TaskItem from '@tiptap/extension-task-item'
-import { Table } from '@tiptap/extension-table'
-import { TableRow } from '@tiptap/extension-table-row'
-import { TableCell } from '@tiptap/extension-table-cell'
-import { TableHeader } from '@tiptap/extension-table-header'
-import Image from '@tiptap/extension-image'
-import Highlight from '@tiptap/extension-highlight'
-import Typography from '@tiptap/extension-typography'
-import Superscript from '@tiptap/extension-superscript'
-import Subscript from '@tiptap/extension-subscript'
-import CharacterCount from '@tiptap/extension-character-count'
-import { TextStyle } from '@tiptap/extension-text-style'
-import Color from '@tiptap/extension-color'
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
-import { common, createLowlight } from 'lowlight'
+import { useQueryClient } from '@tanstack/vue-query'
+import { EditorContent } from '@tiptap/vue-3'
+import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
+import { GripVertical, Plus, X } from 'lucide-vue-next'
 import notesService from '@/service/notes/notes-service'
-import { useToast } from '@/composables/useToast'
 import aiService from '@/service/ai/ai-service'
+import { getApiErrorMessage, getApiRequestId } from '@/service/api'
+import { useToast } from '@/composables/useToast'
 import AppSelect from '@/components/ui/AppSelect.vue'
-import {
-  ArrowLeft, Save, Loader2,
-  Bold, Italic, Underline as UnderlineIcon, Strikethrough,
-  Heading1, Heading2, Heading3,
-  List, ListOrdered, ListChecks,
-  Quote, Code, Code2,
-  AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Highlighter, Link as LinkIcon, Image as ImageIcon,
-  Table as TableIcon, Undo2, Redo2,
-  Superscript as SuperscriptIcon, Subscript as SubscriptIcon,
-  Plus, X, Minus,
-  TableCellsMerge, TableCellsSplit,
-  Rows3, Columns3,
-  Trash2,
-  Sparkles,
-  Pin,
-  Smile,
-  Palette,
-  ImagePlus,
-} from 'lucide-vue-next'
-
-const lowlight = createLowlight(common)
-const { success, error: showError } = useToast()
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import NoteHeader from './components/NoteHeader.vue'
+import NoteMetaMenu from './components/NoteMetaMenu.vue'
+import NoteBubbleMenu from './components/NoteBubbleMenu.vue'
+import NoteSlashMenu from './components/NoteSlashMenu.vue'
+import { useNote } from './composables/useNote'
+import { noteKeys, useNoteFolders, useNoteMutations } from './composables/useNotes'
+import { useNoteEditor } from './composables/useNoteEditor'
+import { useNoteAutosave } from './composables/useNoteAutosave'
+import { useNoteImmersive } from './composables/useNoteImmersive'
+import type { Note } from './types'
+import './styles/note-content.css'
 
 const route = useRoute()
 const router = useRouter()
-const noteId = computed(() => route.params.id as string)
-const isNew = computed(() => noteId.value === 'new')
+const queryClient = useQueryClient()
+const { success, error: showError } = useToast()
+
+const routeId = computed(() => String(route.params.id ?? ''))
+/** Id real: muda de null para o id do servidor quando a nota nova é criada. */
+const savedId = ref<string | null>(null)
+const noteId = computed(() => savedId.value ?? (routeId.value === 'new' ? null : routeId.value))
+
+const { data: note, isLoading, isError, error: loadError, refetch } = useNote(() => routeId.value)
+const { data: folders } = useNoteFolders()
+const { removeNote } = useNoteMutations()
 
 const title = ref('')
 const content = ref('')
 const tags = ref<string[]>([])
 const folderId = ref<string | null>(null)
-const folders = ref<any[]>([])
-const loading = ref(true)
-const saving = ref(false)
+const emoji = ref('')
+const noteColor = ref('')
+const coverImage = ref('')
 const isPinned = ref(false)
 const pinning = ref(false)
 const improving = ref(false)
 const newTag = ref('')
-const showLinkInput = ref(false)
-const linkUrl = ref('')
+const hydratedId = ref<string | null>(null)
+const confirmDelete = ref(false)
+const confirmImprove = ref(false)
+const titleEl = ref<HTMLTextAreaElement | null>(null)
 
-// ─── Notion-like: emoji, cor e capa ───
-// Guardamos o estado original carregado do servidor para enviar SÓ o que mudou
-// (convenção do contrato: "" = limpar, omitir = manter).
-const emoji = ref('')
-const noteColor = ref('')
-const coverImage = ref('')
-const original = ref<{ emoji: string; noteColor: string; coverImage: string }>({
-  emoji: '',
-  noteColor: '',
-  coverImage: '',
-})
+/** Snapshot do servidor: `""` limpa o campo, chave omitida mantém. */
+const original = ref({ emoji: '', noteColor: '', coverImage: '' })
 
-const showEmojiPicker = ref(false)
-const showColorPicker = ref(false)
-const showCoverInput = ref(false)
-const coverUrlDraft = ref('')
+const { immersive, toggleImmersive } = useNoteImmersive()
 
-// Conjunto curado de emojis comuns para notas.
-const emojiChoices = [
-  '📝', '📌', '📒', '📚', '💡', '⭐', '✅', '🔥',
-  '🎯', '🚀', '🧠', '❤️', '⚠️', '📊', '🗂️', '🔖',
-  '💬', '🛠️', '📅', '✨', '🎨', '🧩', '🏆', '📎',
-]
+const folderItems = computed(() => [
+  { label: 'Sem pasta', value: null },
+  ...(folders.value ?? []).map((folder) => ({ label: folder.name, value: folder.id })),
+])
 
-// Swatches derivadas dos acentos/cores do projeto (cor dinâmica do usuário,
-// persistida como hex no dado — exceção válida ao "sem hex").
-const colorChoices = [
-  '#2563EB', '#7C3AED', '#059669', '#EA580C', '#DB2777',
-  '#0891B2', '#CA8A04', '#DC2626', '#475569',
-]
+function buildPayload() {
+  const payload: Record<string, unknown> = {
+    title: title.value.trim() || 'Sem título',
+    content: content.value,
+    tags: tags.value,
+    folderId: folderId.value,
+  }
+  if (emoji.value !== original.value.emoji) payload.emoji = emoji.value
+  if (noteColor.value !== original.value.noteColor) payload.noteColor = noteColor.value
+  if (coverImage.value !== original.value.coverImage) payload.coverImage = coverImage.value
+  return payload
+}
 
-const editor = useEditor({
-  content: '',
-  extensions: [
-    StarterKit.configure({
-      codeBlock: false,
-    }),
-    Link.configure({
-      openOnClick: false,
-      HTMLAttributes: { class: 'editor-link' },
-    }),
-    Placeholder.configure({
-      placeholder: 'Comece a escrever...',
-    }),
-    TextAlign.configure({
-      types: ['heading', 'paragraph'],
-    }),
-    Underline,
-    TaskList,
-    TaskItem.configure({ nested: true }),
-    Table.configure({ resizable: true }),
-    TableRow,
-    TableCell,
-    TableHeader,
-    Image.configure({ inline: true }),
-    Highlight.configure({ multicolor: true }),
-    Typography,
-    Superscript,
-    Subscript,
-    CharacterCount,
-    TextStyle,
-    Color,
-    CodeBlockLowlight.configure({ lowlight }),
-  ],
-  onUpdate: ({ editor: e }) => {
-    content.value = e.getHTML()
+function syncOriginal() {
+  original.value = {
+    emoji: emoji.value,
+    noteColor: noteColor.value,
+    coverImage: coverImage.value,
+  }
+}
+
+const {
+  state: saveState,
+  savedAt,
+  message: saveMessage,
+  markDirty,
+  flush,
+  retry: retrySave,
+} = useNoteAutosave({
+  save: async () => {
+    const payload = buildPayload()
+    try {
+      if (!noteId.value) {
+        const created = await notesService.createNote(payload)
+        savedId.value = created.id
+        hydratedId.value = created.id
+        queryClient.setQueryData(noteKeys.detail(created.id), created)
+        await router.replace(`/notes/${created.id}`)
+      } else {
+        const updated = await notesService.updateNote(noteId.value, payload)
+        queryClient.setQueryData(noteKeys.detail(updated.id), updated)
+      }
+      syncOriginal()
+      void queryClient.invalidateQueries({ queryKey: noteKeys.lists })
+    } catch (err) {
+      const requestId = getApiRequestId(err)
+      console.error('[notas] falha ao salvar', requestId ? `requestId=${requestId}` : '', err)
+      throw new Error(getApiErrorMessage(err, 'Não foi possível salvar a nota'))
+    }
+  },
+  /**
+   * Aba fechando: `fetch` com `keepalive` é o único caminho que sobrevive ao
+   * unload. Só vale para nota já existente - criar uma nota na saída daria uma
+   * nota fantasma sem o usuário saber.
+   */
+  beacon: () => {
+    if (!noteId.value) return
+    const base = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '')
+    const url = /^https?:\/\//i.test(base) ? base : base ? `https://${base}` : ''
+    const token = localStorage.getItem('token')
+    if (!url || !token) return
+    void fetch(`${url}/notes/${noteId.value}`, {
+      method: 'PATCH',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(localStorage.getItem('activeCompany')
+          ? { 'x-company-id': localStorage.getItem('activeCompany') as string }
+          : {}),
+      },
+      body: JSON.stringify(buildPayload()),
+    }).catch(() => {})
   },
 })
 
-const charCount = computed(() => editor.value?.storage.characterCount?.characters() ?? 0)
-const wordCount = computed(() => editor.value?.storage.characterCount?.words() ?? 0)
-
-const folderItems = computed<{ label: string; value: string | null }[]>(() => [
-  { label: 'Sem pasta', value: null },
-  ...folders.value.map((folder: any) => ({ label: folder.name, value: folder.id })),
-])
-
-onMounted(async () => {
-  await fetchFolders()
-  if (!isNew.value) {
-    await fetchNote()
-  }
-  loading.value = false
+// O editor é criado depois do autosave porque cada alteração dele marca a nota
+// como suja. A configuração das extensões vive em `useNoteEditor`.
+const { editor, slash } = useNoteEditor({
+  onUpdate: (html) => {
+    content.value = html
+    markDirty()
+  },
 })
 
-async function fetchFolders() {
-  try {
-    const response = await notesService.getFolders()
-    folders.value = response
-  } catch (e) {
-    showError('Erro ao carregar pastas')
-  }
+const wordCount = computed(() => editor.value?.storage.characterCount?.words() ?? 0)
+const charCount = computed(() => editor.value?.storage.characterCount?.characters() ?? 0)
+
+function hydrate(data: Note) {
+  hydratedId.value = data.id
+  title.value = data.title ?? ''
+  content.value = data.content ?? ''
+  tags.value = [...(data.tags ?? [])]
+  folderId.value = data.folderId
+  isPinned.value = !!data.isPinned
+  emoji.value = data.emoji ?? ''
+  noteColor.value = data.noteColor ?? ''
+  coverImage.value = data.coverImage ?? ''
+  syncOriginal()
+  editor.value?.commands.setContent(data.content ?? '', { emitUpdate: false })
+  void nextTick(resizeTitle)
 }
 
-async function fetchNote() {
-  try {
-    const response = await notesService.getNote(noteId.value)
-    title.value = response.title
-    content.value = response.content
-    tags.value = response.tags || []
-    folderId.value = response.folderId
-    isPinned.value = !!response.isPinned
-    emoji.value = response.emoji || ''
-    noteColor.value = response.noteColor || ''
-    coverImage.value = response.coverImage || ''
-    original.value = {
-      emoji: emoji.value,
-      noteColor: noteColor.value,
-      coverImage: coverImage.value,
-    }
+// Só hidrata quando chega uma nota diferente da que já está na tela: sem isso,
+// um refetch em background sobrescreveria o que está sendo digitado.
+watch([note, editor], ([data]) => {
+  if (!data || !editor.value || hydratedId.value === data.id) return
+  hydrate(data)
+})
 
-    if (editor.value) {
-      editor.value.commands.setContent(response.content)
-    }
-  } catch (e) {
-    showError('Erro ao carregar nota')
-  }
+function resizeTitle() {
+  const el = titleEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+function onTitleInput() {
+  resizeTitle()
+  markDirty()
+}
+
+function addTag() {
+  const value = newTag.value.trim()
+  if (!value || tags.value.includes(value)) return
+  tags.value.push(value)
+  newTag.value = ''
+  markDirty()
+}
+
+function removeTag(tag: string) {
+  tags.value = tags.value.filter((item) => item !== tag)
+  markDirty()
+}
+
+function setMeta(field: 'emoji' | 'noteColor' | 'coverImage', value: string) {
+  if (field === 'emoji') emoji.value = value
+  if (field === 'noteColor') noteColor.value = value
+  if (field === 'coverImage') coverImage.value = value
+  markDirty()
 }
 
 async function handleTogglePin() {
-  if (isNew.value || pinning.value) return
+  if (!noteId.value || pinning.value) return
   pinning.value = true
-  // Optimistic: reflete o novo estado de imediato e reverte se a API falhar.
-  isPinned.value = !isPinned.value
+  const previous = isPinned.value
+  isPinned.value = !previous
   try {
     await notesService.togglePin(noteId.value)
+    void queryClient.invalidateQueries({ queryKey: noteKeys.lists })
     success(isPinned.value ? 'Nota fixada' : 'Nota desafixada')
-  } catch (e) {
-    isPinned.value = !isPinned.value
-    showError('Erro ao fixar nota')
+  } catch (err) {
+    isPinned.value = previous
+    showError(getApiErrorMessage(err, 'Não foi possível fixar a nota'))
   } finally {
     pinning.value = false
   }
 }
 
-async function saveNote() {
-  saving.value = true
-  try {
-    if (isNew.value) {
-      // Nota nova: inclui emoji/cor/capa só quando o usuário definiu algo.
-      const data: {
-        title: string
-        content: string
-        tags: string[]
-        folderId: string | null
-        emoji?: string
-        noteColor?: string
-        coverImage?: string
-      } = {
-        title: title.value,
-        content: content.value,
-        tags: tags.value,
-        folderId: folderId.value,
-      }
-      if (emoji.value) data.emoji = emoji.value
-      if (noteColor.value) data.noteColor = noteColor.value
-      if (coverImage.value) data.coverImage = coverImage.value
-
-      const response = await notesService.createNote(data)
-      router.replace(`/notes/${response.id}`)
-      success('Nota criada com sucesso')
-    } else {
-      // Update: envia a chave só quando mudou. "" limpa, omitir mantém.
-      const data: {
-        title: string
-        content: string
-        tags: string[]
-        folderId: string | null
-        emoji?: string
-        noteColor?: string
-        coverImage?: string
-      } = {
-        title: title.value,
-        content: content.value,
-        tags: tags.value,
-        folderId: folderId.value,
-      }
-      if (emoji.value !== original.value.emoji) data.emoji = emoji.value
-      if (noteColor.value !== original.value.noteColor) data.noteColor = noteColor.value
-      if (coverImage.value !== original.value.coverImage) data.coverImage = coverImage.value
-
-      await notesService.updateNote(noteId.value, data)
-      original.value = {
-        emoji: emoji.value,
-        noteColor: noteColor.value,
-        coverImage: coverImage.value,
-      }
-      success('Nota salva com sucesso')
-    }
-  } catch (e) {
-    showError('Erro ao salvar nota')
-  } finally {
-    saving.value = false
-  }
-}
-
-function pickEmoji(value: string) {
-  emoji.value = value
-  showEmojiPicker.value = false
-}
-
-function clearEmoji() {
-  emoji.value = ''
-  showEmojiPicker.value = false
-}
-
-function pickColor(value: string) {
-  noteColor.value = value
-  showColorPicker.value = false
-}
-
-function clearColor() {
-  noteColor.value = ''
-  showColorPicker.value = false
-}
-
-function openCoverInput() {
-  coverUrlDraft.value = coverImage.value
-  showCoverInput.value = !showCoverInput.value
-}
-
-function applyCover() {
-  coverImage.value = coverUrlDraft.value.trim()
-  showCoverInput.value = false
-}
-
-function clearCover() {
-  coverImage.value = ''
-  coverUrlDraft.value = ''
-  showCoverInput.value = false
-}
-
-async function improveNoteText() {
+async function runImprove() {
+  confirmImprove.value = false
   const text = editor.value?.getText().trim()
   if (!text) {
     showError('Escreva algo antes de melhorar com IA')
     return
   }
-
   improving.value = true
   try {
-    const response = await aiService.improve(text, 'Melhore clareza, estrutura e tom mantendo o sentido original.')
-    editor.value?.commands.setContent(response.text)
-    content.value = editor.value?.getHTML() || response.text
-    success('Texto melhorado com IA')
-  } catch {
-    showError('Não foi possível melhorar o texto')
+    const response = await aiService.improve(
+      text,
+      'Melhore clareza, estrutura e tom mantendo o sentido original.',
+    )
+    // Um único passo de histórico: Ctrl+Z devolve o texto original inteiro.
+    editor.value?.chain().focus().setContent(response.text).run()
+    content.value = editor.value?.getHTML() ?? response.text
+    markDirty()
+    success('Texto melhorado. Ctrl+Z desfaz.')
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não foi possível melhorar o texto'))
   } finally {
     improving.value = false
   }
 }
 
-function addTag() {
-  if (newTag.value.trim() && !tags.value.includes(newTag.value.trim())) {
-    tags.value.push(newTag.value.trim())
-    newTag.value = ''
+async function handleDelete() {
+  if (!noteId.value) return
+  try {
+    await removeNote.mutateAsync(noteId.value)
+    confirmDelete.value = false
+    success('Nota excluída')
+    await router.push('/notes')
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não foi possível excluir a nota'))
   }
 }
 
-function removeTag(tag: string) {
-  tags.value = tags.value.filter(t => t !== tag)
-}
-
-function goBack() {
-  router.push('/notes')
-}
-
-function setLink() {
-  if (!linkUrl.value) {
-    editor.value?.chain().focus().extendMarkRange('link').unsetLink().run()
-  } else {
-    editor.value?.chain().focus().extendMarkRange('link').setLink({ href: linkUrl.value }).run()
-  }
-  showLinkInput.value = false
-  linkUrl.value = ''
-}
-
-function addImage() {
-  const url = window.prompt('URL da imagem:')
-  if (url) {
-    editor.value?.chain().focus().setImage({ src: url }).run()
+/** Ctrl+S grava na hora; a página inteira responde, não só o corpo do editor. */
+function onKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    void flush()
   }
 }
 
-function insertTable() {
-  editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-}
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  if (routeId.value === 'new') void nextTick(() => titleEl.value?.focus())
+})
 
-// Keyboard shortcut for save
-watch(() => editor.value, (e) => {
-  if (!e) return
-  const el = e.view.dom
-  el.addEventListener('keydown', (event: KeyboardEvent) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-      event.preventDefault()
-      saveNote()
-    }
-  })
-}, { once: true })
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <div class="note-editor-page">
-    <!-- Header -->
-    <div class="editor-header">
-      <div class="header-left">
-        <button class="back-btn" @click="goBack">
-          <ArrowLeft :size="18" />
-        </button>
-        <input
-          v-model="title"
-          type="text"
-          class="title-input"
-          placeholder="Titulo da nota..."
+  <!--
+    No modo imersivo a página é teleportada para o body: o conteúdo da rota vive
+    dentro do main do shell, que cria contexto de empilhamento próprio, e nenhum
+    z-index daqui de dentro passa por cima da topbar.
+  -->
+  <Teleport to="body" :disabled="!immersive">
+  <div class="note-page" :class="{ 'note-page--immersive': immersive }">
+    <NoteHeader
+      :save-state="saveState"
+      :saved-at="savedAt"
+      :save-message="saveMessage"
+      :is-pinned="isPinned"
+      :pinning="pinning"
+      :immersive="immersive"
+      :is-new="!noteId"
+      :word-count="wordCount"
+      :char-count="charCount"
+      @back="router.push('/notes')"
+      @retry="retrySave()"
+      @toggle-pin="handleTogglePin"
+      @toggle-immersive="toggleImmersive"
+    >
+      <template #actions>
+        <NoteMetaMenu
+          :emoji="emoji"
+          :note-color="noteColor"
+          :cover-image="coverImage"
+          :can-delete="!!noteId"
+          :improving="improving"
+          @update:emoji="setMeta('emoji', $event)"
+          @update:note-color="setMeta('noteColor', $event)"
+          @update:cover-image="setMeta('coverImage', $event)"
+          @improve="confirmImprove = true"
+          @remove="confirmDelete = true"
         />
+      </template>
+    </NoteHeader>
+
+    <div class="note-scroll">
+      <div v-if="isLoading" class="note-paper">
+        <Skeleton type="text" :lines="2" />
+        <Skeleton type="block" height="360px" />
       </div>
-      <div class="header-right">
-        <span class="char-count">{{ wordCount }} palavras &middot; {{ charCount }} chars</span>
 
-        <!-- Emoji -->
-        <div class="meta-control">
-          <button
-            class="meta-btn"
-            :class="{ 'meta-btn--set': !!emoji }"
-            title="Emoji da nota"
-            @click="showEmojiPicker = !showEmojiPicker; showColorPicker = false"
-          >
-            <span v-if="emoji" class="meta-emoji">{{ emoji }}</span>
-            <Smile v-else :size="16" />
-          </button>
-          <div v-if="showEmojiPicker" class="meta-popover">
-            <div class="emoji-grid">
-              <button
-                v-for="e in emojiChoices"
-                :key="e"
-                class="emoji-option"
-                :class="{ 'emoji-option--active': emoji === e }"
-                @click="pickEmoji(e)"
-              >
-                {{ e }}
-              </button>
-            </div>
-            <button class="meta-clear" @click="clearEmoji">Remover emoji</button>
-          </div>
-        </div>
-
-        <!-- Cor -->
-        <div class="meta-control">
-          <button
-            class="meta-btn"
-            title="Cor da nota"
-            @click="showColorPicker = !showColorPicker; showEmojiPicker = false"
-          >
-            <span v-if="noteColor" class="meta-color-dot" :style="{ backgroundColor: noteColor }" />
-            <Palette v-else :size="16" />
-          </button>
-          <div v-if="showColorPicker" class="meta-popover">
-            <div class="color-grid">
-              <button
-                v-for="c in colorChoices"
-                :key="c"
-                class="color-option"
-                :class="{ 'color-option--active': noteColor === c }"
-                :style="{ backgroundColor: c }"
-                :title="c"
-                @click="pickColor(c)"
-              />
-            </div>
-            <button class="meta-clear" @click="clearColor">Limpar cor</button>
-          </div>
-        </div>
-
-        <!-- Capa -->
-        <button
-          class="meta-btn"
-          :class="{ 'meta-btn--set': !!coverImage }"
-          title="Imagem de capa"
-          @click="openCoverInput"
-        >
-          <ImagePlus :size="16" />
-        </button>
-
-        <button
-          v-if="!isNew"
-          class="pin-btn"
-          :class="{ 'pin-btn--active': isPinned }"
-          :disabled="pinning"
-          :title="isPinned ? 'Desafixar nota' : 'Fixar nota'"
-          :aria-pressed="isPinned"
-          @click="handleTogglePin"
-        >
-          <Pin :size="16" />
-        </button>
-        <button class="save-btn" :disabled="saving" @click="saveNote">
-          <component :is="saving ? Loader2 : Save" :size="16" :class="{ 'spin': saving }" />
-          {{ saving ? 'Salvando...' : 'Salvar' }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Toolbar -->
-    <div class="editor-toolbar">
-      <!-- Undo/Redo -->
-      <button class="toolbar-btn" @click="editor?.chain().focus().undo().run()" :disabled="!editor?.can().undo()">
-        <Undo2 :size="15" />
-      </button>
-      <button class="toolbar-btn" @click="editor?.chain().focus().redo().run()" :disabled="!editor?.can().redo()">
-        <Redo2 :size="15" />
-      </button>
-      <button class="toolbar-btn" :disabled="improving" title="Melhorar texto com IA" @click="improveNoteText">
-        <component :is="improving ? Loader2 : Sparkles" :size="15" :class="{ spin: improving }" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Text formatting -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('bold') }" @click="editor?.chain().focus().toggleBold().run()">
-        <Bold :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('italic') }" @click="editor?.chain().focus().toggleItalic().run()">
-        <Italic :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('underline') }" @click="editor?.chain().focus().toggleUnderline().run()">
-        <UnderlineIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('strike') }" @click="editor?.chain().focus().toggleStrike().run()">
-        <Strikethrough :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Headings -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('heading', { level: 1 }) }" @click="editor?.chain().focus().toggleHeading({ level: 1 }).run()">
-        <Heading1 :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('heading', { level: 2 }) }" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">
-        <Heading2 :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('heading', { level: 3 }) }" @click="editor?.chain().focus().toggleHeading({ level: 3 }).run()">
-        <Heading3 :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Lists -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()">
-        <List :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('orderedList') }" @click="editor?.chain().focus().toggleOrderedList().run()">
-        <ListOrdered :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('taskList') }" @click="editor?.chain().focus().toggleTaskList().run()">
-        <ListChecks :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Block elements -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('blockquote') }" @click="editor?.chain().focus().toggleBlockquote().run()">
-        <Quote :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('code') }" @click="editor?.chain().focus().toggleCode().run()">
-        <Code :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('codeBlock') }" @click="editor?.chain().focus().toggleCodeBlock().run()">
-        <Code2 :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Alignment -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive({ textAlign: 'left' }) }" @click="editor?.chain().focus().setTextAlign('left').run()">
-        <AlignLeft :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive({ textAlign: 'center' }) }" @click="editor?.chain().focus().setTextAlign('center').run()">
-        <AlignCenter :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive({ textAlign: 'right' }) }" @click="editor?.chain().focus().setTextAlign('right').run()">
-        <AlignRight :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive({ textAlign: 'justify' }) }" @click="editor?.chain().focus().setTextAlign('justify').run()">
-        <AlignJustify :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Extras -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('highlight') }" @click="editor?.chain().focus().toggleHighlight().run()">
-        <Highlighter :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('superscript') }" @click="editor?.chain().focus().toggleSuperscript().run()">
-        <SuperscriptIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('subscript') }" @click="editor?.chain().focus().toggleSubscript().run()">
-        <SubscriptIcon :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Insert -->
-      <button class="toolbar-btn" @click="showLinkInput = !showLinkInput">
-        <LinkIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" @click="addImage">
-        <ImageIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" @click="insertTable">
-        <TableIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" @click="editor?.chain().focus().setHorizontalRule().run()">
-        <Minus :size="15" />
-      </button>
-    </div>
-
-    <!-- Cover URL input bar -->
-    <div v-if="showCoverInput" class="link-bar">
-      <input
-        v-model="coverUrlDraft"
-        type="url"
-        placeholder="URL da imagem de capa (https://...)"
-        class="link-input"
-        @keydown.enter.prevent="applyCover"
-      />
-      <button class="link-bar-btn" @click="applyCover">Aplicar</button>
-      <button v-if="coverImage" class="link-bar-btn" @click="clearCover">Remover capa</button>
-      <button class="link-bar-btn link-bar-btn--cancel" @click="showCoverInput = false">
-        <X :size="14" />
-      </button>
-    </div>
-
-    <!-- Link input bar -->
-    <div v-if="showLinkInput" class="link-bar">
-      <input
-        v-model="linkUrl"
-        type="url"
-        placeholder="https://..."
-        class="link-input"
-        @keydown.enter.prevent="setLink"
-      />
-      <button class="link-bar-btn" @click="setLink">Aplicar</button>
-      <button class="link-bar-btn link-bar-btn--cancel" @click="showLinkInput = false">
-        <X :size="14" />
-      </button>
-    </div>
-
-    <!-- Table toolbar (contextual) -->
-    <div v-if="editor?.isActive('table')" class="table-toolbar">
-      <button class="toolbar-btn toolbar-btn--sm" @click="(editor?.chain().focus() as any).addColumnBefore().run()">
-        <Plus :size="13" /> Col antes
-      </button>
-      <button class="toolbar-btn toolbar-btn--sm" @click="(editor?.chain().focus() as any).addColumnAfter().run()">
-        <Plus :size="13" /> Col depois
-      </button>
-      <button class="toolbar-btn toolbar-btn--sm" @click="(editor?.chain().focus() as any).addRowBefore().run()">
-        <Plus :size="13" /> Linha antes
-      </button>
-      <button class="toolbar-btn toolbar-btn--sm" @click="(editor?.chain().focus() as any).addRowAfter().run()">
-        <Plus :size="13" /> Linha depois
-      </button>
-      <div class="toolbar-divider" />
-      <button class="toolbar-btn toolbar-btn--sm" @click="(editor?.chain().focus() as any).deleteColumn().run()">
-        <Trash2 :size="13" /> Col
-      </button>
-      <button class="toolbar-btn toolbar-btn--sm" @click="(editor?.chain().focus() as any).deleteRow().run()">
-        <Trash2 :size="13" /> Linha
-      </button>
-      <button class="toolbar-btn toolbar-btn--sm toolbar-btn--danger" @click="(editor?.chain().focus() as any).deleteTable().run()">
-        <Trash2 :size="13" /> Tabela
-      </button>
-      <div class="toolbar-divider" />
-      <button class="toolbar-btn toolbar-btn--sm" @click="(editor?.chain().focus() as any).mergeCells().run()">
-        <TableCellsMerge :size="13" /> Mesclar
-      </button>
-      <button class="toolbar-btn toolbar-btn--sm" @click="(editor?.chain().focus() as any).splitCell().run()">
-        <TableCellsSplit :size="13" /> Dividir
-      </button>
-    </div>
-
-    <!-- Editor layout -->
-    <div class="editor-layout">
-      <div class="editor-main">
-        <div v-if="loading" class="editor-loading">Carregando...</div>
-        <template v-else>
-          <div class="editor-content">
-            <!-- Capa -->
-            <div v-if="coverImage" class="note-cover">
-              <img :src="coverImage" alt="Capa da nota" class="note-cover-img" />
-            </div>
-
-            <!-- Emoji + acento de cor -->
-            <div
-              v-if="emoji || noteColor"
-              class="note-decor"
-              :class="{ 'note-decor--accent': !!noteColor }"
-              :style="noteColor ? { borderLeftColor: noteColor } : undefined"
-            >
-              <span v-if="emoji" class="note-decor-emoji">{{ emoji }}</span>
-            </div>
-
-            <EditorContent :editor="editor" />
-          </div>
+      <EmptyState
+        v-else-if="isError"
+        class="note-paper"
+        title="Não foi possível abrir a nota"
+        :description="getApiErrorMessage(loadError, 'Verifique sua conexão e tente de novo.')"
+      >
+        <template #action>
+          <button type="button" class="note-retry" @click="refetch()">Tentar de novo</button>
         </template>
-      </div>
+      </EmptyState>
 
-      <!-- Sidebar -->
-      <div class="editor-sidebar">
-        <div class="sidebar-section">
-          <label class="sidebar-label">Pasta</label>
-          <AppSelect
-            v-model="folderId"
-            :items="folderItems"
-            placeholder="Sem pasta"
-            label="Pasta"
-            density="compact"
+      <article v-else class="note-paper">
+        <img v-if="coverImage" :src="coverImage" alt="" class="note-cover" />
+
+        <div class="note-title-row">
+          <span v-if="emoji" class="note-title-emoji" aria-hidden="true">{{ emoji }}</span>
+          <textarea
+            ref="titleEl"
+            v-model="title"
+            class="note-title"
+            rows="1"
+            placeholder="Sem título"
+            aria-label="Título da nota"
+            @input="onTitleInput"
+            @keydown.enter.prevent="editor?.commands.focus('start')"
           />
         </div>
 
-        <div class="sidebar-section">
-          <label class="sidebar-label">Tags</label>
-          <div class="tags-input">
-            <input
-              v-model="newTag"
-              type="text"
-              placeholder="Adicionar tag..."
-              @keydown.enter.prevent="addTag"
+        <div class="note-props">
+          <div class="note-props__folder">
+            <AppSelect
+              v-model="folderId"
+              :items="folderItems"
+              placeholder="Sem pasta"
+              label="Pasta"
+              density="compact"
+              @update:model-value="markDirty()"
             />
-            <button @click="addTag">
-              <Plus :size="14" />
-            </button>
           </div>
-          <div class="tags-list">
-            <span v-for="tag in tags" :key="tag" class="tag">
+
+          <div class="note-tags">
+            <span v-for="tag in tags" :key="tag" class="note-tag">
               {{ tag }}
-              <button @click="removeTag(tag)">
-                <X :size="12" />
+              <button type="button" :aria-label="`Remover tag ${tag}`" @click="removeTag(tag)">
+                <X :size="11" />
               </button>
             </span>
+            <div class="note-tag-add">
+              <input
+                v-model="newTag"
+                type="text"
+                placeholder="Nova tag"
+                aria-label="Adicionar tag"
+                @keydown.enter.prevent="addTag"
+              />
+              <button type="button" aria-label="Adicionar tag" @click="addTag">
+                <Plus :size="12" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+
+        <div
+          class="note-prose"
+          :style="noteColor ? { '--note-accent': noteColor } : undefined"
+          :class="{ 'note-prose--accent': !!noteColor }"
+        >
+          <EditorContent :editor="editor" />
+        </div>
+      </article>
     </div>
+
+    <NoteBubbleMenu :editor="editor" />
+    <NoteSlashMenu :state="slash" @hover="slash.index = $event" />
+    <DragHandle v-if="editor" :editor="editor" class="note-drag">
+      <GripVertical :size="15" />
+    </DragHandle>
+
+    <ConfirmDialog
+      v-model="confirmDelete"
+      title="Excluir nota"
+      message="A nota e todo o conteúdo dela serão apagados. Não dá para desfazer."
+      confirm-label="Excluir"
+      danger
+      :loading="removeNote.isPending.value"
+      @confirm="handleDelete"
+    />
+
+    <ConfirmDialog
+      v-model="confirmImprove"
+      title="Melhorar com IA"
+      message="A IA vai reescrever o conteúdo inteiro da nota. Você pode desfazer com Ctrl+Z depois."
+      confirm-label="Melhorar"
+      @confirm="runImprove"
+    />
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
-.note-editor-page {
+.note-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background: var(--surface);
+  min-height: 100%;
 }
 
-/* ─── Header ─── */
-.editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.note-scroll {
   flex: 1;
+  padding: 40px 24px 25vh;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.char-count {
-  font-size: 11px;
-  color: rgba(var(--v-theme-secondary), 0.35);
-  white-space: nowrap;
-}
-
-.back-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: none;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  color: rgba(var(--v-theme-secondary), 0.6);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.back-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgb(var(--v-theme-secondary));
-}
-
-.pin-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: none;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  color: rgba(var(--v-theme-secondary), 0.6);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.pin-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgb(var(--v-theme-secondary));
-}
-
-.pin-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.pin-btn--active {
-  background: rgba(var(--v-theme-warning), 0.12);
-  color: rgb(var(--v-theme-warning));
-}
-
-.pin-btn--active:hover {
-  background: rgba(var(--v-theme-warning), 0.18);
-  color: rgb(var(--v-theme-warning));
-}
-
-.title-input {
-  flex: 1;
-  font-size: 18px;
-  font-weight: 600;
-  border: none;
-  background: transparent;
-  color: rgb(var(--v-theme-secondary));
-  outline: none;
-}
-
-.title-input::placeholder {
-  color: rgba(var(--v-theme-secondary), 0.4);
-}
-
-.save-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: rgb(var(--v-theme-secondary));
-  color: var(--surface);
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-}
-
-.save-btn:hover { opacity: 0.9; }
-.save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-/* ─── Meta controls (emoji / cor / capa) ─── */
-.meta-control {
-  position: relative;
-  display: flex;
-}
-
-.meta-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: none;
-  background: rgba(var(--v-theme-secondary), 0.05);
-  color: rgba(var(--v-theme-secondary), 0.6);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.meta-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgb(var(--v-theme-secondary));
-}
-
-.meta-btn--set {
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgb(var(--v-theme-secondary));
-}
-
-.meta-emoji {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.meta-color-dot {
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.15);
-}
-
-.meta-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 20;
-  padding: 10px;
-  border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.12);
-  box-shadow: var(--shadow-overlay);
-  width: max-content;
-}
-
-.emoji-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 2px;
-  margin-bottom: 8px;
-}
-
-.emoji-option {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.emoji-option:hover {
-  background: rgba(var(--v-theme-secondary), 0.08);
-}
-
-.emoji-option--active {
-  background: rgba(var(--v-theme-secondary), 0.14);
-}
-
-.color-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.color-option {
-  width: 26px;
-  height: 26px;
-  border-radius: 999px;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: transform 0.12s ease;
-}
-
-.color-option:hover {
-  transform: scale(1.1);
-}
-
-.color-option--active {
-  border-color: rgb(var(--v-theme-secondary));
-}
-
-.meta-clear {
+/* Coluna de leitura: largura fixa em ch para a linha não passar do confortável. */
+.note-paper {
   width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(var(--v-theme-secondary), 0.06);
-  color: rgba(var(--v-theme-secondary), 0.7);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.meta-clear:hover {
-  background: rgba(var(--v-theme-secondary), 0.12);
-}
-
-.spin { animation: spin 1s linear infinite; }
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-/* ─── Toolbar ─── */
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  row-gap: 8px;
-  padding: 10px 20px;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  flex-wrap: wrap;
-}
-
-.toolbar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.toolbar-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.07);
-  color: rgb(var(--v-theme-secondary));
-}
-
-.toolbar-btn.active {
-  background: rgba(var(--v-theme-secondary), 0.12);
-  color: rgb(var(--v-theme-secondary));
-}
-
-.toolbar-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.toolbar-btn--sm {
-  width: auto;
-  min-height: 32px;
-  padding: 6px 10px;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.toolbar-btn--danger:hover {
-  background: rgba(var(--v-theme-error), 0.1);
-  color: rgb(var(--v-theme-error));
-}
-
-.toolbar-divider {
-  width: 1px;
-  height: 18px;
-  background: rgba(var(--v-theme-secondary), 0.08);
-  margin: 0 4px;
-}
-
-/* ─── Link bar ─── */
-.link-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 20px;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  background: rgba(var(--v-theme-secondary), 0.03);
-}
-
-.link-input {
-  flex: 1;
-  max-width: 400px;
-  padding: 6px 10px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.12);
-  border-radius: 6px;
-  font-size: 13px;
-  background: transparent;
-  color: rgb(var(--v-theme-secondary));
-  outline: none;
-}
-
-.link-input:focus {
-  border-color: rgba(var(--v-theme-secondary), 0.3);
-}
-
-.link-bar-btn {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(var(--v-theme-secondary), 0.1);
-  color: rgba(var(--v-theme-secondary), 0.7);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.link-bar-btn:hover {
-  background: rgba(var(--v-theme-secondary), 0.15);
-}
-
-.link-bar-btn--cancel {
-  display: flex;
-  align-items: center;
-  padding: 6px;
-}
-
-/* ─── Table toolbar ─── */
-.table-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 20px;
-  border-bottom: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  background: rgba(var(--v-theme-secondary), 0.02);
-  flex-wrap: wrap;
-}
-
-/* ─── Editor layout ─── */
-.editor-layout {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-.editor-main {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-}
-
-.editor-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: rgba(var(--v-theme-secondary), 0.4);
-}
-
-.editor-content {
-  max-width: 800px;
+  max-width: 72ch;
   margin: 0 auto;
 }
 
-/* ─── Capa + emoji/cor no topo do editor ─── */
+/*
+ * Imersivo cobre a janela inteira em vez de tentar esconder o shell por fora:
+ * a nota não sabe (nem deveria saber) qual das três variantes de shell está
+ * ativa, e um overlay próprio funciona igual nas três.
+ */
+.note-page--immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.note-page--immersive .note-scroll {
+  padding-top: 76px;
+}
+
 .note-cover {
   width: 100%;
-  height: 200px;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  margin-bottom: 16px;
-  background: rgba(var(--v-theme-secondary), 0.05);
-}
-
-.note-cover-img {
-  width: 100%;
-  height: 100%;
+  height: 180px;
+  margin-bottom: 28px;
   object-fit: cover;
-  display: block;
+  border-radius: var(--radius-lg);
 }
 
-.note-decor {
-  display: flex;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.note-decor--accent {
-  padding-left: 12px;
-  border-left: 4px solid transparent;
-}
-
-.note-decor-emoji {
-  font-size: 40px;
-  line-height: 1.1;
-}
-
-/* ─── ProseMirror styles ─── */
-.editor-content :deep(.ProseMirror) {
-  min-height: 400px;
-  outline: none;
-  font-size: 15px;
-  line-height: 1.7;
-  color: rgb(var(--v-theme-secondary));
-}
-
-.editor-content :deep(.ProseMirror p.is-editor-empty:first-child::before) {
-  content: attr(data-placeholder);
-  float: left;
-  color: rgba(var(--v-theme-secondary), 0.3);
-  pointer-events: none;
-  height: 0;
-}
-
-.editor-content :deep(.ProseMirror h1) {
-  font-size: 1.8em;
-  font-weight: 700;
-  margin: 1em 0 0.4em;
-  line-height: 1.3;
-}
-
-.editor-content :deep(.ProseMirror h2) {
-  font-size: 1.4em;
-  font-weight: 600;
-  margin: 0.8em 0 0.3em;
-  line-height: 1.3;
-}
-
-.editor-content :deep(.ProseMirror h3) {
-  font-size: 1.15em;
-  font-weight: 600;
-  margin: 0.7em 0 0.25em;
-  line-height: 1.4;
-}
-
-.editor-content :deep(.ProseMirror blockquote) {
-  border-left: 3px solid rgba(var(--v-theme-secondary), 0.15);
-  padding-left: 16px;
-  margin: 12px 0;
-  color: rgba(var(--v-theme-secondary), 0.7);
-  font-style: italic;
-}
-
-.editor-content :deep(.ProseMirror code) {
-  background: rgba(var(--v-theme-secondary), 0.08);
-  border-radius: 4px;
-  padding: 2px 5px;
-  font-size: 0.9em;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-}
-
-.editor-content :deep(.ProseMirror pre) {
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  border-radius: 8px;
-  padding: 16px;
-  margin: 12px 0;
-  overflow-x: auto;
-}
-
-.editor-content :deep(.ProseMirror pre code) {
-  background: none;
-  padding: 0;
-  border-radius: 0;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-/* Syntax highlight colors */
-.editor-content :deep(.hljs-keyword) { color: #c678dd; }
-.editor-content :deep(.hljs-string) { color: #98c379; }
-.editor-content :deep(.hljs-number) { color: #d19a66; }
-.editor-content :deep(.hljs-comment) { color: rgba(var(--v-theme-secondary), 0.35); font-style: italic; }
-.editor-content :deep(.hljs-function) { color: #61afef; }
-.editor-content :deep(.hljs-title) { color: #e5c07b; }
-.editor-content :deep(.hljs-built_in) { color: #56b6c2; }
-.editor-content :deep(.hljs-attr) { color: #d19a66; }
-.editor-content :deep(.hljs-variable) { color: #e06c75; }
-.editor-content :deep(.hljs-type) { color: #e5c07b; }
-
-/* Link styles */
-.editor-content :deep(.editor-link) {
-  color: #61afef;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-
-/* Highlight */
-.editor-content :deep(mark) {
-  background: rgba(255, 220, 50, 0.25);
-  border-radius: 2px;
-  padding: 1px 2px;
-}
-
-/* Task list */
-.editor-content :deep(ul[data-type="taskList"]) {
-  list-style: none;
-  padding-left: 0;
-}
-
-.editor-content :deep(ul[data-type="taskList"] li) {
+.note-title-row {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin: 4px 0;
+  gap: 12px;
 }
 
-.editor-content :deep(ul[data-type="taskList"] li label) {
-  margin-top: 3px;
+.note-title-emoji {
+  font-size: 38px;
+  line-height: 1.15;
 }
 
-.editor-content :deep(ul[data-type="taskList"] li label input[type="checkbox"]) {
-  width: 16px;
-  height: 16px;
-  accent-color: rgb(var(--v-theme-secondary));
-  cursor: pointer;
-}
-
-.editor-content :deep(ul[data-type="taskList"] li[data-checked="true"] > div > p) {
-  text-decoration: line-through;
-  color: rgba(var(--v-theme-secondary), 0.4);
-}
-
-/* Table styles */
-.editor-content :deep(table) {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 16px 0;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.editor-content :deep(th),
-.editor-content :deep(td) {
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  padding: 8px 12px;
-  text-align: left;
-  min-width: 80px;
-  vertical-align: top;
-}
-
-.editor-content :deep(th) {
-  background: rgba(var(--v-theme-secondary), 0.06);
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.editor-content :deep(td) {
-  font-size: 14px;
-}
-
-.editor-content :deep(.selectedCell) {
-  background: rgba(var(--v-theme-secondary), 0.08);
-}
-
-.editor-content :deep(.column-resize-handle) {
-  position: absolute;
-  right: -2px;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: rgba(var(--v-theme-secondary), 0.2);
-  cursor: col-resize;
-}
-
-/* Image */
-.editor-content :deep(img) {
-  max-width: 100%;
-  border-radius: 8px;
-  margin: 8px 0;
-}
-
-/* Horizontal rule */
-.editor-content :deep(hr) {
-  border: none;
-  height: 1px;
-  background: rgba(var(--v-theme-secondary), 0.1);
-  margin: 24px 0;
-}
-
-/* ─── Sidebar ─── */
-.editor-sidebar {
-  width: 240px;
-  border-left: 1px solid rgba(var(--v-theme-secondary), 0.08);
-  padding: 20px;
-  overflow-y: auto;
-}
-
-.sidebar-section {
-  margin-bottom: 24px;
-}
-
-.sidebar-label {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.5);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 8px;
-}
-
-.tags-input {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.tags-input input {
+.note-title {
   flex: 1;
-  padding: 6px 10px;
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1);
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 0;
+  overflow: hidden;
   background: transparent;
-  color: rgb(var(--v-theme-secondary));
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-title-large, 34px);
+  font-weight: 680;
+  letter-spacing: -0.028em;
+  line-height: 1.15;
+  resize: none;
+}
+
+.note-title:focus {
   outline: none;
 }
 
-.tags-input button {
+.note-title::placeholder {
+  color: var(--text-4);
+}
+
+.note-props {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(var(--v-theme-secondary), 0.08);
-  color: rgba(var(--v-theme-secondary), 0.6);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 14px 0 26px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
 }
 
-.tags-input button:hover {
-  background: rgba(var(--v-theme-secondary), 0.12);
-  color: rgb(var(--v-theme-secondary));
+.note-props__folder {
+  flex: 0 0 200px;
+  width: 200px;
+  max-width: 200px;
 }
 
-.tags-list {
+.note-tags {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.tag {
+.note-tag {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
-  background: rgba(var(--v-theme-secondary), 0.08);
-  border-radius: 4px;
-  font-size: 12px;
-  color: rgba(var(--v-theme-secondary), 0.7);
+  padding: 3px 6px 3px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 11.5px;
 }
 
-.tag button {
+.note-tag button {
+  display: inline-flex;
+  padding: 2px;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.note-tag button:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.note-tag-add {
+  display: inline-flex;
+  align-items: center;
+}
+
+.note-tag-add input {
+  width: 92px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: 999px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11.5px;
+}
+
+.note-tag-add input:focus {
+  outline: none;
+  border-style: solid;
+  border-color: var(--accent);
+}
+
+.note-tag-add button {
+  display: inline-flex;
+  margin-left: -24px;
+  padding: 3px;
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+/* Faixa da cor escolhida para a nota, à esquerda do corpo. */
+.note-prose--accent {
+  padding-left: 16px;
+  border-left: 3px solid var(--note-accent);
+}
+
+.note-retry {
+  padding: 8px 14px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--accent-fg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.note-drag {
   display: flex;
   align-items: center;
-  border: none;
-  background: transparent;
-  color: rgba(var(--v-theme-secondary), 0.4);
-  cursor: pointer;
-  padding: 0;
+  justify-content: center;
+  width: 20px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-4);
+  cursor: grab;
 }
 
-.tag button:hover {
-  color: rgba(var(--v-theme-secondary), 0.7);
+.note-drag:hover {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+@media (max-width: 720px) {
+  .note-scroll {
+    padding: 24px 16px 25vh;
+  }
+  .note-title {
+    font-size: 26px;
+  }
 }
 </style>

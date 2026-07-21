@@ -1,18 +1,19 @@
 {
-  "generatedAt": "2026-07-03T18:35:32.341Z",
+  "generatedAt": "2026-07-21T21:53:41.447Z",
   "model": "Xenova/all-MiniLM-L6-v2",
   "counts": {
-    "specs": 15,
-    "epics": 0,
-    "memories": 3,
+    "specs": 20,
+    "epics": 1,
+    "memories": 6,
     "enriched": 0
   },
   "statusByName": {
     "Desconhecido": 8,
     "Em Implementação — F1–F4 entregues": 1,
     "Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)": 1,
+    "In Review": 4,
     "Planejada (não iniciada)": 1,
-    "Concluído": 1,
+    "Concluído": 2,
     "Pronto para implementar": 1,
     "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)": 1,
     "aprovada para implementação": 1
@@ -109,6 +110,25 @@
       ]
     },
     {
+      "path": "docs/specs/epicos/notas-colaborativas-premium.md",
+      "kind": "spec",
+      "isEpic": true,
+      "title": "Notas colaborativas premium",
+      "status": "In Review",
+      "lastUpdated": "2026-07-21",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Research Findings",
+        "Decisões de Arquitetura (valem para todas as fases)",
+        "Riscos e Mitigações",
+        "Fases",
+        "Definition of Done do épico",
+        "Perguntas em Aberto",
+        "Change Log"
+      ]
+    },
+    {
       "path": "docs/specs/FRONT-END_SPEC.md",
       "kind": "spec",
       "isEpic": false,
@@ -160,7 +180,7 @@
         "Visão Geral",
         "Discovery",
         "1.1 Fase L1 — Tasks Stack (TaskDetails + KanbanBoard + TasksView)",
-        "1.2 Fase L2 — Notes Stack (NoteModal + NoteEditorView + NotesView + TiptapEditor)",
+        "1.2 Fase L2 — Notes Stack (ABSORVIDA)",
         "1.3 Fase L3 — Tickets + Reports + Workspace",
         "1.4 Fase L4 — Modais administrativos e polish final",
         "2.1 Novo primitive: `TipTapToolbar`",
@@ -175,6 +195,113 @@
         "Global (ao fechar L4)",
         "Definition of Done",
         "Perguntas em aberto"
+      ]
+    },
+    {
+      "path": "docs/specs/notas-p1-editor-premium.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Notas P1 - editor premium, pastas e autosave",
+      "status": "Concluído",
+      "lastUpdated": "2026-07-21 (implementada)",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Research Findings",
+        "Requisitos Não-Funcionais",
+        "Design visual",
+        "User Stories",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Desvios da spec durante a implementação",
+        "Verificação executada",
+        "Perguntas em Aberto",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/notas-p2-compartilhamento.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Notas P2 - compartilhar com a equipe e por link",
+      "status": "In Review",
+      "lastUpdated": "2026-07-21",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Research Findings",
+        "Riscos e Mitigações",
+        "Modelo de dados",
+        "Contrato de API",
+        "Requisitos Não-Funcionais",
+        "User Stories",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Perguntas em Aberto",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/notas-p3-edicao-ao-vivo.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Notas P3 - edição ao vivo",
+      "status": "In Review",
+      "lastUpdated": "2026-07-21",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Research Findings",
+        "Riscos e Mitigações",
+        "Modelo de dados",
+        "Arquitetura",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Perguntas em Aberto",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/notas-p4-rabisco.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Notas P4 - bloco de rabisco a mão livre",
+      "status": "In Review",
+      "lastUpdated": "2026-07-21",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Research Findings",
+        "Riscos e Mitigações",
+        "Arquitetura",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Perguntas em Aberto",
+        "Change Log"
       ]
     },
     {
@@ -356,10 +483,24 @@
       "type": "project"
     },
     {
+      "path": "envs-producao-railway.md",
+      "kind": "memory",
+      "name": "envs-producao-railway",
+      "description": "A API em producao (Railway) roda sem ENCRYPTION_KEY/JWT_SECRET conferidas; segredos de empresa cifrados com chave publica do codigo",
+      "type": "project"
+    },
+    {
       "path": "overnight-fix-program.md",
       "kind": "memory",
       "name": "overnight-fix-program",
       "description": "Programa overnight (02/07/2026) de correção total do work-flow — plano de ondas, estado e caminho do relatório de auditoria",
+      "type": "project"
+    },
+    {
+      "path": "qr-microservice-roles-simplification.md",
+      "kind": "memory",
+      "name": "qr-microservice-roles-simplification",
+      "description": "Estado da simplificação de roles (ADMIN/WORKER) + QR pastas + microserviço de QR por token no work-flow",
       "type": "project"
     },
     {
@@ -368,6 +509,13 @@
       "name": "user-nicolas-workstyle",
       "description": "Como o Nicolas gosta de trabalhar — delega com alta confiança, spec-driven, PT-BR casual",
       "type": "feedback"
+    },
+    {
+      "path": "verificacao-visual-cdp.md",
+      "kind": "memory",
+      "name": "verificacao-visual-cdp",
+      "description": "Como verificar visualmente telas autenticadas do work-flow sem credenciais (Edge headless + CDP + JWT fake + API mock local)",
+      "type": "project"
     }
   ]
 }

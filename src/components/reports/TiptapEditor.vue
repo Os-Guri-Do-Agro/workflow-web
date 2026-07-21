@@ -2,10 +2,8 @@
 import { ref, watch, computed } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
-import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import TextAlign from '@tiptap/extension-text-align'
-import Underline from '@tiptap/extension-underline'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import { Table } from '@tiptap/extension-table'
@@ -22,19 +20,8 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { common, createLowlight } from 'lowlight'
-import {
-  Bold, Italic, Underline as UnderlineIcon, Strikethrough,
-  Heading1, Heading2, Heading3,
-  List, ListOrdered, ListChecks,
-  Quote, Code, Code2,
-  AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Highlighter, Link as LinkIcon, Image as ImageIcon,
-  Table as TableIcon, Undo2, Redo2,
-  Superscript as SuperscriptIcon, Subscript as SubscriptIcon,
-  Plus, X, Minus,
-  TableCellsMerge, TableCellsSplit,
-  Trash2,
-} from 'lucide-vue-next'
+import { Plus, X, TableCellsMerge, TableCellsSplit, Trash2 } from 'lucide-vue-next'
+import TipTapToolbar from '@/components/ui/TipTapToolbar.vue'
 
 const lowlight = createLowlight(common)
 
@@ -54,10 +41,12 @@ const editor = useEditor({
   extensions: [
     StarterKit.configure({
       codeBlock: false,
-    }),
-    Link.configure({
-      openOnClick: false,
-      HTMLAttributes: { class: 'editor-link' },
+      // Link e Underline já vêm no StarterKit do TipTap 3; declarar por fora
+      // duplica a extensão e o editor recusa a subir.
+      link: {
+        openOnClick: false,
+        HTMLAttributes: { class: 'editor-link' },
+      },
     }),
     Placeholder.configure({
       placeholder: 'Escreva o relatório aqui...',
@@ -65,7 +54,6 @@ const editor = useEditor({
     TextAlign.configure({
       types: ['heading', 'paragraph'],
     }),
-    Underline,
     TaskList,
     TaskItem.configure({ nested: true }),
     Table.configure({ resizable: true }),
@@ -120,109 +108,12 @@ function insertTable() {
 
 <template>
   <div class="tiptap-editor">
-    <!-- Toolbar -->
-    <div class="toolbar">
-      <!-- Undo/Redo -->
-      <button class="toolbar-btn" @click="editor?.chain().focus().undo().run()" :disabled="!editor?.can().undo()">
-        <Undo2 :size="15" />
-      </button>
-      <button class="toolbar-btn" @click="editor?.chain().focus().redo().run()" :disabled="!editor?.can().redo()">
-        <Redo2 :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Text formatting -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('bold') }" @click="editor?.chain().focus().toggleBold().run()">
-        <Bold :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('italic') }" @click="editor?.chain().focus().toggleItalic().run()">
-        <Italic :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('underline') }" @click="editor?.chain().focus().toggleUnderline().run()">
-        <UnderlineIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('strike') }" @click="editor?.chain().focus().toggleStrike().run()">
-        <Strikethrough :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Headings -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('heading', { level: 1 }) }" @click="editor?.chain().focus().toggleHeading({ level: 1 }).run()">
-        <Heading1 :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('heading', { level: 2 }) }" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">
-        <Heading2 :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('heading', { level: 3 }) }" @click="editor?.chain().focus().toggleHeading({ level: 3 }).run()">
-        <Heading3 :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Lists -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()">
-        <List :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('orderedList') }" @click="editor?.chain().focus().toggleOrderedList().run()">
-        <ListOrdered :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('taskList') }" @click="editor?.chain().focus().toggleTaskList().run()">
-        <ListChecks :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Block elements -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('blockquote') }" @click="editor?.chain().focus().toggleBlockquote().run()">
-        <Quote :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('code') }" @click="editor?.chain().focus().toggleCode().run()">
-        <Code :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('codeBlock') }" @click="editor?.chain().focus().toggleCodeBlock().run()">
-        <Code2 :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Alignment -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive({ textAlign: 'left' }) }" @click="editor?.chain().focus().setTextAlign('left').run()">
-        <AlignLeft :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive({ textAlign: 'center' }) }" @click="editor?.chain().focus().setTextAlign('center').run()">
-        <AlignCenter :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive({ textAlign: 'right' }) }" @click="editor?.chain().focus().setTextAlign('right').run()">
-        <AlignRight :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive({ textAlign: 'justify' }) }" @click="editor?.chain().focus().setTextAlign('justify').run()">
-        <AlignJustify :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Extras -->
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('highlight') }" @click="editor?.chain().focus().toggleHighlight().run()">
-        <Highlighter :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('superscript') }" @click="editor?.chain().focus().toggleSuperscript().run()">
-        <SuperscriptIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" :class="{ active: editor?.isActive('subscript') }" @click="editor?.chain().focus().toggleSubscript().run()">
-        <SubscriptIcon :size="15" />
-      </button>
-      <div class="toolbar-divider" />
-
-      <!-- Insert -->
-      <button class="toolbar-btn" @click="showLinkInput = !showLinkInput">
-        <LinkIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" @click="addImage">
-        <ImageIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" @click="insertTable">
-        <TableIcon :size="15" />
-      </button>
-      <button class="toolbar-btn" @click="editor?.chain().focus().setHorizontalRule().run()">
-        <Minus :size="15" />
-      </button>
-    </div>
+    <TipTapToolbar
+      :editor="editor"
+      @link="showLinkInput = !showLinkInput"
+      @image="addImage"
+      @table="insertTable"
+    />
 
     <!-- Link input bar -->
     <div v-if="showLinkInput" class="link-bar">
