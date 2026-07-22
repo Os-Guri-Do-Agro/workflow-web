@@ -27,7 +27,7 @@ function main() {
 
   const specs = listSpecFiles()
     .map(parseSpec)
-    .map(({ text, ...meta }) => {
+    .map(({ text: _text, ...meta }) => {
       const old = prevByPath.get(meta.path)
       const enriched = {}
       if (old) for (const k of ENRICHED_KEYS) if (old[k] != null) enriched[k] = old[k]
@@ -37,7 +37,7 @@ function main() {
 
   const memories = listMemoryFiles()
     .map(parseMemory)
-    .map(({ text, abs, ...meta }) => meta)
+    .map(({ text: _text, abs: _abs, ...meta }) => meta)
     .sort((a, b) => a.name.localeCompare(b.name))
 
   const index = {

@@ -88,3 +88,13 @@ button {
   transform: translateY(-2px);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
 }
+
+/*
+ * Modo imersivo (Notas): a página é teleportada para o body e cobre o shell,
+ * mas o chrome global vive em z-index 9996+ e continuaria flutuando por cima.
+ * Brigar por z-index quebraria os diálogos que precisam aparecer POR CIMA da
+ * nota, então o chrome é escondido explicitamente enquanto o modo está ativo.
+ */
+html[data-immersive='true'] .launcher {
+  display: none;
+}

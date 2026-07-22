@@ -15,8 +15,27 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 export function useNoteImmersive() {
   const immersive = ref(false)
 
+  /**
+   * Marca o documento e neutraliza o app por baixo. O `inert` importa de
+   * verdade: a nota é teleportada para o body, então sem ele o Tab continua
+   * passeando pela sidebar e pela topbar invisíveis, e o leitor de tela anuncia
+   * uma interface que não está mais na frente do usuário.
+   */
+  function applyChrome(active: boolean) {
+    const root = document.documentElement
+    const app = document.getElementById('app')
+    if (active) {
+      root.dataset.immersive = 'true'
+      app?.setAttribute('inert', '')
+    } else {
+      delete root.dataset.immersive
+      app?.removeAttribute('inert')
+    }
+  }
+
   async function enter() {
     immersive.value = true
+    applyChrome(true)
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen?.().catch(() => {})
     }
@@ -24,6 +43,7 @@ export function useNoteImmersive() {
 
   async function exit() {
     immersive.value = false
+    applyChrome(false)
     if (document.fullscreenElement) {
       await document.exitFullscreen?.().catch(() => {})
     }
@@ -41,7 +61,10 @@ export function useNoteImmersive() {
 
   /** O usuário pode sair pelo próprio navegador (F11, Esc): acompanha. */
   function onFullscreenChange() {
-    if (!document.fullscreenElement && immersive.value) immersive.value = false
+    if (!document.fullscreenElement && immersive.value) {
+      immersive.value = false
+      applyChrome(false)
+    }
   }
 
   onMounted(() => {
@@ -52,6 +75,8 @@ export function useNoteImmersive() {
   onBeforeUnmount(() => {
     window.removeEventListener('keydown', onKeydown)
     document.removeEventListener('fullscreenchange', onFullscreenChange)
+    // Sair da nota pelo botão voltar não pode deixar o app inerte para sempre.
+    applyChrome(false)
     if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {})
   })
 

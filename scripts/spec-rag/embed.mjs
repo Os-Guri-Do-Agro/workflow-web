@@ -82,7 +82,7 @@ async function main() {
     model: MODEL_ID,
     dim: DIM,
     chunks: records.map((r, i) => {
-      const { text, ...meta } = r
+      const { text: _text, ...meta } = r
       return { id: `${r.source}#${i}`, ...meta, vector: vectors[i] }
     }),
   }

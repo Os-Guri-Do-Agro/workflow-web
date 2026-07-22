@@ -323,7 +323,24 @@ Método: Edge headless via CDP com JWT falso e API mock local (ver memória `ver
 - **Autosave confirmado ponta a ponta:** digitar disparou o PATCH e o header passou a "Salvo às HH:MM" sem nenhum clique
 - **Caso de erro confirmado:** com a API de notas recusando conexão, o header mostra "Erro ao salvar" com "Tentar de novo", **o texto digitado continua na tela**, e a listagem mostra estado de erro com botão em vez de grid vazio
 
-Não verificado nesta rodada (exige interação humana): arrastar bloco pelo drag handle, arrastar nota entre pastas, e o flush no fechamento real da aba.
+**Segunda rodada de verificação** (fechou o que tinha ficado no ar):
+- **Drag handle:** aparece no hover do bloco, 20x24px, visível de fato (medido no DOM depois de um `mouseMoved` real via CDP)
+- **Arrastar nota para pasta:** `dragstart` transfere o `text/note-id`, o `drop` é aceito na pasta e o toast "Nota movida" aparece
+- **Flush por troca de aba:** digitar e esconder a aba 300ms depois (sem esperar o debounce de 2s) grava assim mesmo - o indicador vai para `saved`
+
+Continua sem verificação automatizada apenas o flush no fechamento real da janela (`pagehide` com `fetch keepalive`), que nenhum navegador headless reproduz com fidelidade.
+
+### Correções feitas depois da primeira verificação
+
+| O que estava errado | Correção |
+|---|---|
+| No imersivo o header sumia por completo (`translateY(-100%)`), tirando o próprio alvo do hover: só dava para voltar com Esc | Header desbota para `opacity: 0.18` e volta a 1 no hover ou no foco |
+| O botão flutuante do assistente (`z-index: 9996`) continuava por cima do modo imersivo | `html[data-immersive]` esconde o chrome global, em `styles/reset.css`. Brigar por z-index quebraria os diálogos, que precisam ficar acima da nota |
+| Com a nota teleportada para o `body`, o Tab continuava passeando pela sidebar e pela topbar invisíveis | `inert` no `#app` enquanto o modo está ativo, removido também no unmount e ao sair pelo botão do navegador |
+| O `beacon` reimplementava a normalização de `VITE_API_URL` | Passou a usar `apiBaseUrl()`, o mesmo helper que existe justamente por causa do incidente de produção documentado em `api.ts` |
+| `npm run lint` do repo já falhava antes desta spec (6 erros de oxlint em `scripts/spec-rag/` e `useDashboardOrchestration.ts`) | Corrigidos. **`oxlint` agora passa com 0 erros no repo inteiro** |
+
+**Dívida declarada, não resolvida:** `eslint` acusa 274 erros no repo, sendo 245 `no-explicit-any` espalhados por arquivos que nada têm a ver com Notas. Nenhum deles está em código desta spec. Limpar isso é tarefa própria, não cabia aqui.
 
 ## Perguntas em Aberto
 

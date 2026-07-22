@@ -7,7 +7,7 @@ import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
 import { GripVertical, Plus, X } from 'lucide-vue-next'
 import notesService from '@/service/notes/notes-service'
 import aiService from '@/service/ai/ai-service'
-import { getApiErrorMessage, getApiRequestId } from '@/service/api'
+import { apiBaseUrl, getApiErrorMessage, getApiRequestId } from '@/service/api'
 import { useToast } from '@/composables/useToast'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -122,8 +122,9 @@ const {
    */
   beacon: () => {
     if (!noteId.value) return
-    const base = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '')
-    const url = /^https?:\/\//i.test(base) ? base : base ? `https://${base}` : ''
+    // `apiBaseUrl()` em vez de reimplementar a normalização da env: foi um
+    // `VITE_API_URL` sem esquema que derrubou produção uma vez (ver api.ts).
+    const url = apiBaseUrl()
     const token = localStorage.getItem('token')
     if (!url || !token) return
     void fetch(`${url}/notes/${noteId.value}`, {

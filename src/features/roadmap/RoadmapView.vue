@@ -253,6 +253,8 @@ const showAllMonthlyPlans = ref(false)
 const monthEntryPreviewLimit = 8
 
 const monthlyPlans = ref<MonthlyPlan[]>([])
+/** Só o primeiro carregamento escolhe o mês por conteúdo; depois respeita o usuário. */
+const monthlyFirstLoad = ref(true)
 
 // Sem papel resolvido ainda, a tela não bloqueia: o backend é quem nega.
 const canEditRoadmap = computed(() => {
@@ -345,10 +347,130 @@ function itemStyle(item: RoadmapItem) {
   }
 }
 
-function markerStyle(date: string) {
-  return {
-    left: `${positionPercent(date)}%`,
+// ─── Empilhamento da timeline (colisão zero) ────────────────────────────────
+// Barras e marcos eram posicionados só por data (`left: X%`), numa faixa fixa.
+// Dois itens em datas próximas colidiam e o rótulo virava texto ilegível. Aqui
+// cada item ganha uma LINHA: quem se sobrepõe horizontalmente (contando a
+// largura estimada do rótulo) desce para a próxima linha. A célula cresce para
+// caber todas as linhas.
+// Duas faixas independentes: marcos (losango alto + rótulo de 2 linhas) em cima,
+// entregas (pílula baixa) embaixo. Cada faixa é empacotada por conta própria, e
+// separá-las garante que um rótulo de marco nunca encoste numa pílula.
+const ANNUAL_MS_ROW_H = 58
+const ANNUAL_BAR_ROW_H = 32
+const ANNUAL_BAND_TOP = 10
+const ANNUAL_BAND_GAP = 6
+const ANNUAL_BAR_H = 26
+// Estimativa de largura da célula em px para converter texto→%. Não precisa ser
+// exata: erra para "mais linhas" (seguro), nunca para sobreposição.
+const ANNUAL_CELL_PX = 860
+const ANNUAL_CHAR_PX = 6.2
+
+function labelWidthPercent(text: string, padding = 20): number {
+  return ((text.length * ANNUAL_CHAR_PX + padding) / ANNUAL_CELL_PX) * 100
+}
+
+interface PackEntry {
+  key: string
+  left: number
+  right: number
+}
+
+/** Interval packing guloso: menor linha livre, senão abre uma nova. */
+function packRows(entries: PackEntry[]): { row: Record<string, number>; count: number } {
+  const rowsRight: number[] = []
+  const row: Record<string, number> = {}
+  const GAP = 0.6
+  for (const entry of [...entries].sort((a, b) => a.left - b.left)) {
+    let placed = rowsRight.findIndex((right) => entry.left >= right + GAP)
+    if (placed === -1) {
+      placed = rowsRight.length
+      rowsRight.push(entry.right)
+    } else {
+      rowsRight[placed] = entry.right
+    }
+    row[entry.key] = placed
   }
+  return { row, count: entries.length ? Math.max(rowsRight.length, 1) : 0 }
+}
+
+interface LaneLayout {
+  bars: { row: Record<string, number>; count: number }
+  milestones: { row: Record<string, number>; count: number }
+  /** Altura total da célula em px. */
+  height: number
+  /** Onde a faixa de entregas começa (px). */
+  barTop: number
+}
+
+function packLane(items: RoadmapItem[], milestones: RoadmapMilestone[]): LaneLayout {
+  const barEntries: PackEntry[] = items.map((item) => {
+    const style = itemStyle(item)
+    const left = parseFloat(style.left)
+    const width = parseFloat(style.width)
+    const label = item.shortTitle ?? item.title
+    return { key: `bar-${item.id}`, left, right: left + Math.max(width, labelWidthPercent(label, 28)) }
+  })
+
+  const msEntries: PackEntry[] = milestones.map((milestone) => {
+    const center = positionPercent(milestone.date)
+    const half = labelWidthPercent(milestone.title, 12) / 2
+    return { key: `ms-${milestone.id}`, left: center - half, right: center + half }
+  })
+
+  const bars = packRows(barEntries)
+  const ms = packRows(msEntries)
+  const msBand = ms.count * ANNUAL_MS_ROW_H
+  const barBand = bars.count * ANNUAL_BAR_ROW_H
+  const barTop = ANNUAL_BAND_TOP + msBand + (msBand && barBand ? ANNUAL_BAND_GAP : 0)
+  const height = barTop + barBand + ANNUAL_BAND_TOP
+
+  return { bars, milestones: ms, height: Math.max(height, 96), barTop }
+}
+
+const annualLaneLayout = computed(() => {
+  const map = new Map<string, LaneLayout>()
+  for (const lane of visibleLanes.value) {
+    map.set(lane.id, packLane(laneItems(lane.id), laneMilestones(lane.id)))
+  }
+  return map
+})
+
+const floatingLayout = computed(() => packLane([], floatingMilestones.value))
+
+function laneCellStyle(laneId: string) {
+  return { minHeight: `${annualLaneLayout.value.get(laneId)?.height ?? 96}px` }
+}
+
+const floatingCellStyle = computed(() => ({ minHeight: `${floatingLayout.value.height}px` }))
+
+function laneItemStyle(item: RoadmapItem, laneId: string) {
+  const base = itemStyle(item)
+  const layout = annualLaneLayout.value.get(laneId)
+  const row = layout?.bars.row[`bar-${item.id}`] ?? 0
+  const top = `${(layout?.barTop ?? ANNUAL_BAND_TOP) + row * ANNUAL_BAR_ROW_H + (ANNUAL_BAR_ROW_H - ANNUAL_BAR_H) / 2}px`
+  // Entrega de dia único (start === end) não estica: a barra viraria uns 12px e
+  // o título ficaria cortado em "Ent". A pílula passa a ter a largura do texto,
+  // ancorada na data. O packing já reservou essa largura, então não colide.
+  if (item.kind !== 'month' && item.start === item.end) {
+    return { left: base.left, top, width: 'auto', maxWidth: '190px' }
+  }
+  return { ...base, top }
+}
+
+function laneMilestoneStyle(milestone: RoadmapMilestone, laneId: string) {
+  const row = annualLaneLayout.value.get(laneId)?.milestones.row[`ms-${milestone.id}`] ?? 0
+  return { left: `${positionPercent(milestone.date)}%`, top: `${ANNUAL_BAND_TOP + row * ANNUAL_MS_ROW_H}px` }
+}
+
+function floatingMilestoneStyle(milestone: RoadmapMilestone) {
+  const row = floatingLayout.value.milestones.row[`ms-${milestone.id}`] ?? 0
+  return { left: `${positionPercent(milestone.date)}%`, top: `${ANNUAL_BAND_TOP + row * ANNUAL_MS_ROW_H}px` }
+}
+
+/** Entrega de dia único: pílula do tamanho do conteúdo, não da barra de 1 dia. */
+function isPointItem(item: RoadmapItem): boolean {
+  return item.kind !== 'month' && item.start === item.end
 }
 
 function laneItems(laneId: string): RoadmapItem[] {
@@ -887,8 +1009,17 @@ function applyRoadmapApiMonths(months: RoadmapMonth[]) {
   focusPhotos.value = nextFocusPhotos
   focusPhotoIds.value = nextFocusPhotoIds
 
-  if (!visibleMonthlyPlans.value.some((month) => month.key === noteMonthKey.value)) {
-    noteMonthKey.value = visibleMonthlyPlans.value[0]?.key ?? monthlyPlans.value[0]?.key ?? noteMonthKey.value
+  // Primeiro load: abre no melhor mês com conteúdo em vez de num futuro vazio.
+  // Se esse conteúdo só existe no passado, revela os meses passados. Depois
+  // disso, só corrige se o mês selecionado deixou de existir (respeita a
+  // escolha do usuário em refetches).
+  if (monthlyFirstLoad.value) {
+    const target = defaultMonthTarget()
+    noteMonthKey.value = target.key
+    if (target.expandPast) showAllMonthlyPlans.value = true
+    monthlyFirstLoad.value = false
+  } else if (!monthlyPlans.value.some((month) => month.key === noteMonthKey.value)) {
+    noteMonthKey.value = defaultMonthTarget().key
   }
   if (exportMonthKey.value !== 'all' && !monthlyPlans.value.some((month) => month.key === exportMonthKey.value)) {
     exportMonthKey.value = 'all'
@@ -982,6 +1113,40 @@ function monthMarkedDays(month: MonthlyPlan): number {
 /** Total de itens da agenda do mês (anotações + entregas). */
 function monthItemsCount(month: MonthlyPlan): number {
   return month.entries.length + month.deliveries.length
+}
+
+/** Mês tem algo para mostrar: foco escrito, agenda ou entrega. */
+function monthHasContent(month: MonthlyPlan): boolean {
+  return !!month.main?.trim() || month.bullets.length > 0 || monthItemsCount(month) > 0
+}
+
+/**
+ * Melhor mês para abrir o workbench, evitando cair num mês vazio:
+ *  1. o mês atual, se tiver conteúdo;
+ *  2. o próximo mês futuro com conteúdo;
+ *  3. o mês passado mais recente com conteúdo (revela os passados);
+ *  4. o mês atual/primeiro, se nada tiver conteúdo.
+ * Retorna também se precisa expandir os meses passados para o alvo aparecer.
+ */
+function defaultMonthTarget(): { key: string; expandPast: boolean } {
+  const all = monthlyPlans.value
+  const currentKey = currentMonthKey.value
+
+  const current = all.find((month) => month.key === currentKey)
+  if (current && monthHasContent(current)) return { key: current.key, expandPast: false }
+
+  const futureWithContent = all
+    .filter((month) => month.key >= currentKey && monthHasContent(month))
+    .sort((a, b) => a.key.localeCompare(b.key))[0]
+  if (futureWithContent) return { key: futureWithContent.key, expandPast: false }
+
+  const pastWithContent = all
+    .filter((month) => month.key < currentKey && monthHasContent(month))
+    .sort((a, b) => b.key.localeCompare(a.key))[0]
+  if (pastWithContent) return { key: pastWithContent.key, expandPast: true }
+
+  const fallback = visibleMonthlyPlans.value[0] ?? all[0]
+  return { key: fallback?.key ?? noteMonthKey.value, expandPast: false }
 }
 
 function monthOverdueCount(month: MonthlyPlan): number {
@@ -1249,8 +1414,13 @@ function dateKey(year: number, month: number, day: number): string {
 }
 
 function calendarCells(month: MonthlyPlan): Array<{ key: string; day: number | null; date?: string }> {
-  const firstDay = new Date(month.year, month.month, 1)
-  const lastDay = new Date(month.year, month.month + 1, 0)
+  // `month.month` é 1-based (Jan = 1); `Date` e `dateKey` são 0-based. Sem o
+  // `-1` o calendário renderizava o layout do mês SEGUINTE e as datas das
+  // células nunca batiam com as dos itens: nenhum dia era marcado e os dias da
+  // semana ficavam deslocados em um mês.
+  const monthIndex = month.month - 1
+  const firstDay = new Date(month.year, monthIndex, 1)
+  const lastDay = new Date(month.year, monthIndex + 1, 0)
   const cells: Array<{ key: string; day: number | null; date?: string }> = []
 
   for (let i = 0; i < firstDay.getDay(); i++) {
@@ -1258,7 +1428,7 @@ function calendarCells(month: MonthlyPlan): Array<{ key: string; day: number | n
   }
 
   for (let day = 1; day <= lastDay.getDate(); day++) {
-    cells.push({ key: dateKey(month.year, month.month, day), day, date: dateKey(month.year, month.month, day) })
+    cells.push({ key: dateKey(month.year, monthIndex, day), day, date: dateKey(month.year, monthIndex, day) })
   }
 
   while (cells.length % 7 !== 0) {
@@ -2572,7 +2742,7 @@ async function removeSelectedMilestone() {
               {{ statusMeta[lane.status].label }}
             </div>
 
-            <div class="timeline-cell">
+            <div class="timeline-cell" :style="laneCellStyle(lane.id)">
               <div class="timeline-grid" aria-hidden="true" />
               <div v-if="todayInViewport" class="timeline-today" :style="todayStyle" aria-hidden="true" />
 
@@ -2585,9 +2755,10 @@ async function removeSelectedMilestone() {
                   { 'roadmap-bar--event': item.kind === 'event' },
                   { 'roadmap-bar--month': item.kind === 'month' },
                   { 'roadmap-bar--overdue': item.overdue },
+                  { 'roadmap-bar--point': isPointItem(item) },
                   { 'roadmap-bar--selected': isSelected('item', item.id) },
                 ]"
-                :style="itemStyle(item)"
+                :style="laneItemStyle(item, lane.id)"
                 :aria-label="
                   item.kind === 'month'
                     ? `${item.title}: ${item.progress}% concluído`
@@ -2614,7 +2785,7 @@ async function removeSelectedMilestone() {
                   `milestone-pin--${milestone.type}`,
                   { 'milestone-pin--selected': isSelected('milestone', milestone.id) },
                 ]"
-                :style="markerStyle(milestone.date)"
+                :style="laneMilestoneStyle(milestone, lane.id)"
                 role="button"
                 tabindex="0"
                 :aria-label="`${milestone.type === 'review' ? 'Review' : 'Marco'}: ${milestone.title} (${formatDate(milestone.date)})`"
@@ -2647,7 +2818,7 @@ async function removeSelectedMilestone() {
               No eixo
             </div>
 
-            <div class="timeline-cell">
+            <div class="timeline-cell" :style="floatingCellStyle">
               <div class="timeline-grid" aria-hidden="true" />
               <div v-if="todayInViewport" class="timeline-today" :style="todayStyle" aria-hidden="true" />
 
@@ -2660,7 +2831,7 @@ async function removeSelectedMilestone() {
                   `milestone-pin--${milestone.type}`,
                   { 'milestone-pin--selected': isSelected('milestone', milestone.id) },
                 ]"
-                :style="markerStyle(milestone.date)"
+                :style="floatingMilestoneStyle(milestone)"
                 role="button"
                 tabindex="0"
                 :aria-label="`${milestone.type === 'review' ? 'Review' : 'Marco'}: ${milestone.title} (${formatDate(milestone.date)})`"
@@ -3209,7 +3380,8 @@ async function removeSelectedMilestone() {
 
 .roadmap-bar {
   position: absolute;
-  top: 44px;
+  /* `top` vem do packing (laneItemStyle); o fallback evita salto antes do JS. */
+  top: 12px;
   min-width: 44px;
   height: 26px;
   border-radius: 999px;
@@ -3239,15 +3411,21 @@ async function removeSelectedMilestone() {
   outline: none;
 }
 
-.roadmap-bar:nth-of-type(2n) {
-  top: 76px;
-}
-
 .roadmap-bar--event {
   height: 18px;
-  top: 90px;
   border-radius: var(--radius-sm);
   padding-inline: 8px;
+}
+
+/* Entrega de dia único: largura do conteúdo, título legível (não "Ent"). */
+.roadmap-bar--point {
+  min-width: 0;
+  width: auto;
+}
+
+.roadmap-bar--point .bar-label {
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 
 .roadmap-bar--planned {
@@ -3305,6 +3483,7 @@ async function removeSelectedMilestone() {
 
 .milestone-pin {
   position: absolute;
+  /* `top` vem do packing (laneMilestoneStyle). */
   top: 12px;
   transform: translateX(-50%);
   display: flex;
@@ -3317,6 +3496,18 @@ async function removeSelectedMilestone() {
   white-space: nowrap;
   z-index: 2;
   cursor: pointer;
+}
+
+/* Rótulo do marco: cabe em 2 linhas curtas em vez de estourar numa só. */
+.milestone-label {
+  max-width: 120px;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .milestone-pin:focus-visible {

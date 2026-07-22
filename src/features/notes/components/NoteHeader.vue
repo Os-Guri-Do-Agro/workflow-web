@@ -92,22 +92,25 @@ const emit = defineEmits<{
   border-bottom: 1px solid var(--border);
 }
 
-/* No imersivo a barra só aparece quando o ponteiro chega perto do topo. */
+/*
+ * No imersivo a barra desbota em vez de sumir. Escondê-la por completo
+ * (translateY(-100%)) tirava o próprio alvo do hover: não havia como trazê-la
+ * de volta com o mouse, só com Esc. Fantasma visível é melhor que fantasma
+ * inalcançável.
+ */
 .note-header--immersive {
   position: fixed;
   left: 0;
   right: 0;
-  opacity: 0;
-  transform: translateY(-100%);
-  transition:
-    opacity var(--motion) var(--motion-ease),
-    transform var(--motion) var(--motion-ease);
+  background: transparent;
+  border-bottom-color: transparent;
+  opacity: 0.18;
+  transition: opacity var(--motion) var(--motion-ease);
 }
 
 .note-header--immersive:hover,
 .note-header--immersive:focus-within {
   opacity: 1;
-  transform: translateY(0);
 }
 
 .note-header__right {
