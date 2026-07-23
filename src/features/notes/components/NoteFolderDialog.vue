@@ -10,14 +10,16 @@ import type { NoteFolderNode } from '../types'
 
 const props = defineProps<{
   modelValue: boolean
-  /** Ausente = criação. */
+  /** Presente = renomear essa pasta. */
   folder?: NoteFolderNode | null
+  /** Presente = criar subpasta dentro dessa pasta. */
+  parent?: NoteFolderNode | null
   loading?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [boolean]
-  submit: [{ name: string; color: string; parentId: string | null }]
+  submit: [{ name: string; color: string }]
 }>()
 
 const name = ref('')
@@ -43,7 +45,7 @@ function close() {
 function submit() {
   const value = name.value.trim()
   if (!value || props.loading) return
-  emit('submit', { name: value, color: color.value, parentId: props.folder?.parentId ?? null })
+  emit('submit', { name: value, color: color.value })
 }
 </script>
 
@@ -55,15 +57,19 @@ function submit() {
           class="folder-dialog"
           role="dialog"
           aria-modal="true"
-          :aria-label="folder ? 'Editar pasta' : 'Nova pasta'"
+          :aria-label="folder ? 'Editar pasta' : parent ? 'Nova subpasta' : 'Nova pasta'"
           @keydown.esc="close"
         >
           <header class="folder-dialog__head">
-            <h2>{{ folder ? 'Editar pasta' : 'Nova pasta' }}</h2>
+            <h2>{{ folder ? 'Editar pasta' : parent ? 'Nova subpasta' : 'Nova pasta' }}</h2>
             <button type="button" aria-label="Fechar" @click="close">
               <X :size="16" />
             </button>
           </header>
+
+          <p v-if="parent" class="folder-dialog__parent">
+            Dentro de <strong>{{ parent.name }}</strong>
+          </p>
 
           <label class="folder-dialog__label" for="folder-name">Nome</label>
           <input
@@ -166,6 +172,16 @@ function submit() {
 .folder-dialog__head button:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+
+.folder-dialog__parent {
+  margin: -6px 0 14px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.folder-dialog__parent strong {
+  color: var(--text-2);
 }
 
 .folder-dialog__label {

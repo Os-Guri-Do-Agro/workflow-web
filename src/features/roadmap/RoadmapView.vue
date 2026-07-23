@@ -4718,9 +4718,11 @@ async function removeSelectedMilestone() {
   border-radius: 3px;
 }
 
+/* Entrega vs anotação já se distinguem pela forma do marcador (quadrado vs
+   círculo) e pela cor da data. A borda lateral esquerda saiu: além de
+   redundante, é a cara de template genérico. Realce fica na borda inteira. */
 .month-entry--delivery {
-  border-style: solid;
-  border-left: 3px solid var(--entry-c);
+  border-color: color-mix(in srgb, var(--entry-c) 40%, transparent);
 }
 
 .month-entry-task {
@@ -4820,7 +4822,7 @@ async function removeSelectedMilestone() {
   overflow-y: auto;
   padding: 18px;
   background: var(--surface);
-  border-left: 1px solid var(--border);
+  /* Sem borda esquerda: a sombra do overlay já separa o drawer da página. */
   box-shadow: var(--shadow-overlay);
 }
 

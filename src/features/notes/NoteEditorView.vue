@@ -7,16 +7,19 @@ import { DragHandle } from '@tiptap/extension-drag-handle-vue-3'
 import { GripVertical, Plus, X } from 'lucide-vue-next'
 import notesService from '@/service/notes/notes-service'
 import aiService from '@/service/ai/ai-service'
+import axios from 'axios'
 import { apiBaseUrl, getApiErrorMessage, getApiRequestId } from '@/service/api'
 import { useToast } from '@/composables/useToast'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import TipTapToolbar from '@/components/ui/TipTapToolbar.vue'
 import NoteHeader from './components/NoteHeader.vue'
 import NoteMetaMenu from './components/NoteMetaMenu.vue'
 import NoteBubbleMenu from './components/NoteBubbleMenu.vue'
 import NoteSlashMenu from './components/NoteSlashMenu.vue'
+import NoteShareDialog from './components/NoteShareDialog.vue'
 import { useNote } from './composables/useNote'
 import { noteKeys, useNoteFolders, useNoteMutations } from './composables/useNotes'
 import { useNoteEditor } from './composables/useNoteEditor'
@@ -53,7 +56,16 @@ const newTag = ref('')
 const hydratedId = ref<string | null>(null)
 const confirmDelete = ref(false)
 const confirmImprove = ref(false)
+const shareOpen = ref(false)
 const titleEl = ref<HTMLTextAreaElement | null>(null)
+
+/** Nível do usuário sobre esta nota. Convidado VIEW não edita. */
+const accessLevel = ref<'OWNER' | 'VIEW' | 'EDIT'>('OWNER')
+const isOwner = computed(() => accessLevel.value === 'OWNER')
+const readOnly = computed(() => accessLevel.value === 'VIEW')
+const canEdit = computed(() => accessLevel.value !== 'VIEW')
+/** `updatedAt` que o cliente viu, para o optimistic locking do PATCH. */
+const baseUpdatedAt = ref<string | null>(null)
 
 /** Snapshot do servidor: `""` limpa o campo, chave omitida mantém. */
 const original = ref({ emoji: '', noteColor: '', coverImage: '' })
@@ -75,7 +87,21 @@ function buildPayload() {
   if (emoji.value !== original.value.emoji) payload.emoji = emoji.value
   if (noteColor.value !== original.value.noteColor) payload.noteColor = noteColor.value
   if (coverImage.value !== original.value.coverImage) payload.coverImage = coverImage.value
+  // Optimistic locking: manda o updatedAt que vimos. Convidado editando ao mesmo
+  // tempo que outro dispara 409 em vez de sobrescrever em silêncio.
+  if (baseUpdatedAt.value) payload.expectedUpdatedAt = baseUpdatedAt.value
   return payload
+}
+
+/** 409: outra pessoa salvou. Recarrega a versão do servidor sem perder foco. */
+async function onConflict() {
+  showError('A nota foi editada em outro lugar. Recarregando a versão mais recente.')
+  const fresh = await refetch()
+  const data = fresh.data
+  if (data) {
+    hydratedId.value = null // força re-hidratar
+    hydrate(data)
+  }
 }
 
 function syncOriginal() {
@@ -105,16 +131,22 @@ const {
         await router.replace(`/notes/${created.id}`)
       } else {
         const updated = await notesService.updateNote(noteId.value, payload)
+        baseUpdatedAt.value = updated.updatedAt
         queryClient.setQueryData(noteKeys.detail(updated.id), updated)
       }
       syncOriginal()
       void queryClient.invalidateQueries({ queryKey: noteKeys.lists })
     } catch (err) {
+      if (isAxiosConflict(err)) {
+        void onConflict()
+        return // não marca erro: o conflito tem tratamento próprio
+      }
       const requestId = getApiRequestId(err)
       console.error('[notas] falha ao salvar', requestId ? `requestId=${requestId}` : '', err)
       throw new Error(getApiErrorMessage(err, 'Não foi possível salvar a nota'))
     }
   },
+  enabled: () => canEdit.value,
   /**
    * Aba fechando: `fetch` com `keepalive` é o único caminho que sobrevive ao
    * unload. Só vale para nota já existente - criar uma nota na saída daria uma
@@ -154,6 +186,10 @@ const { editor, slash } = useNoteEditor({
 const wordCount = computed(() => editor.value?.storage.characterCount?.words() ?? 0)
 const charCount = computed(() => editor.value?.storage.characterCount?.characters() ?? 0)
 
+function isAxiosConflict(err: unknown): boolean {
+  return axios.isAxiosError(err) && err.response?.status === 409
+}
+
 function hydrate(data: Note) {
   hydratedId.value = data.id
   title.value = data.title ?? ''
@@ -164,8 +200,11 @@ function hydrate(data: Note) {
   emoji.value = data.emoji ?? ''
   noteColor.value = data.noteColor ?? ''
   coverImage.value = data.coverImage ?? ''
+  accessLevel.value = data.accessLevel ?? 'OWNER'
+  baseUpdatedAt.value = data.updatedAt ?? null
   syncOriginal()
   editor.value?.commands.setContent(data.content ?? '', { emitUpdate: false })
+  editor.value?.setEditable(canEdit.value)
   void nextTick(resizeTitle)
 }
 
@@ -262,6 +301,28 @@ async function handleDelete() {
   }
 }
 
+// ── Ações da toolbar fixa do header ──────────────────────────────────────────
+// A toolbar dá as opções fáceis sem exigir "/". Link e imagem por URL (mesmo
+// padrão do slash menu); a seleção continua tendo o bubble menu com input inline.
+function toolbarLink() {
+  if (!editor.value) return
+  const previous = editor.value.getAttributes('link').href ?? ''
+  const url = window.prompt('Endereço do link:', previous)
+  if (url === null) return
+  const chain = editor.value.chain().focus().extendMarkRange('link')
+  if (url.trim()) chain.setLink({ href: url.trim() }).run()
+  else chain.unsetLink().run()
+}
+
+function toolbarImage() {
+  const url = window.prompt('URL da imagem:')
+  if (url?.trim()) editor.value?.chain().focus().setImage({ src: url.trim() }).run()
+}
+
+function toolbarTable() {
+  editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+}
+
 /** Ctrl+S grava na hora; a página inteira responde, não só o corpo do editor. */
 function onKeydown(event: KeyboardEvent) {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -270,9 +331,28 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
+/**
+ * Link de edição (`/notes/:id?invite=<token>`): o usuário já está logado (o
+ * guard garantiu). Resgata o acesso e limpa a query para não re-resgatar.
+ */
+async function claimInviteIfAny() {
+  const token = route.query.invite
+  if (typeof token !== 'string' || !token) return
+  try {
+    await notesService.claimLink(token)
+    await router.replace({ path: route.path, query: {} })
+    await refetch()
+    void queryClient.invalidateQueries({ queryKey: noteKeys.lists })
+    success('Acesso concedido. Agora você pode editar esta nota.')
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não foi possível usar o convite'))
+  }
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   if (routeId.value === 'new') void nextTick(() => titleEl.value?.focus())
+  void claimInviteIfAny()
 })
 
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
@@ -286,36 +366,56 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   -->
   <Teleport to="body" :disabled="!immersive">
   <div class="note-page" :class="{ 'note-page--immersive': immersive }">
-    <NoteHeader
-      :save-state="saveState"
-      :saved-at="savedAt"
-      :save-message="saveMessage"
-      :is-pinned="isPinned"
-      :pinning="pinning"
-      :immersive="immersive"
-      :is-new="!noteId"
-      :word-count="wordCount"
-      :char-count="charCount"
-      @back="router.push('/notes')"
-      @retry="retrySave()"
-      @toggle-pin="handleTogglePin"
-      @toggle-immersive="toggleImmersive"
-    >
-      <template #actions>
-        <NoteMetaMenu
-          :emoji="emoji"
-          :note-color="noteColor"
-          :cover-image="coverImage"
-          :can-delete="!!noteId"
-          :improving="improving"
-          @update:emoji="setMeta('emoji', $event)"
-          @update:note-color="setMeta('noteColor', $event)"
-          @update:cover-image="setMeta('coverImage', $event)"
-          @improve="confirmImprove = true"
-          @remove="confirmDelete = true"
+    <!-- Região fixa: header + toolbar não rolam com o conteúdo. -->
+    <div class="note-topbar glass">
+      <NoteHeader
+        :save-state="saveState"
+        :saved-at="savedAt"
+        :save-message="saveMessage"
+        :is-pinned="isPinned"
+        :pinning="pinning"
+        :immersive="immersive"
+        :is-new="!noteId"
+        :word-count="wordCount"
+        :char-count="charCount"
+        :can-share="isOwner && !!noteId"
+        :read-only="readOnly"
+        @back="router.push('/notes')"
+        @retry="retrySave()"
+        @toggle-pin="handleTogglePin"
+        @toggle-immersive="toggleImmersive"
+        @share="shareOpen = true"
+      >
+        <template #actions>
+          <NoteMetaMenu
+            v-if="canEdit"
+            :emoji="emoji"
+            :note-color="noteColor"
+            :cover-image="coverImage"
+            :can-delete="isOwner && !!noteId"
+            :improving="improving"
+            @update:emoji="setMeta('emoji', $event)"
+            @update:note-color="setMeta('noteColor', $event)"
+            @update:cover-image="setMeta('coverImage', $event)"
+            @improve="confirmImprove = true"
+            @remove="confirmDelete = true"
+          />
+        </template>
+      </NoteHeader>
+
+      <!-- Toolbar só quando pode editar; o slash menu continua funcionando. -->
+      <div v-if="editor && !isLoading && !isError && canEdit" class="note-toolbar-row">
+        <TipTapToolbar
+          :editor="editor"
+          :groups="['format', 'heading', 'list', 'block', 'align', 'insert']"
+          size="sm"
+          bare
+          @link="toolbarLink"
+          @image="toolbarImage"
+          @table="toolbarTable"
         />
-      </template>
-    </NoteHeader>
+      </div>
+    </div>
 
     <div class="note-scroll">
       <div v-if="isLoading" class="note-paper">
@@ -346,6 +446,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             rows="1"
             placeholder="Sem título"
             aria-label="Título da nota"
+            :readonly="!canEdit"
             @input="onTitleInput"
             @keydown.enter.prevent="editor?.commands.focus('start')"
           />
@@ -359,6 +460,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               placeholder="Sem pasta"
               label="Pasta"
               density="compact"
+              :disabled="!canEdit"
               @update:model-value="markDirty()"
             />
           </div>
@@ -366,11 +468,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <div class="note-tags">
             <span v-for="tag in tags" :key="tag" class="note-tag">
               {{ tag }}
-              <button type="button" :aria-label="`Remover tag ${tag}`" @click="removeTag(tag)">
+              <button
+                v-if="canEdit"
+                type="button"
+                :aria-label="`Remover tag ${tag}`"
+                @click="removeTag(tag)"
+              >
                 <X :size="11" />
               </button>
             </span>
-            <div class="note-tag-add">
+            <div v-if="canEdit" class="note-tag-add">
               <input
                 v-model="newTag"
                 type="text"
@@ -395,11 +502,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       </article>
     </div>
 
-    <NoteBubbleMenu :editor="editor" />
-    <NoteSlashMenu :state="slash" @hover="slash.index = $event" />
-    <DragHandle v-if="editor" :editor="editor" class="note-drag">
-      <GripVertical :size="15" />
-    </DragHandle>
+    <template v-if="canEdit">
+      <NoteBubbleMenu :editor="editor" />
+      <NoteSlashMenu :state="slash" @hover="slash.index = $event" />
+      <DragHandle v-if="editor" :editor="editor" class="note-drag">
+        <GripVertical :size="15" />
+      </DragHandle>
+    </template>
 
     <ConfirmDialog
       v-model="confirmDelete"
@@ -418,19 +527,47 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       confirm-label="Melhorar"
       @confirm="runImprove"
     />
+
+    <NoteShareDialog v-model="shareOpen" :note-id="noteId" />
   </div>
   </Teleport>
 </template>
 
 <style scoped>
+/*
+ * A nota é o container de scroll: `.note-topbar` fica fora do fluxo de rolagem
+ * e `.note-scroll` rola por baixo. Assim o header + toolbar ficam SEMPRE fixos,
+ * sem depender do scroll do shell (que varia entre command/focus/canvas).
+ */
 .note-page {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.note-topbar {
+  flex-shrink: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--border);
+}
+
+.note-toolbar-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 16px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.note-toolbar-row::-webkit-scrollbar {
+  display: none;
 }
 
 .note-scroll {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 40px 24px 25vh;
 }
 
@@ -450,12 +587,35 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   position: fixed;
   inset: 0;
   z-index: 150;
-  overflow-y: auto;
   background: var(--bg);
 }
 
+/* No imersivo a barra do topo desbota e reaparece ao aproximar o ponteiro. */
+.note-page--immersive .note-topbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border-bottom-color: transparent;
+  opacity: 0.16;
+  transition: opacity var(--motion) var(--motion-ease);
+}
+
+.note-page--immersive .note-topbar:hover,
+.note-page--immersive .note-topbar:focus-within {
+  opacity: 1;
+  border-bottom-color: var(--border);
+}
+
 .note-page--immersive .note-scroll {
-  padding-top: 76px;
+  padding-top: 88px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-page--immersive .note-topbar {
+    transition-duration: 1ms;
+  }
 }
 
 .note-cover {

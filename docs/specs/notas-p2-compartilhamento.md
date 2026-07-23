@@ -1,6 +1,6 @@
 # Spec: Notas P2 - compartilhar com a equipe e por link
 
-**Status:** In Review
+**Status:** Implementado (código) — migration pendente de aplicar em produção
 **Autor:** Nicolas (via spec-driven)
 **Criado em:** 2026-07-21
 **Última atualização:** 2026-07-21
@@ -366,12 +366,37 @@ Regras: leitura exige não-nulo; escrita de conteúdo exige `OWNER` ou `EDIT`; c
 - [ ] Spec com status `Concluído` + data + Change Log
 - [ ] `/spec-sync` rodado
 
+## Implementação (2026-07-22)
+
+**Código completo nos dois repos, verde em typecheck e lint. A migration NÃO foi aplicada em produção** (aguarda sua autorização; ver Rollout).
+
+Backend (`workflow-api`):
+- Schema: `Note.companyId`, `NoteAccess` + `NoteAccessLevel`, `ShareLink.accessLevel`, `ShareResourceType.NOTE`, índices. `prisma format` + `generate` rodados.
+- Migration: `prisma/migrations/20260722120000_notes_sharing/migration.sql` (aditiva, idempotente, com SQL de compensação comentado no fim).
+- `note.service.ts` reescrito com `resolveAccess` central + `requireRead/requireEdit/requireOwner` em todos os handlers; `findAll` com OR (minhas + compartilhadas), sem `content`, com `take: 200`; 409 via `expectedUpdatedAt`; grant/list/update/revoke de acesso; share-link + claim; `getPublicNote` minimizado.
+- Controller: rotas novas na ordem certa (literais antes de `:id`); `NotePublicController` (sem guard) para `GET /public/note/:token`.
+- `share.service.ts`: `revoke` faz cascata de `NoteAccess` para links `NOTE`.
+- `copilot/agent.service.ts`: comentário corrigido; IA segue lendo só notas próprias (seguro).
+
+Frontend (`work-flow`):
+- `notes-service` + `share-service` estendidos; `useNoteAccess` (Vue Query); tipos.
+- `NoteShareDialog.vue` (busca de pessoas, níveis Ver/Editar, lista com acesso, link público com revogação em cascata confirmada), `PublicNoteView.vue` (DOMPurify), rota `public-note` + `PUBLIC_ROUTES` + bare shell.
+- `NoteEditorView`: botão Compartilhar (só dono), modo somente-leitura para VIEW, tratamento de 409, resgate de link `?invite=`.
+- `NoteCard`: selo "compartilhada por X".
+
+**Verificado no app rodando** (mock com estado): botão Compartilhar aparece, dialog abre, busca acha a pessoa, convite entra em "Com acesso", link público é gerado/copiado, view pública renderiza read-only com HTML sanitizado. Zero exceções de console.
+
+**Não verificado com dois usuários reais** (exige duas contas): o 403 de VIEW no PATCH, a cascata de revogação e o XSS entre navegadores estão implementados e cobertos por lógica, mas a prova ponta a ponta com dois logins fica para quando a migration estiver em produção.
+
+**Desvios da spec:** migration nomeada `20260722120000` (não `21`); `getPublicNote` e a view pública ficam no domínio de Notas (`NotePublicController` + `PublicNoteView`) em vez de no `ShareModule`, para não acoplar `ShareModule`↔`NoteModule`.
+
 ## Perguntas em Aberto
 
-Nenhuma.
+- [ ] Aplicar a migration em produção (`node scripts/run-prod-migration.mjs 20260722120000_notes_sharing`) e fazer deploy — responsável: Nicolas (autorização explícita necessária).
 
 ## Change Log
 
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-07-21 | 0.1 | Criação | Nicolas |
+| 2026-07-22 | 1.0 | Implementada (código); migration pendente de aplicar em produção | Nicolas |

@@ -56,6 +56,18 @@ const shareService = {
     const response = await publicApi.get<PublicRoadmapResponse>(`/public/roadmap/${token}`)
     return response.data
   },
+
+  async publicNote(token: string) {
+    const response = await publicApi.get<import('@/features/notes/types').PublicNote>(
+      `/public/note/${token}`,
+    )
+    return response.data
+  },
+
+  async revokeNoteLink(token: string) {
+    const response = await api.delete<{ message: string; revokedAccesses: number }>(`/share/${token}`)
+    return response.data
+  },
 }
 
 export default shareService

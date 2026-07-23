@@ -101,7 +101,8 @@ const bare = computed(
     route.name === 'bug-report' ||
     route.name === 'report-status' ||
     route.name === 'public-board' ||
-    route.name === 'public-roadmap',
+    route.name === 'public-roadmap' ||
+    route.name === 'public-note',
 )
 
 const ActiveShell = computed(() => {

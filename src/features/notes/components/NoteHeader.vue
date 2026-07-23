@@ -6,7 +6,7 @@
  * O título não vive aqui - ele é o primeiro elemento do papel, como em Bear e
  * Craft. Esta barra existe só para o que é meta.
  */
-import { ArrowLeft, Maximize2, Minimize2, Pin } from 'lucide-vue-next'
+import { ArrowLeft, Eye, Maximize2, Minimize2, Pin, Users } from 'lucide-vue-next'
 import SaveStatus from '@/components/ui/SaveStatus.vue'
 import type { SaveState } from '@/components/ui/save-state'
 
@@ -20,6 +20,10 @@ defineProps<{
   isNew: boolean
   wordCount: number
   charCount: number
+  /** Dono da nota vê o botão Compartilhar. */
+  canShare: boolean
+  /** Convidado só-leitura vê o selo em vez do status de save. */
+  readOnly: boolean
 }>()
 
 const emit = defineEmits<{
@@ -27,16 +31,22 @@ const emit = defineEmits<{
   retry: []
   togglePin: []
   toggleImmersive: []
+  share: []
 }>()
 </script>
 
 <template>
-  <header class="note-header glass" :class="{ 'note-header--immersive': immersive }">
+  <header class="note-header">
     <button type="button" class="note-header__icon" aria-label="Voltar para as notas" @click="emit('back')">
       <ArrowLeft :size="18" />
     </button>
 
+    <span v-if="readOnly" class="note-header__readonly">
+      <Eye :size="13" />
+      Você tem acesso apenas para ver
+    </span>
     <SaveStatus
+      v-else
       :state="saveState"
       :saved-at="savedAt"
       :message="saveMessage"
@@ -44,6 +54,18 @@ const emit = defineEmits<{
     />
 
     <div class="note-header__right">
+      <button
+        v-if="canShare"
+        type="button"
+        class="note-header__share"
+        aria-label="Compartilhar nota"
+        title="Compartilhar"
+        @click="emit('share')"
+      >
+        <Users :size="15" />
+        Compartilhar
+      </button>
+
       <span class="note-header__count">
         {{ wordCount }} {{ wordCount === 1 ? 'palavra' : 'palavras' }}
         <span class="note-header__count-sep">·</span>
@@ -82,42 +104,59 @@ const emit = defineEmits<{
 
 <style scoped>
 .note-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
 }
 
 /*
- * No imersivo a barra desbota em vez de sumir. Escondê-la por completo
- * (translateY(-100%)) tirava o próprio alvo do hover: não havia como trazê-la
- * de volta com o mouse, só com Esc. Fantasma visível é melhor que fantasma
- * inalcançável.
+ * No imersivo a barra inteira (header + toolbar) desbota em vez de sumir.
+ * Escondê-la por completo tirava o alvo do hover; fantasma visível é melhor que
+ * fantasma inalcançável. A regra fica no container em NoteEditorView.
  */
-.note-header--immersive {
-  position: fixed;
-  left: 0;
-  right: 0;
-  background: transparent;
-  border-bottom-color: transparent;
-  opacity: 0.18;
-  transition: opacity var(--motion) var(--motion-ease);
-}
-
-.note-header--immersive:hover,
-.note-header--immersive:focus-within {
-  opacity: 1;
-}
 
 .note-header__right {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-left: auto;
+}
+
+.note-header__readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.note-header__share {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  margin-right: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+
+.note-header__share:hover {
+  background: var(--surface-3);
+}
+
+.note-header__share:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .note-header__count {

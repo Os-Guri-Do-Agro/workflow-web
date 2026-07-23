@@ -47,6 +47,8 @@ const hasFilters = computed(() => !!search.value.trim() || !!selectedTag.value |
 
 const folderDialog = ref(false)
 const editingFolder = ref<NoteFolderNode | null>(null)
+/** Pasta-pai ao criar uma subpasta (null = pasta raiz). */
+const parentFolder = ref<NoteFolderNode | null>(null)
 const deletingFolder = ref<NoteFolderNode | null>(null)
 
 function openNote(id: string) {
@@ -66,15 +68,25 @@ function toggleFolder(id: string) {
 
 function openCreateFolder() {
   editingFolder.value = null
+  parentFolder.value = null
+  folderDialog.value = true
+}
+
+function openCreateSubfolder(parent: NoteFolderNode) {
+  editingFolder.value = null
+  parentFolder.value = parent
+  // Garante que a pasta-pai fique expandida para a nova subpasta aparecer.
+  if (!expanded.value.has(parent.id)) toggleFolder(parent.id)
   folderDialog.value = true
 }
 
 function openEditFolder(folder: NoteFolderNode) {
   editingFolder.value = folder
+  parentFolder.value = null
   folderDialog.value = true
 }
 
-async function submitFolder(input: { name: string; color: string; parentId: string | null }) {
+async function submitFolder(input: { name: string; color: string }) {
   try {
     if (editingFolder.value) {
       await updateFolder.mutateAsync({
@@ -83,8 +95,14 @@ async function submitFolder(input: { name: string; color: string; parentId: stri
       })
       success('Pasta atualizada')
     } else {
-      await createFolder.mutateAsync({ name: input.name, color: input.color })
-      success('Pasta criada')
+      await createFolder.mutateAsync({
+        name: input.name,
+        color: input.color,
+        // Só envia parentId quando é subpasta: o DTO valida com @IsString e
+        // rejeita null explícito.
+        ...(parentFolder.value ? { parentId: parentFolder.value.id } : {}),
+      })
+      success(parentFolder.value ? 'Subpasta criada' : 'Pasta criada')
     }
     folderDialog.value = false
   } catch (err) {
@@ -209,6 +227,7 @@ function clearFilters() {
           @toggle="toggleFolder"
           @edit="openEditFolder"
           @remove="deletingFolder = $event"
+          @add-child="openCreateSubfolder"
           @drop-note="handleDropNote"
         />
       </aside>
@@ -293,6 +312,7 @@ function clearFilters() {
     <NoteFolderDialog
       v-model="folderDialog"
       :folder="editingFolder"
+      :parent="parentFolder"
       :loading="createFolder.isPending.value || updateFolder.isPending.value"
       @submit="submitFolder"
     />

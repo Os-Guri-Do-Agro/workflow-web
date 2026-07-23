@@ -1,10 +1,13 @@
 import api from '../api'
 import type {
   Note,
+  NoteAccessEntry,
+  NoteAccessLevel,
   NoteFilters,
   NoteFolder,
   NoteFolderInput,
   NoteListItem,
+  NoteShareLink,
   NoteWriteInput,
 } from '@/features/notes/types'
 
@@ -66,6 +69,43 @@ const notesService = {
 
   async deleteFolder(id: string): Promise<NoteFolder> {
     const response = await api.delete(`/notes/folders/${id}`)
+    return response.data
+  },
+
+  // ─── Compartilhamento ───────────────────────────────────────────────────
+
+  async getAccess(noteId: string): Promise<NoteAccessEntry[]> {
+    const response = await api.get(`/notes/${noteId}/access`)
+    return response.data
+  },
+
+  async grantAccess(noteId: string, userId: string, level: NoteAccessLevel): Promise<NoteAccessEntry[]> {
+    const response = await api.post(`/notes/${noteId}/access`, { userId, level })
+    return response.data
+  },
+
+  async updateAccess(noteId: string, userId: string, level: NoteAccessLevel): Promise<NoteAccessEntry[]> {
+    const response = await api.patch(`/notes/${noteId}/access/${userId}`, { level })
+    return response.data
+  },
+
+  async revokeAccess(noteId: string, userId: string): Promise<NoteAccessEntry[]> {
+    const response = await api.delete(`/notes/${noteId}/access/${userId}`)
+    return response.data
+  },
+
+  async getShareLinks(noteId: string): Promise<NoteShareLink[]> {
+    const response = await api.get(`/notes/${noteId}/share-link`)
+    return response.data
+  },
+
+  async createShareLink(noteId: string, accessLevel: NoteAccessLevel): Promise<NoteShareLink> {
+    const response = await api.post(`/notes/${noteId}/share-link`, { accessLevel })
+    return response.data
+  },
+
+  async claimLink(token: string): Promise<{ noteId: string }> {
+    const response = await api.post(`/notes/claim/${token}`)
     return response.data
   },
 }

@@ -6,7 +6,7 @@
  * Aceita soltar uma nota em cima de uma pasta para movê-la.
  */
 import { ref } from 'vue'
-import { ChevronRight, Folder, FolderOpen, Pencil, Trash2 } from 'lucide-vue-next'
+import { ChevronRight, Folder, FolderOpen, FolderPlus, Pencil, Trash2 } from 'lucide-vue-next'
 import type { NoteFolderNode } from '../types'
 
 defineProps<{
@@ -20,6 +20,7 @@ const emit = defineEmits<{
   toggle: [string]
   edit: [NoteFolderNode]
   remove: [NoteFolderNode]
+  addChild: [NoteFolderNode]
   dropNote: [{ noteId: string; folderId: string }]
 }>()
 
@@ -77,7 +78,16 @@ function onDrop(event: DragEvent, folderId: string) {
         <span class="tree__actions">
           <button
             type="button"
+            :aria-label="`Nova subpasta em ${node.name}`"
+            title="Nova subpasta"
+            @click.stop="emit('addChild', node)"
+          >
+            <FolderPlus :size="12" />
+          </button>
+          <button
+            type="button"
             :aria-label="`Editar pasta ${node.name}`"
+            title="Renomear"
             @click.stop="emit('edit', node)"
           >
             <Pencil :size="12" />
@@ -85,6 +95,7 @@ function onDrop(event: DragEvent, folderId: string) {
           <button
             type="button"
             :aria-label="`Excluir pasta ${node.name}`"
+            title="Excluir"
             @click.stop="emit('remove', node)"
           >
             <Trash2 :size="12" />
@@ -101,6 +112,7 @@ function onDrop(event: DragEvent, folderId: string) {
         @toggle="emit('toggle', $event)"
         @edit="emit('edit', $event)"
         @remove="emit('remove', $event)"
+        @add-child="emit('addChild', $event)"
         @drop-note="emit('dropNote', $event)"
       />
     </li>

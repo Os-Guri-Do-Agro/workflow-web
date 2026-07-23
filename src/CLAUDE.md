@@ -161,6 +161,10 @@ features/notes/
   styles/note-content.css tipografia e blocos do conteúdo, reusável na leitura
 ```
 
+**Header fixo:** `NoteEditorView` é o container de scroll (`.note-page` height 100% + `.note-scroll` overflow interno); a região do topo (`.note-topbar` = NoteHeader + TipTapToolbar) fica fora do scroll. Não depende do scroll do shell. As opções de formatação existem em DOIS lugares: a toolbar fixa do header E o slash menu (`/`).
+
+**Compartilhamento (P2, código pronto — migration pendente em prod):** `NoteShareDialog` (convidar pessoas VIEW/EDIT + link público revogável), `PublicNoteView` (`/public/note/:token`, HTML via DOMPurify), `useNoteAccess`. Backend: `NoteAccess` + `resolveAccess` central em `note.service.ts`. Nota compartilhada abre em somente-leitura para nível VIEW; 409 no PATCH trata edição concorrente.
+
 Especificações: [épico](../docs/specs/epicos/notas-colaborativas-premium.md) · [P1](../docs/specs/notas-p1-editor-premium.md) · [P2](../docs/specs/notas-p2-compartilhamento.md) · [P3](../docs/specs/notas-p3-edicao-ao-vivo.md) · [P4](../docs/specs/notas-p4-rabisco.md)
 
 ### Sub-components de Variables (F3)

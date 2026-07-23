@@ -32,6 +32,7 @@ import BoardsListView from '@/features/boards/BoardsListView.vue'
 import BoardCanvasView from '@/features/boards/BoardCanvasView.vue'
 import PublicBoardView from '@/features/public/PublicBoardView.vue'
 import PublicRoadmapView from '@/features/public/PublicRoadmapView.vue'
+import PublicNoteView from '@/features/public/PublicNoteView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
@@ -90,6 +91,7 @@ const router = createRouter({
     { path: '/r/:id', name: 'report-status', component: ReportStatusView },
     { path: '/public/board/:token', name: 'public-board', component: PublicBoardView },
     { path: '/public/roadmap/:token', name: 'public-roadmap', component: PublicRoadmapView },
+    { path: '/public/note/:token', name: 'public-note', component: PublicNoteView },
     { path: '/', name: 'home', component: DashboardView },
     { path: '/board', name: 'board', component: BoardView },
     { path: '/boards', name: 'boards', component: BoardsListView },
@@ -131,6 +133,7 @@ const PUBLIC_ROUTES = new Set([
   'report-status',
   'public-board',
   'public-roadmap',
+  'public-note',
 ])
 
 

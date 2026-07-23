@@ -4,7 +4,7 @@
  * de fixar direto aqui - antes o pin era só um ícone decorativo, sem ação.
  */
 import { computed } from 'vue'
-import { Pin } from 'lucide-vue-next'
+import { Pin, Users } from 'lucide-vue-next'
 import { stripHtmlPreview } from '@/utils/html-preview'
 import type { NoteListItem, NoteViewMode } from '../types'
 
@@ -21,6 +21,11 @@ const emit = defineEmits<{
 
 const preview = computed(
   () => props.note.preview || stripHtmlPreview(props.note.content ?? '') || 'Nota vazia',
+)
+
+/** Compartilhada COMIGO (não sou o dono). */
+const sharedWithMe = computed(
+  () => !!props.note.accessLevel && props.note.accessLevel !== 'OWNER',
 )
 
 const updatedLabel = computed(() =>
@@ -70,6 +75,14 @@ function onDragStart(event: DragEvent) {
 
     <footer class="card__foot">
       <span class="card__date">{{ updatedLabel }}</span>
+      <span
+        v-if="sharedWithMe"
+        class="card__shared"
+        :title="`Compartilhada por ${note.owner?.name ?? 'outro usuário'}`"
+      >
+        <Users :size="11" />
+        {{ note.owner?.name ?? 'Compartilhada' }}
+      </span>
       <span v-if="note.tags?.length" class="card__tags">
         <button
           v-for="tag in note.tags.slice(0, 3)"
@@ -223,6 +236,23 @@ function onDragStart(event: DragEvent) {
   color: var(--text-4);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.card__shared {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 130px;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.card__shared svg {
+  flex-shrink: 0;
 }
 
 .card__tags {

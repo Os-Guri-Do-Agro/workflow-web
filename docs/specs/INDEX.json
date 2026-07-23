@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-21T21:53:41.447Z",
+  "generatedAt": "2026-07-23T01:18:50.463Z",
   "model": "Xenova/all-MiniLM-L6-v2",
   "counts": {
     "specs": 20,
@@ -11,9 +11,10 @@
     "Desconhecido": 8,
     "Em Implementação — F1–F4 entregues": 1,
     "Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)": 1,
-    "In Review": 4,
+    "In Review": 3,
     "Planejada (não iniciada)": 1,
     "Concluído": 2,
+    "Implementado (código) — migration pendente de aplicar em produção": 1,
     "Pronto para implementar": 1,
     "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)": 1,
     "aprovada para implementação": 1
@@ -230,7 +231,7 @@
       "kind": "spec",
       "isEpic": false,
       "title": "Notas P2 - compartilhar com a equipe e por link",
-      "status": "In Review",
+      "status": "Implementado (código) — migration pendente de aplicar em produção",
       "lastUpdated": "2026-07-21",
       "sections": [
         "Visão Geral",
@@ -249,6 +250,7 @@
         "Plano de Rollback",
         "Observabilidade",
         "Definition of Done",
+        "Implementação (2026-07-22)",
         "Perguntas em Aberto",
         "Change Log"
       ]

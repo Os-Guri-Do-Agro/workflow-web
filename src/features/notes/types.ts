@@ -46,6 +46,9 @@ export interface NoteListItem extends NoteBase {
   preview: string
   /** A listagem ainda envia `content`; usamos só como fallback do preview. */
   content?: string
+  /** OWNER quando é minha; VIEW/EDIT quando compartilhada comigo. */
+  accessLevel?: NoteAccessRole
+  owner?: { id: string; name: string }
 }
 
 /** Resposta de `GET /notes/:id`. */
@@ -53,6 +56,7 @@ export interface Note extends NoteBase {
   content: string
   createdById: string
   folder?: NoteFolder | null
+  accessLevel?: NoteAccessRole
 }
 
 /**
@@ -73,6 +77,37 @@ export interface NoteFolderInput {
   name: string
   parentId?: string | null
   color?: string
+}
+
+export type NoteAccessLevel = 'VIEW' | 'EDIT'
+/** Nível efetivo do usuário sobre a nota (dono ou convidado). */
+export type NoteAccessRole = 'OWNER' | NoteAccessLevel
+
+export interface NoteAccessEntry {
+  user: { id: string; name: string; email: string }
+  level: NoteAccessLevel
+  invitedAt: string
+  viaLink: boolean
+}
+
+export interface NoteShareLink {
+  token: string
+  accessLevel: NoteAccessLevel
+  path: string
+  createdAt?: string
+}
+
+/** Nota pública (link VIEW): payload minimizado, sem id/tags/pasta. */
+export interface PublicNote {
+  note: {
+    title: string
+    contentHtml: string
+    emoji: string | null
+    coverImage: string | null
+    updatedAt: string
+    author: string
+  }
+  readOnly: true
 }
 
 export type NoteViewMode = 'grid' | 'list'
