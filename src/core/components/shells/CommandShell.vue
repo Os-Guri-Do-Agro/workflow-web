@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { ChevronRight, Sparkles } from 'lucide-vue-next'
+import { ChevronRight, FolderPlus } from 'lucide-vue-next'
+import { useCompanyCreation } from '@/composables/useCompanyCreation'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
@@ -19,6 +21,10 @@ defineEmits<{
 }>()
 
 const route = useRoute()
+const { openCreateCompany } = useCompanyCreation()
+const workspace = useWorkspaceStore()
+// Só ADMIN cria empresa (regra do backend); WORKER veria um botão que sempre 403.
+const canCreateCompany = computed(() => workspace.isAdmin)
 
 const breadcrumbs = computed(() => {
   const path = route.path
@@ -96,20 +102,11 @@ function crumbTooltip(crumb: string): string | undefined {
         <div class="sidebar-scroll">
           <NavList />
         </div>
-        <div class="sidebar-footer">
-          <div class="plan-card">
-            <div class="plan-head">
-              <Sparkles :size="12" class="plan-spark" />
-              <span class="plan-label">Plano Free</span>
-            </div>
-            <div class="plan-progress">
-              <div class="plan-bar">
-                <div class="plan-bar-fill" />
-              </div>
-              <span class="plan-meta">7 / 20 projetos</span>
-            </div>
-            <button class="plan-upgrade">Fazer upgrade →</button>
-          </div>
+        <div v-if="canCreateCompany" class="sidebar-footer">
+          <button class="new-project-btn press" type="button" @click="openCreateCompany">
+            <FolderPlus :size="15" class="new-project-icon" />
+            <span>Começar outro projeto</span>
+          </button>
         </div>
       </aside>
 
@@ -216,80 +213,35 @@ function crumbTooltip(crumb: string): string | undefined {
   padding: 12px;
 }
 
-.plan-card {
-  padding: 12px 13px;
+.new-project-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.plan-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.plan-spark {
-  color: var(--accent);
-}
-
-.plan-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-2);
-}
-
-.plan-progress {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.plan-bar {
-  flex: 1;
-  height: 5px;
-  background: var(--surface-3);
-  border-radius: 999px;
-  overflow: hidden;
-  position: relative;
-}
-
-.plan-bar-fill {
-  width: 35%;
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 30%, var(--text)));
-  border-radius: 999px;
-  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
-}
-
-.plan-meta {
-  font-size: 10.5px;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.plan-upgrade {
-  background: transparent;
-  border: none;
   color: var(--text-2);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  text-align: left;
-  padding: 0;
-  transition: color var(--motion-fast) var(--motion-ease);
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 
-.plan-upgrade:hover {
+.new-project-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.new-project-icon {
   color: var(--accent);
+  flex-shrink: 0;
 }
 
 .main {

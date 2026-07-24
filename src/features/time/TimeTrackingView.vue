@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { AlertTriangle, DollarSign, Pencil, Play, Plus, Square, Trash2, Users, X } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import ActivitySelect from '@/components/ui/ActivitySelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -418,7 +419,7 @@ const presets: Array<{ id: Preset; label: string }> = [
               density="compact"
               @update:model-value="applyCompanyChange(timerForm, $event)"
             />
-            <AppSelect
+            <ActivitySelect
               v-if="timerForm.companyId"
               :model-value="timerForm.activityId"
               :items="optionsFor(timerForm.companyId)"
@@ -465,7 +466,7 @@ const presets: Array<{ id: Preset; label: string }> = [
               density="compact"
               @update:model-value="editor.setCompany($event)"
             />
-            <AppSelect
+            <ActivitySelect
               v-if="editor.form.companyId"
               :model-value="editor.form.activityId"
               :items="optionsFor(editor.form.companyId)"
@@ -588,7 +589,7 @@ const presets: Array<{ id: Preset; label: string }> = [
           </label>
           <label v-if="manualForm.companyId" class="tv-field">
             <span class="tv-label">Tarefa</span>
-            <AppSelect
+            <ActivitySelect
               :model-value="manualForm.activityId"
               :items="optionsFor(manualForm.companyId)"
               placeholder="Sem tarefa"
@@ -799,9 +800,11 @@ const presets: Array<{ id: Preset; label: string }> = [
 
 <style scoped>
 .time-view {
-  max-width: 920px;
-  margin: 0 auto;
-  padding: 24px 20px 64px;
+  /* Ancorado à esquerda (não centralizado) e mais largo: o conteúdo começa perto
+     da borda, como um app de produto, em vez de uma coluna estreita no meio. */
+  max-width: 1180px;
+  margin: 0;
+  padding: 24px 28px 64px;
   display: flex;
   flex-direction: column;
   gap: 18px;

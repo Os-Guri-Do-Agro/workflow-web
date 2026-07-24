@@ -14,7 +14,7 @@ Guia interno para navegar e evoluir o código.
 - @tanstack/vue-query para cache de fetch
 - TypeScript 5.9, Vite 7
 - Ícones: **lucide-vue-next** (padrão) + `mdi` via fonte (legado, em migração)
-- Fonte: **Inter Variable** (`@fontsource-variable/inter`)
+- Fonte: **General Sans** (self-host em `assets/fonts/general-sans/`, importada no `main.ts`; Inter fica de fallback). Trocar em `tokens.ts` (`--font-family`)
 - Motion: **@vueuse/motion** (instalado via `MotionPlugin`) + `motion-v` (disponível para uso)
 - Toast: **vue-sonner** (consumido via `useToast()` bridge)
 - Charts: `vue-echarts` (line, bar, pie)
@@ -40,7 +40,7 @@ Camadas disponíveis como CSS custom properties em `:root` (atualizadas runtime 
 | **Radius**         | `--radius-sm` (6px), `--radius` (10px), `--radius-lg` (14px), `--radius-xl` (20px)    |
 | **Shadow**         | `--shadow-sm`, `--shadow`, `--shadow-overlay`                                         |
 | **Motion**         | `--motion-fast` (120ms), `--motion` (180ms), `--motion-slow` (280ms), `--motion-ease` |
-| **Typography**     | `--font-family` (Inter), `--font-mono`                                                |
+| **Typography**     | `--font-family` (General Sans), `--font-mono`                                          |
 
 **Nunca escreva hex em componentes.** Se precisar de uma cor que não existe, adicione o token em `tokens.ts` primeiro.
 
@@ -103,6 +103,8 @@ Em [`components/ui/`](./components/ui/):
 | `InlineEditText.vue`   | Campo com autosave debounced, flush no blur, Esc desfaz.                                                             |
 | `ConfirmDialog.vue`    | Modal de confirmação (Teleport + tokens). É o padrão de overlay: **não use `v-dialog` em código novo**.              |
 | `TipTapToolbar.vue`    | Toolbar tokenizada de editor. Prop `groups` escolhe o que aparece; `bare` para uso dentro de popover.                |
+| `AppSelect.vue`        | Select padrão (reka-ui Select). Single/multiple. Sem busca.                                                          |
+| `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. Usado no time tracking. |
 
 ## Colaboração
 

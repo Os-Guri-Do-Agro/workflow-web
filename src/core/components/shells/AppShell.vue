@@ -11,6 +11,9 @@ import WelcomeGuide from '@/components/onboarding/WelcomeGuide.vue'
 import XpTaskbar from './shared/XpTaskbar.vue'
 import XpWindowChrome from './shared/XpWindowChrome.vue'
 import XpDesktop from './shared/XpDesktop.vue'
+import CompanyCreateOverlay from '@/features/companies/components/CompanyCreateOverlay.vue'
+import NoCompanyState from '@/features/companies/components/NoCompanyState.vue'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useXpSounds } from '@/composables/useXpSounds'
 import { useAssistant } from '@/composables/useAssistant'
@@ -117,6 +120,40 @@ const ActiveShell = computed(() => {
   return CommandShell
 })
 
+// ── Gate de empresa ─────────────────────────────────────────────────────────
+// Usuário logado sem NENHUMA empresa fica preso (nada funciona sem empresa). Ao
+// entrar numa rota logada a gente carrega as empresas dele; se a lista vier
+// vazia (fetch OK), mostra o estado "crie sua empresa" no lugar do shell.
+const workspace = useWorkspaceStore()
+const companiesLoadOk = ref(false)
+
+async function ensureCompaniesLoaded() {
+  if (!localStorage.getItem('token')) return
+  try {
+    await workspace.fetchCompanies()
+    companiesLoadOk.value = true
+  } catch {
+    // Falha de rede não deve bloquear com o estado sem-empresa (falso positivo).
+    companiesLoadOk.value = false
+  }
+}
+
+watch(
+  bare,
+  (isBare) => {
+    if (!isBare) {
+      companiesLoadOk.value = false
+      void ensureCompaniesLoaded()
+    }
+  },
+  { immediate: true },
+)
+
+// Só bloqueia quando o fetch confirmou zero empresas (nunca durante o load).
+const hasNoCompany = computed(
+  () => !bare.value && companiesLoadOk.value && workspace.companies.length === 0,
+)
+
 // Onboarding abre sozinho UMA vez, quando o usuário entra numa rota logada
 // (sai do login/bare). maybeAutoOpen é idempotente (guarda em localStorage).
 watch(
@@ -135,11 +172,16 @@ const openPalette = () => paletteRef.value?.open()
   <div v-if="bare" class="app-shell-bare">
     <slot />
   </div>
+  <template v-else-if="hasNoCompany">
+    <NoCompanyState />
+    <CompanyCreateOverlay />
+  </template>
   <div v-else class="app-shell-root">
     <component :is="ActiveShell" @open-command-palette="openPalette">
       <slot />
     </component>
     <CommandPalette ref="paletteRef" />
+    <CompanyCreateOverlay />
     <AssistantLauncher />
     <AssistantPanel />
     <WelcomeGuide />

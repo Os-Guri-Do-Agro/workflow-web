@@ -1,3 +1,4 @@
+import '@/assets/fonts/general-sans/general-sans.css'
 import '@fontsource-variable/inter'
 import '@/styles/reset.css'
 import '@/styles/typography.css'
