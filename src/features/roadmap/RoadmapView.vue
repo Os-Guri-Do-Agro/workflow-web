@@ -952,7 +952,9 @@ const selectedNoteMonth = computed(() =>
 
 const printedMonthlyPlans = computed(() =>
   exportMonthKey.value === 'all'
-    ? monthlyPlans.value
+    ? // Só meses com conteúdo: sem isto o PDF de "todos os meses" saía com uma
+      // página em branco por mês vazio (até 12), a maioria sem nada.
+      monthlyPlans.value.filter(monthHasContent)
     : monthlyPlans.value.filter((month) => month.key === exportMonthKey.value),
 )
 
@@ -1414,11 +1416,12 @@ function dateKey(year: number, month: number, day: number): string {
 }
 
 function calendarCells(month: MonthlyPlan): Array<{ key: string; day: number | null; date?: string }> {
-  // `month.month` é 1-based (Jan = 1); `Date` e `dateKey` são 0-based. Sem o
-  // `-1` o calendário renderizava o layout do mês SEGUINTE e as datas das
-  // células nunca batiam com as dos itens: nenhum dia era marcado e os dias da
-  // semana ficavam deslocados em um mês.
-  const monthIndex = month.month - 1
+  // `month.month` é 0-based (Jan = 0), igual ao que a API grava (schema Prisma:
+  // "zero-based (0-11)") e ao que `dateKey` espera. O `-1` que havia aqui tratava
+  // como 1-based e jogava o mês inteiro para trás: julho renderizava a grade de
+  // junho, as células viravam datas 06-XX e nenhuma batia com as entregas 07-XX,
+  // deixando o calendário sem marcador nenhum. Este é o "some do roadmap".
+  const monthIndex = month.month
   const firstDay = new Date(month.year, monthIndex, 1)
   const lastDay = new Date(month.year, monthIndex + 1, 0)
   const cells: Array<{ key: string; day: number | null; date?: string }> = []
@@ -2198,7 +2201,7 @@ async function removeSelectedMilestone() {
           </section>
 
           <footer class="print-month-footer">
-            <span>Workflow · Stack Roads</span>
+            <span>Nevo</span>
             <span v-if="printedMonthlyPlans.length > 1">{{ index + 1 }} / {{ printedMonthlyPlans.length }}</span>
           </footer>
         </article>
@@ -4687,42 +4690,52 @@ async function removeSelectedMilestone() {
   gap: 8px;
 }
 
+/*
+ * Card da agenda: superfície neutra, borda neutra. A cor do status entra só no
+ * marcador e na data, nunca na borda nem no fundo. Antes cada item ganhava
+ * borda e fundo tingidos pelo próprio status, e a lista virava um arco-íris de
+ * caixas coloridas: a cara de template genérico. Aqui a cor é acento, não
+ * moldura.
+ */
 .month-entry {
   display: grid;
-  grid-template-columns: 44px auto 1fr;
-  gap: 9px;
+  grid-template-columns: 42px auto 1fr;
+  gap: 10px;
   align-items: start;
-  padding: 9px;
+  padding: 10px 11px;
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--entry-c) 9%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--entry-c) 22%, transparent);
+  background-color: var(--surface);
+  background-image: var(--elev-1);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 var(--elev-hi);
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+
+.month-entry:hover {
+  border-color: var(--border-strong);
+  background-color: var(--surface-2);
 }
 
 .month-entry-date {
   color: var(--entry-c);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
 .month-entry-dot {
-  width: 10px;
-  height: 10px;
-  margin-top: 2px;
+  width: 9px;
+  height: 9px;
+  margin-top: 3px;
   border-radius: 999px;
   background: var(--entry-c);
 }
 
 /* Mesma linguagem do calendário: quadrado é entrega, círculo é anotação. */
 .month-entry-dot--delivery {
-  border-radius: 3px;
-}
-
-/* Entrega vs anotação já se distinguem pela forma do marcador (quadrado vs
-   círculo) e pela cor da data. A borda lateral esquerda saiu: além de
-   redundante, é a cara de template genérico. Realce fica na borda inteira. */
-.month-entry--delivery {
-  border-color: color-mix(in srgb, var(--entry-c) 40%, transparent);
+  border-radius: 2px;
 }
 
 .month-entry-task {
@@ -5021,8 +5034,10 @@ async function removeSelectedMilestone() {
   padding-bottom: 14px;
 }
 
+/* O drawer usa o mesmo card neutro da agenda; sem tint próprio para não
+   reintroduzir a caixa colorida por status. */
 .drawer-entry {
-  background: color-mix(in srgb, var(--entry-c) 8%, var(--surface));
+  background-color: var(--surface);
 }
 
 .monthly-print-report {
@@ -5453,22 +5468,25 @@ async function removeSelectedMilestone() {
     gap: 2.4mm;
   }
 
+  /* Mesma decisão da tela: card neutro no papel, a cor do status vive só na
+     data e na tag. Nada de borda e fundo tingidos por status (o arco-íris de
+     caixas). */
   .print-entry {
     display: grid;
     grid-template-columns: 16mm minmax(0, 1fr) auto;
     gap: 3mm;
     align-items: start;
     padding: 2.8mm;
-    border: 1px solid color-mix(in srgb, var(--entry-c) 50%, #d1d5db);
+    border: 1px solid #e5e7eb;
     border-radius: 3mm;
-    background: color-mix(in srgb, var(--entry-c) 13%, #fff);
+    background: #fff;
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
   .print-entry-date {
     display: block;
-    color: #111827;
+    color: var(--entry-c);
     font-size: 9pt;
     font-weight: 950;
     font-variant-numeric: tabular-nums;
