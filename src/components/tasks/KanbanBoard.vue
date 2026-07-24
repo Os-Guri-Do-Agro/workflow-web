@@ -402,7 +402,9 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
-  align-items: start;
+  /* stretch: todas as colunas com a MESMA altura (a da mais cheia). Sem isso a
+     coluna vazia/curta fica "quebrada" ao lado das altas. */
+  align-items: stretch;
 }
 
 @media (max-width: 1100px) {
@@ -515,11 +517,17 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 .lane__body {
   position: relative;
   z-index: 1;
+  /* Preenche a altura da lane (stretch) para a coluna toda virar drop zone. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .lane__list {
-  min-height: 60px;
-  /* sortablejs não convive bem com flex+gap; block + margin-bottom nos cards. */
+  /* flex ITEM (não flex container): cresce pra preencher a lane, mas os cards
+     continuam em fluxo block + margin-bottom (sortablejs não gosta de flex+gap). */
+  flex: 1;
+  min-height: 72px;
 }
 
 .card {
