@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { AlertTriangle, DollarSign, Play, Square, Timer as TimerIcon } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import SaveStatus from '@/components/ui/SaveStatus.vue'
 import { useTimeTracking } from '@/composables/useTimeTracking'
+import { useCompanyActivities } from '@/composables/useCompanyActivities'
+import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
 import { useToast } from '@/composables/useToast'
 import { useCurrentUser } from '@/composables/useCurrentUser'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
@@ -12,7 +15,8 @@ import { formatTimer } from '@/utils/duration'
 const { me } = useCurrentUser()
 const { error: showError } = useToast()
 const workspace = useWorkspaceStore()
-const { running, isRunning, elapsedSec, start, stop } = useTimeTracking()
+const { isRunning, elapsedSec, start, stop } = useTimeTracking()
+const { optionsFor, companyOf } = useCompanyActivities()
 
 const isOpen = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
@@ -20,7 +24,7 @@ const rootRef = ref<HTMLElement | null>(null)
 // F3 — timer é considerado "esquecido" após 8h rodando (avisa, mas não para).
 const FORGOTTEN_SEC = 8 * 60 * 60
 
-// ─── Formulário de início ─────────────────────────────────────────────────────
+// ─── Formulário de início (estado parado) ─────────────────────────────────────
 const description = ref('')
 // null = "Pessoal" (sem empresa). Default = empresa ativa, se houver.
 const companyId = ref<string | null>(workspace.activeCompanyId)
@@ -28,31 +32,32 @@ const activityId = ref<string | null>(null)
 // F5 — faturável de ponta a ponta (a UI passa a enviar o billable).
 const billable = ref(false)
 
+// ─── Edição ao vivo (estado rodando, T2) ──────────────────────────────────────
+const editor = useRunningEntryEditor({ companyOf })
+
 // "Pessoal" + empresas do usuário.
 const companyOptions = computed(() => [
   { label: 'Pessoal', value: null as string | null },
   ...workspace.companies.map((c) => ({ label: c.name, value: c.id })),
 ])
 
-// Tarefas da empresa escolhida (fonte: workspace já carregado). Opcional.
-const activityOptions = computed(() => {
-  const tasks = workspace.workspaceData?.activities ?? []
-  const filtered = companyId.value
-    ? tasks.filter((t) => t.companyId === companyId.value)
-    : []
-  return [
-    { label: 'Sem tarefa', value: null as string | null },
-    ...filtered.map((t) => ({ label: t.title, value: t.id })),
-  ]
-})
+// O AppSelect emite SelectValuePrimitive; company/activity são sempre id ou null.
+const toId = (v: unknown): string | null => (typeof v === 'string' ? v : null)
 
-// Trocar de empresa reseta a tarefa (evita vínculo inconsistente).
-watch(companyId, () => {
-  activityId.value = null
-})
+// T3 — trocar empresa só zera a tarefa se ela não pertence à nova empresa; e
+// escolher a tarefa preenche a empresa dela.
+function onStartCompany(raw: unknown) {
+  const id = toId(raw)
+  companyId.value = id
+  if (activityId.value && companyOf(activityId.value) !== id) activityId.value = null
+}
+function onStartActivity(raw: unknown) {
+  const id = toId(raw)
+  activityId.value = id
+  if (id && !companyId.value) companyId.value = companyOf(id)
+}
 
 const clock = computed(() => formatTimer(elapsedSec.value))
-const runningLabel = computed(() => running.value?.description?.trim() || 'Sem descrição')
 
 // F3 — aviso de timer esquecido (>8h). Mostra há quantas horas está rodando.
 const forgotten = computed(() => isRunning.value && elapsedSec.value > FORGOTTEN_SEC)
@@ -71,7 +76,7 @@ async function handleStart() {
     await start.mutateAsync({
       description: description.value.trim() || undefined,
       companyId: companyId.value,
-      activityId: activityId.value,
+      activityId: companyId.value ? activityId.value : null,
       billable: billable.value,
     })
     description.value = ''
@@ -85,6 +90,7 @@ async function handleStart() {
 
 async function handleStop() {
   try {
+    editor.flush() // salva a última edição pendente antes de parar
     await stop.mutateAsync()
     close()
   } catch {
@@ -123,18 +129,66 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
           <h2 class="timer-title">{{ isRunning ? 'Timer em andamento' : 'Iniciar timer' }}</h2>
         </header>
 
-        <!-- Estado: rodando -->
+        <!-- Estado: rodando (edição ao vivo, T2) -->
         <div v-if="isRunning" class="timer-body">
           <div class="timer-live">
-            <span class="timer-live-clock">{{ clock }}</span>
-            <span class="timer-live-desc">{{ runningLabel }}</span>
-            <div class="timer-live-chips">
-              <span v-if="running?.company" class="timer-chip">{{ running.company.name }}</span>
-              <span v-else class="timer-chip timer-chip--muted">Pessoal</span>
-              <span v-if="running?.billable" class="timer-chip timer-chip--bill">
-                <DollarSign :size="11" /> Faturável
-              </span>
-            </div>
+            <span class="timer-live-clock timer-live-clock--rec">{{ clock }}</span>
+          </div>
+
+          <label class="timer-field">
+            <span class="timer-label">No que você está trabalhando?</span>
+            <input
+              v-model="editor.form.description"
+              class="timer-input"
+              type="text"
+              placeholder="Descrição (opcional)"
+              maxlength="500"
+              @input="editor.touch()"
+            />
+          </label>
+
+          <label class="timer-field">
+            <span class="timer-label">Empresa</span>
+            <AppSelect
+              :model-value="editor.form.companyId"
+              :items="companyOptions"
+              placeholder="Pessoal"
+              label="Empresa"
+              density="compact"
+              @update:model-value="editor.setCompany($event)"
+            />
+          </label>
+
+          <label v-if="editor.form.companyId" class="timer-field">
+            <span class="timer-label">Tarefa</span>
+            <AppSelect
+              :model-value="editor.form.activityId"
+              :items="optionsFor(editor.form.companyId)"
+              placeholder="Sem tarefa"
+              label="Tarefa"
+              density="compact"
+              @update:model-value="editor.setActivity($event)"
+            />
+          </label>
+          <p v-else class="timer-hint">Escolha uma empresa para atribuir uma tarefa.</p>
+
+          <label class="timer-toggle">
+            <input
+              v-model="editor.form.billable"
+              type="checkbox"
+              class="timer-toggle-input"
+              @change="editor.touch()"
+            />
+            <span class="timer-toggle-box"><DollarSign :size="13" /></span>
+            <span class="timer-toggle-text">Faturável</span>
+          </label>
+
+          <div v-if="editor.state.value !== 'idle'" class="timer-autosave">
+            <SaveStatus
+              :state="editor.state.value"
+              :saved-at="editor.savedAt.value"
+              @retry="editor.flush()"
+            />
           </div>
 
           <!-- F3 — aviso de timer esquecido (âmbar), sem parar automaticamente. -->
@@ -170,24 +224,27 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
           <label class="timer-field">
             <span class="timer-label">Empresa</span>
             <AppSelect
-              v-model="companyId"
+              :model-value="companyId"
               :items="companyOptions"
               placeholder="Pessoal"
               label="Empresa"
               density="compact"
+              @update:model-value="onStartCompany($event)"
             />
           </label>
 
           <label v-if="companyId" class="timer-field">
             <span class="timer-label">Tarefa</span>
             <AppSelect
-              v-model="activityId"
-              :items="activityOptions"
+              :model-value="activityId"
+              :items="optionsFor(companyId)"
               placeholder="Sem tarefa"
               label="Tarefa"
               density="compact"
+              @update:model-value="onStartActivity($event)"
             />
           </label>
+          <p v-else class="timer-hint">Escolha uma empresa para atribuir uma tarefa.</p>
 
           <!-- F5 — faturável -->
           <label class="timer-toggle">
@@ -330,6 +387,38 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 .timer-live-desc {
   color: var(--text-2);
   font-size: 13px;
+}
+
+/* Cronômetro em gravação: ponto vermelho pulsando (casa com favicon/título). */
+.timer-live-clock--rec {
+  position: relative;
+  color: var(--err);
+  padding-left: 18px;
+}
+
+.timer-live-clock--rec::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: var(--err);
+  animation: timer-pulse 1.6s ease-in-out infinite;
+}
+
+.timer-hint {
+  margin: 0;
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.timer-autosave {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .timer-chip {

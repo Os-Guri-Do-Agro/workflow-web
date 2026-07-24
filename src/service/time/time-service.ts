@@ -79,6 +79,30 @@ export interface ReportFilters {
   tzOffset?: number
 }
 
+/** Timer de um membro rodando agora, como o ADMIN vê na aba Equipe (v2 T5). */
+export interface TeamLiveEntry {
+  entryId: string
+  userId: string
+  userName: string
+  description: string
+  startedAt: string
+  companyId: string | null
+  activityId: string | null
+  activityTitle: string | null
+  billable: boolean
+}
+
+/** Payload de `time:team-stopped` (o membro parou; a linha volta a "ocioso"). */
+export interface TeamStoppedPayload {
+  userId: string
+  entryId: string
+}
+
+export interface CompanyLive {
+  companyId: string
+  running: TeamLiveEntry[]
+}
+
 const timeService = {
   async start(data: StartTimerInput) {
     const response = await api.post<TimeEntry>('/time/start', data)
@@ -123,6 +147,12 @@ const timeService = {
   // x-company-id é anexado automaticamente pelo interceptor (empresa ativa).
   async companyReport(filters?: ReportFilters) {
     const response = await api.get<CompanyReport>('/time/company-report', { params: filters })
+    return response.data
+  },
+
+  // Timers rodando agora da equipe (ADMIN). x-company-id via interceptor.
+  async companyLive() {
+    const response = await api.get<CompanyLive>('/time/company-live')
     return response.data
   },
 }

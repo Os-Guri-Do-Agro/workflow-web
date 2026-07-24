@@ -17,6 +17,7 @@ import { useAssistant } from '@/composables/useAssistant'
 import { useOnboarding } from '@/composables/useOnboarding'
 import { useToast } from '@/composables/useToast'
 import { useTimerDocumentTitle } from '@/composables/useTimerDocumentTitle'
+import { useFaviconBadge } from '@/composables/useFaviconBadge'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const route = useRoute()
@@ -54,6 +55,9 @@ const { info } = useToast()
 // Contador do timer no título da aba (persiste ao trocar de rota/shell — por isso
 // mora aqui, no ponto sempre presente, e não no TimerWidget que é por-shell).
 useTimerDocumentTitle()
+// Badge vermelho de "gravando" no favicon enquanto o timer roda (mesmo ponto
+// sempre-presente, mesmo singleton de estado).
+useFaviconBadge()
 
 // Redirects do guard chegam com ?reason=... — traduz em toast e limpa a query
 // (router.replace) para o aviso não repetir em refresh/navegação.

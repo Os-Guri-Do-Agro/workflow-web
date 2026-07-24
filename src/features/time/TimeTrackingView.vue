@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { AlertTriangle, DollarSign, Pencil, Play, Plus, Square, Trash2, X } from 'lucide-vue-next'
+import { AlertTriangle, DollarSign, Pencil, Play, Plus, Square, Trash2, Users, X } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import SaveStatus from '@/components/ui/SaveStatus.vue'
+import TeamView from '@/features/time/components/TeamView.vue'
 import { useToast } from '@/composables/useToast'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useTimeEntries, useTimeTracking } from '@/composables/useTimeTracking'
+import { useCompanyActivities } from '@/composables/useCompanyActivities'
+import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
 import { getApiErrorMessage } from '@/service/api'
 import type { TimeEntry } from '@/service/time/time-service'
 import {
@@ -23,8 +27,14 @@ const FORGOTTEN_SEC = 8 * 60 * 60
 
 const { error: showError, success } = useToast()
 const workspace = useWorkspaceStore()
-const { running, isRunning, elapsedSec, start, stop, createManual, updateEntry, deleteEntry } =
+const { isRunning, elapsedSec, start, stop, createManual, updateEntry, deleteEntry } =
   useTimeTracking()
+const { optionsFor, companyOf } = useCompanyActivities()
+
+// ─── Abas: Meu tempo | Equipe (Equipe só para ADMIN) ──────────────────────────
+type Tab = 'me' | 'team'
+const activeTab = ref<Tab>('me')
+const isAdmin = computed(() => workspace.isAdmin)
 
 // ─── Opções de empresa / tarefa (compartilhadas por vários formulários) ───────
 const companyOptions = computed(() => [
@@ -32,28 +42,39 @@ const companyOptions = computed(() => [
   ...workspace.companies.map((c) => ({ label: c.name, value: c.id })),
 ])
 
-function activityOptionsFor(companyId: string | null) {
-  const tasks = workspace.workspaceData?.activities ?? []
-  const filtered = companyId ? tasks.filter((t) => t.companyId === companyId) : []
-  return [
-    { label: 'Sem tarefa', value: null as string | null },
-    ...filtered.map((t) => ({ label: t.title, value: t.id })),
-  ]
+// T3 — regras de consistência empresa↔tarefa aplicadas a qualquer form de vínculo.
+interface LinkForm {
+  companyId: string | null
+  activityId: string | null
+}
+// O AppSelect emite SelectValuePrimitive; company/activity são sempre id ou null.
+const toId = (v: unknown): string | null => (typeof v === 'string' ? v : null)
+
+function applyCompanyChange(form: LinkForm, raw: unknown) {
+  const companyId = toId(raw)
+  form.companyId = companyId
+  // Só zera a tarefa se ela não pertence à nova empresa (antes zerava sempre).
+  if (form.activityId && companyOf(form.activityId) !== companyId) {
+    form.activityId = null
+  }
+}
+function applyActivityChange(form: LinkForm, raw: unknown) {
+  const activityId = toId(raw)
+  form.activityId = activityId
+  // Escolher a tarefa preenche a empresa dela se ainda não houver.
+  if (activityId && !form.companyId) form.companyId = companyOf(activityId)
 }
 
-// ─── Barra do timer (topo) ────────────────────────────────────────────────────
+// ─── Barra do timer (topo) — estado PARADO ────────────────────────────────────
 const timerForm = reactive({
   description: '',
   companyId: workspace.activeCompanyId as string | null,
   activityId: null as string | null,
   billable: false, // F5
 })
-watch(
-  () => timerForm.companyId,
-  () => {
-    timerForm.activityId = null
-  },
-)
+
+// ─── Barra do timer — estado RODANDO (edição ao vivo, T2) ─────────────────────
+const editor = useRunningEntryEditor({ companyOf })
 
 const liveClock = computed(() => formatTimer(elapsedSec.value))
 
@@ -66,7 +87,7 @@ async function handleStart() {
     await start.mutateAsync({
       description: timerForm.description.trim() || undefined,
       companyId: timerForm.companyId,
-      activityId: timerForm.activityId,
+      activityId: timerForm.companyId ? timerForm.activityId : null,
       billable: timerForm.billable,
     })
     timerForm.description = ''
@@ -79,6 +100,7 @@ async function handleStart() {
 
 async function handleStop() {
   try {
+    editor.flush() // garante que a última edição pendente foi salva antes de parar
     await stop.mutateAsync()
   } catch {
     showError('Não foi possível parar o timer')
@@ -132,8 +154,6 @@ const entriesFilters = computed(() => {
     to,
     take: limit.value,
   }
-  // 'all' e '__personal__' (recorte "sem empresa", aplicado no client) não
-  // viram filtro de companyId no backend.
   const value = filterCompanyId.value
   if (value && value !== 'all' && value !== '__personal__') {
     base.companyId = value
@@ -143,12 +163,10 @@ const entriesFilters = computed(() => {
 
 const entries = useTimeEntries(entriesFilters)
 
-// Trocar de período/empresa reinicia a paginação.
 watch([preset, filterCompanyId], () => {
   limit.value = PAGE_SIZE
 })
 
-// Há mais itens se o backend devolveu exatamente o take pedido.
 const hasMore = computed(() => (entries.data.value?.length ?? 0) >= limit.value)
 
 function loadMore() {
@@ -161,8 +179,6 @@ const filterCompanyOptions = computed(() => [
   ...workspace.companies.map((c) => ({ label: c.name, value: c.id })),
 ])
 
-// "Pessoal" no filtro = entradas sem empresa. Aplicado no client (o back filtra
-// por companyId específico; "sem empresa" é um recorte local).
 const visibleEntries = computed<TimeEntry[]>(() => {
   const list = entries.data.value ?? []
   // Só entradas já fechadas aparecem na lista (o timer rodando fica na barra).
@@ -200,7 +216,6 @@ const rangeTotalSec = computed(() =>
   visibleEntries.value.reduce((acc, e) => acc + (e.durationSec ?? 0), 0),
 )
 
-// F5 — total faturável do período (só entradas com billable=true).
 const rangeBillableSec = computed(() =>
   visibleEntries.value.reduce((acc, e) => acc + (e.billable ? (e.durationSec ?? 0) : 0), 0),
 )
@@ -212,7 +227,7 @@ const todayTotalSec = computed(() => {
     .reduce((acc, e) => acc + (e.durationSec ?? 0), 0)
 })
 
-// ─── Edição inline ────────────────────────────────────────────────────────────
+// ─── Edição inline (entradas fechadas) ────────────────────────────────────────
 const editingId = ref<string | null>(null)
 const editForm = reactive({
   description: '',
@@ -223,7 +238,6 @@ const editForm = reactive({
   billable: false, // F5
 })
 
-// F6 — preview de duração (fim − início) no formulário de edição.
 const editPreview = computed(() => durationPreview(editForm.startedAt, editForm.endedAt))
 
 function toLocalInput(iso: string): string {
@@ -236,7 +250,6 @@ function fromLocalInput(local: string): string {
   return new Date(local).toISOString()
 }
 
-// F6 — "2h 15m" a partir de dois datetime-local (ou null se inválido/negativo).
 function durationPreview(startLocal: string, endLocal: string): string | null {
   const s = new Date(startLocal).getTime()
   const e = new Date(endLocal).getTime()
@@ -265,7 +278,7 @@ async function saveEdit(id: string) {
       data: {
         description: editForm.description.trim(),
         companyId: editForm.companyId ?? '',
-        activityId: editForm.activityId ?? '',
+        activityId: editForm.companyId ? (editForm.activityId ?? '') : '',
         startedAt: fromLocalInput(editForm.startedAt),
         endedAt: fromLocalInput(editForm.endedAt),
         billable: editForm.billable,
@@ -313,14 +326,7 @@ const manualForm = reactive({
   endedAt: '',
   billable: false, // F5
 })
-watch(
-  () => manualForm.companyId,
-  () => {
-    manualForm.activityId = null
-  },
-)
 
-// F6 — preview de duração no formulário manual.
 const manualPreview = computed(() => durationPreview(manualForm.startedAt, manualForm.endedAt))
 
 function openManual() {
@@ -340,7 +346,7 @@ async function submitManual() {
     await createManual.mutateAsync({
       description: manualForm.description.trim() || undefined,
       companyId: manualForm.companyId,
-      activityId: manualForm.activityId,
+      activityId: manualForm.companyId ? manualForm.activityId : null,
       startedAt: fromLocalInput(manualForm.startedAt),
       endedAt: fromLocalInput(manualForm.endedAt),
       billable: manualForm.billable,
@@ -366,346 +372,417 @@ const presets: Array<{ id: Preset; label: string }> = [
         <p class="tv-eyebrow">Pessoal</p>
         <h1 class="tv-title">Meu tempo</h1>
       </div>
+
+      <!-- Abas: só aparecem para ADMIN (worker não vê a Equipe). -->
+      <nav v-if="isAdmin" class="tv-tabs" aria-label="Seções do tempo">
+        <button
+          class="tv-tab"
+          :class="{ 'tv-tab--on': activeTab === 'me' }"
+          type="button"
+          @click="activeTab = 'me'"
+        >
+          Meu tempo
+        </button>
+        <button
+          class="tv-tab"
+          :class="{ 'tv-tab--on': activeTab === 'team' }"
+          type="button"
+          @click="activeTab = 'team'"
+        >
+          <Users :size="14" />
+          Equipe
+        </button>
+      </nav>
     </header>
 
-    <!-- ─── Barra do timer ─────────────────────────────────────────────── -->
-    <section class="tv-timer" :class="{ 'tv-timer--running': isRunning }">
-      <input
-        v-model="timerForm.description"
-        class="tv-timer-input"
-        type="text"
-        placeholder="No que você está trabalhando?"
-        maxlength="500"
-        :disabled="isRunning"
-      />
-
-      <div class="tv-timer-selects">
-        <AppSelect
-          v-model="timerForm.companyId"
-          :items="companyOptions"
-          placeholder="Pessoal"
-          label="Empresa"
-          density="compact"
-          :disabled="isRunning"
-        />
-        <AppSelect
-          v-if="timerForm.companyId && !isRunning"
-          v-model="timerForm.activityId"
-          :items="activityOptionsFor(timerForm.companyId)"
-          placeholder="Sem tarefa"
-          label="Tarefa"
-          density="compact"
-        />
-      </div>
-
-      <!-- F5 — faturável (só no estado parado) -->
-      <label v-if="!isRunning" class="tv-toggle" title="Marcar como faturável">
-        <input v-model="timerForm.billable" type="checkbox" class="tv-toggle-input" />
-        <span class="tv-toggle-box"><DollarSign :size="14" /></span>
-        <span class="tv-toggle-text">Faturável</span>
-      </label>
-
-      <div class="tv-timer-clock">{{ liveClock }}</div>
-
-      <button
-        v-if="!isRunning"
-        class="tv-btn tv-btn--start"
-        type="button"
-        :disabled="start.isPending.value"
-        @click="handleStart"
-      >
-        <Play :size="16" />
-        <span>Iniciar</span>
-      </button>
-      <button
-        v-else
-        class="tv-btn tv-btn--stop"
-        type="button"
-        :disabled="stop.isPending.value"
-        @click="handleStop"
-      >
-        <Square :size="16" />
-        <span>Parar</span>
-      </button>
-    </section>
-
-    <!-- F3 — aviso de timer esquecido (>8h). -->
-    <div v-if="forgotten" class="tv-forgotten" role="alert">
-      <AlertTriangle :size="16" />
-      <span>Timer rodando há {{ runningHours }}h. Ainda está trabalhando?</span>
-      <button class="tv-forgotten-btn" type="button" :disabled="stop.isPending.value" @click="handleStop">
-        Parar
-      </button>
-    </div>
-
-    <div v-else-if="isRunning && running" class="tv-running-hint">
-      Rodando: <strong>{{ running.description || 'Sem descrição' }}</strong>
-      <span v-if="running.company"> · {{ running.company.name }}</span>
-      <span v-if="running.billable" class="tv-inline-bill"><DollarSign :size="12" /> Faturável</span>
-    </div>
-
-    <!-- ─── Filtros + totais ───────────────────────────────────────────── -->
-    <section class="tv-controls">
-      <div class="tv-presets">
-        <button
-          v-for="p in presets"
-          :key="p.id"
-          class="tv-chip"
-          :class="{ 'tv-chip--on': preset === p.id }"
-          type="button"
-          @click="preset = p.id"
-        >
-          {{ p.label }}
-        </button>
-      </div>
-
-      <div class="tv-company-filter">
-        <AppSelect
-          v-model="filterCompanyId"
-          :items="filterCompanyOptions"
-          label="Filtrar por empresa"
-          density="compact"
-        />
-      </div>
-
-      <div class="tv-totals">
-        <div class="tv-total">
-          <span class="tv-total-label">Hoje</span>
-          <span class="tv-total-value">{{ formatDurationLong(todayTotalSec) }}</span>
-        </div>
-        <div class="tv-total">
-          <span class="tv-total-label">Período</span>
-          <span class="tv-total-value">{{ formatDurationLong(rangeTotalSec) }}</span>
-        </div>
-        <div v-if="rangeBillableSec > 0" class="tv-total">
-          <span class="tv-total-label tv-total-label--bill">Faturável</span>
-          <span class="tv-total-value tv-total-value--bill">{{ formatDurationLong(rangeBillableSec) }}</span>
-        </div>
-      </div>
-
-      <button class="tv-btn tv-btn--ghost" type="button" @click="openManual">
-        <Plus :size="16" />
-        <span>Entrada manual</span>
-      </button>
-    </section>
-
-    <!-- ─── Formulário de entrada manual ───────────────────────────────── -->
-    <section v-if="showManual" class="tv-manual">
-      <header class="tv-manual-head">
-        <h2 class="tv-manual-title">Nova entrada manual</h2>
-        <button class="tv-icon-btn" type="button" title="Fechar" @click="showManual = false">
-          <X :size="16" />
-        </button>
-      </header>
-      <div class="tv-manual-grid">
-        <label class="tv-field tv-field--wide">
-          <span class="tv-label">Descrição</span>
-          <input v-model="manualForm.description" class="tv-input" type="text" maxlength="500" />
-        </label>
-        <label class="tv-field">
-          <span class="tv-label">Empresa</span>
-          <AppSelect
-            v-model="manualForm.companyId"
-            :items="companyOptions"
-            placeholder="Pessoal"
-            label="Empresa"
-            density="compact"
+    <!-- ═══════════════ ABA: MEU TEMPO ═══════════════ -->
+    <template v-if="activeTab === 'me'">
+      <!-- ─── Barra do timer ─────────────────────────────────────────────── -->
+      <section class="tv-timer" :class="{ 'tv-timer--running': isRunning }">
+        <!-- Estado PARADO: formulário de início -->
+        <template v-if="!isRunning">
+          <input
+            v-model="timerForm.description"
+            class="tv-timer-input"
+            type="text"
+            placeholder="No que você está trabalhando?"
+            maxlength="500"
+            @keyup.enter="handleStart"
           />
-        </label>
-        <label v-if="manualForm.companyId" class="tv-field">
-          <span class="tv-label">Tarefa</span>
-          <AppSelect
-            v-model="manualForm.activityId"
-            :items="activityOptionsFor(manualForm.companyId)"
-            placeholder="Sem tarefa"
-            label="Tarefa"
-            density="compact"
+          <div class="tv-timer-selects">
+            <AppSelect
+              :model-value="timerForm.companyId"
+              :items="companyOptions"
+              placeholder="Pessoal"
+              label="Empresa"
+              density="compact"
+              @update:model-value="applyCompanyChange(timerForm, $event)"
+            />
+            <AppSelect
+              v-if="timerForm.companyId"
+              :model-value="timerForm.activityId"
+              :items="optionsFor(timerForm.companyId)"
+              placeholder="Sem tarefa"
+              label="Tarefa"
+              density="compact"
+              @update:model-value="applyActivityChange(timerForm, $event)"
+            />
+            <span v-else class="tv-task-hint">Escolha uma empresa para atribuir tarefa</span>
+          </div>
+          <label class="tv-toggle" title="Marcar como faturável">
+            <input v-model="timerForm.billable" type="checkbox" class="tv-toggle-input" />
+            <span class="tv-toggle-box"><DollarSign :size="14" /></span>
+            <span class="tv-toggle-text">Faturável</span>
+          </label>
+          <div class="tv-timer-clock">{{ liveClock }}</div>
+          <button
+            class="tv-btn tv-btn--start"
+            type="button"
+            :disabled="start.isPending.value"
+            @click="handleStart"
+          >
+            <Play :size="16" />
+            <span>Iniciar</span>
+          </button>
+        </template>
+
+        <!-- Estado RODANDO: edição ao vivo (T2) -->
+        <template v-else>
+          <input
+            v-model="editor.form.description"
+            class="tv-timer-input"
+            type="text"
+            placeholder="No que você está trabalhando?"
+            maxlength="500"
+            @input="editor.touch()"
           />
-        </label>
-        <label class="tv-field">
-          <span class="tv-label">Início</span>
-          <input v-model="manualForm.startedAt" class="tv-input" type="datetime-local" />
-        </label>
-        <label class="tv-field">
-          <span class="tv-label">Fim</span>
-          <input v-model="manualForm.endedAt" class="tv-input" type="datetime-local" />
-        </label>
-        <label class="tv-field tv-field--wide tv-toggle-field">
-          <input v-model="manualForm.billable" type="checkbox" class="tv-toggle-input" />
-          <span class="tv-toggle-box"><DollarSign :size="14" /></span>
-          <span class="tv-toggle-text">Faturável</span>
-        </label>
-      </div>
-      <div class="tv-manual-actions">
-        <span v-if="manualPreview" class="tv-preview">
-          Duração: <strong>{{ manualPreview }}</strong>
-        </span>
-        <button class="tv-btn tv-btn--ghost" type="button" @click="showManual = false">
-          Cancelar
-        </button>
-        <button
-          class="tv-btn tv-btn--start"
-          type="button"
-          :disabled="createManual.isPending.value"
-          @click="submitManual"
-        >
-          <Plus :size="16" />
-          <span>Adicionar</span>
-        </button>
-      </div>
-    </section>
-
-    <!-- ─── Lista agrupada por dia ─────────────────────────────────────── -->
-    <!-- F4 — loading: skeleton -->
-    <div v-if="entries.isLoading.value" class="tv-skeletons">
-      <Skeleton v-for="i in 4" :key="i" type="row" height="18px" />
-    </div>
-
-    <!-- F4 — erro: tentar de novo -->
-    <EmptyState
-      v-else-if="entries.isError.value"
-      :icon="AlertTriangle"
-      title="Não foi possível carregar"
-      description="Ocorreu um erro ao buscar suas entradas de tempo."
-    >
-      <template #action>
-        <button class="tv-btn tv-btn--ghost" type="button" @click="() => entries.refetch()">
-          Tentar de novo
-        </button>
-      </template>
-    </EmptyState>
-
-    <EmptyState
-      v-else-if="groups.length === 0"
-      title="Nenhum tempo registrado"
-      description="Inicie o timer acima ou adicione uma entrada manual para começar."
-    />
-
-    <div v-else class="tv-groups">
-      <section v-for="group in groups" :key="group.key" class="tv-group">
-        <header class="tv-group-head">
-          <span class="tv-group-day">{{ group.label }}</span>
-          <span class="tv-group-total">{{ formatDurationLong(group.totalSec) }}</span>
-        </header>
-
-        <ul class="tv-list">
-          <li v-for="entry in group.entries" :key="entry.id" class="tv-row">
-            <!-- Linha normal -->
-            <template v-if="editingId !== entry.id">
-              <div class="tv-row-main">
-                <span class="tv-row-desc">{{ entry.description || 'Sem descrição' }}</span>
-                <div class="tv-row-chips">
-                  <span v-if="entry.company" class="tv-tag">{{ entry.company.name }}</span>
-                  <span v-else class="tv-tag tv-tag--muted">Pessoal</span>
-                  <span v-if="entry.activity" class="tv-tag tv-tag--task">
-                    {{ entry.activity.title }}
-                  </span>
-                  <span v-if="entry.billable" class="tv-tag tv-tag--bill">
-                    <DollarSign :size="11" /> Faturável
-                  </span>
-                  <span
-                    v-if="entry.autoStopped"
-                    class="tv-tag tv-tag--auto"
-                    title="Encerrado automaticamente (timer esquecido)"
-                  >
-                    auto
-                  </span>
-                </div>
-              </div>
-              <span class="tv-row-interval">
-                {{ formatClock(entry.startedAt) }}–{{ entry.endedAt ? formatClock(entry.endedAt) : '…' }}
-              </span>
-              <span class="tv-row-dur">{{ formatDurationLong(entry.durationSec ?? 0) }}</span>
-              <div class="tv-row-actions">
-                <button
-                  class="tv-icon-btn"
-                  type="button"
-                  title="Continuar (iniciar novo timer igual)"
-                  :disabled="start.isPending.value"
-                  @click="handleContinue(entry)"
-                >
-                  <Play :size="15" />
-                </button>
-                <button class="tv-icon-btn" type="button" title="Editar" @click="beginEdit(entry)">
-                  <Pencil :size="15" />
-                </button>
-                <button
-                  class="tv-icon-btn tv-icon-btn--danger"
-                  type="button"
-                  title="Excluir"
-                  @click="handleDelete(entry.id)"
-                >
-                  <Trash2 :size="15" />
-                </button>
-              </div>
-            </template>
-
-            <!-- Linha em edição -->
-            <div v-else class="tv-edit">
-              <input
-                v-model="editForm.description"
-                class="tv-input"
-                type="text"
-                placeholder="Descrição"
-                maxlength="500"
-              />
-              <div class="tv-edit-grid">
-                <AppSelect
-                  v-model="editForm.companyId"
-                  :items="companyOptions"
-                  placeholder="Pessoal"
-                  label="Empresa"
-                  density="compact"
-                />
-                <AppSelect
-                  v-if="editForm.companyId"
-                  v-model="editForm.activityId"
-                  :items="activityOptionsFor(editForm.companyId)"
-                  placeholder="Sem tarefa"
-                  label="Tarefa"
-                  density="compact"
-                />
-                <input v-model="editForm.startedAt" class="tv-input" type="datetime-local" />
-                <input v-model="editForm.endedAt" class="tv-input" type="datetime-local" />
-              </div>
-              <label class="tv-toggle-field">
-                <input v-model="editForm.billable" type="checkbox" class="tv-toggle-input" />
-                <span class="tv-toggle-box"><DollarSign :size="14" /></span>
-                <span class="tv-toggle-text">Faturável</span>
-              </label>
-              <div class="tv-edit-actions">
-                <span v-if="editPreview" class="tv-preview">
-                  Duração: <strong>{{ editPreview }}</strong>
-                </span>
-                <button class="tv-btn tv-btn--ghost" type="button" @click="cancelEdit">
-                  Cancelar
-                </button>
-                <button
-                  class="tv-btn tv-btn--start"
-                  type="button"
-                  :disabled="updateEntry.isPending.value"
-                  @click="saveEdit(entry.id)"
-                >
-                  Salvar
-                </button>
-              </div>
-            </div>
-          </li>
-        </ul>
+          <div class="tv-timer-selects">
+            <AppSelect
+              :model-value="editor.form.companyId"
+              :items="companyOptions"
+              placeholder="Pessoal"
+              label="Empresa"
+              density="compact"
+              @update:model-value="editor.setCompany($event)"
+            />
+            <AppSelect
+              v-if="editor.form.companyId"
+              :model-value="editor.form.activityId"
+              :items="optionsFor(editor.form.companyId)"
+              placeholder="Sem tarefa"
+              label="Tarefa"
+              density="compact"
+              @update:model-value="editor.setActivity($event)"
+            />
+            <span v-else class="tv-task-hint">Escolha uma empresa para atribuir tarefa</span>
+          </div>
+          <label class="tv-toggle" title="Marcar como faturável">
+            <input
+              v-model="editor.form.billable"
+              type="checkbox"
+              class="tv-toggle-input"
+              @change="editor.touch()"
+            />
+            <span class="tv-toggle-box"><DollarSign :size="14" /></span>
+            <span class="tv-toggle-text">Faturável</span>
+          </label>
+          <div class="tv-timer-clock tv-timer-clock--live">{{ liveClock }}</div>
+          <button
+            class="tv-btn tv-btn--stop"
+            type="button"
+            :disabled="stop.isPending.value"
+            @click="handleStop"
+          >
+            <Square :size="16" />
+            <span>Parar</span>
+          </button>
+        </template>
       </section>
 
-      <!-- F4 — paginação incremental -->
-      <div v-if="hasMore" class="tv-loadmore">
-        <button
-          class="tv-btn tv-btn--ghost"
-          type="button"
-          :disabled="entries.isFetching.value"
-          @click="loadMore"
-        >
-          {{ entries.isFetching.value ? 'Carregando…' : 'Carregar mais' }}
+      <!-- Indicador de autosave da edição ao vivo -->
+      <div v-if="isRunning && editor.state.value !== 'idle'" class="tv-autosave">
+        <SaveStatus
+          :state="editor.state.value"
+          :saved-at="editor.savedAt.value"
+          @retry="editor.flush()"
+        />
+      </div>
+
+      <!-- F3 — aviso de timer esquecido (>8h). -->
+      <div v-if="forgotten" class="tv-forgotten" role="alert">
+        <AlertTriangle :size="16" />
+        <span>Timer rodando há {{ runningHours }}h. Ainda está trabalhando?</span>
+        <button class="tv-forgotten-btn" type="button" :disabled="stop.isPending.value" @click="handleStop">
+          Parar
         </button>
       </div>
-    </div>
+
+      <!-- ─── Filtros + totais ───────────────────────────────────────────── -->
+      <section class="tv-controls">
+        <div class="tv-presets">
+          <button
+            v-for="p in presets"
+            :key="p.id"
+            class="tv-chip"
+            :class="{ 'tv-chip--on': preset === p.id }"
+            type="button"
+            @click="preset = p.id"
+          >
+            {{ p.label }}
+          </button>
+        </div>
+
+        <div class="tv-company-filter">
+          <AppSelect
+            v-model="filterCompanyId"
+            :items="filterCompanyOptions"
+            label="Filtrar por empresa"
+            density="compact"
+          />
+        </div>
+
+        <div class="tv-totals">
+          <div class="tv-total">
+            <span class="tv-total-label">Hoje</span>
+            <span class="tv-total-value">{{ formatDurationLong(todayTotalSec) }}</span>
+          </div>
+          <div class="tv-total">
+            <span class="tv-total-label">Período</span>
+            <span class="tv-total-value">{{ formatDurationLong(rangeTotalSec) }}</span>
+          </div>
+          <div v-if="rangeBillableSec > 0" class="tv-total">
+            <span class="tv-total-label tv-total-label--bill">Faturável</span>
+            <span class="tv-total-value tv-total-value--bill">{{ formatDurationLong(rangeBillableSec) }}</span>
+          </div>
+        </div>
+
+        <button class="tv-btn tv-btn--ghost" type="button" @click="openManual">
+          <Plus :size="16" />
+          <span>Entrada manual</span>
+        </button>
+      </section>
+
+      <!-- ─── Formulário de entrada manual ───────────────────────────────── -->
+      <section v-if="showManual" class="tv-manual">
+        <header class="tv-manual-head">
+          <h2 class="tv-manual-title">Nova entrada manual</h2>
+          <button class="tv-icon-btn" type="button" title="Fechar" @click="showManual = false">
+            <X :size="16" />
+          </button>
+        </header>
+        <div class="tv-manual-grid">
+          <label class="tv-field tv-field--wide">
+            <span class="tv-label">Descrição</span>
+            <input v-model="manualForm.description" class="tv-input" type="text" maxlength="500" />
+          </label>
+          <label class="tv-field">
+            <span class="tv-label">Empresa</span>
+            <AppSelect
+              :model-value="manualForm.companyId"
+              :items="companyOptions"
+              placeholder="Pessoal"
+              label="Empresa"
+              density="compact"
+              @update:model-value="applyCompanyChange(manualForm, $event)"
+            />
+          </label>
+          <label v-if="manualForm.companyId" class="tv-field">
+            <span class="tv-label">Tarefa</span>
+            <AppSelect
+              :model-value="manualForm.activityId"
+              :items="optionsFor(manualForm.companyId)"
+              placeholder="Sem tarefa"
+              label="Tarefa"
+              density="compact"
+              @update:model-value="applyActivityChange(manualForm, $event)"
+            />
+          </label>
+          <label class="tv-field">
+            <span class="tv-label">Início</span>
+            <input v-model="manualForm.startedAt" class="tv-input" type="datetime-local" />
+          </label>
+          <label class="tv-field">
+            <span class="tv-label">Fim</span>
+            <input v-model="manualForm.endedAt" class="tv-input" type="datetime-local" />
+          </label>
+          <label class="tv-field tv-field--wide tv-toggle-field">
+            <input v-model="manualForm.billable" type="checkbox" class="tv-toggle-input" />
+            <span class="tv-toggle-box"><DollarSign :size="14" /></span>
+            <span class="tv-toggle-text">Faturável</span>
+          </label>
+        </div>
+        <div class="tv-manual-actions">
+          <span v-if="manualPreview" class="tv-preview">
+            Duração: <strong>{{ manualPreview }}</strong>
+          </span>
+          <button class="tv-btn tv-btn--ghost" type="button" @click="showManual = false">
+            Cancelar
+          </button>
+          <button
+            class="tv-btn tv-btn--start"
+            type="button"
+            :disabled="createManual.isPending.value"
+            @click="submitManual"
+          >
+            <Plus :size="16" />
+            <span>Adicionar</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ─── Lista agrupada por dia ─────────────────────────────────────── -->
+      <div v-if="entries.isLoading.value" class="tv-skeletons">
+        <Skeleton v-for="i in 4" :key="i" type="row" height="18px" />
+      </div>
+
+      <EmptyState
+        v-else-if="entries.isError.value"
+        :icon="AlertTriangle"
+        title="Não foi possível carregar"
+        description="Ocorreu um erro ao buscar suas entradas de tempo."
+      >
+        <template #action>
+          <button class="tv-btn tv-btn--ghost" type="button" @click="() => entries.refetch()">
+            Tentar de novo
+          </button>
+        </template>
+      </EmptyState>
+
+      <EmptyState
+        v-else-if="groups.length === 0"
+        title="Nenhum tempo registrado"
+        description="Inicie o timer acima ou adicione uma entrada manual para começar."
+      />
+
+      <div v-else class="tv-groups">
+        <section v-for="group in groups" :key="group.key" class="tv-group">
+          <header class="tv-group-head">
+            <span class="tv-group-day">{{ group.label }}</span>
+            <span class="tv-group-total">{{ formatDurationLong(group.totalSec) }}</span>
+          </header>
+
+          <ul class="tv-list">
+            <li v-for="entry in group.entries" :key="entry.id" class="tv-row">
+              <template v-if="editingId !== entry.id">
+                <div class="tv-row-main">
+                  <span class="tv-row-desc">{{ entry.description || 'Sem descrição' }}</span>
+                  <div class="tv-row-chips">
+                    <span v-if="entry.company" class="tv-tag">{{ entry.company.name }}</span>
+                    <span v-else class="tv-tag tv-tag--muted">Pessoal</span>
+                    <span v-if="entry.activity" class="tv-tag tv-tag--task">
+                      {{ entry.activity.title }}
+                    </span>
+                    <span v-if="entry.billable" class="tv-tag tv-tag--bill">
+                      <DollarSign :size="11" /> Faturável
+                    </span>
+                    <span
+                      v-if="entry.autoStopped"
+                      class="tv-tag tv-tag--auto"
+                      title="Encerrado automaticamente (timer esquecido)"
+                    >
+                      auto
+                    </span>
+                  </div>
+                </div>
+                <span class="tv-row-interval">
+                  {{ formatClock(entry.startedAt) }}–{{ entry.endedAt ? formatClock(entry.endedAt) : '…' }}
+                </span>
+                <span class="tv-row-dur">{{ formatDurationLong(entry.durationSec ?? 0) }}</span>
+                <div class="tv-row-actions">
+                  <button
+                    class="tv-icon-btn"
+                    type="button"
+                    title="Continuar (iniciar novo timer igual)"
+                    :disabled="start.isPending.value"
+                    @click="handleContinue(entry)"
+                  >
+                    <Play :size="15" />
+                  </button>
+                  <button class="tv-icon-btn" type="button" title="Editar" @click="beginEdit(entry)">
+                    <Pencil :size="15" />
+                  </button>
+                  <button
+                    class="tv-icon-btn tv-icon-btn--danger"
+                    type="button"
+                    title="Excluir"
+                    @click="handleDelete(entry.id)"
+                  >
+                    <Trash2 :size="15" />
+                  </button>
+                </div>
+              </template>
+
+              <!-- Linha em edição -->
+              <div v-else class="tv-edit">
+                <input
+                  v-model="editForm.description"
+                  class="tv-input"
+                  type="text"
+                  placeholder="Descrição"
+                  maxlength="500"
+                />
+                <div class="tv-edit-grid">
+                  <AppSelect
+                    :model-value="editForm.companyId"
+                    :items="companyOptions"
+                    placeholder="Pessoal"
+                    label="Empresa"
+                    density="compact"
+                    @update:model-value="applyCompanyChange(editForm, $event)"
+                  />
+                  <AppSelect
+                    v-if="editForm.companyId"
+                    :model-value="editForm.activityId"
+                    :items="optionsFor(editForm.companyId)"
+                    placeholder="Sem tarefa"
+                    label="Tarefa"
+                    density="compact"
+                    @update:model-value="applyActivityChange(editForm, $event)"
+                  />
+                  <input v-model="editForm.startedAt" class="tv-input" type="datetime-local" />
+                  <input v-model="editForm.endedAt" class="tv-input" type="datetime-local" />
+                </div>
+                <label class="tv-toggle-field">
+                  <input v-model="editForm.billable" type="checkbox" class="tv-toggle-input" />
+                  <span class="tv-toggle-box"><DollarSign :size="14" /></span>
+                  <span class="tv-toggle-text">Faturável</span>
+                </label>
+                <div class="tv-edit-actions">
+                  <span v-if="editPreview" class="tv-preview">
+                    Duração: <strong>{{ editPreview }}</strong>
+                  </span>
+                  <button class="tv-btn tv-btn--ghost" type="button" @click="cancelEdit">
+                    Cancelar
+                  </button>
+                  <button
+                    class="tv-btn tv-btn--start"
+                    type="button"
+                    :disabled="updateEntry.isPending.value"
+                    @click="saveEdit(entry.id)"
+                  >
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <div v-if="hasMore" class="tv-loadmore">
+          <button
+            class="tv-btn tv-btn--ghost"
+            type="button"
+            :disabled="entries.isFetching.value"
+            @click="loadMore"
+          >
+            {{ entries.isFetching.value ? 'Carregando…' : 'Carregar mais' }}
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <!-- ═══════════════ ABA: EQUIPE (ADMIN) ═══════════════ -->
+    <TeamView v-else-if="activeTab === 'team' && isAdmin" />
 
     <!-- F2 — confirmação de exclusão -->
     <ConfirmDialog
@@ -730,6 +807,14 @@ const presets: Array<{ id: Preset; label: string }> = [
   gap: 18px;
 }
 
+.tv-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .tv-eyebrow {
   margin: 0 0 2px;
   color: var(--text-4);
@@ -746,6 +831,45 @@ const presets: Array<{ id: Preset; label: string }> = [
   font-weight: 760;
 }
 
+/* ── Abas Meu tempo | Equipe ── */
+.tv-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.tv-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.tv-tab:hover {
+  color: var(--text);
+}
+
+.tv-tab--on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
 /* ── Barra do timer ── */
 .tv-timer {
   display: flex;
@@ -756,10 +880,12 @@ const presets: Array<{ id: Preset; label: string }> = [
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+  transition: border-color var(--motion) var(--motion-ease);
 }
 
 .tv-timer--running {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--err) 55%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--err) 22%, transparent), var(--shadow-sm);
 }
 
 .tv-timer-input {
@@ -786,9 +912,17 @@ const presets: Array<{ id: Preset; label: string }> = [
 
 .tv-timer-selects {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex: 0 0 auto;
   width: 260px;
+}
+
+.tv-task-hint {
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.3;
+  align-self: center;
 }
 
 .tv-timer-clock {
@@ -801,14 +935,40 @@ const presets: Array<{ id: Preset; label: string }> = [
   text-align: right;
 }
 
-.tv-running-hint {
-  color: var(--text-2);
-  font-size: 12.5px;
-  padding: 0 4px;
+/* Cronômetro vivo: ponto vermelho pulsando, casando com o favicon/título. */
+.tv-timer-clock--live {
+  position: relative;
+  color: var(--err);
 }
 
-.tv-running-hint strong {
-  color: var(--text);
+.tv-timer-clock--live::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 999px;
+  background: var(--err);
+  animation: tv-rec-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tv-rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.tv-autosave {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -8px;
+  padding: 0 4px;
 }
 
 /* ── Botões ── */
@@ -846,12 +1006,13 @@ const presets: Array<{ id: Preset; label: string }> = [
 }
 
 .tv-btn--stop {
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--err) 12%, var(--surface-2));
   color: var(--err);
-  border-color: var(--border);
+  border-color: color-mix(in srgb, var(--err) 40%, var(--border));
 }
 
 .tv-btn--stop:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--err) 18%, var(--surface-2));
   border-color: var(--err);
 }
 
@@ -1159,13 +1320,6 @@ const presets: Array<{ id: Preset; label: string }> = [
   gap: 10px;
 }
 
-.tv-state {
-  padding: 40px;
-  text-align: center;
-  color: var(--text-3);
-  font-size: 13px;
-}
-
 /* ── F4: skeletons + carregar mais ── */
 .tv-skeletons {
   padding: 8px 16px;
@@ -1303,15 +1457,6 @@ const presets: Array<{ id: Preset; label: string }> = [
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 10px;
-}
-
-.tv-inline-bill {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  margin-left: 8px;
-  color: var(--success);
-  font-weight: 600;
 }
 
 /* ── F6: preview de duração nos formulários ── */

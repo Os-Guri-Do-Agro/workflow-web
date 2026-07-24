@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client'
 import { apiBaseUrl } from '@/service/api'
 import type { AppNotification } from '@/service/inbox/inbox-service'
-import type { TimeEntry } from '@/service/time/time-service'
+import type { TimeEntry, TeamLiveEntry, TeamStoppedPayload } from '@/service/time/time-service'
 import type { SearchHit } from '@/service/ai/ai-service'
 
 export interface PublicUser {
@@ -135,6 +135,9 @@ export interface RealtimeHandlers {
   // Time tracking: sincroniza o widget entre abas/dispositivos do mesmo usuário.
   timeStarted?: (entry: TimeEntry) => void
   timeStopped?: (entry: TimeEntry) => void
+  // Visão de equipe (ADMIN): timer de um membro começou/parou, na room da empresa.
+  teamTimeStarted?: (entry: TeamLiveEntry) => void
+  teamTimeStopped?: (payload: TeamStoppedPayload) => void
   // Copiloto agente: streaming da resposta em tempo real.
   assistantDelta?: (payload: AssistantDeltaPayload) => void
   assistantTool?: (payload: AssistantToolPayload) => void
@@ -181,6 +184,8 @@ function bindEvents(target: Socket) {
   fanout<ActivityEventPayload>(target, 'activity:deleted', (h) => h.activityChanged)
   fanout<TimeEntry>(target, 'time:started', (h) => h.timeStarted)
   fanout<TimeEntry>(target, 'time:stopped', (h) => h.timeStopped)
+  fanout<TeamLiveEntry>(target, 'time:team-started', (h) => h.teamTimeStarted)
+  fanout<TeamStoppedPayload>(target, 'time:team-stopped', (h) => h.teamTimeStopped)
   fanout<AssistantDeltaPayload>(target, 'assistant:delta', (h) => h.assistantDelta)
   fanout<AssistantToolPayload>(target, 'assistant:tool', (h) => h.assistantTool)
   fanout<AssistantDonePayload>(target, 'assistant:done', (h) => h.assistantDone)

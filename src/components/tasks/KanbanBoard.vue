@@ -6,13 +6,11 @@ import {
   CircleDashed,
   CircleDot,
   CircleCheck,
-  Plus,
-  X,
+  Check,
   Calendar,
   ChevronDown,
-  ChevronUp,
-  CheckCircle2,
   Trash2,
+  Inbox,
 } from 'lucide-vue-next'
 import type { Activity } from '@/core/types'
 import { formatDateOnly, isOverdue } from '@/utils/date'
@@ -54,35 +52,13 @@ const cancelEdit = () => {
   editingTaskId.value = null
 }
 
+// Cor de cada coluna vem dos tokens de status do design system (theme-aware),
+// não de hex solto: a mesma família azul/laranja/violeta/verde do resto do app.
 const columns = [
-  {
-    status: 'todo',
-    apiStatus: 'TODO',
-    title: 'A Fazer',
-    color: '#6B7280',
-    icon: Circle,
-  },
-  {
-    status: 'in-progress',
-    apiStatus: 'IN_PROGRESS',
-    title: 'Em Andamento',
-    color: '#F59E0B',
-    icon: CircleDashed,
-  },
-  {
-    status: 'testing',
-    apiStatus: 'IN_TESTING',
-    title: 'Em Teste',
-    color: '#8B5CF6',
-    icon: CircleDot,
-  },
-  {
-    status: 'done',
-    apiStatus: 'DONE',
-    title: 'Concluído',
-    color: '#10B981',
-    icon: CircleCheck,
-  },
+  { status: 'todo', apiStatus: 'TODO', title: 'A Fazer', token: 'var(--status-todo)', icon: Circle },
+  { status: 'in-progress', apiStatus: 'IN_PROGRESS', title: 'Em Andamento', token: 'var(--status-prog)', icon: CircleDashed },
+  { status: 'testing', apiStatus: 'IN_TESTING', title: 'Em Teste', token: 'var(--status-test)', icon: CircleDot },
+  { status: 'done', apiStatus: 'DONE', title: 'Concluído', token: 'var(--status-done)', icon: CircleCheck },
 ]
 
 const isDragging = ref(false)
@@ -122,10 +98,10 @@ const getUserColor = (name: string) => {
 
 const getPriorityColor = (priority: number) => {
   const colors: Record<number, string> = {
-    0: '#10B981',
-    1: '#3B82F6',
-    2: '#F59E0B',
-    3: '#EF4444',
+    0: '#12B76A',
+    1: '#2E90FA',
+    2: '#F79009',
+    3: '#F04438',
     4: '#DC2626',
     5: '#991B1B',
   }
@@ -181,6 +157,25 @@ const getSubtaskProgress = (task: any) => {
   return { done, total: task.subtasks.length }
 }
 
+const subtaskPercent = (task: any) => {
+  const p = getSubtaskProgress(task)
+  return p && p.total > 0 ? Math.round((p.done / p.total) * 100) : 0
+}
+
+const isAllDone = (task: any) => {
+  const p = getSubtaskProgress(task)
+  return !!p && p.done === p.total
+}
+
+// Anel de progresso (SVG): r=9 → circunferência ~56.55. O offset "esvazia" o
+// traço proporcionalmente ao que falta.
+const RING_CIRC = 2 * Math.PI * 9
+const ringOffset = (pct: number) => RING_CIRC * (1 - pct / 100)
+
+// Abrir por teclado só quando o próprio card está focado (`.self`): evita que
+// Enter durante a edição do título, ou em botões internos, abra os detalhes.
+const openByKey = (task: Activity) => emit('open-details', task)
+
 // ── Subtasks expand/collapse ──
 const expandedTasks = ref<Set<string>>(new Set())
 
@@ -197,47 +192,34 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 </script>
 
 <template>
-  <div class="kanban-board">
-    <div v-for="column in columns" :key="column.status" class="kanban-col">
+  <div class="board">
+    <section
+      v-for="column in columns"
+      :key="column.status"
+      class="lane"
+      :class="{ 'lane--over': isDragging && dragOverColumn === column.status }"
+      :style="{ '--col': column.token }"
+    >
+      <div class="lane__aura" aria-hidden="true" />
+
       <!-- Column header -->
-      <div class="column-header">
-        <div class="column-head-row">
-          <div class="column-head-left">
-            <component
-              :is="column.icon"
-              :size="13"
-              :color="column.color"
-              class="column-icon"
-            />
-            <span class="column-title">{{ column.title }}</span>
-          </div>
-          <span
-            class="column-count"
-            :style="{
-              color: column.color,
-              background: `color-mix(in srgb, ${column.color} 14%, var(--surface-2))`,
-              borderColor: `color-mix(in srgb, ${column.color} 30%, var(--border))`,
-            }"
-          >
-            {{ columnActivities[column.status]?.length || 0 }}
-          </span>
+      <header class="lane__head">
+        <div class="lane__head-left">
+          <component :is="column.icon" :size="14" class="lane__icon" />
+          <h2 class="lane__title">{{ column.title }}</h2>
         </div>
-        <div
-          class="column-accent-line"
-          :style="{ background: `color-mix(in srgb, ${column.color} 50%, transparent)` }"
-        />
-      </div>
+        <span class="lane__count" :key="columnActivities[column.status]?.length || 0">
+          {{ columnActivities[column.status]?.length || 0 }}
+        </span>
+      </header>
 
       <!-- Drop zone -->
-      <div class="column-drop-zone">
+      <div class="lane__body">
         <VueDraggable
           v-model="columnActivities[column.status]"
-          class="column-content"
-          :class="{
-            'column-drop-active': isDragging && dragOverColumn === column.status,
-          }"
+          class="lane__list"
           group="activities"
-          :animation="180"
+          :animation="220"
           :disabled="props.readonly"
           ghost-class="drag-ghost"
           chosen-class="drag-chosen"
@@ -250,152 +232,173 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
           @dragleave="onLeaveColumn"
         >
           <!-- Task card -->
-          <div
-            v-for="task in columnActivities[column.status]"
+          <article
+            v-for="(task, i) in columnActivities[column.status]"
             :key="task.id"
             :data-id="task.id"
-            class="task-card"
-            :style="{ '--priority-color': getPriorityColor(task.priorityNumber) }"
+            class="card"
+            :class="{ 'card--done': column.status === 'done' }"
+            :style="{ '--i': i }"
+            role="button"
+            tabindex="0"
+            :aria-label="task.title"
             @click="emit('open-details', task)"
+            @keydown.enter.self="openByKey(task)"
+            @keydown.space.self.prevent="openByKey(task)"
           >
+            <span class="card__glow" aria-hidden="true" />
+
             <!-- cover image -->
-            <div v-if="getImageAttachment(task)" class="card-image">
+            <div v-if="getImageAttachment(task)" class="card__cover">
               <img :src="getImageAttachment(task)" alt="" loading="lazy" />
             </div>
 
-            <div class="card-body">
+            <div class="card__main">
               <!-- top row -->
-              <div class="card-top">
+              <div class="card__top">
                 <input
                   v-if="editingTaskId === task.id"
                   v-model="editingTitle"
-                  class="card-title-input"
+                  class="card__title-input"
                   @keydown.enter="commitEdit(task)"
                   @keydown.esc="cancelEdit"
                   @blur="commitEdit(task)"
                   @click.stop
                   autofocus
                 />
-                <span
+                <h3
                   v-else
-                  class="card-title"
+                  class="card__title"
                   @dblclick="startEditing(task, $event)"
                 >
                   {{ task.title }}
-                </span>
+                </h3>
                 <button
                   v-if="!props.readonly"
-                  class="card-action"
-                  aria-label="Excluir"
+                  class="card__kill"
+                  aria-label="Excluir atividade"
                   @click.stop="openDeleteConfirm(task)"
                 >
-                  <Trash2 :size="12" />
+                  <Trash2 :size="13" />
                 </button>
               </div>
 
               <!-- meta -->
-              <div class="card-meta">
+              <div class="card__meta">
                 <span
                   v-if="task.priorityNumber !== undefined"
-                  class="meta-pill priority-pill"
+                  class="prio"
                   :title="getPriorityLabel(task.priorityNumber)"
-                  :style="{
-                    color: getPriorityColor(task.priorityNumber),
-                    background: `color-mix(in srgb, ${getPriorityColor(task.priorityNumber)} 14%, var(--surface-2))`,
-                    borderColor: `color-mix(in srgb, ${getPriorityColor(task.priorityNumber)} 30%, var(--border))`,
-                  }"
+                  :style="{ '--pc': getPriorityColor(task.priorityNumber) }"
                 >
+                  <span class="prio__dot" aria-hidden="true" />
                   P{{ task.priorityNumber }}
                 </span>
 
                 <span
                   v-if="task.dueDate"
-                  class="meta-pill"
-                  :class="{ 'meta-pill--overdue': isOverdue(task.dueDate) }"
+                  class="due"
+                  :class="{ 'due--overdue': isOverdue(task.dueDate) }"
                 >
-                  <Calendar :size="10" />
+                  <Calendar :size="11" />
                   {{ formatDateOnly(task.dueDate, { month: 'short', year: undefined }) }}
                 </span>
+
+                <span class="card__spacer" />
+
+                <!-- progress ring (também é o gatilho de expandir) -->
+                <button
+                  v-if="task.subtasks?.length"
+                  class="ring-btn"
+                  :class="{ 'ring-btn--complete': isAllDone(task), 'ring-btn--open': isExpanded(task.id) }"
+                  :aria-expanded="isExpanded(task.id)"
+                  :aria-label="`${getSubtaskProgress(task)!.done} de ${getSubtaskProgress(task)!.total} subtarefas`"
+                  @click.stop="toggleExpand(task.id)"
+                >
+                  <svg class="ring" viewBox="0 0 22 22" width="20" height="20" aria-hidden="true">
+                    <circle class="ring__track" cx="11" cy="11" r="9" />
+                    <circle
+                      class="ring__fill"
+                      cx="11"
+                      cy="11"
+                      r="9"
+                      :stroke-dasharray="RING_CIRC"
+                      :style="{ strokeDashoffset: ringOffset(subtaskPercent(task)) }"
+                    />
+                  </svg>
+                  <span class="ring-btn__frac">
+                    {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
+                  </span>
+                  <ChevronDown :size="12" class="ring-btn__chev" />
+                </button>
               </div>
 
-              <!-- subtasks -->
-              <div v-if="task.subtasks?.length" class="subtasks-section" @click.stop>
-                <button class="subtasks-toggle" @click="toggleExpand(task.id)">
-                  <ChevronUp v-if="isExpanded(task.id)" :size="11" />
-                  <ChevronDown v-else :size="11" />
-                  <span>
-                    {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
-                    subtarefas
-                  </span>
-                </button>
+              <!-- subtasks checklist (sem caixa cinza; expande suave) -->
+              <Transition name="exp">
+                <div v-if="task.subtasks?.length && isExpanded(task.id)" class="exp" @click.stop>
+                  <ul class="checklist">
+                    <li
+                      v-for="subtask in task.subtasks"
+                      :key="subtask.id"
+                      class="ci"
+                      :class="{ 'ci--done': subtask.status === 'DONE' }"
+                    >
+                      <span class="ci__box" aria-hidden="true">
+                        <Check v-if="subtask.status === 'DONE'" :size="11" />
+                      </span>
+                      <span class="ci__label">{{ subtask.title }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </Transition>
 
-                <div v-if="isExpanded(task.id)" class="subtasks-list">
+              <!-- avatars -->
+              <div v-if="task.responsibles?.length" class="card__foot">
+                <div class="avatars">
                   <div
-                    v-for="subtask in task.subtasks"
-                    :key="subtask.id"
-                    class="subtask-item"
-                    :class="{ 'subtask-done': subtask.status === 'DONE' }"
+                    v-for="(responsible, i) in task.responsibles.slice(0, 4)"
+                    :key="responsible.userId"
+                    class="avatar"
+                    :title="responsible.user.name"
+                    :style="{
+                      background: getUserColor(responsible.user.name),
+                      marginLeft: (i as number) > 0 ? '-8px' : '0',
+                      zIndex: 4 - (i as number),
+                    }"
                   >
-                    <CheckCircle2
-                      v-if="subtask.status === 'DONE'"
-                      :size="11"
-                      color="#10B981"
-                    />
-                    <Circle v-else :size="11" />
-                    <span class="subtask-title">{{ subtask.title }}</span>
+                    {{ getUserInitials(responsible.user.name) }}
+                  </div>
+                  <div
+                    v-if="task.responsibles.length > 4"
+                    class="avatar avatar--extra"
+                    style="margin-left: -8px"
+                  >
+                    +{{ task.responsibles.length - 4 }}
                   </div>
                 </div>
               </div>
-
-              <!-- avatars -->
-              <div v-if="task.responsibles?.length" class="card-avatars">
-                <div
-                  v-for="(responsible, i) in task.responsibles.slice(0, 4)"
-                  :key="responsible.userId"
-                  class="avatar-chip"
-                  :title="responsible.user.name"
-                  :style="{
-                    background: getUserColor(responsible.user.name),
-                    marginLeft: (i as number) > 0 ? '-6px' : '0',
-                    zIndex: 4 - (i as number),
-                  }"
-                >
-                  {{ getUserInitials(responsible.user.name) }}
-                </div>
-                <div
-                  v-if="task.responsibles.length > 4"
-                  class="avatar-chip avatar-extra"
-                  style="margin-left: -6px"
-                >
-                  +{{ task.responsibles.length - 4 }}
-                </div>
-              </div>
             </div>
-
-            <!-- priority bar -->
-            <div
-              class="card-priority-bar"
-              :style="{ background: getPriorityColor(task.priorityNumber) }"
-            />
-          </div>
+          </article>
         </VueDraggable>
 
         <div
           v-if="(columnActivities[column.status]?.length || 0) === 0 && !isDragging"
-          class="empty-column"
+          class="lane__empty"
           aria-hidden="true"
         >
-          <Plus :size="14" />
-          <span>Vazio</span>
+          <Inbox :size="19" />
+          <span>Nada por aqui</span>
         </div>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-/* ── Layout ─────────────────────────────────────────────────── */
-.kanban-board {
+/* Molas: overshoot leve na entrada, resposta gostosa no hover. */
+.board {
+  --spring: cubic-bezier(0.34, 1.42, 0.5, 1);
+  --spring-soft: cubic-bezier(0.4, 0.9, 0.3, 1);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
@@ -403,181 +406,278 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 }
 
 @media (max-width: 1100px) {
-  .kanban-board {
+  .board {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
-  .kanban-board {
+  .board {
     grid-template-columns: 1fr;
   }
 }
 
-.kanban-col {
+/* ── Lane (coluna em painel) ─────────────────────────────────── */
+.lane {
+  position: relative;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--col) 4%, var(--surface-2));
+  border: 1px solid var(--border);
+  padding: 8px 8px 10px;
+  transition:
+    background var(--motion) var(--motion-ease),
+    box-shadow var(--motion) var(--motion-ease),
+    border-color var(--motion) var(--motion-ease);
 }
 
-/* ── Column header ──────────────────────────────────────────── */
-.column-header {
-  padding: 0 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* Halo da cor do status descendo do topo do painel: identidade sem poluir. */
+.lane__aura {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 120px;
+  border-radius: 16px 16px 0 0;
+  background: radial-gradient(
+    120% 80% at 50% -10%,
+    color-mix(in srgb, var(--col) 22%, transparent),
+    transparent 68%
+  );
+  opacity: 0.5;
+  pointer-events: none;
 }
 
-.column-head-row {
+.lane--over {
+  background: color-mix(in srgb, var(--col) 11%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--col) 45%, var(--border-strong));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--col) 30%, transparent);
+}
+
+/* ── Lane header ────────────────────────────────────────────── */
+.lane__head {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 6px 8px 10px;
 }
 
-.column-head-left {
+.lane__head-left {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.column-icon {
+.lane__icon {
+  color: var(--col);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--col) 55%, transparent));
   flex-shrink: 0;
 }
 
-.column-title {
-  font-size: 11.5px;
+.lane__title {
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-2);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.column-count {
+.lane__count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 22px;
-  padding: 1px 8px;
+  height: 22px;
+  padding: 0 7px;
   font-size: 11px;
   font-weight: 700;
-  border-radius: 999px;
-  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--col);
+  background: color-mix(in srgb, var(--col) 15%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col) 24%, transparent);
+  animation: count-pop 260ms var(--spring);
 }
 
-.column-accent-line {
-  height: 2px;
-  border-radius: 999px;
+@keyframes count-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
-/* ── Drop zone ──────────────────────────────────────────────── */
-.column-drop-zone {
+/* ── Lista / drop zone ──────────────────────────────────────── */
+.lane__body {
   position: relative;
+  z-index: 1;
 }
 
-.column-content {
-  min-height: 80px;
-  border-radius: var(--radius);
-  padding: 4px;
-  /* sortablejs/vue-draggable não convive bem com flex+gap aqui;
-     mantém block + margin-bottom nos cards. */
-  transition: background var(--motion-fast), outline var(--motion-fast);
+.lane__list {
+  min-height: 60px;
+  /* sortablejs não convive bem com flex+gap; block + margin-bottom nos cards. */
 }
 
-.task-card {
-  margin-bottom: 8px;
+.card {
+  margin-bottom: 10px;
 }
-.task-card:last-child {
+.card:last-child {
   margin-bottom: 0;
 }
 
-.column-drop-active {
-  background: color-mix(in srgb, var(--accent) 6%, transparent) !important;
-  outline: 1.5px dashed color-mix(in srgb, var(--accent) 35%, transparent);
-  outline-offset: 0;
-}
-
-.empty-column {
+.lane__empty {
   position: absolute;
-  inset: 4px;
+  inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 56px;
-  border-radius: var(--radius-sm);
-  border: 1.5px dashed var(--border);
-  color: var(--text-4);
-  font-size: 11.5px;
+  gap: 7px;
+  min-height: 110px;
+  border-radius: 12px;
+  border: 1.5px dashed color-mix(in srgb, var(--col) 24%, var(--border));
+  color: color-mix(in srgb, var(--col) 50%, var(--text-4));
+  font-size: 12px;
+  font-weight: 500;
   pointer-events: none;
 }
 
-/* ── Task card ──────────────────────────────────────────────── */
-.task-card {
+/* ── Card ───────────────────────────────────────────────────── */
+.card {
   position: relative;
-  border-radius: var(--radius);
+  border-radius: 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   cursor: pointer;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
   transition:
-    transform var(--motion-fast),
-    border-color var(--motion-fast),
-    box-shadow var(--motion-fast);
+    transform 240ms var(--spring),
+    border-color var(--motion) var(--motion-ease),
+    box-shadow var(--motion) var(--motion-ease);
   will-change: transform;
+  /* Entrada escalonada com mola; roda uma vez por card (nós keyed não remontam
+     ao reordenar/refetch). `backwards` p/ não travar o transform do hover. */
+  animation: card-in 460ms var(--spring) backwards;
+  animation-delay: calc(var(--i, 0) * 42ms);
 }
 
-.task-card:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-}
-
-.card-priority-bar {
+/* Brilho de topo (elevação do design system) + fio de luz na borda superior. */
+.card::before {
+  content: '';
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: var(--radius) 0 0 var(--radius);
-  opacity: 0.85;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--elev-1);
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.card-image {
+/* Glow da cor do status, sobe do topo no hover. */
+.card__glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    130% 85% at 50% 0%,
+    color-mix(in srgb, var(--col) 20%, transparent),
+    transparent 62%
+  );
+  opacity: 0;
+  transition: opacity var(--motion) var(--motion-ease);
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.card:hover {
+  transform: translateY(-4px) scale(1.014);
+  border-color: color-mix(in srgb, var(--col) 42%, var(--border-strong));
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px color-mix(in srgb, var(--col) 22%, transparent);
+}
+
+.card:hover .card__glow {
+  opacity: 1;
+}
+
+.card:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--col) 60%, var(--border-strong));
+  box-shadow:
+    var(--shadow),
+    0 0 0 2px color-mix(in srgb, var(--col) 60%, transparent);
+}
+
+.card:active {
+  transform: translateY(-1px) scale(0.998);
+}
+
+.card--done .card__title {
+  color: var(--text-2);
+}
+
+.card__cover {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  height: 100px;
+  height: 108px;
   overflow: hidden;
   background: var(--surface-2);
 }
 
-.card-image img {
+.card__cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform var(--motion-slow) var(--spring-soft);
 }
 
-.card-body {
-  padding: 10px 12px 10px 14px;
+.card:hover .card__cover img {
+  transform: scale(1.05);
+}
+
+.card__main {
+  position: relative;
+  z-index: 1;
+  padding: 13px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 11px;
 }
 
 /* card top */
-.card-top {
+.card__top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 6px;
 }
 
-.card-title {
-  font-size: 13px;
+.card__title {
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text);
   line-height: 1.4;
+  letter-spacing: -0.008em;
+  margin: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -586,88 +686,254 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   flex: 1;
 }
 
-.card-title-input {
+.card__title-input {
   flex: 1;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--accent);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 3px 6px;
   font-family: inherit;
   outline: none;
   min-width: 0;
 }
 
-.card-action {
-  width: 24px;
-  height: 24px;
+.card__kill {
+  width: 25px;
+  height: 25px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   color: var(--text-4);
   cursor: pointer;
   flex-shrink: 0;
   opacity: 0;
-  transition: all var(--motion-fast);
+  transform: translateX(3px);
+  transition:
+    opacity var(--motion-fast),
+    transform var(--motion-fast) var(--spring),
+    color var(--motion-fast),
+    background var(--motion-fast),
+    border-color var(--motion-fast);
 }
 
-.task-card:hover .card-action {
+.card:hover .card__kill,
+.card:focus-within .card__kill {
   opacity: 1;
+  transform: translateX(0);
 }
 
-.card-action:hover {
-  color: #ef4444;
-  border-color: color-mix(in srgb, #ef4444 30%, var(--border));
-  background: color-mix(in srgb, #ef4444 10%, transparent);
+.card__kill:hover {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 32%, var(--border));
+  background: color-mix(in srgb, var(--err) 12%, transparent);
 }
 
-/* meta pills */
-.card-meta {
+.card__kill:focus-visible {
+  opacity: 1;
+  transform: none;
+  outline: 2px solid var(--err);
+  outline-offset: 1px;
+}
+
+/* meta */
+.card__meta {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 5px;
+  gap: 10px;
 }
 
-.meta-pill {
+.card__spacer {
+  flex: 1;
+}
+
+/* prioridade discreta: ponto + rótulo, sem pill de fundo colorido */
+.prio {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 1px 7px;
-  font-size: 10.5px;
-  font-weight: 600;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-3);
-  letter-spacing: 0.02em;
-}
-
-.priority-pill {
+  gap: 5px;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--pc) 62%, var(--text-2));
 }
 
-.meta-pill--overdue {
-  color: #ef4444;
-  background: color-mix(in srgb, #ef4444 12%, var(--surface-2));
-  border-color: color-mix(in srgb, #ef4444 30%, var(--border));
+.prio__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2.5px;
+  background: var(--pc);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--pc) 65%, transparent);
 }
 
-/* avatars */
-.card-avatars {
+.due {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.due--overdue {
+  color: var(--err);
+  font-weight: 600;
+}
+
+/* ── Anel de progresso ──────────────────────────────────────── */
+.ring-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px 3px 3px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.ring-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-2);
+}
+
+.ring-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ring {
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.ring__track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-4) 26%, transparent);
+  stroke-width: 3;
+}
+
+.ring__fill {
+  fill: none;
+  stroke: var(--status-done);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 11px 11px;
+  transition: stroke-dashoffset 620ms var(--spring-soft);
+}
+
+.ring-btn--complete {
+  color: var(--status-done);
+}
+
+.ring-btn__chev {
+  color: var(--text-4);
+  transition: transform var(--motion) var(--spring);
+}
+
+.ring-btn--open .ring-btn__chev {
+  transform: rotate(180deg);
+}
+
+/* ── Checklist (expansão sem caixa cinza) ───────────────────── */
+.exp {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.checklist {
+  min-height: 0;
+  overflow: hidden;
+  list-style: none;
+  margin: 0;
+  padding: 10px 2px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.ci {
   display: flex;
   align-items: center;
-  margin-top: 2px;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--text-2);
 }
 
-.avatar-chip {
-  width: 22px;
-  height: 22px;
+.ci__box {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: 1.5px solid var(--border-strong);
+  color: #fff;
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast);
+}
+
+.ci--done .ci__box {
+  background: var(--status-done);
+  border-color: var(--status-done);
+}
+
+.ci--done .ci__label {
+  color: var(--text-4);
+  text-decoration: line-through;
+}
+
+.ci__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exp-enter-active,
+.exp-leave-active {
+  transition:
+    grid-template-rows 320ms var(--spring-soft),
+    opacity 220ms var(--motion-ease);
+}
+
+.exp-enter-from,
+.exp-leave-to {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+/* ── Avatares ───────────────────────────────────────────────── */
+.card__foot {
+  display: flex;
+  align-items: center;
+}
+
+.avatars {
+  display: flex;
+  align-items: center;
+}
+
+.avatar {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
@@ -675,30 +941,42 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   font-size: 9.5px;
   font-weight: 700;
   color: white;
-  border: 1.5px solid var(--surface);
+  border: 2px solid var(--surface);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.28);
   flex-shrink: 0;
   cursor: default;
+  transition: transform var(--motion) var(--spring);
 }
 
-.avatar-extra {
-  background: var(--surface-2) !important;
+.card:hover .avatar {
+  transform: translateY(-2px);
+}
+
+.avatar--extra {
+  background: var(--surface-3) !important;
   color: var(--text-3) !important;
-  border-color: var(--border) !important;
+  border-color: var(--surface) !important;
+  box-shadow: none !important;
 }
 
-/* ── Drag states ────────────────────────────────────────────── */
+/* ── Estados de arraste ─────────────────────────────────────── */
 .drag-ghost {
-  opacity: 0.35 !important;
-  background: var(--surface-2) !important;
-  border: 1.5px dashed var(--accent) !important;
-  border-radius: var(--radius) !important;
+  opacity: 0.45 !important;
+  background: color-mix(in srgb, var(--col) 9%, var(--surface-2)) !important;
+  border: 1.5px dashed color-mix(in srgb, var(--col) 55%, var(--accent)) !important;
+  border-radius: 14px !important;
   box-shadow: none !important;
+}
+
+.drag-ghost::before,
+.drag-ghost .card__glow {
+  display: none;
 }
 
 .drag-chosen {
   cursor: grabbing !important;
-  transform: rotate(1.5deg) scale(1.02) !important;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4) !important;
+  transform: rotate(2deg) scale(1.04) !important;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.48) !important;
   z-index: 9999 !important;
   border-color: var(--accent) !important;
 }
@@ -707,65 +985,22 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   cursor: grabbing !important;
 }
 
-/* ── Subtasks ───────────────────────────────────────────────── */
-.subtasks-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 2px;
-}
-
-.subtasks-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 3px 8px;
-  cursor: pointer;
-  align-self: flex-start;
-  transition: border-color var(--motion-fast), color var(--motion-fast);
-}
-
-.subtasks-toggle:hover {
-  border-color: var(--accent);
-  color: var(--text);
-}
-
-.subtasks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 6px 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.subtask-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  color: var(--text-2);
-}
-
-.subtask-item.subtask-done {
-  opacity: 0.55;
-}
-
-.subtask-item.subtask-done .subtask-title {
-  text-decoration: line-through;
-}
-
-.subtask-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* ── Menos movimento ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .lane__count {
+    animation: none !important;
+  }
+  .card:hover {
+    transform: none;
+  }
+  .card:hover .card__cover img {
+    transform: none;
+  }
+  .ring__fill,
+  .exp-enter-active,
+  .exp-leave-active {
+    transition: none;
+  }
 }
 </style>

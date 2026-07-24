@@ -9,9 +9,10 @@ const FALLBACK_TITLE = 'Nevo'
 /**
  * F1 — reflete o cronômetro no título da aba do navegador (GAP do dono).
  *
- * Enquanto houver timer rodando, o `<title>` vira "⏱ MM:SS · descrição", útil
- * quando a aba está em segundo plano. Ao parar, restaura o título base capturado
- * na primeira execução.
+ * Enquanto houver timer rodando, o `<title>` vira "● MM:SS · descrição" (o ponto
+ * vermelho de "gravando", casando com o badge do favicon — ver useFaviconBadge),
+ * útil quando a aba está em segundo plano. Ao parar, restaura o título base
+ * capturado na primeira execução.
  *
  * Deve ser montado UMA vez, num ponto sempre presente (ex.: AppShell). Consome o
  * singleton de `useTimeTracking`, então não cria interval/subscription extra.
@@ -27,7 +28,7 @@ export function useTimerDocumentTitle() {
   watchEffect(() => {
     if (isRunning.value) {
       const desc = running.value?.description?.trim() || 'Sem descrição'
-      title.value = `⏱ ${formatTimer(elapsedSec.value)} · ${desc}`
+      title.value = `● ${formatTimer(elapsedSec.value)} · ${desc}`
     } else {
       title.value = baseTitle
     }
