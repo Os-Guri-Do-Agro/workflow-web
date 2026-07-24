@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Sparkles } from 'lucide-vue-next'
 import { useAssistant } from '@/composables/useAssistant'
 
 const { isOpen, open } = useAssistant()
@@ -16,7 +15,9 @@ const shortcutHint = navigator.platform.toLowerCase().includes('mac') ? '⌘ I' 
       aria-label="Abrir assistente de IA"
       @click="open"
     >
-      <span class="launcher-orb"><Sparkles :size="20" /></span>
+      <span class="launcher-orb">
+        <img src="/brand/marca.svg" alt="" class="launcher-face" draggable="false" />
+      </span>
       <span class="launcher-tip">
         Assistente
         <kbd>{{ shortcutHint }}</kbd>
@@ -51,12 +52,15 @@ const shortcutHint = navigator.platform.toLowerCase().includes('mac') ? '⌘ I' 
   width: 52px;
   height: 52px;
   flex-shrink: 0;
+  overflow: hidden;
   border-radius: 50%;
-  color: var(--accent-fg);
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #fff));
+  /* Fundo creme da marca: preenche os cantos do selo (squircle) que o circulo
+     recorta, deixando um disco creme limpo sob a carinha nos dois temas. */
+  background: var(--brand-body);
   box-shadow:
     var(--shadow),
-    0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--brand-ink) 22%, transparent);
+  animation: launcher-bob 4.5s var(--motion-ease) infinite;
   transition:
     transform var(--motion) var(--motion-ease),
     box-shadow var(--motion) var(--motion-ease);
@@ -67,13 +71,33 @@ const shortcutHint = navigator.platform.toLowerCase().includes('mac') ? '⌘ I' 
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-accent) 45%, transparent);
   animation: pulse 2.8s ease-out infinite;
+}
+
+/* A carinha do mascote (o mesmo selo do app bar). Levemente ampliada para
+   respirar dentro do disco; "acorda" com uma balancada no hover. */
+.launcher-face {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scale(1.12);
+  transition: transform var(--motion-slow) var(--motion-ease);
+}
+
+@keyframes launcher-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
 }
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-accent) 40%, transparent);
   }
   70%,
   100% {
@@ -107,8 +131,12 @@ const shortcutHint = navigator.platform.toLowerCase().includes('mac') ? '⌘ I' 
   border: 1px solid var(--border);
 }
 .launcher:hover .launcher-orb {
-  transform: scale(0.92);
-  box-shadow: none;
+  animation: none;
+  transform: scale(0.94);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-ink) 22%, transparent);
+}
+.launcher:hover .launcher-face {
+  transform: rotate(-7deg) scale(1.2);
 }
 .launcher:hover .launcher-tip {
   max-width: 160px;
@@ -121,6 +149,7 @@ const shortcutHint = navigator.platform.toLowerCase().includes('mac') ? '⌘ I' 
   outline-offset: 3px;
 }
 .launcher:active .launcher-orb {
+  animation: none;
   transform: scale(0.88);
 }
 
@@ -159,11 +188,13 @@ const shortcutHint = navigator.platform.toLowerCase().includes('mac') ? '⌘ I' 
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .launcher-orb,
   .launcher-orb::after {
     animation: none;
   }
   .launcher,
   .launcher-orb,
+  .launcher-face,
   .launcher-tip {
     transition: none;
   }

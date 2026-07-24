@@ -86,7 +86,7 @@ const features = [
       <div class="form-inner">
         <header class="form-head">
           <div class="logo-wrap">
-            <img src="/brand/marca.svg" alt="Workflow" class="logo-img" draggable="false" />
+            <img src="/brand/marca.svg" alt="Nevo" class="logo-img" draggable="false" />
           </div>
           <h1 class="form-title">Bem-vindo de volta</h1>
           <p class="form-sub">Entre com suas credenciais para acessar sua conta.</p>
@@ -151,7 +151,7 @@ const features = [
         </form>
 
         <footer class="form-foot">
-          <span class="foot-meta">Stack Roads · Workflow</span>
+          <span class="foot-meta">Nevo</span>
         </footer>
       </div>
     </section>
@@ -162,7 +162,7 @@ const features = [
       <div class="hero-grid" />
       <div class="hero-inner">
         <header class="hero-copy">
-          <span class="hero-eyebrow">Workflow · Stack Roads</span>
+          <span class="hero-eyebrow">Nevo</span>
           <h2 class="hero-title">Seu trabalho, organizado de verdade.</h2>
           <p class="hero-sub">
             Tarefas, board, roadmap e time no mesmo lugar, com a clareza que o dia a dia pede.

@@ -4,7 +4,7 @@ import { useTimeTracking } from '@/composables/useTimeTracking'
 import { formatTimer } from '@/utils/duration'
 
 // Fallback caso o documento não tenha título no primeiro run (SSR/edge).
-const FALLBACK_TITLE = 'Workflow · Stack Roads'
+const FALLBACK_TITLE = 'Nevo'
 
 /**
  * F1 — reflete o cronômetro no título da aba do navegador (GAP do dono).

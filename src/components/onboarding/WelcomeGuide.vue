@@ -102,7 +102,7 @@ watch(isOpen, (open) => {
             <span class="guide-eyebrow">
               <Sparkles :size="12" /> Primeiros passos
             </span>
-            <h2 id="guide-title" class="guide-title">Bem-vindo ao Workflow</h2>
+            <h2 id="guide-title" class="guide-title">Bem-vindo ao Nevo</h2>
             <p class="guide-sub">
               Um tour rápido pelo que dá pra fazer aqui. Clique pra ir direto. Marcamos o que você já explorou.
             </p>

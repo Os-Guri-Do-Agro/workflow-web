@@ -50,8 +50,8 @@ const ROUTE_TITLES: Record<string, string> = {
 }
 
 const title = computed(() => {
-  const label = ROUTE_TITLES[String(route.name ?? '')] ?? 'Workflow'
-  return `${label} - Workflow`
+  const label = ROUTE_TITLES[String(route.name ?? '')] ?? 'Nevo'
+  return `${label} - Nevo`
 })
 
 // A "janela" (container de scroll) muda por shell: Focus usa .main-scroll; os

@@ -91,7 +91,7 @@ onMounted(() => load())
   <div class="page">
     <header class="head">
       <div class="logo-wrap"><Bug :size="18" /></div>
-      <span class="brand">Workflow · Stack Roads</span>
+      <span class="brand">Nevo</span>
     </header>
 
     <main class="main">

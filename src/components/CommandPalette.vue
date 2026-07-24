@@ -108,7 +108,7 @@ const staticCommands = computed<Command[]>(() => [
   { id: 'nav-settings', label: 'Configurações', hint: 'Aparência e preferências', icon: Settings, section: 'Navegação', keywords: 'tema shell accent ajustes', action: () => go('/settings') },
   { id: 'ai-ask', label: 'Pergunte ao workspace', hint: 'Assistente de IA', icon: Sparkles, section: 'IA', keywords: 'copilot pergunta inteligencia artificial bloquear entregas ctrl i', action: () => { close(); assistant.open() } },
   { id: 'ai-digest', label: 'Resumo da semana', hint: 'Digest IA da timeline', icon: MessageSquare, section: 'IA', keywords: 'copilot digest resumo timeline semana status report', action: () => { close(); assistant.open(); assistant.runDigest() } },
-  { id: 'help-onboarding', label: 'Primeiros passos', hint: 'Guia de uso do Workflow', icon: Compass, section: 'Ajuda', keywords: 'onboarding tour guia ajuda comecar tutorial bem vindo como usar', action: () => { close(); onboarding.open() } },
+  { id: 'help-onboarding', label: 'Primeiros passos', hint: 'Guia de uso do Nevo', icon: Compass, section: 'Ajuda', keywords: 'onboarding tour guia ajuda comecar tutorial bem vindo como usar', action: () => { close(); onboarding.open() } },
   {
     id: 'act-theme',
     label: theme.value === 'dark' ? 'Modo Claro' : 'Modo Escuro',

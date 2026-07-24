@@ -70,7 +70,7 @@ const submit = async () => {
           <div class="logo-wrap"><Sparkles :size="18" /></div>
           <h1 class="form-title">Criar conta</h1>
           <p class="form-sub">
-            Acesso gratuito ao Workflow. Comece a organizar tarefas e bug reports.
+            Acesso gratuito ao Nevo. Comece a organizar tarefas e bug reports.
           </p>
         </header>
 

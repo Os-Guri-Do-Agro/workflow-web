@@ -23,6 +23,12 @@ const sharedRadiusAndShadow = {
     '"Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   '--font-mono':
     'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+  // Cores fixas de identidade da marca (o mascote xícara). Não variam por tema:
+  // são as mesmas do selo em `/brand/marca.svg`. Use quando um componente precisa
+  // pintar algo "na cor da marca" (glow do launcher, realces de brand) sem hex solto.
+  '--brand-body': '#FFDCB6',
+  '--brand-ink': '#4B1B03',
+  '--brand-accent': '#ED732A',
   // Tipografia ampliada (modo 50+ / leitura confortável). Escala junto via calc()
   // com --font-scale, aplicada em runtime por applyFontScale().
   '--text-body-large': 'calc(15px * var(--font-scale, 1))',

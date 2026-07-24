@@ -19,7 +19,7 @@ const router = useRouter()
     class="brand-mark press"
     type="button"
     aria-label="Ir para o Dashboard"
-    title="Workflow"
+    title="Nevo"
     :style="{ width: `${size}px`, height: `${size}px` }"
     @click="router.push(to)"
   >

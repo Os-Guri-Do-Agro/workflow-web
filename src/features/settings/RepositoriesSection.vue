@@ -163,7 +163,7 @@ onMounted(() => load())
       <h3 class="conns-empty-title">Nenhuma organização conectada</h3>
       <p class="conns-empty-sub">
         Conecte sua org do GitHub uma vez e o time inteiro passa a navegar nos
-        repositórios pelo workflow — sem precisar abrir o GitHub.
+        repositórios pelo Nevo, sem precisar abrir o GitHub.
       </p>
       <button class="conns-cta" @click="showCreate = true">
         <Github :size="14" />
@@ -236,7 +236,7 @@ onMounted(() => load())
                 <p class="step-desc">
                   Abra
                   <a
-                    href="https://github.com/settings/tokens/new?scopes=repo&description=workflow+stackroads"
+                    href="https://github.com/settings/tokens/new?scopes=repo&description=Nevo"
                     target="_blank"
                     rel="noopener"
                     class="link"
