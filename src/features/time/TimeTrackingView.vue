@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { AlertTriangle, DollarSign, Pencil, Play, Plus, Square, Trash2, Users, X } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import ActivitySelect from '@/components/ui/ActivitySelect.vue'
+import TimeInsightsRail from '@/features/time/components/TimeInsightsRail.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -226,6 +227,52 @@ const todayTotalSec = computed(() => {
   return visibleEntries.value
     .filter((e) => dayKey(e.startedAt) === today)
     .reduce((acc, e) => acc + (e.durationSec ?? 0), 0)
+})
+
+// ─── Rail de insights (derivado das entradas visíveis, sem fetch extra) ────────
+const activeDaysCount = computed(() => groups.value.length)
+
+const avgPerDaySec = computed(() =>
+  activeDaysCount.value ? Math.round(rangeTotalSec.value / activeDaysCount.value) : 0,
+)
+
+const billablePct = computed(() =>
+  rangeTotalSec.value ? Math.round((rangeBillableSec.value / rangeTotalSec.value) * 100) : 0,
+)
+
+/** Últimos 7 dias (cronológico) para o mini gráfico de ritmo. */
+const last7Days = computed(() => {
+  const byKey = new Map(groups.value.map((g) => [g.key, g.totalSec]))
+  const now = new Date()
+  const todayKey = dayKey(now.toISOString())
+  const out: { key: string; sec: number; wd: string; isToday: boolean }[] = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now)
+    d.setDate(now.getDate() - i)
+    const key = dayKey(d.toISOString())
+    out.push({
+      key,
+      sec: byKey.get(key) ?? 0,
+      wd: d.toLocaleDateString('pt-BR', { weekday: 'narrow' }).toUpperCase(),
+      isToday: key === todayKey,
+    })
+  }
+  return out
+})
+const last7Max = computed(() => Math.max(1, ...last7Days.value.map((d) => d.sec)))
+
+/** Distribuição do tempo por empresa/projeto (top 5), com percentual. */
+const byProject = computed(() => {
+  const map = new Map<string, number>()
+  for (const e of visibleEntries.value) {
+    const name = e.company?.name ?? 'Pessoal'
+    map.set(name, (map.get(name) ?? 0) + (e.durationSec ?? 0))
+  }
+  const total = rangeTotalSec.value || 1
+  return [...map.entries()]
+    .map(([name, sec]) => ({ name, sec, pct: Math.round((sec / total) * 100) }))
+    .sort((a, b) => b.sec - a.sec)
+    .slice(0, 5)
 })
 
 // ─── Edição inline (entradas fechadas) ────────────────────────────────────────
@@ -518,6 +565,9 @@ const presets: Array<{ id: Preset; label: string }> = [
         </button>
       </div>
 
+      <!-- Abaixo do timer: lista (principal) + rail de insights (lateral). -->
+      <div class="tv-below" :class="{ 'tv-below--solo': !visibleEntries.length }">
+        <div class="tv-below-main">
       <!-- ─── Filtros + totais ───────────────────────────────────────────── -->
       <section class="tv-controls">
         <div class="tv-presets">
@@ -780,6 +830,21 @@ const presets: Array<{ id: Preset; label: string }> = [
           </button>
         </div>
       </div>
+        </div>
+
+        <!-- ─── Rail de insights ─────────────────────────────────────────── -->
+        <TimeInsightsRail
+          v-if="visibleEntries.length"
+          class="tv-rail"
+          :range-total-sec="rangeTotalSec"
+          :range-billable-sec="rangeBillableSec"
+          :avg-per-day-sec="avgPerDaySec"
+          :billable-pct="billablePct"
+          :last7-days="last7Days"
+          :last7-max="last7Max"
+          :by-project="byProject"
+        />
+      </div>
     </template>
 
     <!-- ═══════════════ ABA: EQUIPE (ADMIN) ═══════════════ -->
@@ -800,15 +865,53 @@ const presets: Array<{ id: Preset; label: string }> = [
 
 <style scoped>
 .time-view {
-  /* Ancorado à esquerda (não centralizado) e mais largo: o conteúdo começa perto
-     da borda, como um app de produto, em vez de uma coluna estreita no meio. */
-  max-width: 1180px;
+  /* Ancorado à esquerda (não centralizado) e largo: timer full-width no topo e,
+     abaixo, lista + rail de insights ocupam a largura em vez de deixar o vazio. */
+  max-width: 1480px;
   margin: 0;
   padding: 24px 28px 64px;
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
+
+/* ─── Layout abaixo do timer: lista (principal) + rail lateral ─────────────── */
+.tv-below {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px 28px;
+  align-items: start;
+}
+
+.tv-below--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tv-below-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.tv-rail {
+  position: sticky;
+  top: 8px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 1100px) {
+  .tv-below {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tv-rail {
+    position: static;
+  }
+}
+
 
 .tv-head {
   display: flex;
