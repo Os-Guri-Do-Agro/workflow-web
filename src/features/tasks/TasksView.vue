@@ -1,11 +1,23 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import {
+  Columns3,
+  History,
+  SlidersHorizontal,
+  Plus,
+  X,
+  Inbox,
+  CloudOff,
+  RefreshCw,
+} from 'lucide-vue-next'
 import { useTasks } from '@/features/tasks/useTasks'
 import TaskForm from '@/components/tasks/TaskForm.vue'
 import KanbanBoard from '@/components/tasks/KanbanBoard.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
-import type { Activity } from '@/core/types'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import { getInfoAuth } from '@/utils/authContent'
@@ -56,6 +68,7 @@ interface RawMonth {
 }
 
 interface RawQuarter {
+  name?: string
   months?: RawMonth[]
 }
 
@@ -98,7 +111,12 @@ const companyId = computed(() => localStorage.getItem('activeCompany') ?? '')
 const monthId = computed(() => route.params.month as string)
 
 // ── Vue Query — data loads independently, no blocking ──
-const { data: tasksData, isLoading: tasksLoading } = useCompanyBoards(monthId)
+const {
+  data: tasksData,
+  isLoading: tasksLoading,
+  isError: tasksError,
+  refetch: refetchBoards,
+} = useCompanyBoards(monthId)
 const { data: quartersData } = useCompanyQuarters(companyId)
 const { data: backlogData } = useBacklog(companyId)
 
@@ -109,12 +127,13 @@ const loading = computed(() => tasksLoading.value)
 
 const backLog = computed(() => backlogData.value ?? [])
 
-const currentMonthData = computed<RawMonth | null>(() => {
+/** Mês atual + nome do trimestre que o contém (eyebrow do header). */
+const currentMonthInfo = computed<{ month: RawMonth; quarterName: string | null } | null>(() => {
   const raw = quartersData.value as RawQuarter[] | { data?: RawQuarter[] } | undefined
   const quarters: RawQuarter[] = Array.isArray(raw) ? raw : (raw?.data ?? [])
   for (const quarter of quarters) {
     const month = quarter.months?.find((m) => m.id === monthId.value)
-    if (month) return month
+    if (month) return { month, quarterName: quarter.name ?? null }
   }
   return null
 })
@@ -243,6 +262,20 @@ const totalTasks = computed(() => {
   return Object.values(tasks.value).flat().length
 })
 
+/**
+ * Pulso do mês: distribuição das atividades por status, direto nos tokens de
+ * cor de status. Alimenta a barra segmentada + legenda do header.
+ */
+const statusPulse = computed(() => {
+  const defs: { key: BoardStatus; label: string; token: string }[] = [
+    { key: 'TODO', label: 'A fazer', token: 'var(--status-todo)' },
+    { key: 'IN_PROGRESS', label: 'Em andamento', token: 'var(--status-prog)' },
+    { key: 'IN_TESTING', label: 'Em teste', token: 'var(--status-test)' },
+    { key: 'DONE', label: 'Concluído', token: 'var(--status-done)' },
+  ]
+  return defs.map((d) => ({ ...d, count: tasks.value?.[d.key]?.length ?? 0 }))
+})
+
 const STATUSES: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
 
 /** Remove a atividade de todas as colunas locais e devolve o objeto (ou null). */
@@ -328,17 +361,22 @@ const deleteTask = async () => {
   }
 }
 
-const openDetails = (activity: Activity) => {
+const openDetails = (activity: { id: string }) => {
   router.push(`/tasks/${route.params.month}/${activity.id}`)
 }
 
-const monthName = computed(() => currentMonthData.value?.name || 'Carregando...')
+const monthName = computed(() => currentMonthInfo.value?.month.name || 'Carregando...')
+const quarterName = computed(() => currentMonthInfo.value?.quarterName)
 
 const statusLabels: Record<string, string> = {
   TODO: 'A Fazer', IN_PROGRESS: 'Em Progresso', IN_TESTING: 'Em Teste', DONE: 'Concluído',
 }
+// Cores de status vêm dos tokens do design system (theme-aware), não de hex.
 const statusColors: Record<string, string> = {
-  TODO: '#6B7280', IN_PROGRESS: '#F59E0B', IN_TESTING: '#8B5CF6', DONE: '#10B981',
+  TODO: 'var(--status-todo)',
+  IN_PROGRESS: 'var(--status-prog)',
+  IN_TESTING: 'var(--status-test)',
+  DONE: 'var(--status-done)',
 }
 
 const sortedHistory = computed(() =>
@@ -349,20 +387,47 @@ const formatDate = (date: string) =>
   new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 const showFilters = ref(false)
+
+// Alturas fake do skeleton: colunas com "cargas" diferentes leem como um board
+// de verdade carregando, não como quatro barras genéricas.
+const skeletonLanes = [
+  [76, 64, 92, 64],
+  [88, 64],
+  [64, 76],
+  [64, 92, 64, 76, 64],
+]
 </script>
 
 <template>
-  <!-- Loading -->
-  <div v-if="loading" class="tasks-page d-flex align-center justify-center" style="min-height: 60vh">
-    <v-progress-circular indeterminate color="secondary" size="40" />
-  </div>
-
-  <div v-else class="tasks-page">
+  <div class="tasks-page">
     <!-- Header -->
     <div class="tasks-header">
-      <div>
+      <div class="tasks-heading">
+        <p v-if="quarterName" class="tasks-eyebrow">{{ quarterName }}</p>
         <h1 class="tasks-title">{{ monthName }}</h1>
-        <p class="tasks-sub">{{ totalTasks }} atividades</p>
+        <div class="tasks-meta">
+          <span class="tasks-sub">
+            {{ totalTasks }} {{ totalTasks === 1 ? 'atividade' : 'atividades' }}
+          </span>
+          <template v-if="totalTasks > 0">
+            <div class="pulse" role="img" :aria-label="statusPulse.map((s) => `${s.count} ${s.label}`).join(', ')">
+              <span
+                v-for="seg in statusPulse"
+                :key="seg.key"
+                v-show="seg.count > 0"
+                class="pulse__seg"
+                :style="{ flexGrow: seg.count, background: seg.token }"
+                :title="`${seg.count} ${seg.label}`"
+              />
+            </div>
+            <div class="pulse-legend" aria-hidden="true">
+              <span v-for="seg in statusPulse" :key="seg.key" class="pulse-legend__item" :title="seg.label">
+                <span class="pulse-legend__dot" :style="{ background: seg.token }" />
+                {{ seg.count }}
+              </span>
+            </div>
+          </template>
+        </div>
       </div>
 
       <div class="header-actions">
@@ -373,7 +438,7 @@ const showFilters = ref(false)
             :class="{ active: currentTab === 'board' }"
             @click="currentTab = 'board'"
           >
-            <v-icon size="15">mdi-view-column-outline</v-icon>
+            <Columns3 :size="14" />
             Board
           </button>
           <button
@@ -381,7 +446,7 @@ const showFilters = ref(false)
             :class="{ active: currentTab === 'backlog' }"
             @click="currentTab = 'backlog'"
           >
-            <v-icon size="15">mdi-history</v-icon>
+            <History :size="14" />
             Backlog
           </button>
         </div>
@@ -392,7 +457,7 @@ const showFilters = ref(false)
           :class="{ active: showFilters }"
           @click="showFilters = !showFilters"
         >
-          <v-icon size="15">mdi-filter-variant</v-icon>
+          <SlidersHorizontal :size="14" />
           Filtros
           <span v-if="activeFiltersCount > 0" class="filter-badge">{{ activeFiltersCount }}</span>
         </button>
@@ -400,10 +465,10 @@ const showFilters = ref(false)
         <!-- New activity -->
         <button
           v-if="isWorkerRole"
-          class="new-activity-btn"
+          class="new-activity-btn press"
           @click="dialog = true"
         >
-          <v-icon size="15">mdi-plus</v-icon>
+          <Plus :size="15" />
           Nova Atividade
         </button>
       </div>
@@ -449,87 +514,124 @@ const showFilters = ref(false)
           class="clear-filters-btn"
           @click="clearFilters"
         >
-          <v-icon size="13">mdi-close</v-icon>
+          <X :size="12" />
           Limpar filtros
         </button>
       </div>
     </Transition>
 
-    <!-- Board view -->
-    <KanbanBoard
-      v-show="currentTab === 'board'"
-      :tasks="filteredTasks"
-      :readonly="!isWorkerRole"
-      @move-task="handleMove"
-      @open-details="openDetails"
-      @delete-task="openDeleteConfirm"
-      @rename-task="handleRenameTask"
-    />
-
-
-    <!-- Backlog view -->
-    <div v-show="currentTab === 'backlog'" class="backlog-panel">
-      <div v-if="sortedHistory.length === 0" class="backlog-empty">
-        <v-icon size="40" style="opacity: 0.25">mdi-history</v-icon>
-        <span>Nenhum histórico encontrado</span>
-        <span class="backlog-empty-sub">Alterações de status aparecerão aqui</span>
-      </div>
-
-      <div v-else class="backlog-list">
-        <div
-          v-for="entry in sortedHistory"
-          :key="entry.id"
-          class="backlog-item"
-        >
-          <div
-            class="backlog-dot"
-            :style="{ backgroundColor: statusColors[entry.newStatus] || '#6B7280' }"
-          />
-          <div class="backlog-info">
-            <span class="backlog-title">{{ entry.activityTitle }}</span>
-            <span class="backlog-meta">
-              {{ entry.changedBy?.name }} ·
-              <span
-                v-if="entry.previousStatus"
-                class="backlog-status-badge"
-                :style="{ color: statusColors[entry.previousStatus] }"
-              >{{ statusLabels[entry.previousStatus] }}</span>
-              <span v-else>Novo</span>
-              →
-              <span
-                class="backlog-status-badge"
-                :style="{ color: statusColors[entry.newStatus] }"
-              >{{ statusLabels[entry.newStatus] }}</span>
-            </span>
+    <!-- Corpo: skeleton → erro → board/backlog -->
+    <div class="tasks-body">
+      <!-- Loading: skeleton em forma de board (nada de spinner no meio da tela) -->
+      <div v-if="loading" class="skel-board" aria-label="Carregando atividades" aria-busy="true">
+        <div v-for="(lane, li) in skeletonLanes" :key="li" class="skel-lane">
+          <div class="skel-lane__head">
+            <Skeleton type="block" height="20px" />
           </div>
-          <span class="backlog-time">{{ formatDate(entry.changedAt) }}</span>
+          <Skeleton
+            v-for="(h, ci) in lane"
+            :key="ci"
+            type="block"
+            :height="`${h}px`"
+            class="skel-card"
+          />
         </div>
       </div>
+
+      <!-- Erro: mensagem útil + retry -->
+      <EmptyState
+        v-else-if="tasksError"
+        :icon="CloudOff"
+        title="Não deu para carregar o board"
+        description="A conexão com o servidor falhou. Verifique sua internet e tente de novo."
+      >
+        <template #action>
+          <button class="retry-btn press" @click="refetchBoards()">
+            <RefreshCw :size="14" />
+            Tentar de novo
+          </button>
+        </template>
+      </EmptyState>
+
+      <template v-else>
+        <!-- Board view -->
+        <div v-show="currentTab === 'board'" class="board-wrap">
+          <EmptyState
+            v-if="totalTasks === 0"
+            :icon="Inbox"
+            title="Mês sem atividades"
+            description="Tudo limpo por aqui. Crie a primeira atividade para começar o planejamento do mês."
+          >
+            <template #action>
+              <button v-if="isWorkerRole" class="new-activity-btn press" @click="dialog = true">
+                <Plus :size="15" />
+                Nova Atividade
+              </button>
+            </template>
+          </EmptyState>
+          <KanbanBoard
+            v-else
+            :tasks="filteredTasks"
+            :readonly="!isWorkerRole"
+            @move-task="handleMove"
+            @open-details="openDetails"
+            @delete-task="openDeleteConfirm"
+            @rename-task="handleRenameTask"
+          />
+        </div>
+
+        <!-- Backlog view -->
+        <div v-show="currentTab === 'backlog'" class="backlog-panel">
+          <div v-if="sortedHistory.length === 0" class="backlog-empty">
+            <History :size="36" class="backlog-empty-icon" />
+            <span>Nenhum histórico encontrado</span>
+            <span class="backlog-empty-sub">Alterações de status aparecerão aqui</span>
+          </div>
+
+          <div v-else class="backlog-list">
+            <div
+              v-for="entry in sortedHistory"
+              :key="entry.id"
+              class="backlog-item"
+            >
+              <div
+                class="backlog-dot"
+                :style="{ backgroundColor: statusColors[entry.newStatus] || 'var(--text-4)' }"
+              />
+              <div class="backlog-info">
+                <span class="backlog-title">{{ entry.activityTitle }}</span>
+                <span class="backlog-meta">
+                  {{ entry.changedBy?.name }} ·
+                  <span
+                    v-if="entry.previousStatus"
+                    class="backlog-status-badge"
+                    :style="{ color: statusColors[entry.previousStatus] }"
+                  >{{ statusLabels[entry.previousStatus] }}</span>
+                  <span v-else>Novo</span>
+                  →
+                  <span
+                    class="backlog-status-badge"
+                    :style="{ color: statusColors[entry.newStatus] }"
+                  >{{ statusLabels[entry.newStatus] }}</span>
+                </span>
+              </div>
+              <span class="backlog-time">{{ formatDate(entry.changedAt) }}</span>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
 
-    <!-- Delete dialog -->
-    <v-dialog v-model="confirmDelete" max-width="380" :scrim-opacity="0.6">
-      <v-card class="dialog-card" rounded="xl">
-        <div class="dialog-header">
-          <span class="dialog-title-text">Excluir atividade</span>
-          <v-btn icon size="small" variant="text" @click="confirmDelete = false">
-            <v-icon size="18">mdi-close</v-icon>
-          </v-btn>
-        </div>
-        <div class="dialog-body">
-          <p style="font-size: 14px; color: var(--text-3)">
-            Tem certeza que deseja excluir <strong style="color: var(--text)">{{ taskToDelete?.title }}</strong>?
-          </p>
-        </div>
-        <div class="dialog-actions">
-          <v-btn variant="text" size="small" @click="confirmDelete = false">Cancelar</v-btn>
-          <v-spacer />
-          <v-btn variant="flat" size="small" color="error" :loading="!!deleting" @click="deleteTask">
-            Excluir
-          </v-btn>
-        </div>
-      </v-card>
-    </v-dialog>
+    <!-- Delete dialog (primitive do design system, não v-dialog) -->
+    <ConfirmDialog
+      v-model="confirmDelete"
+      danger
+      title="Excluir atividade"
+      :message="`Tem certeza que deseja excluir “${taskToDelete?.title ?? ''}”? Essa ação não pode ser desfeita.`"
+      confirm-label="Excluir"
+      :loading="!!deleting"
+      @confirm="deleteTask"
+    />
 
     <!-- Create task dialog -->
     <v-dialog v-model="dialog" max-width="600">
@@ -547,35 +649,112 @@ const showFilters = ref(false)
 </template>
 
 <style scoped>
-/* ─── Layout ─── */
+/* ─── Layout: a página ocupa a viewport e o board rola POR COLUNA.
+   Antes o scroll era da página inteira: a coluna mais cheia esticava as
+   outras em painéis vazios gigantes. ─── */
 .tasks-page {
-  padding: 24px 28px;
-  max-width: 1400px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px 28px 0;
+  max-width: 1600px;
   margin: 0 auto;
+  width: 100%;
+}
+
+.tasks-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-wrap {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ─── Header ─── */
 .tasks-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
   gap: 12px;
+  flex-shrink: 0;
 }
 
-.tasks-title {
-  font-size: 22px;
+.tasks-eyebrow {
+  font-size: 11px;
   font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-4);
   margin: 0 0 2px;
 }
 
-.tasks-sub {
-  font-size: 13px;
-  color: var(--text-3);
+.tasks-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.025em;
+  line-height: 1.15;
   margin: 0;
+}
+
+.tasks-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 7px;
+  min-height: 16px;
+}
+
+.tasks-sub {
+  font-size: 12.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* Pulso do mês: distribuição por status em barra segmentada */
+.pulse {
+  display: flex;
+  gap: 2px;
+  width: 180px;
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.pulse__seg {
+  flex-basis: 0;
+  min-width: 3px;
+  border-radius: 999px;
+  transition: flex-grow 420ms var(--motion-ease);
+}
+
+.pulse-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pulse-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+.pulse-legend__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
 }
 
 .header-actions {
@@ -590,7 +769,8 @@ const showFilters = ref(false)
   display: flex;
   align-items: center;
   background: var(--surface-2);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
   padding: 3px;
   gap: 2px;
 }
@@ -598,16 +778,20 @@ const showFilters = ref(false)
 .view-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  height: 26px;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--text-3);
-  padding: 5px 10px;
+  padding: 0 10px;
   border-radius: 6px;
   border: none;
   background: transparent;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
   white-space: nowrap;
 }
 
@@ -617,24 +801,28 @@ const showFilters = ref(false)
 
 .view-btn.active {
   color: var(--text);
-  background: var(--border);
+  background: var(--surface);
   font-weight: 600;
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--border);
 }
 
 /* ─── Filter toggle button ─── */
 .filter-toggle-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  height: 32px;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--text-3);
   background: var(--surface-2);
-  padding: 5px 11px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  padding: 0 11px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
 }
 
 .filter-toggle-btn:hover, .filter-toggle-btn.active {
@@ -659,20 +847,44 @@ const showFilters = ref(false)
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 32px;
   font-size: 12.5px;
-  font-weight: 600;
-  background: var(--accent);
+  font-weight: 650;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent));
   color: var(--accent-fg);
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in srgb, var(--accent) 80%, black);
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 78%, black);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 26%, transparent);
   cursor: pointer;
-  transition: filter var(--motion-fast);
+  transition: filter var(--motion-fast), box-shadow var(--motion-fast);
   white-space: nowrap;
 }
 
 .new-activity-btn:hover {
-  filter: brightness(1.07);
+  filter: brightness(1.06);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+/* ─── Retry (estado de erro) ─── */
+.retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 0 14px;
+  cursor: pointer;
+  transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+
+.retry-btn:hover {
+  background: var(--surface-3);
 }
 
 /* ─── Filter bar ─── */
@@ -680,12 +892,13 @@ const showFilters = ref(false)
   display: flex;
   align-items: flex-end;
   gap: 16px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .filter-group {
@@ -731,7 +944,7 @@ const showFilters = ref(false)
 
 .filter-chip.active {
   color: var(--text);
-  background: var(--surface-2);
+  background: var(--surface);
   border-color: var(--border-strong);
   font-weight: 600;
 }
@@ -773,16 +986,47 @@ const showFilters = ref(false)
   opacity: 1;
 }
 
-/* ─── Backlog ─── */
-.backlog-panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+/* ─── Skeleton board ─── */
+.skel-board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
   overflow: hidden;
 }
 
+.skel-lane {
+  flex: 1 1 0;
+  min-width: 252px;
+  max-width: 384px;
+  padding: 6px 8px 0;
+}
+
+.skel-lane__head {
+  width: 55%;
+  margin-bottom: 14px;
+}
+
+.skel-card {
+  margin-bottom: 8px;
+  border-radius: 12px;
+}
+
+/* ─── Backlog ─── */
+.backlog-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
 .backlog-list {
-  max-height: 600px;
+  flex: 1;
   overflow-y: auto;
 }
 
@@ -842,44 +1086,36 @@ const showFilters = ref(false)
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  flex: 1;
   gap: 6px;
   padding: 48px;
   font-size: 14px;
   color: var(--text-3);
 }
 
+.backlog-empty-icon {
+  color: var(--text-4);
+  opacity: 0.6;
+}
+
 .backlog-empty-sub {
   font-size: 12.5px;
-  color: var(--accent);
+  color: var(--text-4);
 }
 
-/* ─── Dialogs ─── */
-.dialog-card {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-}
+/* ─── Mobile ─── */
+@media (max-width: 640px) {
+  .tasks-page {
+    padding: 14px 14px 0;
+  }
 
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 18px 14px;
-  border-bottom: 1px solid var(--border);
-}
+  .tasks-title {
+    font-size: 20px;
+  }
 
-.dialog-title-text {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.dialog-body { padding: 18px; }
-
-.dialog-actions {
-  display: flex;
-  align-items: center;
-  padding: 12px 18px 18px;
-  border-top: 1px solid var(--border);
-  gap: 8px;
+  .pulse {
+    width: 120px;
+  }
 }
 </style>
