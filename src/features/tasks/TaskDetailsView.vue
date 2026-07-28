@@ -44,6 +44,7 @@ import {
   todayDateOnly,
 } from '@/utils/date'
 import Pill from '@/components/ui/Pill.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -681,6 +682,23 @@ const onSubtaskFileChange = (f: File | File[]) => {
   formSubtask.value.attachment = file ?? null
 }
 
+// Pontes do `<input type="file">` nativo para os handlers acima (que validam os
+// 10MB). Zerar `input.value` permite escolher o mesmo arquivo de novo; cancelar
+// o seletor não mexe no anexo já escolhido.
+const onActivityFilePick = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) onActivityFileChange(file)
+}
+
+const onSubtaskFilePick = (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) onSubtaskFileChange(file)
+}
+
 const deletingAttachment = ref<string | null>(null)
 
 const deleteAttachment = async (attachmentId: string) => {
@@ -988,341 +1006,305 @@ const deleteAttachment = async (attachmentId: string) => {
     </EmptyState>
   </div>
 
-  <v-dialog v-model="showEditActivityModal" max-width="900px">
-    <v-card class="dialog-card" rounded="xl">
-      <div class="dialog-header">
-        <div class="dialog-head-main">
-          <span class="dialog-head-icon"><Pencil :size="16" /></span>
-          <span class="dialog-title-text">Editar atividade</span>
-        </div>
-        <button type="button" class="icon-btn press" aria-label="Fechar" @click="showEditActivityModal = false">
-          <X :size="16" />
+  <AppDialog v-model="showEditActivityModal" label="Editar atividade" size="xl" :loading="saving">
+    <div class="dialog-header">
+      <div class="dialog-head-main">
+        <span class="dialog-head-icon"><Pencil :size="16" /></span>
+        <span class="dialog-title-text">Editar atividade</span>
+      </div>
+      <button type="button" class="icon-btn press" aria-label="Fechar" :disabled="saving" @click="showEditActivityModal = false">
+        <X :size="16" />
+      </button>
+    </div>
+
+    <div class="dialog-body">
+      <div class="field-ai-row">
+        <label class="field field-grow">
+          <span class="view-label">Título *</span>
+          <input v-model="formActivity.title" class="field-input" type="text" />
+        </label>
+        <button
+          type="button"
+          class="btn-secondary press ai-btn"
+          :disabled="loadingSuggest"
+          @click="improveWithAI"
+        >
+          <Loader2 v-if="loadingSuggest" :size="14" class="spin" />
+          <Lightbulb v-else :size="15" />
+          Aprimorar com IA
         </button>
       </div>
 
-      <div class="dialog-body">
-        <div class="d-flex ga-2 align-center">
-          <v-text-field
-            v-model="formActivity.title"
-            label="Título *"
-            density="compact"
-            variant="outlined"
-            color="secondary"
-            hide-details
-          />
-          <v-btn
-            variant="tonal"
-            color="secondary"
-            class="text-none ai-btn"
-            :loading="loadingSuggest"
-            @click="improveWithAI"
-          >
-            <template #prepend><Lightbulb :size="15" /></template>
-            Aprimorar com IA
-          </v-btn>
+      <div v-if="suggest" class="suggest-card">
+        <div class="suggest-head">
+          <Sparkles :size="16" />
+          <span>Sugestões de IA</span>
         </div>
 
-        <div v-if="suggest" class="suggest-card">
-          <div class="suggest-head">
-            <Sparkles :size="16" />
-            <span>Sugestões de IA</span>
-          </div>
+        <div v-if="suggest.improvedDescription" class="suggest-section">
+          <span class="suggest-label">Descrição Aprimorada:</span>
+          <p class="suggest-text">{{ suggest.improvedDescription }}</p>
+        </div>
 
-          <div v-if="suggest.improvedDescription" class="mb-2">
-            <div style="font-size: 10px" class="text-primary-lighten mb-1">
-              Descrição Aprimorada:
-            </div>
-            <div style="font-size: 11px" class="text-secondary">
-              {{ suggest.improvedDescription }}
-            </div>
-          </div>
-
-          <div v-if="suggest.suggestedSubtasks?.length" class="mb-2">
-            <div style="font-size: 10px" class="text-primary-lighten mb-1">
-              Subtarefas Sugeridas:
-            </div>
-            <div class="d-flex flex-column ga-1">
-              <div
-                v-for="(task, i) in suggest.suggestedSubtasks"
-                :key="i"
-                class="suggest-task"
-                :class="{ 'suggest-task--done': isSubtaskCreated(task) }"
-              >
-                <div class="d-flex align-center ga-2 flex-grow-1">
-                  <CheckCircle2 v-if="isSubtaskCreated(task)" :size="15" class="suggest-check" />
-                  <span
-                    style="font-size: 11px"
-                    class="text-secondary"
-                    :class="{ 'text-decoration-line-through': isSubtaskCreated(task) }"
-                  >
-                    {{ task }}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  class="icon-btn press"
-                  :disabled="isSubtaskCreated(task)"
-                  @click="openQuickSubtask(task)"
-                >
-                  <Plus :size="14" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="suggest.suggestedPriority" class="mb-3">
-            <div style="font-size: 10px" class="text-primary-lighten mb-1">
-              Prioridade Sugerida:
-            </div>
-            <Pill :color="getPriorityMeta(suggest.suggestedPriority).token">
-              {{ getPriorityMeta(suggest.suggestedPriority).label }}
-            </Pill>
-          </div>
-
-          <div class="d-flex ga-2">
-            <button
-              v-if="suggest.improvedDescription || suggest.suggestedPriority"
-              type="button"
-              class="btn-primary press"
-              @click="applySuggestion"
+        <div v-if="suggest.suggestedSubtasks?.length" class="suggest-section">
+          <span class="suggest-label">Subtarefas Sugeridas:</span>
+          <div class="suggest-list">
+            <div
+              v-for="(task, i) in suggest.suggestedSubtasks"
+              :key="i"
+              class="suggest-task"
+              :class="{ 'suggest-task--done': isSubtaskCreated(task) }"
             >
-              <Check :size="14" />
-              Aplicar sugestão
-            </button>
-            <button type="button" class="btn-ghost press" @click="dismissSuggestion">
-              Descartar
-            </button>
-          </div>
-        </div>
-
-        <v-textarea
-          v-model="formActivity.description"
-          label="Descrição"
-          density="compact"
-          variant="outlined"
-          color="secondary"
-          rows="4"
-          class="mb-3 mt-3"
-          hide-details
-        />
-        <v-row>
-          <v-col cols="6">
-            <v-text-field
-              v-model="formActivity.priorityNumber"
-              label="Prioridade"
-              type="number"
-              density="compact"
-              variant="outlined"
-              color="secondary"
-              hide-details
-            />
-          </v-col>
-          <v-col cols="6">
-            <v-text-field
-              :model-value="formActivity.dueDate"
-              label="Data de Entrega"
-              type="date"
-              density="compact"
-              variant="outlined"
-              color="secondary"
-              hide-details
-              @update:model-value="onFormDueDateChange(String($event ?? ''))"
-            />
-          </v-col>
-        </v-row>
-        <v-row v-if="quarterOptions.length" class="mt-3">
-          <v-col cols="6">
-            <span class="view-label">Trimestre</span>
-            <AppSelect
-              :model-value="formActivity.quarterId"
-              :items="quarterSelectItems"
-              label="Trimestre"
-              density="compact"
-              @update:model-value="onFormQuarterChange(String($event))"
-            />
-          </v-col>
-          <v-col cols="6">
-            <span class="view-label">Mês</span>
-            <AppSelect
-              :model-value="formActivity.monthId"
-              :items="formMonthSelectItems"
-              label="Mês"
-              density="compact"
-              @update:model-value="onFormMonthChange(String($event))"
-            />
-          </v-col>
-        </v-row>
-        <div class="mt-3">
-          <span class="view-label">Responsáveis</span>
-          <AppSelect
-            multiple
-            :model-value="formActivity.responsibleUserIds"
-            :items="memberItems"
-            label="Responsáveis"
-            density="compact"
-            placeholder="Selecione os responsáveis"
-            @update:model-value="formActivity.responsibleUserIds = ($event as string[])"
-          />
-        </div>
-        <div v-if="activityInfo.attachments?.length" class="view-field">
-          <span class="view-label">Anexos atuais</span>
-          <div class="attachment-grid" style="padding: 0">
-            <div v-for="att in activityInfo.attachments" :key="att.id" class="attachment-wrap">
-              <a :href="att.url" target="_blank" rel="noopener noreferrer" class="attachment-item hover-lift">
-                <img v-if="isImage(att.filename)" :src="att.url" :alt="att.filename" class="attachment-img" style="width: 100px; height: 100px" />
-                <div v-else class="attachment-file" style="width: 100px; height: 100px">
-                  <File :size="26" />
-                  <span>{{ att.filename }}</span>
-                </div>
-              </a>
+              <div class="suggest-task-main">
+                <CheckCircle2 v-if="isSubtaskCreated(task)" :size="15" class="suggest-check" />
+                <span class="suggest-task-title">{{ task }}</span>
+              </div>
               <button
                 type="button"
-                class="attachment-remove press"
-                :disabled="deletingAttachment === att.id"
-                @click.stop="deleteAttachment(att.id)"
+                class="icon-btn press"
+                aria-label="Criar subtarefa a partir da sugestão"
+                :disabled="isSubtaskCreated(task)"
+                @click="openQuickSubtask(task)"
               >
-                <Loader2 v-if="deletingAttachment === att.id" :size="12" class="spin" />
-                <X v-else :size="12" />
+                <Plus :size="14" />
               </button>
             </div>
           </div>
         </div>
-        <v-file-input
-          label="Adicionar anexo"
-          density="compact"
-          variant="outlined"
-          color="secondary"
-          prepend-icon=""
-          accept="*/*"
-          hide-details
-          class="mt-3"
-          :model-value="formActivity.attachment"
-          @update:model-value="onActivityFileChange"
-        >
-          <template #prepend-inner><Paperclip :size="16" /></template>
-        </v-file-input>
-      </div>
 
-      <div class="dialog-actions">
-        <button type="button" class="btn-ghost press" @click="showEditActivityModal = false">
-          Cancelar
-        </button>
-        <button
-          type="button"
-          class="btn-primary press"
-          :disabled="!formActivity.title"
-          @click="updateActivity"
-        >
-          <Loader2 v-if="saving" :size="14" class="spin" />
-          Salvar
-        </button>
-      </div>
-    </v-card>
-  </v-dialog>
-
-  <v-dialog v-model="showCreateSubtaskModal" max-width="500px">
-    <v-card class="dialog-card" rounded="xl">
-      <div class="dialog-header">
-        <div class="dialog-head-main">
-          <span class="dialog-head-icon"><Plus :size="16" /></span>
-          <span class="dialog-title-text">Nova subtarefa</span>
+        <div v-if="suggest.suggestedPriority" class="suggest-section">
+          <span class="suggest-label">Prioridade Sugerida:</span>
+          <Pill :color="getPriorityMeta(suggest.suggestedPriority).token">
+            {{ getPriorityMeta(suggest.suggestedPriority).label }}
+          </Pill>
         </div>
-        <button type="button" class="icon-btn press" aria-label="Fechar" @click="showCreateSubtaskModal = false">
-          <X :size="16" />
-        </button>
+
+        <div class="suggest-actions">
+          <button
+            v-if="suggest.improvedDescription || suggest.suggestedPriority"
+            type="button"
+            class="btn-primary press"
+            @click="applySuggestion"
+          >
+            <Check :size="14" />
+            Aplicar sugestão
+          </button>
+          <button type="button" class="btn-ghost press" @click="dismissSuggestion">
+            Descartar
+          </button>
+        </div>
       </div>
 
-      <div class="dialog-body">
-        <v-text-field
-          v-model="formSubtask.title"
-          label="Título *"
-          density="compact"
-          variant="outlined"
-          color="secondary"
-          class="mb-3"
-          hide-details
-        />
-        <v-textarea
-          v-model="formSubtask.description"
-          label="Descrição"
-          density="compact"
-          variant="outlined"
-          color="secondary"
-          rows="3"
-          class="mb-3"
-          hide-details
-        />
-        <v-row>
-          <v-col cols="6">
-            <v-text-field
-              v-model="formSubtask.priorityNumber"
-              label="Prioridade"
-              type="number"
-              density="compact"
-              variant="outlined"
-              color="secondary"
-              hide-details
-            />
-          </v-col>
-          <v-col cols="6">
-            <v-text-field
-              v-model="formSubtask.dueDate"
-              label="Data de Entrega"
-              type="date"
-              density="compact"
-              variant="outlined"
-              color="secondary"
-              hide-details
-            />
-          </v-col>
-        </v-row>
-        <div class="mt-3">
-          <span class="view-label">Responsáveis</span>
+      <label class="field">
+        <span class="view-label">Descrição</span>
+        <textarea v-model="formActivity.description" class="field-textarea" rows="4" />
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="view-label">Prioridade</span>
+          <input v-model="formActivity.priorityNumber" class="field-input" type="number" />
+        </label>
+        <label class="field">
+          <span class="view-label">Data de Entrega</span>
+          <input
+            :value="formActivity.dueDate"
+            class="field-input"
+            type="date"
+            @input="onFormDueDateChange(($event.target as HTMLInputElement).value)"
+          />
+        </label>
+      </div>
+
+      <div v-if="quarterOptions.length" class="field-row">
+        <div class="field">
+          <span class="view-label">Trimestre</span>
           <AppSelect
-            multiple
-            :model-value="formSubtask.responsibleUserIds"
-            :items="memberItems"
-            label="Responsáveis"
+            :model-value="formActivity.quarterId"
+            :items="quarterSelectItems"
+            label="Trimestre"
             density="compact"
-            placeholder="Selecione os responsáveis"
-            @update:model-value="formSubtask.responsibleUserIds = ($event as string[])"
+            @update:model-value="onFormQuarterChange(String($event))"
           />
         </div>
-        <v-file-input
-          label="Anexo"
+        <div class="field">
+          <span class="view-label">Mês</span>
+          <AppSelect
+            :model-value="formActivity.monthId"
+            :items="formMonthSelectItems"
+            label="Mês"
+            density="compact"
+            @update:model-value="onFormMonthChange(String($event))"
+          />
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="view-label">Responsáveis</span>
+        <AppSelect
+          multiple
+          :model-value="formActivity.responsibleUserIds"
+          :items="memberItems"
+          label="Responsáveis"
           density="compact"
-          variant="outlined"
-          color="secondary"
-          prepend-icon=""
-          accept="*/*"
-          hide-details
-          class="mt-3"
-          :model-value="formSubtask.attachment"
-          @update:model-value="onSubtaskFileChange"
-        >
-          <template #prepend-inner><Paperclip :size="16" /></template>
-        </v-file-input>
+          placeholder="Selecione os responsáveis"
+          @update:model-value="formActivity.responsibleUserIds = ($event as string[])"
+        />
       </div>
 
-      <div class="dialog-actions">
-        <button type="button" class="btn-ghost press" @click="showCreateSubtaskModal = false">
-          Cancelar
-        </button>
-        <button
-          type="button"
-          class="btn-primary press"
-          :disabled="!formSubtask.title"
-          @click="createSubtask"
-        >
-          <Loader2 v-if="saving" :size="14" class="spin" />
-          Criar
-        </button>
+      <div v-if="activityInfo.attachments?.length" class="view-field">
+        <span class="view-label">Anexos atuais</span>
+        <div class="attachment-grid" style="padding: 0">
+          <div v-for="att in activityInfo.attachments" :key="att.id" class="attachment-wrap">
+            <a :href="att.url" target="_blank" rel="noopener noreferrer" class="attachment-item hover-lift">
+              <img v-if="isImage(att.filename)" :src="att.url" :alt="att.filename" class="attachment-img" style="width: 100px; height: 100px" />
+              <div v-else class="attachment-file" style="width: 100px; height: 100px">
+                <File :size="26" />
+                <span>{{ att.filename }}</span>
+              </div>
+            </a>
+            <button
+              type="button"
+              class="attachment-remove press"
+              :disabled="deletingAttachment === att.id"
+              @click.stop="deleteAttachment(att.id)"
+            >
+              <Loader2 v-if="deletingAttachment === att.id" :size="12" class="spin" />
+              <X v-else :size="12" />
+            </button>
+          </div>
+        </div>
       </div>
-    </v-card>
-  </v-dialog>
 
-  <v-dialog v-model="showSubtaskModal" max-width="900px">
-    <v-card v-if="selectedSubtask" class="dialog-card" rounded="xl">
+      <div class="field">
+        <span class="view-label">Adicionar anexo</span>
+        <div class="file-pick">
+          <label class="file-btn press">
+            <Paperclip :size="14" />
+            <span>{{ formActivity.attachment ? 'Trocar arquivo' : 'Escolher arquivo' }}</span>
+            <input type="file" class="file-hidden" accept="*/*" @change="onActivityFilePick" />
+          </label>
+          <span v-if="formActivity.attachment" class="file-name">{{ formActivity.attachment.name }}</span>
+          <button
+            v-if="formActivity.attachment"
+            type="button"
+            class="icon-btn press"
+            aria-label="Remover anexo selecionado"
+            @click="formActivity.attachment = null"
+          >
+            <X :size="14" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn-ghost press" :disabled="saving" @click="showEditActivityModal = false">
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="btn-primary press"
+        :disabled="!formActivity.title || saving"
+        @click="updateActivity"
+      >
+        <Loader2 v-if="saving" :size="14" class="spin" />
+        Salvar
+      </button>
+    </div>
+  </AppDialog>
+
+  <AppDialog v-model="showCreateSubtaskModal" label="Nova subtarefa" size="md" :loading="saving">
+    <div class="dialog-header">
+      <div class="dialog-head-main">
+        <span class="dialog-head-icon"><Plus :size="16" /></span>
+        <span class="dialog-title-text">Nova subtarefa</span>
+      </div>
+      <button type="button" class="icon-btn press" aria-label="Fechar" :disabled="saving" @click="showCreateSubtaskModal = false">
+        <X :size="16" />
+      </button>
+    </div>
+
+    <div class="dialog-body">
+      <label class="field">
+        <span class="view-label">Título *</span>
+        <input v-model="formSubtask.title" class="field-input" type="text" />
+      </label>
+
+      <label class="field">
+        <span class="view-label">Descrição</span>
+        <textarea v-model="formSubtask.description" class="field-textarea" rows="3" />
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span class="view-label">Prioridade</span>
+          <input v-model="formSubtask.priorityNumber" class="field-input" type="number" />
+        </label>
+        <label class="field">
+          <span class="view-label">Data de Entrega</span>
+          <input v-model="formSubtask.dueDate" class="field-input" type="date" />
+        </label>
+      </div>
+
+      <div class="field">
+        <span class="view-label">Responsáveis</span>
+        <AppSelect
+          multiple
+          :model-value="formSubtask.responsibleUserIds"
+          :items="memberItems"
+          label="Responsáveis"
+          density="compact"
+          placeholder="Selecione os responsáveis"
+          @update:model-value="formSubtask.responsibleUserIds = ($event as string[])"
+        />
+      </div>
+
+      <div class="field">
+        <span class="view-label">Anexo</span>
+        <div class="file-pick">
+          <label class="file-btn press">
+            <Paperclip :size="14" />
+            <span>{{ formSubtask.attachment ? 'Trocar arquivo' : 'Escolher arquivo' }}</span>
+            <input type="file" class="file-hidden" accept="*/*" @change="onSubtaskFilePick" />
+          </label>
+          <span v-if="formSubtask.attachment" class="file-name">{{ formSubtask.attachment.name }}</span>
+          <button
+            v-if="formSubtask.attachment"
+            type="button"
+            class="icon-btn press"
+            aria-label="Remover anexo selecionado"
+            @click="formSubtask.attachment = null"
+          >
+            <X :size="14" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog-actions">
+      <button type="button" class="btn-ghost press" :disabled="saving" @click="showCreateSubtaskModal = false">
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="btn-primary press"
+        :disabled="!formSubtask.title || saving"
+        @click="createSubtask"
+      >
+        <Loader2 v-if="saving" :size="14" class="spin" />
+        Criar
+      </button>
+    </div>
+  </AppDialog>
+
+  <AppDialog
+    v-model="showSubtaskModal"
+    label="Detalhes da subtarefa"
+    size="xl"
+    :loading="saving || deleting === selectedSubtask?.id"
+  >
+    <template v-if="selectedSubtask">
       <div class="dialog-header">
         <div class="dialog-head-main">
           <span class="dialog-head-icon"><CheckCircle2 :size="16" /></span>
@@ -1333,6 +1315,7 @@ const deleteAttachment = async (attachmentId: string) => {
             type="button"
             class="icon-btn press"
             :aria-label="editingSubtask ? 'Cancelar edição' : 'Editar'"
+            :disabled="saving"
             @click="editingSubtask = !editingSubtask"
           >
             <X v-if="editingSubtask" :size="16" />
@@ -1348,7 +1331,7 @@ const deleteAttachment = async (attachmentId: string) => {
             <Loader2 v-if="deleting === selectedSubtask?.id" :size="15" class="spin" />
             <Trash2 v-else :size="15" />
           </button>
-          <button type="button" class="icon-btn press" aria-label="Fechar" @click="showSubtaskModal = false">
+          <button type="button" class="icon-btn press" aria-label="Fechar" :disabled="saving" @click="showSubtaskModal = false">
             <X :size="16" />
           </button>
         </div>
@@ -1429,50 +1412,28 @@ const deleteAttachment = async (attachmentId: string) => {
         </template>
 
         <template v-else>
-          <v-text-field
-            v-model="formSubtask.title"
-            label="Título *"
-            density="compact"
-            variant="outlined"
-            color="secondary"
-            class="mb-3"
-            hide-details
-          />
-          <v-textarea
-            v-model="formSubtask.description"
-            label="Descrição"
-            density="compact"
-            variant="outlined"
-            color="secondary"
-            rows="3"
-            class="mb-3"
-            hide-details
-          />
-          <v-row>
-            <v-col cols="6">
-              <v-text-field
-                v-model="formSubtask.priorityNumber"
-                label="Prioridade"
-                type="number"
-                density="compact"
-                variant="outlined"
-                color="secondary"
-                hide-details
-              />
-            </v-col>
-            <v-col cols="6">
-              <v-text-field
-                v-model="formSubtask.dueDate"
-                label="Data de Entrega"
-                type="date"
-                density="compact"
-                variant="outlined"
-                color="secondary"
-                hide-details
-              />
-            </v-col>
-          </v-row>
-          <div class="mt-3">
+          <label class="field">
+            <span class="view-label">Título *</span>
+            <input v-model="formSubtask.title" class="field-input" type="text" />
+          </label>
+
+          <label class="field">
+            <span class="view-label">Descrição</span>
+            <textarea v-model="formSubtask.description" class="field-textarea" rows="3" />
+          </label>
+
+          <div class="field-row">
+            <label class="field">
+              <span class="view-label">Prioridade</span>
+              <input v-model="formSubtask.priorityNumber" class="field-input" type="number" />
+            </label>
+            <label class="field">
+              <span class="view-label">Data de Entrega</span>
+              <input v-model="formSubtask.dueDate" class="field-input" type="date" />
+            </label>
+          </div>
+
+          <div class="field">
             <span class="view-label">Responsáveis</span>
             <AppSelect
               multiple
@@ -1484,6 +1445,7 @@ const deleteAttachment = async (attachmentId: string) => {
               @update:model-value="formSubtask.responsibleUserIds = ($event as string[])"
             />
           </div>
+
           <div v-if="selectedSubtask.attachments?.length" class="view-field">
             <span class="view-label">Anexos atuais</span>
             <div class="attachment-grid" style="padding: 0">
@@ -1517,30 +1479,37 @@ const deleteAttachment = async (attachmentId: string) => {
               </div>
             </div>
           </div>
-          <v-file-input
-            label="Adicionar anexo"
-            density="compact"
-            variant="outlined"
-            color="secondary"
-            prepend-icon=""
-            accept="*/*"
-            hide-details
-            class="mt-3"
-            :model-value="formSubtask.attachment"
-            @update:model-value="onSubtaskFileChange"
-          >
-            <template #prepend-inner><Paperclip :size="16" /></template>
-          </v-file-input>
+
+          <div class="field">
+            <span class="view-label">Adicionar anexo</span>
+            <div class="file-pick">
+              <label class="file-btn press">
+                <Paperclip :size="14" />
+                <span>{{ formSubtask.attachment ? 'Trocar arquivo' : 'Escolher arquivo' }}</span>
+                <input type="file" class="file-hidden" accept="*/*" @change="onSubtaskFilePick" />
+              </label>
+              <span v-if="formSubtask.attachment" class="file-name">{{ formSubtask.attachment.name }}</span>
+              <button
+                v-if="formSubtask.attachment"
+                type="button"
+                class="icon-btn press"
+                aria-label="Remover anexo selecionado"
+                @click="formSubtask.attachment = null"
+              >
+                <X :size="14" />
+              </button>
+            </div>
+          </div>
         </template>
       </div>
 
       <div class="dialog-actions">
         <template v-if="editingSubtask">
-          <button type="button" class="btn-ghost press" @click="editingSubtask = false">Cancelar</button>
+          <button type="button" class="btn-ghost press" :disabled="saving" @click="editingSubtask = false">Cancelar</button>
           <button
             type="button"
             class="btn-primary press"
-            :disabled="!formSubtask.title"
+            :disabled="!formSubtask.title || saving"
             @click="updateSubtask"
           >
             <Loader2 v-if="saving" :size="14" class="spin" />
@@ -1551,51 +1520,50 @@ const deleteAttachment = async (attachmentId: string) => {
           Fechar
         </button>
       </div>
-    </v-card>
-  </v-dialog>
+    </template>
+  </AppDialog>
 
-  <v-dialog v-model="showQuickSubtaskModal" max-width="400px">
-    <v-card class="dialog-card" rounded="xl">
-      <div class="dialog-header">
-        <div class="dialog-head-main">
-          <span class="dialog-head-icon"><Sparkles :size="16" /></span>
-          <span class="dialog-title-text">Criar subtarefa</span>
-        </div>
-        <button type="button" class="icon-btn press" aria-label="Fechar" @click="showQuickSubtaskModal = false">
-          <X :size="16" />
-        </button>
+  <AppDialog v-model="showQuickSubtaskModal" label="Criar subtarefa" size="sm" :loading="saving">
+    <div class="dialog-header">
+      <div class="dialog-head-main">
+        <span class="dialog-head-icon"><Sparkles :size="16" /></span>
+        <span class="dialog-title-text">Criar subtarefa</span>
       </div>
+      <button type="button" class="icon-btn press" aria-label="Fechar" :disabled="saving" @click="showQuickSubtaskModal = false">
+        <X :size="16" />
+      </button>
+    </div>
 
-      <div class="dialog-body">
-        <v-text-field
+    <div class="dialog-body">
+      <div class="field">
+        <label class="view-label" for="quick-subtask-title">Título da subtarefa</label>
+        <input
+          id="quick-subtask-title"
           v-model="quickSubtaskTitle"
-          label="Título da subtarefa"
-          density="compact"
-          variant="outlined"
-          color="secondary"
-          hide-details
+          class="field-input"
+          type="text"
           autofocus
         />
         <p class="field-hint">Você poderá editar mais detalhes após criar.</p>
       </div>
+    </div>
 
-      <div class="dialog-actions">
-        <button type="button" class="btn-ghost press" @click="showQuickSubtaskModal = false">
-          Cancelar
-        </button>
-        <button
-          type="button"
-          class="btn-primary press"
-          :disabled="!quickSubtaskTitle"
-          @click="createQuickSubtask"
-        >
-          <Loader2 v-if="saving" :size="14" class="spin" />
-          <Plus v-else :size="14" />
-          Criar
-        </button>
-      </div>
-    </v-card>
-  </v-dialog>
+    <div class="dialog-actions">
+      <button type="button" class="btn-ghost press" :disabled="saving" @click="showQuickSubtaskModal = false">
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="btn-primary press"
+        :disabled="!quickSubtaskTitle || saving"
+        @click="createQuickSubtask"
+      >
+        <Loader2 v-if="saving" :size="14" class="spin" />
+        <Plus v-else :size="14" />
+        Criar
+      </button>
+    </div>
+  </AppDialog>
 
 </template>
 
@@ -2044,6 +2012,11 @@ const deleteAttachment = async (attachmentId: string) => {
   color: var(--text);
 }
 
+.icon-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .icon-btn--danger:hover {
   color: var(--err);
   border-color: color-mix(in srgb, var(--err) 35%, var(--border));
@@ -2109,12 +2082,8 @@ const deleteAttachment = async (attachmentId: string) => {
   }
 }
 
-/* Dialogs */
-.dialog-card {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-}
-
+/* Dialogs — a casca (scrim, borda, raio, foco, Esc) é do AppDialog; aqui só
+   header/corpo/footer do conteúdo. */
 .dialog-header {
   display: flex;
   align-items: center;
@@ -2155,8 +2124,135 @@ const deleteAttachment = async (attachmentId: string) => {
   color: var(--text);
 }
 
+/* Corpo rola quando o conteúdo passa do max-height do AppDialog. */
 .dialog-body {
   padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* O espaçamento dentro do dialog vem do gap do corpo, não das margens legadas. */
+.dialog-body > .view-field,
+.dialog-body > .view-pills {
+  margin-bottom: 0;
+}
+
+/* ─── Campos tokenizados dos dialogs (substituem os v-text-field/v-textarea) ─── */
+.field {
+  display: block;
+  min-width: 0;
+}
+
+.field-grow {
+  flex: 1;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.field-ai-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.field-input,
+.field-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.field-input {
+  height: 38px;
+  padding: 0 10px;
+  color-scheme: light dark;
+}
+
+.field-textarea {
+  min-height: 68px;
+  padding: 8px 10px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.field-input::placeholder,
+.field-textarea::placeholder {
+  color: var(--text-4);
+}
+
+.field-input:focus,
+.field-textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* ─── Anexo: input file nativo escondido atrás de um botão tokenizado ─── */
+.file-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.file-btn:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong));
+}
+
+.file-btn:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.file-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-2);
 }
 
 .dialog-actions {
@@ -2169,11 +2265,58 @@ const deleteAttachment = async (attachmentId: string) => {
 }
 
 .suggest-card {
-  margin: 12px 0;
   padding: 12px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface-2);
+}
+
+.suggest-section {
+  margin-bottom: 10px;
+}
+
+.suggest-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-3);
+}
+
+.suggest-text {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.suggest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.suggest-task-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.suggest-task-title {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.suggest-task--done .suggest-task-title {
+  text-decoration: line-through;
+}
+
+.suggest-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .suggest-head {
@@ -2208,8 +2351,16 @@ const deleteAttachment = async (attachmentId: string) => {
   flex-shrink: 0;
 }
 
+/* Alinha o botão de IA com a altura do input ao lado. */
 .ai-btn {
   flex-shrink: 0;
+  height: 38px;
+  white-space: nowrap;
+}
+
+.ai-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .field-hint {

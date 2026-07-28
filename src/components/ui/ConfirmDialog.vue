@@ -1,5 +1,11 @@
 <script setup lang="ts">
+/**
+ * ConfirmDialog — confirmação padrão do design system. A casca (Teleport,
+ * scrim, Esc, foco, transição) vem do AppDialog; aqui fica só o layout de
+ * confirmação: ícone de alerta, título + mensagem, Cancelar/Confirmar.
+ */
 import { AlertTriangle, Loader2, X } from 'lucide-vue-next'
+import AppDialog from '@/components/ui/AppDialog.vue'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -31,58 +37,43 @@ function handleConfirm() {
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="confirm-fade">
-      <div v-if="modelValue" class="confirm-overlay" @mousedown.self="close">
-        <section class="confirm-dialog" role="dialog" aria-modal="true" :aria-label="title">
-          <header class="confirm-head">
-            <span class="confirm-icon" :class="{ danger }">
-              <AlertTriangle :size="18" />
-            </span>
-            <button class="confirm-close" type="button" aria-label="Fechar" :disabled="loading" @click="close">
-              <X :size="16" />
-            </button>
-          </header>
+  <AppDialog
+    :model-value="modelValue"
+    :label="title"
+    size="sm"
+    :loading="loading"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
+    <div class="confirm-pad">
+      <header class="confirm-head">
+        <span class="confirm-icon" :class="{ danger }">
+          <AlertTriangle :size="18" />
+        </span>
+        <button class="confirm-close" type="button" aria-label="Fechar" :disabled="loading" @click="close">
+          <X :size="16" />
+        </button>
+      </header>
 
-          <div class="confirm-body">
-            <h2>{{ title }}</h2>
-            <p>{{ message }}</p>
-          </div>
-
-          <footer class="confirm-actions">
-            <button class="confirm-cancel press" type="button" :disabled="loading" @click="close">
-              {{ cancelLabel }}
-            </button>
-            <button class="confirm-submit press" :class="{ danger }" type="button" :disabled="loading" @click="handleConfirm">
-              <Loader2 v-if="loading" :size="14" class="spin" />
-              {{ confirmLabel }}
-            </button>
-          </footer>
-        </section>
+      <div class="confirm-body">
+        <h2>{{ title }}</h2>
+        <p>{{ message }}</p>
       </div>
-    </Transition>
-  </Teleport>
+
+      <footer class="confirm-actions">
+        <button class="confirm-cancel press" type="button" :disabled="loading" @click="close">
+          {{ cancelLabel }}
+        </button>
+        <button class="confirm-submit press" :class="{ danger }" type="button" :disabled="loading" @click="handleConfirm">
+          <Loader2 v-if="loading" :size="14" class="spin" />
+          {{ confirmLabel }}
+        </button>
+      </footer>
+    </div>
+  </AppDialog>
 </template>
 
 <style scoped>
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 5000;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.62);
-  backdrop-filter: blur(10px);
-}
-
-.confirm-dialog {
-  width: min(420px, 100%);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-xl);
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-overlay);
+.confirm-pad {
   padding: 16px;
 }
 
@@ -190,16 +181,6 @@ function handleConfirm() {
 
 .spin {
   animation: spin 0.8s linear infinite;
-}
-
-.confirm-fade-enter-active,
-.confirm-fade-leave-active {
-  transition: opacity var(--motion-fast) var(--motion-ease);
-}
-
-.confirm-fade-enter-from,
-.confirm-fade-leave-to {
-  opacity: 0;
 }
 
 @keyframes spin {

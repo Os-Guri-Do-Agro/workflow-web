@@ -14,15 +14,35 @@ import {
 } from 'lucide-vue-next'
 import { dateOnlyToUtcNoonIso } from '@/utils/date'
 
+// Shapes locais (regra de boundary: componente compartilhado não importa tipos
+// de features/*). O membro chega em dois formatos conforme o caller: plano
+// ({ id, name }) ou vínculo com o usuário aninhado ({ user: { id, name } }) —
+// o template já tratava os dois, o tipo reflete isso.
+interface TaskFormMember {
+  id?: string
+  name?: string
+  email?: string
+  user?: { id: string; name: string }
+}
+
+interface TaskFormModel {
+  title: string
+  description: string
+  priorityNumber: number
+  dueDate: string
+  assignees: string[]
+  attachment: File | null
+}
+
 const emit = defineEmits<{
   close: []
   submit: []
-  'update:modelValue': [value: any]
+  'update:modelValue': [value: TaskFormModel]
 }>()
 
 const props = defineProps<{
-  members: any[]
-  modelValue: any
+  members: TaskFormMember[]
+  modelValue: TaskFormModel
   loading?: boolean
 }>()
 
@@ -61,7 +81,8 @@ const clearFile = () => {
   emit('update:modelValue', { ...props.modelValue, attachment: null })
 }
 
-const toggleAssignee = (userId: string) => {
+const toggleAssignee = (userId?: string) => {
+  if (!userId) return
   const list: string[] = Array.isArray(form.value?.assignees) ? [...form.value.assignees] : []
   const idx = list.indexOf(userId)
   if (idx >= 0) list.splice(idx, 1)
@@ -69,8 +90,8 @@ const toggleAssignee = (userId: string) => {
   emit('update:modelValue', { ...props.modelValue, assignees: list })
 }
 
-const isSelected = (userId: string) =>
-  Array.isArray(form.value?.assignees) && form.value.assignees.includes(userId)
+const isSelected = (userId?: string) =>
+  !!userId && Array.isArray(form.value?.assignees) && form.value.assignees.includes(userId)
 
 const initials = (name?: string) =>
   (name || '?')
@@ -267,11 +288,11 @@ const submit = () => {
 </template>
 
 <style scoped>
+/* Sem chrome próprio: o AppDialog (casca) já dá superfície, borda e raio.
+   Duplicar aqui virava borda dupla e raio desencontrado dentro do overlay. */
 .form-card {
-  background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: inherit;
   overflow: hidden;
   display: flex;
   flex-direction: column;

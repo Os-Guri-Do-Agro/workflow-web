@@ -5,6 +5,7 @@ import router from '@/router'
 import companiesServices from '@/service/companies/companies-services'
 import { getInfoAuth } from '@/utils/authContent'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import AppDialog from '@/components/ui/AppDialog.vue'
 
 type Company = {
   id: string
@@ -105,34 +106,34 @@ onMounted(() => {
     <ChevronsUpDown :size="12" class="switch-chevron" />
   </button>
 
-  <v-dialog v-model="showDialog" max-width="440">
-    <v-card rounded="xl" elevation="0" class="switch-dialog">
-      <div class="dialog-header">
-        <span class="dialog-title">Trocar Empresa</span>
-        <button class="close-btn" @click="showDialog = false">
-          <X :size="16" />
-        </button>
-      </div>
-      <div class="dialog-body">
-        <button
-          v-for="company in companies"
-          :key="company.id"
-          class="company-row"
-          :class="{ 'company-row--active': company.active }"
-          @click="switchCompany(company)"
-        >
-          <div class="company-row-avatar">
-            <img src="/brand/caneca-circulo.svg" alt="" class="avatar-logo" draggable="false" />
-          </div>
-          <div class="company-row-info">
-            <span class="company-row-name">{{ company.name }}</span>
-            <span class="company-row-cnpj">{{ company.cnpj }}</span>
-          </div>
-          <CheckCircle2 v-if="company.active" :size="14" class="check-icon" />
-        </button>
-      </div>
-    </v-card>
-  </v-dialog>
+  <!-- Picker de empresa (padrão AppDialog, sem v-dialog) -->
+  <AppDialog v-model="showDialog" label="Trocar Empresa" size="sm">
+    <header class="dialog-header">
+      <span class="dialog-title">Trocar Empresa</span>
+      <button class="close-btn" type="button" aria-label="Fechar" @click="showDialog = false">
+        <X :size="16" />
+      </button>
+    </header>
+    <div class="dialog-body">
+      <button
+        v-for="company in companies"
+        :key="company.id"
+        type="button"
+        class="company-row"
+        :class="{ 'company-row--active': company.active }"
+        @click="switchCompany(company)"
+      >
+        <div class="company-row-avatar">
+          <img src="/brand/caneca-circulo.svg" alt="" class="avatar-logo" draggable="false" />
+        </div>
+        <div class="company-row-info">
+          <span class="company-row-name">{{ company.name }}</span>
+          <span class="company-row-cnpj">{{ company.cnpj }}</span>
+        </div>
+        <CheckCircle2 v-if="company.active" :size="14" class="check-icon" />
+      </button>
+    </div>
+  </AppDialog>
 </template>
 
 <style scoped>
@@ -238,11 +239,6 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.switch-dialog {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-}
-
 .dialog-header {
   display: flex;
   align-items: center;
@@ -275,6 +271,7 @@ onMounted(() => {
 
 .dialog-body {
   padding: 10px;
+  overflow-y: auto;
 }
 
 .company-row {
@@ -302,8 +299,8 @@ onMounted(() => {
 }
 
 .company-row--active {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
 .company-row-info {

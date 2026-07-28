@@ -14,7 +14,9 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  /* Sem stylistic sets: os antigos 'cv11'/'ss01'/'ss03' eram calibrados para a
+     Inter; na Geist ativariam "No tail a" e "Alt l", descaracterizando o corte
+     padrão da fonte (que é o desenho que queremos). */
 }
 
 *,

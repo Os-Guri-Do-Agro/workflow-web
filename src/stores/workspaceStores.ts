@@ -177,12 +177,18 @@ export const useWorkspaceStore = defineStore('workspace', {
         
         // Extrair lista simplificada de empresas
         this.companies = response.companies.map((c: WorkspaceCompany) => c.company)
-        
+
         // Se não tem empresa ativa, selecionar a primeira
         if (!this.activeCompanyId && this.companies.length > 0) {
           this.setActiveCompany(this.companies[0]!.id)
+        } else {
+          // Empresa ativa veio do localStorage (ex.: entrar direto em /time sem
+          // passar pelo dashboard): `setActiveCompany` não roda e `activeRole`
+          // ficava null — ADMIN perdia a aba Equipe e todo gate de `isAdmin`/
+          // `canEdit`. Sincroniza a role a partir da resposta.
+          this.syncActiveRole()
         }
-        
+
         return response
       } catch (e: unknown) {
         this.error = errorMessage(e, 'Erro ao carregar workspace')
@@ -209,6 +215,8 @@ export const useWorkspaceStore = defineStore('workspace', {
           createdAt: item.company.createdAt,
         }))
 
+        this.syncActiveRole()
+
         return this.companies
       } catch (e) {
         this.error = errorMessage(e, 'Erro ao buscar empresas')
@@ -216,6 +224,18 @@ export const useWorkspaceStore = defineStore('workspace', {
       }
     },
     
+    /**
+     * Realinha `activeRole` com a empresa ativa a partir de `companies`.
+     * Necessário sempre que a lista de empresas chega DEPOIS da empresa ativa
+     * (hidratação via localStorage) — sem isso a role fica null e os gates de
+     * permissão (isAdmin, canEdit) negam acesso a quem tem.
+     */
+    syncActiveRole() {
+      if (!this.activeCompanyId) return
+      const active = this.companies.find((c) => c.id === this.activeCompanyId)
+      if (active?.myRole) this.activeRole = active.myRole
+    },
+
     setActiveCompany(companyId: string) {
       this.activeCompanyId = companyId
       localStorage.setItem('activeCompany', companyId)

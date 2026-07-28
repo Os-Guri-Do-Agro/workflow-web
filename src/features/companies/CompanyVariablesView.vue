@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { KeyRound, Search, Plus, Trash2 } from 'lucide-vue-next'
+import { KeyRound, Search, Plus } from 'lucide-vue-next'
 import companyVariableService from '@/service/companies/variables/variables-services'
 import { useToast } from '@/composables/useToast'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import VariablesToolbar from './components/VariablesToolbar.vue'
@@ -318,27 +319,15 @@ onUnmounted(() => {
 
     <VariableCreateDialog v-model="createOpen" :saving="saving" @create="handleCreate" />
 
-    <v-dialog v-model="confirmDelete" max-width="400" :scrim-opacity="0.6">
-      <v-card class="confirm-card" rounded="xl" elevation="0">
-        <div class="confirm-body">
-          <div class="confirm-icon">
-            <Trash2 :size="18" />
-          </div>
-          <div class="confirm-info">
-            <h3 class="confirm-title">Excluir variável?</h3>
-            <p class="confirm-desc">Esta ação não pode ser desfeita. Os campos e secrets serão perdidos.</p>
-          </div>
-        </div>
-        <div class="confirm-footer">
-          <button class="ghost-btn" :disabled="deleting" @click="confirmDelete = false">
-            Cancelar
-          </button>
-          <button class="danger-btn" :disabled="deleting" @click="performDelete">
-            {{ deleting ? 'Excluindo…' : 'Excluir' }}
-          </button>
-        </div>
-      </v-card>
-    </v-dialog>
+    <ConfirmDialog
+      v-model="confirmDelete"
+      danger
+      title="Excluir variável?"
+      message="Esta ação não pode ser desfeita. Os campos e secrets serão perdidos."
+      confirm-label="Excluir"
+      :loading="deleting"
+      @confirm="performDelete"
+    />
   </div>
 </template>
 
@@ -397,100 +386,5 @@ onUnmounted(() => {
 
 .cta-btn:hover {
   opacity: 0.92;
-}
-
-.confirm-card {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--text);
-}
-
-.confirm-body {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 18px;
-}
-
-.confirm-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--err) 16%, transparent);
-  color: var(--err);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.confirm-info {
-  flex: 1;
-}
-
-.confirm-title {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--text);
-  margin: 0 0 4px;
-}
-
-.confirm-desc {
-  font-size: 12.5px;
-  color: var(--text-3);
-  margin: 0;
-  line-height: 1.45;
-}
-
-.confirm-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 0 18px 18px;
-}
-
-.ghost-btn,
-.danger-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 14px;
-  height: 30px;
-  border-radius: 7px;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease);
-}
-
-.ghost-btn {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-2);
-}
-
-.ghost-btn:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  color: var(--text);
-}
-
-.danger-btn {
-  background: var(--err);
-  color: var(--accent-fg);
-  border: none;
-}
-
-.danger-btn:hover:not(:disabled) {
-  opacity: 0.92;
-}
-
-.ghost-btn:disabled,
-.danger-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 </style>

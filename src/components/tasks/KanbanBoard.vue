@@ -130,11 +130,23 @@ const getUserInitials = (name: string) =>
     .toUpperCase()
     .slice(0, 2)
 
-const getUserColor = (name: string) => {
-  const colors = ['#6366F1', '#10B981', '#EF4444', '#8B5CF6', '#F59E0B', '#06B6D4', '#EC4899', '#84CC16']
-  const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
-  return colors[index] || '#6366F1'
+// Cor de identidade da pessoa: hash do nome → um dos 6 tons `--avatar-N` do
+// design system (theme-aware, definidos em tokens.ts — nada de hex aqui).
+// Mesma pessoa = mesmo tom em qualquer card/tema.
+const AVATAR_TONES = 6
+const avatarTone = (name: string) => {
+  const idx = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % AVATAR_TONES
+  return `var(--avatar-${idx + 1})`
 }
+
+const MAX_AVATARS = 3
+
+/** Nomes escondidos atrás do "+N" — viram tooltip para não perder informação. */
+const extraNames = (task: KanbanTask) =>
+  (task.responsibles ?? [])
+    .slice(MAX_AVATARS)
+    .map((r) => r.user.name)
+    .join(', ')
 
 // Prioridade sinaliza pela COR DO PONTO, não pelo texto: P4/P5 em texto vermelho
 // por card inteiro vira fadiga de alarme quando o mês tem muitos bloqueantes.
@@ -380,26 +392,24 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
                   <ChevronDown :size="12" class="ring-btn__chev" />
                 </button>
 
-                <div v-if="task.responsibles?.length" class="avatars">
+                <!-- responsáveis: tinta suave por pessoa, empilhados; o stack
+                     abre em leque no hover para ler cada inicial -->
+                <div v-if="task.responsibles?.length" class="crew">
                   <div
-                    v-for="(responsible, ai) in task.responsibles.slice(0, 3)"
+                    v-for="(responsible, ai) in task.responsibles.slice(0, MAX_AVATARS)"
                     :key="responsible.userId ?? responsible.user.name"
-                    class="avatar"
+                    class="crew__avatar"
                     :title="responsible.user.name"
-                    :style="{
-                      background: getUserColor(responsible.user.name),
-                      marginLeft: ai > 0 ? '-7px' : '0',
-                      zIndex: 3 - ai,
-                    }"
+                    :style="{ '--pc': avatarTone(responsible.user.name), zIndex: MAX_AVATARS - ai }"
                   >
                     {{ getUserInitials(responsible.user.name) }}
                   </div>
                   <div
-                    v-if="task.responsibles.length > 3"
-                    class="avatar avatar--extra"
-                    style="margin-left: -7px"
+                    v-if="task.responsibles.length > MAX_AVATARS"
+                    class="crew__avatar crew__avatar--extra"
+                    :title="extraNames(task)"
                   >
-                    +{{ task.responsibles.length - 3 }}
+                    +{{ task.responsibles.length - MAX_AVATARS }}
                   </div>
                 </div>
               </div>
@@ -959,14 +969,19 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   opacity: 0;
 }
 
-/* ── Avatares (dentro da linha de meta) ─────────────────────── */
-.avatars {
+/* ── Responsáveis (dentro da linha de meta) ─────────────────────
+   Cor como TINTA, não como luz: fundo é o tom da pessoa a 16% sobre a
+   superfície, iniciais no mesmo tom puxado pro texto, hairline no tom.
+   Sem sombra colorida, sem chapado saturado com texto branco. O anel
+   na cor do card corta a sobreposição limpa; no hover o stack abre em
+   leque (mola) pra ler todas as iniciais. */
+.crew {
   display: flex;
   align-items: center;
   flex-shrink: 0;
 }
 
-.avatar {
+.crew__avatar {
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -975,23 +990,35 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   justify-content: center;
   font-size: 9px;
   font-weight: 700;
-  color: white;
-  border: 2px solid var(--surface);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.24);
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--pc) 16%, var(--surface));
+  color: color-mix(in srgb, var(--pc) 64%, var(--text));
+  border: 1px solid color-mix(in srgb, var(--pc) 32%, transparent);
+  box-shadow: 0 0 0 2px var(--surface);
   flex-shrink: 0;
   cursor: default;
-  transition: transform var(--motion) var(--spring);
+  user-select: none;
+  transition: margin 260ms var(--spring);
 }
 
-.card:hover .avatar {
-  transform: translateY(-1px);
+.crew__avatar + .crew__avatar {
+  margin-left: -6px;
 }
 
-.avatar--extra {
-  background: var(--surface-3) !important;
-  color: var(--text-3) !important;
-  border-color: var(--surface) !important;
-  box-shadow: none !important;
+.crew:hover .crew__avatar + .crew__avatar {
+  margin-left: 3px;
+}
+
+/* O "+N" é informação (quantos faltam), não decoração: fica ACIMA do stack
+   para nunca ser soterrado pelo avatar vizinho. */
+.crew__avatar--extra {
+  background: var(--surface-3);
+  color: var(--text-3);
+  border-color: var(--border);
+  font-size: 8.5px;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  z-index: 4;
 }
 
 /* ── Estados de arraste ─────────────────────────────────────── */
@@ -1048,7 +1075,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   }
   .ring__fill,
   .exp-enter-active,
-  .exp-leave-active {
+  .exp-leave-active,
+  .crew__avatar {
     transition: none;
   }
 }

@@ -5,6 +5,7 @@ import companiesServices from '@/service/companies/companies-services'
 import quartersService from '@/service/quarters/quarters-service'
 import { getInfoAuth } from '@/utils/authContent'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import AppDialog from '@/components/ui/AppDialog.vue'
 import {
   LayoutDashboard,
   Columns3,
@@ -318,40 +319,35 @@ defineEmits<{
     </template>
   </v-navigation-drawer>
 
-  <!-- Company Switch Dialog -->
-  <v-dialog v-model="showCompanyModal" max-width="440" transition="dialog-bottom-transition">
-    <v-card rounded="xl" elevation="8" color="surface" class="company-dialog">
-      <div class="d-flex align-center justify-space-between pa-4 pb-3">
-        <span class="text-body-2 font-weight-bold" style="color: rgba(var(--v-theme-secondary), 0.7)">
-          Trocar Empresa
-        </span>
-        <v-btn variant="text" size="x-small" color="secondary" @click="showCompanyModal = false">
-          <X :size="16" />
-        </v-btn>
-      </div>
+  <!-- Company Switch Dialog (padrão AppDialog, sem v-dialog) -->
+  <AppDialog v-model="showCompanyModal" label="Trocar Empresa" size="sm">
+    <header class="switcher-head">
+      <span class="switcher-title">Trocar Empresa</span>
+      <button class="switcher-close" type="button" aria-label="Fechar" @click="showCompanyModal = false">
+        <X :size="16" />
+      </button>
+    </header>
 
-      <div class="divider mx-4 mb-2" />
-
-      <div class="pa-3 pt-2">
-        <button
-          v-for="company in companies"
-          :key="company.id"
-          class="company-option"
-          :class="{ 'company-option--active': company.active }"
-          @click="switchCompany(company)"
-        >
-          <div class="company-option-icon">
-            <Building2 :size="15" :style="{ opacity: company.active ? 1 : 0.45 }" />
-          </div>
-          <div class="company-option-info">
-            <span class="company-option-name">{{ company.name }}</span>
-            <span class="company-option-cnpj">{{ company.cnpj }}</span>
-          </div>
-          <CheckCircle2 v-if="company.active" :size="14" class="check-icon" />
-        </button>
-      </div>
-    </v-card>
-  </v-dialog>
+    <div class="switcher-list">
+      <button
+        v-for="company in companies"
+        :key="company.id"
+        type="button"
+        class="company-option"
+        :class="{ 'company-option--active': company.active }"
+        @click="switchCompany(company)"
+      >
+        <div class="company-option-icon">
+          <Building2 :size="15" :style="{ opacity: company.active ? 1 : 0.45 }" />
+        </div>
+        <div class="company-option-info">
+          <span class="company-option-name">{{ company.name }}</span>
+          <span class="company-option-cnpj">{{ company.cnpj }}</span>
+        </div>
+        <CheckCircle2 v-if="company.active" :size="14" class="check-icon" />
+      </button>
+    </div>
+  </AppDialog>
 </template>
 
 <style scoped>
@@ -512,9 +508,45 @@ defineEmits<{
   color: rgb(var(--v-theme-error)) !important;
 }
 
-/* ─── Company dialog ─── */
-.company-dialog {
-  border: 1px solid rgba(var(--v-theme-secondary), 0.1) !important;
+/* ─── Company dialog (conteúdo do AppDialog, tokenizado) ─── */
+.switcher-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.switcher-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.switcher-close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.switcher-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.switcher-list {
+  padding: 10px;
+  overflow-y: auto;
 }
 
 .company-option {
@@ -524,30 +556,37 @@ defineEmits<{
   width: 100%;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px 10px;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
   text-align: left;
   font-family: inherit;
   margin-bottom: 4px;
 }
 
+.company-option:last-child {
+  margin-bottom: 0;
+}
+
 .company-option:hover {
-  background: rgba(var(--v-theme-secondary), 0.06);
-  border-color: rgba(var(--v-theme-secondary), 0.12);
+  background: var(--surface-2);
+  border-color: var(--border);
 }
 
 .company-option--active {
-  background: rgba(var(--v-theme-secondary), 0.08) !important;
-  border-color: rgba(var(--v-theme-secondary), 0.18) !important;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
 .company-option-icon {
   width: 30px;
   height: 30px;
-  border-radius: 6px;
-  background: rgba(var(--v-theme-secondary), 0.07);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -564,7 +603,7 @@ defineEmits<{
 .company-option-name {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(var(--v-theme-secondary), 0.85);
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -572,7 +611,7 @@ defineEmits<{
 
 .company-option-cnpj {
   font-size: 11px;
-  color: rgba(var(--v-theme-secondary), 0.4);
+  color: var(--text-3);
 }
 
 .check-icon {

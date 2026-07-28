@@ -13,6 +13,7 @@ import {
 } from 'lucide-vue-next'
 import { useTasks } from '@/features/tasks/useTasks'
 import TaskForm from '@/components/tasks/TaskForm.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
 import KanbanBoard from '@/components/tasks/KanbanBoard.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -105,6 +106,8 @@ const formActivity = ref<ActivityFormModel>({
 
 // Local mutable tasks ref for optimistic drag-and-drop updates
 const tasks = ref<BoardColumns>({ TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] })
+
+const STATUSES: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
 
 // ── Reactive query keys ──
 const companyId = computed(() => localStorage.getItem('activeCompany') ?? '')
@@ -212,8 +215,10 @@ const priorityOptions = [
 const filteredTasks = computed<BoardColumns>(() => {
   const result = { TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] } as BoardColumns
   if (!tasks.value) return result
-  for (const [status, list] of Object.entries(tasks.value) as [BoardStatus, BoardTask[]][]) {
-    let arr: BoardTask[] = list || []
+  // Itera SÓ os status: a resposta do board carrega `monthId` junto das
+  // colunas, e um Object.entries cru vazaria essa chave para o board.
+  for (const status of STATUSES) {
+    let arr: BoardTask[] = tasks.value[status] || []
     if (selectedUser.value) {
       arr = arr.filter((t) => t.responsibles?.some((r) => r.user.name === selectedUser.value))
     }
@@ -245,9 +250,11 @@ const clearFilters = () => {
 const allUsers = computed<string[]>(() => {
   const users = new Set<string>()
   if (!tasks.value) return []
-  ;(Object.values(tasks.value).flat() as BoardTask[]).forEach((task) => {
-    task.responsibles?.forEach((r) => users.add(r.user.name))
-  })
+  for (const status of STATUSES) {
+    for (const task of tasks.value[status] ?? []) {
+      task.responsibles?.forEach((r) => users.add(r.user.name))
+    }
+  }
   return Array.from(users).sort()
 })
 
@@ -257,9 +264,11 @@ const userItems = computed<{ label: string; value: string }[]>(() => [
 ])
 
 
+// Soma SÓ as colunas de status: a resposta do board também carrega `monthId`,
+// e um Object.values cru contava essa chave como "1 atividade" a mais.
 const totalTasks = computed(() => {
   if (!tasks.value) return 0
-  return Object.values(tasks.value).flat().length
+  return STATUSES.reduce((acc, s) => acc + (tasks.value[s]?.length ?? 0), 0)
 })
 
 /**
@@ -275,8 +284,6 @@ const statusPulse = computed(() => {
   ]
   return defs.map((d) => ({ ...d, count: tasks.value?.[d.key]?.length ?? 0 }))
 })
-
-const STATUSES: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
 
 /** Remove a atividade de todas as colunas locais e devolve o objeto (ou null). */
 const removeFromColumns = (taskId: string): BoardTask | null => {
@@ -633,8 +640,8 @@ const skeletonLanes = [
       @confirm="deleteTask"
     />
 
-    <!-- Create task dialog -->
-    <v-dialog v-model="dialog" max-width="600">
+    <!-- Create task dialog (casca AppDialog; o TaskForm põe header/corpo/footer) -->
+    <AppDialog v-model="dialog" label="Nova atividade" size="lg" :loading="creating">
       <TaskForm
         v-if="dialog"
         v-model="formActivity"
@@ -643,7 +650,7 @@ const skeletonLanes = [
         @close="dialog = false"
         @submit="createActivity"
       />
-    </v-dialog>
+    </AppDialog>
 
   </div>
 </template>

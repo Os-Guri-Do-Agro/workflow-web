@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { Plus, X } from 'lucide-vue-next'
+import { Loader2, Plus, X } from 'lucide-vue-next'
+import AppDialog from '@/components/ui/AppDialog.vue'
 import VariableFieldInput from './VariableFieldInput.vue'
 
 type VarType = 'TEXT' | 'URL' | 'SECRET'
@@ -76,78 +77,79 @@ const submit = () => {
   emit('create', cleaned)
 }
 
-const close = () => emit('update:modelValue', false)
+const close = () => {
+  if (props.saving) return
+  emit('update:modelValue', false)
+}
 </script>
 
 <template>
-  <v-dialog
+  <AppDialog
     :model-value="modelValue"
+    label="Nova variável"
+    size="md"
+    :loading="saving"
     @update:model-value="emit('update:modelValue', $event)"
-    max-width="520"
-    :scrim-opacity="0.6"
   >
-    <v-card class="create-card" rounded="xl" elevation="0">
-      <header class="header">
-        <span class="title">Nova variável</span>
-        <button class="close-btn" @click="close"><X :size="16" /></button>
-      </header>
+    <header class="header">
+      <span class="title">Nova variável</span>
+      <button class="close-btn" type="button" aria-label="Fechar" :disabled="saving" @click="close">
+        <X :size="16" />
+      </button>
+    </header>
 
-      <div class="body">
-        <label class="label">
-          <span class="label-text">Nome</span>
-          <input v-model="form.name" class="input" placeholder="ex: aws_credentials" />
-        </label>
+    <div class="body">
+      <label class="label">
+        <span class="label-text">Nome</span>
+        <input v-model="form.name" class="input" placeholder="ex: aws_credentials" />
+      </label>
 
-        <label class="label">
-          <span class="label-text">Descrição <span class="muted">(opcional)</span></span>
-          <input v-model="form.description" class="input" placeholder="ex: Credenciais AWS para deploy" />
-        </label>
+      <label class="label">
+        <span class="label-text">Descrição <span class="muted">(opcional)</span></span>
+        <input v-model="form.description" class="input" placeholder="ex: Credenciais AWS para deploy" />
+      </label>
 
-        <div class="fields-section">
-          <div class="fields-header">
-            <span class="label-text">Campos</span>
-            <button class="add-btn" @click="addField">
-              <Plus :size="12" />
-              <span>Adicionar</span>
-            </button>
-          </div>
-          <div class="fields-list">
-            <VariableFieldInput
-              v-for="(field, idx) in form.fields"
-              :key="idx"
-              :field="field"
-              :editable="true"
-              :reveal="true"
-              @update:key="updateFieldKey(idx, $event)"
-              @update:value="updateFieldValue(idx, $event)"
-              @update:type="updateFieldType(idx, $event)"
-              @remove="removeField(idx)"
-            />
-          </div>
+      <div class="fields-section">
+        <div class="fields-header">
+          <span class="label-text">Campos</span>
+          <button class="add-btn" type="button" @click="addField">
+            <Plus :size="12" />
+            <span>Adicionar</span>
+          </button>
+        </div>
+        <div class="fields-list">
+          <VariableFieldInput
+            v-for="(field, idx) in form.fields"
+            :key="idx"
+            :field="field"
+            :editable="true"
+            :reveal="true"
+            @update:key="updateFieldKey(idx, $event)"
+            @update:value="updateFieldValue(idx, $event)"
+            @update:type="updateFieldType(idx, $event)"
+            @remove="removeField(idx)"
+          />
         </div>
       </div>
+    </div>
 
-      <footer class="footer">
-        <button class="ghost-btn" :disabled="saving" @click="close">Cancelar</button>
-        <button
-          class="primary-btn"
-          :disabled="saving || !form.name.trim() || !form.fields.some((f) => f.key.trim())"
-          @click="submit"
-        >
-          {{ saving ? 'Criando…' : 'Criar variável' }}
-        </button>
-      </footer>
-    </v-card>
-  </v-dialog>
+    <footer class="footer">
+      <button class="ghost-btn" type="button" :disabled="saving" @click="close">Cancelar</button>
+      <button
+        class="primary-btn"
+        type="button"
+        :disabled="saving || !form.name.trim() || !form.fields.some((f) => f.key.trim())"
+        @click="submit"
+      >
+        <Loader2 v-if="saving" :size="14" class="spin" />
+        {{ saving ? 'Criando…' : 'Criar variável' }}
+      </button>
+    </footer>
+  </AppDialog>
 </template>
 
 <style scoped>
-.create-card {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--text);
-}
-
+/* Superfície/borda/raio/sombra/scrim vêm do AppDialog; aqui só layout interno. */
 .header {
   display: flex;
   align-items: center;
@@ -177,9 +179,14 @@ const close = () => emit('update:modelValue', false)
   transition: background var(--motion-fast) var(--motion-ease);
 }
 
-.close-btn:hover {
+.close-btn:hover:not(:disabled) {
   background: var(--surface-2);
   color: var(--text);
+}
+
+.close-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .body {
@@ -325,5 +332,15 @@ const close = () => emit('update:modelValue', false)
 .ghost-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

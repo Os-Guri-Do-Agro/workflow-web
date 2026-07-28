@@ -51,13 +51,9 @@ const emit = defineEmits<{
 
 // reka opera sobre strings; null ("Sem tarefa") vira um sentinel estável.
 const NONE = '__none__'
-const toKey = (v: string | null) => (v === null ? NONE : v)
-const fromKey = (k: string | null | undefined) => (k == null || k === NONE ? null : k)
 
 const open = ref(false)
 const query = ref('')
-
-const selectedKey = computed<string>(() => toKey(props.modelValue))
 
 const selectedLabel = computed(() => {
   const found = props.items.find((o) => o.value === props.modelValue)
@@ -85,15 +81,23 @@ function onSelect(value: string | null) {
 }
 
 // Limpa a busca ao abrir/fechar para não guardar filtro de uma abertura pra outra.
+// (Também neutraliza o eco do reka: ao selecionar/resetar, o ComboboxInput
+// sincroniza o próprio value com o modelValue interno do root e emitiria o id
+// cru como "busca" — como fechamos ao selecionar, o clear cobre esse caso.)
 watch(open, () => {
   query.value = ''
 })
 </script>
 
 <template>
+  <!--
+    reka-ui v2 NÃO tem `search-term` no ComboboxRoot (foi removido na v2; um
+    v-model:search-term aqui é silenciosamente ignorado e a busca morre). O
+    texto digitado vive no v-model do ComboboxInput, e com :ignore-filter="true"
+    o filtro é 100% nosso via `filtered`.
+  -->
   <ComboboxRoot
     v-model:open="open"
-    v-model:search-term="query"
     :disabled="disabled"
     :ignore-filter="true"
     class="acsel"
@@ -113,7 +117,7 @@ watch(open, () => {
       <ComboboxContent class="acsel__content" position="popper" :side-offset="6">
         <div class="acsel__search">
           <Search :size="14" class="acsel__search-icon" />
-          <ComboboxInput class="acsel__input" placeholder="Buscar tarefa..." />
+          <ComboboxInput v-model="query" class="acsel__input" placeholder="Buscar tarefa..." />
         </div>
 
         <ComboboxViewport class="acsel__viewport">

@@ -19,10 +19,12 @@ const sharedRadiusAndShadow = {
   '--motion': '180ms',
   '--motion-slow': '280ms',
   '--motion-ease': 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-  // General Sans (self-host, ver assets/fonts/general-sans) é a fonte do produto.
-  // Inter fica de fallback caso a woff2 ainda não tenha carregado.
+  // Geist (self-host, ver assets/fonts/geist) é a fonte do produto — variável
+  // 100–900, então os pesos intermediários (550/650/720…) renderizam exatos.
+  // Inter fica de fallback caso a woff2 ainda não tenha carregado: é a grotesque
+  // mais próxima em métrica, o swap quase não desloca layout.
   '--font-family':
-    '"General Sans", "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    '"Geist", "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   '--font-mono':
     'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
   // Cores fixas de identidade da marca (o mascote xícara). Não variam por tema:
@@ -35,6 +37,10 @@ const sharedRadiusAndShadow = {
   // com --font-scale, aplicada em runtime por applyFontScale().
   '--text-body-large': 'calc(15px * var(--font-scale, 1))',
   '--text-title-large': 'calc(24px * var(--font-scale, 1))',
+  // Scrim dos overlays (AppDialog/ConfirmDialog). Preto nos dois temas de
+  // propósito: escurecer é o sinal universal de "modal na frente"; véu claro
+  // sobre tema claro lê como tela desabilitada.
+  '--scrim': 'rgba(0, 0, 0, 0.62)',
 }
 
 /**
@@ -87,14 +93,31 @@ const darkTokens: TokenMap = {
   '--shadow-sm': '0 1px 2px rgba(0,0,0,0.40)',
   '--shadow': '0 10px 30px rgba(0,0,0,0.50)',
   '--shadow-overlay': '0 24px 64px rgba(0,0,0,0.60)',
+  // Tons de identidade de PESSOA (avatares por iniciais). Dessaturados de
+  // propósito: são tinta de fundo + cor de texto via color-mix, nunca cor de
+  // status — saturação de status aqui viraria ruído semântico no card.
+  '--avatar-1': '#8FA8E8',
+  '--avatar-2': '#63C1B4',
+  '--avatar-3': '#B39DE8',
+  '--avatar-4': '#E0A1B8',
+  '--avatar-5': '#D4B476',
+  '--avatar-6': '#93C79C',
 }
 
+/**
+ * Tema claro. O fundo é um cinza suave DE PROPÓSITO (não branco): com o app
+ * inteiro branco, cards brancos somem no fundo e a tela vira uma folha chapada.
+ * Medido (WCAG): card sobre fundo passou de 1,10 para 1,14 com o --bg atual —
+ * separação visível sem escurecer a página. Os degraus de texto seguem os
+ * mesmos pisos do tema escuro (texto principal 18:1, secundário 7,2:1,
+ * meta 4,7:1 sobre --surface-2 — todos acima do AA).
+ */
 const lightTokens: TokenMap = {
   ...sharedRadiusAndShadow,
-  '--bg': '#F4F4F5',
+  '--bg': '#F0F0F2',
   '--surface': '#FFFFFF',
-  '--surface-2': '#F7F7F8',
-  '--surface-3': '#EFEFF1',
+  '--surface-2': '#F6F6F8',
+  '--surface-3': '#ECECEF',
   '--border': 'rgba(11,11,12,0.08)',
   '--border-strong': 'rgba(11,11,12,0.16)',
   '--text': '#0B0B0C',
@@ -116,6 +139,14 @@ const lightTokens: TokenMap = {
   '--elev-hi': 'rgba(255,255,255,0.9)',
   '--shadow': '0 6px 18px rgba(0,0,0,0.08)',
   '--shadow-overlay': '0 12px 32px rgba(0,0,0,0.14)',
+  // Tons de identidade de pessoa — versão escura dos mesmos 6 matizes do tema
+  // dark (texto legível sobre a tinta clara; ver comentário lá).
+  '--avatar-1': '#3E63B8',
+  '--avatar-2': '#0F8177',
+  '--avatar-3': '#6D4FC1',
+  '--avatar-4': '#B34A6E',
+  '--avatar-5': '#96690F',
+  '--avatar-6': '#35793F',
 }
 
 export const themeTokens: Record<ThemeName, TokenMap> = {

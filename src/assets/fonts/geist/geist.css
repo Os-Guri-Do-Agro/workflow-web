@@ -1,0 +1,23 @@
+/*
+ * Geist (Vercel) — self-hospedada, SIL OFL 1.1 (OFL.txt ao lado; comercial ok).
+ * Fonte do produto: grotesque desenhada para UI de ferramenta (Vercel/Linear-
+ * grade), numerais tabulares de verdade (o cronômetro do time tracking usa) e
+ * um único arquivo VARIÁVEL cobrindo 100–900 — mais leve que os 4 estáticos da
+ * General Sans que ela substitui, e todos os pesos intermediários (550, 650,
+ * 720…) que o CSS do app já pede passam a renderizar exatos em vez de arredondar
+ * pro vizinho.
+ */
+@font-face {
+  font-family: 'Geist';
+  src: url('./GeistVF.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('./GeistVF-Italic.woff2') format('woff2-variations');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
