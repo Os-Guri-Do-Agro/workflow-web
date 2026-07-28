@@ -850,20 +850,19 @@ const skeletonLanes = [
   height: 32px;
   font-size: 12.5px;
   font-weight: 650;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent));
+  background: var(--accent);
   color: var(--accent-fg);
   padding: 0 14px;
   border-radius: 9px;
   border: 1px solid color-mix(in srgb, var(--accent) 78%, black);
-  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 26%, transparent);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: filter var(--motion-fast), box-shadow var(--motion-fast);
+  transition: filter var(--motion-fast);
   white-space: nowrap;
 }
 
 .new-activity-btn:hover {
   filter: brightness(1.06);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
 /* ─── Retry (estado de erro) ─── */

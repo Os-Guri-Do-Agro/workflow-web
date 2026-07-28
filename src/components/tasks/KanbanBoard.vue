@@ -296,8 +296,6 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
             @keydown.enter.self="openByKey(task)"
             @keydown.space.self.prevent="openByKey(task)"
           >
-            <span class="card__glow" aria-hidden="true" />
-
             <!-- cover image: inset com raio próprio, nunca sangrando na borda -->
             <div v-if="getImageAttachment(task)" class="card__cover">
               <img :src="getImageAttachment(task)" alt="" loading="lazy" />
@@ -494,8 +492,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 
 .lane--over::before {
   opacity: 1;
-  background: color-mix(in srgb, var(--col) 9%, transparent);
-  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--col) 38%, transparent);
+  background: color-mix(in srgb, var(--col) 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col) 28%, transparent);
 }
 
 /* ── Lane header ────────────────────────────────────────────── */
@@ -516,9 +514,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  color: var(--col);
-  background: color-mix(in srgb, var(--col) 13%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col) 22%, transparent);
+  color: color-mix(in srgb, var(--col) 82%, var(--text));
+  background: color-mix(in srgb, var(--col) 9%, transparent);
   flex-shrink: 0;
 }
 
@@ -546,24 +543,20 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* Fio de luz da coluna: gradiente do status morrendo pra direita. */
+/* Régua da coluna: hairline discreta, colorida só no primeiro trecho.
+   Sem glow — a cor é sinal, não luminária. */
 .lane__rule {
   height: 2px;
   border-radius: 999px;
   margin: 0 8px 4px;
   background: linear-gradient(
     90deg,
-    var(--col),
-    color-mix(in srgb, var(--col) 35%, transparent) 55%,
-    transparent
+    color-mix(in srgb, var(--col) 55%, transparent),
+    color-mix(in srgb, var(--col) 18%, transparent) 34%,
+    var(--border) 70%
   );
-  box-shadow: 0 0 8px color-mix(in srgb, var(--col) 30%, transparent);
   flex-shrink: 0;
-  transition: box-shadow var(--motion) var(--motion-ease);
-}
-
-.lane--over .lane__rule {
-  box-shadow: 0 0 14px color-mix(in srgb, var(--col) 60%, transparent);
+  transition: background var(--motion) var(--motion-ease);
 }
 
 /* ── Corpo com scroll próprio ───────────────────────────────── */
@@ -639,22 +632,6 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   z-index: 0;
 }
 
-/* Glow da cor do status, sobe do topo no hover. */
-.card__glow {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    130% 85% at 50% 0%,
-    color-mix(in srgb, var(--col) 16%, transparent),
-    transparent 60%
-  );
-  opacity: 0;
-  transition: opacity var(--motion) var(--motion-ease);
-  pointer-events: none;
-  z-index: 0;
-}
-
 @keyframes card-in {
   from {
     opacity: 0;
@@ -668,14 +645,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 
 .card:hover {
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--col) 38%, var(--border-strong));
-  box-shadow:
-    var(--shadow),
-    0 0 0 1px color-mix(in srgb, var(--col) 18%, transparent);
-}
-
-.card:hover .card__glow {
-  opacity: 1;
+  border-color: color-mix(in srgb, var(--col) 30%, var(--border-strong));
+  box-shadow: var(--shadow);
 }
 
 .card:focus-visible {
@@ -837,7 +808,6 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   height: 6px;
   border-radius: 2px;
   background: var(--pc);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--pc) 60%, transparent);
 }
 
 .due {
@@ -1033,8 +1003,7 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   box-shadow: none !important;
 }
 
-.drag-ghost::before,
-.drag-ghost .card__glow {
+.drag-ghost::before {
   display: none;
 }
 
