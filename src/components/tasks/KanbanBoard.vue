@@ -14,6 +14,9 @@ import {
 } from 'lucide-vue-next'
 import type { LucideIcon } from 'lucide-vue-next'
 import { formatDateOnly, isOverdue } from '@/utils/date'
+// Iniciais e tom da pessoa vêm do util compartilhado: o ranking da equipe usa
+// os mesmos, então a mesma pessoa tem a mesma cor no board e no /time.
+import { avatarTone, initials as getUserInitials } from '@/utils/avatar'
 
 // Shapes locais de propósito: o board é um componente compartilhado e não deve
 // depender de tipos de `features/*` (regra de boundary do projeto). Campos
@@ -121,23 +124,6 @@ watch(
   },
   { immediate: true, deep: true },
 )
-
-const getUserInitials = (name: string) =>
-  name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-
-// Cor de identidade da pessoa: hash do nome → um dos 6 tons `--avatar-N` do
-// design system (theme-aware, definidos em tokens.ts — nada de hex aqui).
-// Mesma pessoa = mesmo tom em qualquer card/tema.
-const AVATAR_TONES = 6
-const avatarTone = (name: string) => {
-  const idx = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % AVATAR_TONES
-  return `var(--avatar-${idx + 1})`
-}
 
 const MAX_AVATARS = 3
 

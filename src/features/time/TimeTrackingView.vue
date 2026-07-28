@@ -33,10 +33,13 @@ const { isRunning, elapsedSec, start, stop, createManual, updateEntry, deleteEnt
   useTimeTracking()
 const { optionsFor, companyOf } = useCompanyActivities()
 
-// ─── Abas: Meu tempo | Equipe (Equipe só para ADMIN) ──────────────────────────
+// ─── Abas: Meu tempo | Equipe ─────────────────────────────────────────────────
+// A aba Equipe era exclusiva de ADMIN; virou o ranking da empresa, aberto a
+// qualquer membro (o servidor segue exigindo membership na empresa ativa). Sem
+// empresa ativa não há equipe para ranquear, então aí ela some.
 type Tab = 'me' | 'team'
 const activeTab = ref<Tab>('me')
-const isAdmin = computed(() => workspace.isAdmin)
+const hasCompany = computed(() => !!workspace.activeCompanyId)
 
 // ─── Opções de empresa / tarefa (compartilhadas por vários formulários) ───────
 const companyOptions = computed(() => [
@@ -261,19 +264,54 @@ const last7Days = computed(() => {
 })
 const last7Max = computed(() => Math.max(1, ...last7Days.value.map((d) => d.sec)))
 
-/** Distribuição do tempo por empresa/projeto (top 5), com percentual. */
-const byProject = computed(() => {
+/** Agrupa as entradas visíveis por um rótulo e devolve o top N com percentual. */
+function topBy(label: (e: TimeEntry) => string, limitTo = 5) {
   const map = new Map<string, number>()
   for (const e of visibleEntries.value) {
-    const name = e.company?.name ?? 'Pessoal'
+    const name = label(e)
     map.set(name, (map.get(name) ?? 0) + (e.durationSec ?? 0))
   }
   const total = rangeTotalSec.value || 1
   return [...map.entries()]
     .map(([name, sec]) => ({ name, sec, pct: Math.round((sec / total) * 100) }))
     .sort((a, b) => b.sec - a.sec)
-    .slice(0, 5)
+    .slice(0, limitTo)
+}
+
+/** Distribuição do tempo por empresa/projeto (top 5), com percentual. */
+const byProject = computed(() => topBy((e) => e.company?.name ?? 'Pessoal'))
+
+/** Onde o tempo foi por TAREFA (top 5) — a quebra que mais responde "no quê". */
+const byTask = computed(() => topBy((e) => e.activity?.title ?? 'Sem tarefa'))
+
+/** Dia mais produtivo do período (rótulo + total). */
+const bestDay = computed(() => {
+  let best: DayGroup | null = null
+  for (const g of groups.value) if (!best || g.totalSec > best.totalSec) best = g
+  return best ? { label: best.label, sec: best.totalSec } : null
 })
+
+/**
+ * Sequência de dias seguidos com tempo registrado, contada de trás para frente.
+ * Começa em ontem quando hoje ainda não tem registro, senão o dia em curso
+ * zeraria a sequência de quem só vai começar à tarde.
+ */
+const streakDays = computed(() => {
+  const days = new Set(groups.value.map((g) => g.key))
+  const cursor = new Date()
+  if (!days.has(dayKey(cursor.toISOString()))) cursor.setDate(cursor.getDate() - 1)
+  let count = 0
+  while (days.has(dayKey(cursor.toISOString()))) {
+    count += 1
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  return count
+})
+
+/** Maior sessão única do período (uma entrada só). */
+const longestSessionSec = computed(() =>
+  visibleEntries.value.reduce((max, e) => Math.max(max, e.durationSec ?? 0), 0),
+)
 
 // ─── Edição inline (entradas fechadas) ────────────────────────────────────────
 const editingId = ref<string | null>(null)
@@ -416,13 +454,13 @@ const presets: Array<{ id: Preset; label: string }> = [
 <template>
   <div class="time-view">
     <header class="tv-head">
+      <!-- O cabeçalho acompanha a aba: a Equipe é um placar, não "o meu tempo". -->
       <div>
-        <p class="tv-eyebrow">Pessoal</p>
-        <h1 class="tv-title">Meu tempo</h1>
+        <p class="tv-eyebrow">{{ activeTab === 'team' ? 'Equipe' : 'Pessoal' }}</p>
+        <h1 class="tv-title">{{ activeTab === 'team' ? 'Ranking da equipe' : 'Meu tempo' }}</h1>
       </div>
 
-      <!-- Abas: só aparecem para ADMIN (worker não vê a Equipe). -->
-      <nav v-if="isAdmin" class="tv-tabs" aria-label="Seções do tempo">
+      <nav v-if="hasCompany" class="tv-tabs" aria-label="Seções do tempo">
         <button
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'me' }"
@@ -781,7 +819,9 @@ const presets: Array<{ id: Preset; label: string }> = [
                     density="compact"
                     @update:model-value="applyCompanyChange(editForm, $event)"
                   />
-                  <AppSelect
+                  <!-- Busca também aqui: trocar a tarefa de uma entrada já
+                       fechada tinha o mesmo problema de rolar dezenas de itens. -->
+                  <ActivitySelect
                     v-if="editForm.companyId"
                     :model-value="editForm.activityId"
                     :items="optionsFor(editForm.companyId)"
@@ -843,12 +883,16 @@ const presets: Array<{ id: Preset; label: string }> = [
           :last7-days="last7Days"
           :last7-max="last7Max"
           :by-project="byProject"
+          :by-task="byTask"
+          :best-day="bestDay"
+          :streak-days="streakDays"
+          :longest-session-sec="longestSessionSec"
         />
       </div>
     </template>
 
-    <!-- ═══════════════ ABA: EQUIPE (ADMIN) ═══════════════ -->
-    <TeamView v-else-if="activeTab === 'team' && isAdmin" />
+    <!-- ═══════════════ ABA: EQUIPE (ranking da empresa) ═══════════════ -->
+    <TeamView v-else-if="activeTab === 'team' && hasCompany" />
 
     <!-- F2 — confirmação de exclusão -->
     <ConfirmDialog

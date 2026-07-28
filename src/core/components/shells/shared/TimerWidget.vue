@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { AlertTriangle, DollarSign, Play, Square, Timer as TimerIcon } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import ActivitySelect from '@/components/ui/ActivitySelect.vue'
 import SaveStatus from '@/components/ui/SaveStatus.vue'
 import { useTimeTracking } from '@/composables/useTimeTracking'
 import { useCompanyActivities } from '@/composables/useCompanyActivities'
@@ -98,9 +99,20 @@ async function handleStop() {
   }
 }
 
+/**
+ * Dropdowns do reka (select de empresa, busca de tarefa) são TELEPORTADOS para
+ * o `<body>`: no DOM eles ficam fora do painel, então o "clique fora" os tratava
+ * como clique externo e fechava o timer inteiro no meio da escolha. Interação em
+ * conteúdo teleportado é interação dentro do widget.
+ */
+const PORTAL_SELECTOR =
+  '[data-reka-popper-content-wrapper], [data-dismissable-layer], [role="listbox"]'
+
 function onDocumentClick(event: MouseEvent) {
   if (!isOpen.value) return
-  if (rootRef.value && !rootRef.value.contains(event.target as Node)) close()
+  const target = event.target as Element | null
+  if (target?.closest?.(PORTAL_SELECTOR)) return
+  if (rootRef.value && !rootRef.value.contains(target as Node)) close()
 }
 
 onMounted(() => document.addEventListener('mousedown', onDocumentClick))
@@ -161,7 +173,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 
           <label v-if="editor.form.companyId" class="timer-field">
             <span class="timer-label">Tarefa</span>
-            <AppSelect
+            <!-- ActivitySelect (com busca), não AppSelect: a lista de tarefas
+                 da empresa passa de dezenas e rolar tudo era a dor. -->
+            <ActivitySelect
               :model-value="editor.form.activityId"
               :items="optionsFor(editor.form.companyId)"
               placeholder="Sem tarefa"
@@ -235,7 +249,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 
           <label v-if="companyId" class="timer-field">
             <span class="timer-label">Tarefa</span>
-            <AppSelect
+            <ActivitySelect
               :model-value="activityId"
               :items="optionsFor(companyId)"
               placeholder="Sem tarefa"

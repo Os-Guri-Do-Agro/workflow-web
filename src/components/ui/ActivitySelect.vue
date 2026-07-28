@@ -117,7 +117,20 @@ watch(open, () => {
       <ComboboxContent class="acsel__content" position="popper" :side-offset="6">
         <div class="acsel__search">
           <Search :size="14" class="acsel__search-icon" />
-          <ComboboxInput v-model="query" class="acsel__input" placeholder="Buscar tarefa..." />
+          <!--
+            display-value SEMPRE vazio: sem ele o reka escreve o valor
+            selecionado cru no campo de busca (`rootModelValue.toString()`, ou
+            seja, o ID da tarefa) toda vez que a seleção muda e na montagem.
+            O usuário reabria o seletor para trocar de tarefa, dava de cara com
+            um id no campo, a lista filtrava por ele e não sobrava nada: tinha
+            que apagar na mão. O campo de busca é busca, não espelho do valor.
+          -->
+          <ComboboxInput
+            v-model="query"
+            :display-value="() => ''"
+            class="acsel__input"
+            placeholder="Buscar tarefa..."
+          />
         </div>
 
         <ComboboxViewport class="acsel__viewport">
