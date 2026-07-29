@@ -1060,12 +1060,26 @@ const presets: Array<{ id: Preset; label: string }> = [
   border-color: var(--accent);
 }
 
+/* Empresa + Tarefa lado a lado. Largura fixa de 260px era menor que o conteúdo
+   (os dois seletores pedem ~375px juntos): eles estouravam a caixa em ~115px em
+   qualquer tela, empurrando o cronômetro e o botão. Agora a dupla encolhe e
+   cresce dentro de limites, e cada seletor divide o espaço por igual. */
 .tv-timer-selects {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
-  width: 260px;
+  flex: 0 1 360px;
+  min-width: 220px;
+  max-width: 420px;
+}
+
+.tv-timer-selects > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tv-timer-selects > .tv-task-hint {
+  flex: 1 1 auto;
 }
 
 .tv-task-hint {

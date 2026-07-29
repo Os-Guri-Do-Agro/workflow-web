@@ -144,15 +144,25 @@ const timeService = {
     return response.data
   },
 
-  // x-company-id é anexado automaticamente pelo interceptor (empresa ativa).
-  async companyReport(filters?: ReportFilters) {
-    const response = await api.get<CompanyReport>('/time/company-report', { params: filters })
+  /**
+   * Relatório agregado de UMA empresa. Sem `companyId` vale a empresa ativa (o
+   * interceptor injeta o header); com ele, a chamada é explícita — é assim que
+   * a visão de GRUPO lê várias empresas do usuário em paralelo.
+   */
+  async companyReport(filters?: ReportFilters, companyId?: string) {
+    const response = await api.get<CompanyReport>('/time/company-report', {
+      params: filters,
+      ...(companyId ? { headers: { 'x-company-id': companyId } } : {}),
+    })
     return response.data
   },
 
-  // Timers rodando agora da equipe (ADMIN). x-company-id via interceptor.
-  async companyLive() {
-    const response = await api.get<CompanyLive>('/time/company-live')
+  /** Timers rodando agora numa empresa (mesma regra de `companyReport`). */
+  async companyLive(companyId?: string) {
+    const response = await api.get<CompanyLive>(
+      '/time/company-live',
+      companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+    )
     return response.data
   },
 }

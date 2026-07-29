@@ -41,6 +41,18 @@ const sharedRadiusAndShadow = {
   // propósito: escurecer é o sinal universal de "modal na frente"; véu claro
   // sobre tema claro lê como tela desabilitada.
   '--scrim': 'rgba(0, 0, 0, 0.62)',
+  // Metais do pódio (troféu e medalhas do ranking). Não variam por tema: ouro
+  // é ouro no claro e no escuro. Cada metal tem três paradas (luz, corpo,
+  // sombra) porque o volume vem do gradiente, não de brilho ao redor.
+  '--metal-gold-hi': '#FFE9A8',
+  '--metal-gold': '#E8B33C',
+  '--metal-gold-lo': '#9C6A12',
+  '--metal-silver-hi': '#F4F7FA',
+  '--metal-silver': '#C2CBD6',
+  '--metal-silver-lo': '#7E8894',
+  '--metal-bronze-hi': '#F0C39A',
+  '--metal-bronze': '#C58045',
+  '--metal-bronze-lo': '#7E4A1F',
 }
 
 /**

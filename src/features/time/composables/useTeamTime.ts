@@ -1,16 +1,23 @@
-import { useQuery } from '@tanstack/vue-query'
+import { useQueries } from '@tanstack/vue-query'
 import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
-import timeService, { type TeamLiveEntry } from '@/service/time/time-service'
+import timeService, {
+  type CompanyLive,
+  type CompanyReport,
+  type TeamLiveEntry,
+} from '@/service/time/time-service'
 import companiesServices from '@/service/companies/companies-services'
 import realtimeService from '@/service/realtime/realtime-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useCurrentUser } from '@/composables/useCurrentUser'
 import { dayKey, elapsedSince } from '@/utils/duration'
+import { onTabVisible } from '@/utils/tab-visibility'
+
+/** `'group'` = todas as empresas do usuário somadas; senão, o id de uma empresa. */
+export type TeamScope = 'group' | (string & {})
 
 interface Member {
   userId: string
   userName: string
-  role: string
 }
 
 /** Forma bruta de `GET /company/:id/members` (role + joinedAt + user). */
@@ -23,21 +30,23 @@ interface RawMember {
 export interface TeamRow {
   userId: string
   userName: string
-  /** Posição no ranking do período (1 = quem mais registrou). Empate mantém ordem. */
+  /** Posição no ranking do período (1 = quem mais registrou). */
   rank: number
   /** Timer rodando agora (ou null se ocioso). */
   running: TeamLiveEntry | null
-  /** Segundos do timer corrente (derivado de startedAt, atualizado por tick). */
+  /** Segundos do timer corrente (derivado de startedAt, atualizado por tique). */
   elapsedSec: number
-  /** Total do período (do company-report). */
+  /** Total do período, somando todas as empresas do escopo. */
   totalSec: number
-  /** Fatia do total da equipe no período (0-100), para a barra do ranking. */
+  /** Fatia do total do escopo (0-100), para a barra do ranking. */
   pct: number
+  /** Empresas em que a pessoa registrou tempo no período (visão de grupo). */
+  companies: string[]
   /** É o usuário logado (destaque "Você" na lista). */
   isMe: boolean
 }
 
-/** Um dia do gráfico de ritmo da equipe. */
+/** Um dia do gráfico de ritmo. */
 export interface TeamPulseDay {
   key: string
   sec: number
@@ -77,96 +86,149 @@ function last7Range(): { from: string; to: string } {
 /**
  * T5 (spec time-tracking-v2) — dados da aba Equipe.
  *
- * Junta quatro fontes para a empresa ativa (x-company-id via interceptor):
- * - membros da empresa (roster completo, inclusive quem não trackeou nada);
- * - timers rodando AGORA (`company-live`, semente do estado ao vivo);
- * - totais do período (`company-report`, por usuário/tarefa/dia);
- * - ritmo dos últimos 7 dias (mesmo endpoint com range fixo, para o gráfico não
- *   virar uma barra só quando o filtro é "Hoje").
- * E atualiza em tempo real pelos eventos `time:team-started/stopped` na room da
- * empresa. O cronômetro é derivado de `startedAt` no cliente (server é a fonte).
+ * Duas mudanças de escopo em jul/2026:
+ * 1. deixou de ser exclusivo de ADMIN (virou o ranking, aberto a qualquer
+ *    membro; o servidor segue exigindo membership em cada empresa);
+ * 2. passou a somar VÁRIAS empresas. Na prática as empresas cadastradas são
+ *    filiais do mesmo grupo e as pessoas trabalham em mais de uma, então
+ *    ranquear uma empresa por vez partia a mesma equipe em placares
+ *    separados. O escopo padrão é o grupo inteiro; dá para focar numa
+ *    empresa pelo seletor.
  *
- * Deixou de ser exclusivo de ADMIN (jul/2026): a visão virou o ranking da
- * equipe, aberto a qualquer membro. O servidor continua exigindo membership na
- * empresa, então o isolamento entre empresas não mudou.
+ * Cada empresa do escopo é uma chamada (o backend agrega por empresa); a soma
+ * por pessoa, tarefa e dia é feita aqui.
  */
-export function useTeamTime(range: Ref<{ from: string; to: string }>) {
+export function useTeamTime(range: Ref<{ from: string; to: string }>, scope: Ref<TeamScope>) {
   const workspace = useWorkspaceStore()
   const { me } = useCurrentUser()
-  const companyId = computed(() => workspace.activeCompanyId)
-  const enabled = computed(() => !!companyId.value)
 
-  const membersQuery = useQuery({
-    queryKey: computed(() => ['time', 'team-members', companyId.value]),
-    queryFn: async () => {
-      const raw = await companiesServices.getCompanyMembers(companyId.value!)
-      const list: RawMember[] = Array.isArray(raw) ? raw : (raw?.data ?? [])
-      return list.map((m) => ({
-        userId: m.user?.id ?? m.userId ?? '',
-        userName: m.user?.name ?? 'Sem nome',
-        role: m.role ?? 'WORKER',
-      })) as Member[]
-    },
-    enabled,
-    staleTime: 1000 * 60,
-    retry: retryUnlessClientError,
+  /** Empresas do usuário; cai para a ativa enquanto o workspace não carregou. */
+  const companies = computed<{ id: string; name: string }[]>(() => {
+    const list = workspace.companies
+    if (list.length) return list.map((c) => ({ id: c.id, name: c.name }))
+    const active = workspace.activeCompanyId
+    return active ? [{ id: active, name: 'Empresa' }] : []
   })
 
-  const liveQuery = useQuery({
-    queryKey: computed(() => ['time', 'company-live', companyId.value]),
-    queryFn: () => timeService.companyLive(),
-    enabled,
-    staleTime: 1000 * 5,
-    retry: retryUnlessClientError,
+  const targets = computed(() =>
+    scope.value === 'group' ? companies.value : companies.value.filter((c) => c.id === scope.value),
+  )
+  const targetIds = computed(() => targets.value.map((c) => c.id))
+  const nameOfCompany = computed(() => new Map(companies.value.map((c) => [c.id, c.name])))
+
+  const memberQueries = useQueries({
+    queries: computed(() =>
+      targetIds.value.map((id) => ({
+        queryKey: ['time', 'team-members', id] as const,
+        queryFn: async (): Promise<Member[]> => {
+          const raw = await companiesServices.getCompanyMembers(id)
+          const list: RawMember[] = Array.isArray(raw) ? raw : (raw?.data ?? [])
+          return list.map((m) => ({
+            userId: m.user?.id ?? m.userId ?? '',
+            userName: m.user?.name ?? 'Sem nome',
+          }))
+        },
+        staleTime: 1000 * 60,
+        retry: retryUnlessClientError,
+      })),
+    ),
   })
 
-  const reportQuery = useQuery({
-    queryKey: computed(() => ['time', 'company-report', companyId.value, range.value]),
-    queryFn: () =>
-      timeService.companyReport({
-        from: range.value.from,
-        to: range.value.to,
-        tzOffset: new Date().getTimezoneOffset(),
-      }),
-    enabled,
-    staleTime: 1000 * 15,
-    retry: retryUnlessClientError,
+  const liveQueries = useQueries({
+    queries: computed(() =>
+      targetIds.value.map((id) => ({
+        queryKey: ['time', 'company-live', id] as const,
+        queryFn: () => timeService.companyLive(id),
+        staleTime: 1000 * 5,
+        retry: retryUnlessClientError,
+      })),
+    ),
   })
 
-  // Ritmo de 7 dias: mesma chave de cache do report quando o range coincide
-  // (preset "7 dias"), então nesse caso não há request extra.
+  const reportQueries = useQueries({
+    queries: computed(() =>
+      targetIds.value.map((id) => ({
+        queryKey: ['time', 'company-report', id, range.value] as const,
+        queryFn: () =>
+          timeService.companyReport(
+            {
+              from: range.value.from,
+              to: range.value.to,
+              tzOffset: new Date().getTimezoneOffset(),
+            },
+            id,
+          ),
+        staleTime: 1000 * 15,
+        retry: retryUnlessClientError,
+      })),
+    ),
+  })
+
+  // Ritmo de 7 dias: mesma chave do report quando o range coincide (preset
+  // "7 dias"), então nesse caso o Vue Query reaproveita e não há request extra.
   const pulseRange = ref(last7Range())
-  const pulseQuery = useQuery({
-    queryKey: computed(() => ['time', 'company-report', companyId.value, pulseRange.value]),
-    queryFn: () =>
-      timeService.companyReport({
-        from: pulseRange.value.from,
-        to: pulseRange.value.to,
-        tzOffset: new Date().getTimezoneOffset(),
-      }),
-    enabled,
-    staleTime: 1000 * 60,
-    retry: retryUnlessClientError,
+  const pulseQueries = useQueries({
+    queries: computed(() =>
+      targetIds.value.map((id) => ({
+        queryKey: ['time', 'company-report', id, pulseRange.value] as const,
+        queryFn: () =>
+          timeService.companyReport(
+            {
+              from: pulseRange.value.from,
+              to: pulseRange.value.to,
+              tzOffset: new Date().getTimezoneOffset(),
+            },
+            id,
+          ),
+        staleTime: 1000 * 60,
+        retry: retryUnlessClientError,
+      })),
+    ),
   })
 
-  // Running entries por userId (semente do liveQuery + updates via socket).
+  const reports = computed(() =>
+    reportQueries.value
+      .map((q, i) => ({ companyId: targetIds.value[i], data: q.data as CompanyReport | undefined }))
+      .filter((r): r is { companyId: string; data: CompanyReport } => !!r.data),
+  )
+
+  // ─── Estado ao vivo: semente das queries + eventos de socket ────────────────
   const runningByUser = ref<Record<string, TeamLiveEntry>>({})
+
   watch(
-    () => liveQuery.data.value,
-    (data) => {
+    () => liveQueries.value.map((q) => q.data as CompanyLive | undefined),
+    (list) => {
       const map: Record<string, TeamLiveEntry> = {}
-      for (const e of data?.running ?? []) map[e.userId] = e
+      for (const data of list) {
+        for (const e of data?.running ?? []) map[e.userId] = e
+      }
       runningByUser.value = map
     },
-    { immediate: true },
+    { immediate: true, deep: true },
   )
+
+  /**
+   * O socket entrega eventos de TODAS as empresas do usuário. Focado numa
+   * empresa, só entram os timers dela (ou os gerais, sem vínculo) — a mesma
+   * regra que o servidor aplica no `company-live`.
+   */
+  function belongsToScope(entry: TeamLiveEntry): boolean {
+    if (scope.value === 'group') return true
+    return entry.companyId === scope.value || entry.companyId === null
+  }
 
   // Cronômetro vivo compartilhado: só tica enquanto há alguém rodando.
   const now = ref(Date.now())
   let intervalId: number | null = null
+  let unbindVisibility: (() => void) | null = null
   function ensureTicker() {
     if (intervalId === null) {
       intervalId = window.setInterval(() => (now.value = Date.now()), 1000)
+    }
+    // Aba oculta congela o interval; ao voltar, recalcula na hora (senão os
+    // cronômetros da equipe aparecem parados no valor de minutos atrás).
+    if (!unbindVisibility) {
+      unbindVisibility = onTabVisible(() => (now.value = Date.now()))
     }
   }
   function stopTicker() {
@@ -174,6 +236,8 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>) {
       window.clearInterval(intervalId)
       intervalId = null
     }
+    unbindVisibility?.()
+    unbindVisibility = null
   }
   watch(
     () => Object.keys(runningByUser.value).length,
@@ -181,11 +245,11 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>) {
     { immediate: true },
   )
 
-  // Socket: reflete start/stop dos membros na room da empresa em tempo real.
   let unsub: (() => void) | null = null
   onMounted(() => {
     unsub = realtimeService.connect({
       teamTimeStarted: (e) => {
+        if (!belongsToScope(e)) return
         runningByUser.value = { ...runningByUser.value, [e.userId]: e }
       },
       teamTimeStopped: (p) => {
@@ -194,7 +258,7 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>) {
         runningByUser.value = next
       },
       // Reconexão: perdeu eventos enquanto offline; recarrega o estado ao vivo.
-      reconnect: () => void liveQuery.refetch(),
+      reconnect: () => liveQueries.value.forEach((q) => void q.refetch()),
     }) as (() => void) | null
   })
   onUnmounted(() => {
@@ -202,47 +266,70 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>) {
     stopTicker()
   })
 
-  const totalsByUser = computed(() => {
-    const map: Record<string, number> = {}
-    for (const u of reportQuery.data.value?.byUser ?? []) map[u.userId] = u.totalSec
+  // ─── Agregações do escopo ───────────────────────────────────────────────────
+  const teamTotalSec = computed(() =>
+    reports.value.reduce((acc, r) => acc + (r.data.totalSec ?? 0), 0),
+  )
+
+  const billableSec = computed(() =>
+    reports.value.reduce((acc, r) => acc + (r.data.billableSec ?? 0), 0),
+  )
+
+  const billablePct = computed(() =>
+    teamTotalSec.value ? Math.round((billableSec.value / teamTotalSec.value) * 100) : 0,
+  )
+
+  /** Tempo por pessoa somando as empresas do escopo (+ em quais ela apareceu). */
+  const perUser = computed(() => {
+    const map = new Map<string, { name: string; totalSec: number; companies: Set<string> }>()
+    for (const r of reports.value) {
+      const companyName = nameOfCompany.value.get(r.companyId) ?? 'Empresa'
+      for (const u of r.data.byUser ?? []) {
+        const entry = map.get(u.userId) ?? { name: u.name, totalSec: 0, companies: new Set<string>() }
+        entry.totalSec += u.totalSec
+        if (u.totalSec > 0) entry.companies.add(companyName)
+        map.set(u.userId, entry)
+      }
+    }
     return map
   })
 
-  const teamTotalSec = computed(() => reportQuery.data.value?.totalSec ?? 0)
-
   const rows = computed<TeamRow[]>(() => {
     void now.value // dependência do ticker para o cronômetro vivo
-    const members = membersQuery.data.value ?? []
-    // Sem roster (membros ainda carregando ou negados), o próprio relatório serve
-    // de lista: quem registrou tempo aparece do mesmo jeito.
-    const fromReport: Member[] = (reportQuery.data.value?.byUser ?? []).map((u) => ({
-      userId: u.userId,
-      userName: u.name,
-      role: 'WORKER',
-    }))
-    const base = members.length ? members : fromReport
-    const seen = new Set(base.map((m) => m.userId))
+
+    // Roster de todas as empresas do escopo, sem repetir quem está em várias.
+    const roster = new Map<string, Member>()
+    for (const q of memberQueries.value) {
+      for (const m of (q.data as Member[] | undefined) ?? []) {
+        if (m.userId && !roster.has(m.userId)) roster.set(m.userId, m)
+      }
+    }
+    // Sem roster (ainda carregando ou negado), o próprio relatório serve de lista.
+    if (roster.size === 0) {
+      for (const [userId, u] of perUser.value) roster.set(userId, { userId, userName: u.name })
+    }
     // Quem está rodando mas não veio no roster (borda) também aparece.
-    const extra: Member[] = []
     for (const [userId, e] of Object.entries(runningByUser.value)) {
-      if (!seen.has(userId)) extra.push({ userId, userName: e.userName, role: 'WORKER' })
+      if (!roster.has(userId)) roster.set(userId, { userId, userName: e.userName })
     }
 
     const total = teamTotalSec.value
     const myId = me.value?.id
 
-    return [...base, ...extra]
+    return [...roster.values()]
       .map((m) => {
         const running = runningByUser.value[m.userId] ?? null
-        const totalSec = totalsByUser.value[m.userId] ?? 0
+        const agg = perUser.value.get(m.userId)
+        const totalSec = agg?.totalSec ?? 0
         return {
           userId: m.userId,
-          userName: m.userName,
+          userName: agg?.name ?? m.userName,
           rank: 0,
           running,
           elapsedSec: running ? elapsedSince(running.startedAt) : 0,
           totalSec,
           pct: total > 0 ? Math.round((totalSec / total) * 100) : 0,
+          companies: agg ? [...agg.companies] : [],
           isMe: !!myId && m.userId === myId,
         }
       })
@@ -269,34 +356,49 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>) {
     contributorCount.value ? Math.round(teamTotalSec.value / contributorCount.value) : 0,
   )
 
-  const billableSec = computed(() => reportQuery.data.value?.billableSec ?? 0)
-  const billablePct = computed(() =>
-    teamTotalSec.value ? Math.round((billableSec.value / teamTotalSec.value) * 100) : 0,
-  )
-
-  /** Onde a equipe gastou o tempo (top 5 tarefas do período). */
+  /** Onde o escopo gastou o tempo (top 5 tarefas, somando empresas). */
   const byActivity = computed(() => {
-    const list = reportQuery.data.value?.byActivity ?? []
+    const map = new Map<string, number>()
+    for (const r of reports.value) {
+      for (const a of r.data.byActivity ?? []) {
+        map.set(a.title, (map.get(a.title) ?? 0) + a.totalSec)
+      }
+    }
     const total = teamTotalSec.value || 1
-    return [...list]
-      .sort((a, b) => b.totalSec - a.totalSec)
+    return [...map.entries()]
+      .map(([title, sec]) => ({ title, sec, pct: Math.round((sec / total) * 100) }))
+      .sort((a, b) => b.sec - a.sec)
       .slice(0, 5)
-      .map((a) => ({
-        title: a.title,
-        sec: a.totalSec,
-        pct: Math.round((a.totalSec / total) * 100),
-      }))
   })
 
-  /** Ritmo da equipe nos últimos 7 dias (cronológico), para o mini gráfico. */
+  /** Quanto cada empresa do grupo contribuiu no período. */
+  const byCompany = computed(() => {
+    const total = teamTotalSec.value || 1
+    return reports.value
+      .map((r) => ({
+        name: nameOfCompany.value.get(r.companyId) ?? 'Empresa',
+        sec: r.data.totalSec ?? 0,
+        pct: Math.round(((r.data.totalSec ?? 0) / total) * 100),
+      }))
+      .filter((c) => c.sec > 0)
+      .sort((a, b) => b.sec - a.sec)
+  })
+
+  /** Ritmo dos últimos 7 dias (cronológico), somando as empresas do escopo. */
   const pulse = computed<TeamPulseDay[]>(() => {
-    const byKey = new Map((pulseQuery.data.value?.byDay ?? []).map((d) => [d.day.slice(0, 10), d.totalSec]))
-    const now2 = new Date()
-    const todayKey = dayKey(now2.toISOString())
+    const byKey = new Map<string, number>()
+    for (const q of pulseQueries.value) {
+      for (const d of (q.data as CompanyReport | undefined)?.byDay ?? []) {
+        const key = d.day.slice(0, 10)
+        byKey.set(key, (byKey.get(key) ?? 0) + d.totalSec)
+      }
+    }
+    const today = new Date()
+    const todayKey = dayKey(today.toISOString())
     const out: TeamPulseDay[] = []
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(now2)
-      d.setDate(now2.getDate() - i)
+      const d = new Date(today)
+      d.setDate(today.getDate() - i)
       const key = dayKey(d.toISOString())
       out.push({
         key,
@@ -313,15 +415,20 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>) {
   /**
    * Backend anterior à abertura da visão de equipe (deploy pendente): responde
    * 403 (ou 404 no /company-live que ainda não existe lá) para quem não é ADMIN.
-   * A tela mostra um aviso específico em vez de "erro ao carregar".
+   * Basta uma empresa do escopo negar para o placar ficar incompleto, então o
+   * aviso aparece já no primeiro 403.
    */
-  const isForbidden = computed(() => {
-    const codes = [statusOf(liveQuery.error.value), statusOf(reportQuery.error.value)]
-    return codes.some((c) => c === 403 || c === 404)
-  })
+  const isForbidden = computed(() =>
+    [...liveQueries.value, ...reportQueries.value].some((q) => {
+      const code = statusOf(q.error)
+      return code === 403 || code === 404
+    }),
+  )
 
   const isError = computed(
-    () => !isForbidden.value && (liveQuery.isError.value || reportQuery.isError.value),
+    () =>
+      !isForbidden.value &&
+      [...liveQueries.value, ...reportQueries.value].some((q) => q.isError),
   )
 
   // Falhou é falhou: sem esta guarda, uma query que segue "pending" depois do
@@ -330,17 +437,20 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>) {
     () =>
       !isForbidden.value &&
       !isError.value &&
-      (membersQuery.isLoading.value || liveQuery.isLoading.value || reportQuery.isLoading.value),
+      (targetIds.value.length === 0 ||
+        [...memberQueries.value, ...liveQueries.value, ...reportQueries.value].some(
+          (q) => q.isLoading,
+        )),
   )
 
   function refetch() {
-    void membersQuery.refetch()
-    void liveQuery.refetch()
-    void reportQuery.refetch()
-    void pulseQuery.refetch()
+    ;[...memberQueries.value, ...liveQueries.value, ...reportQueries.value, ...pulseQueries.value].forEach(
+      (q) => void q.refetch(),
+    )
   }
 
   return {
+    companies,
     rows,
     podium,
     myRow,
@@ -351,6 +461,7 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>) {
     billableSec,
     billablePct,
     byActivity,
+    byCompany,
     pulse,
     pulseMax,
     isLoading,

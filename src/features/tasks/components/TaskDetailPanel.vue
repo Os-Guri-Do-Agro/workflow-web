@@ -413,8 +413,11 @@ onBeforeUnmount(() => {
                 <Users :size="12" />
                 Responsáveis
               </h3>
+              <!-- chip-avatars: mesma identidade de pessoa (disco + tom) usada
+                   no board, no detalhe da tarefa e no ranking da equipe. -->
               <AppSelect
                 multiple
+                chip-avatars
                 :model-value="responsibleIds"
                 :items="memberItems"
                 label="Responsáveis"

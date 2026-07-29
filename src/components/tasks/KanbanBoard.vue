@@ -1032,6 +1032,15 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   cursor: grabbing !important;
 }
 
+/* Notebook de 1280: com 252px de coluna as quatro somavam ~40px a mais que a
+   área útil e o board nascia com scroll horizontal, escondendo parte da última
+   coluna. Estreitar um pouco faz as quatro caberem inteiras. */
+@media (max-width: 1400px) {
+  .lane {
+    min-width: 228px;
+  }
+}
+
 /* ── Mobile: colunas em fita com snap (padrão de kanban touch) ── */
 @media (max-width: 640px) {
   .board {

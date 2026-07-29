@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useToast } from '@/composables/useToast'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { normalizePriority } from '@/utils/priority'
+import { avatarTone, initials } from '@/utils/avatar'
 import {
   AlertCircle,
   ArrowLeft,
@@ -583,14 +584,9 @@ const updateSubtask = async () => {
 
 const getCompanyName = (id: string) => companies.value.find((c) => c.id === id)?.name || '-'
 
-const getUserInitials = (name: string) => {
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-}
+// Iniciais de pessoa vêm do util compartilhado: a mesma pessoa precisa aparecer
+// com as MESMAS iniciais aqui, no board e no ranking da equipe.
+const getUserInitials = (name: string) => initials(name)
 
 const goBack = () => {
   router.push(`/tasks/${activeMonthId.value}`)
@@ -627,19 +623,11 @@ const PRIORITY_FALLBACK = { label: 'P?', token: 'var(--text-3)' }
 
 const getPriorityMeta = (priority: number) => PRIORITY_META[priority] ?? PRIORITY_FALLBACK
 
-const USER_TONES = [
-  'var(--info)',
-  'var(--success)',
-  'var(--status-test)',
-  'var(--warn)',
-  'var(--accent)',
-] as const
-
-const getUserTone = (name: string) => {
-  const index =
-    name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % USER_TONES.length
-  return USER_TONES[index]!
-}
+// Tom de PESSOA sai dos tokens `--avatar-1..6` (util compartilhado), não das
+// cores de status. Pintar responsável com verde de "concluído" ou vermelho de
+// "bloqueado" criava significado falso dentro do mesmo card, e a tela com 4+
+// responsáveis virava confete.
+const getUserTone = (name: string) => avatarTone(name)
 
 const toggleSubtaskStatus = async (task: any) => {
   const newStatus = task.status === 'DONE' ? 'TODO' : 'DONE'
@@ -818,8 +806,8 @@ const deleteAttachment = async (attachmentId: string) => {
                     class="avatar"
                     :title="r.user.name"
                     :style="{
-                      background: `color-mix(in srgb, ${getUserTone(r.user.name)} 18%, var(--surface-2))`,
-                      color: getUserTone(r.user.name),
+                      background: `color-mix(in srgb, ${getUserTone(r.user.name)} 20%, var(--surface-2))`,
+                      color: `color-mix(in srgb, ${getUserTone(r.user.name)} 64%, var(--text))`,
                     }"
                   >
                     {{ getUserInitials(r.user.name) }}
@@ -929,20 +917,27 @@ const deleteAttachment = async (attachmentId: string) => {
 
             <div v-if="responsibles.length" class="meta-row meta-row--stack">
               <dt>Responsáveis</dt>
-              <dd class="responsible-list">
-                <span
-                  v-for="r in responsibles"
-                  :key="r.userId"
-                  class="responsible-chip"
-                  :style="{
-                    background: `color-mix(in srgb, ${getUserTone(r.user.name)} 14%, var(--surface-2))`,
-                    color: getUserTone(r.user.name),
-                    borderColor: `color-mix(in srgb, ${getUserTone(r.user.name)} 28%, var(--border))`,
-                  }"
-                >
-                  <span class="avatar avatar--sm">{{ getUserInitials(r.user.name) }}</span>
-                  {{ r.user.name }}
-                </span>
+              <dd>
+                <div class="responsible-list">
+                  <span
+                    v-for="r in responsibles"
+                    :key="r.userId"
+                    class="responsible-chip"
+                    :title="r.user.name"
+                  >
+                    <span
+                      class="avatar avatar--sm"
+                      aria-hidden="true"
+                      :style="{
+                        background: `color-mix(in srgb, ${getUserTone(r.user.name)} 20%, var(--surface-3))`,
+                        color: `color-mix(in srgb, ${getUserTone(r.user.name)} 64%, var(--text))`,
+                      }"
+                    >
+                      {{ getUserInitials(r.user.name) }}
+                    </span>
+                    <span class="responsible-name">{{ r.user.name }}</span>
+                  </span>
+                </div>
               </dd>
             </div>
           </dl>
@@ -1143,6 +1138,7 @@ const deleteAttachment = async (attachmentId: string) => {
         <span class="view-label">Responsáveis</span>
         <AppSelect
           multiple
+          chip-avatars
           :model-value="formActivity.responsibleUserIds"
           :items="memberItems"
           label="Responsáveis"
@@ -1251,6 +1247,7 @@ const deleteAttachment = async (attachmentId: string) => {
         <span class="view-label">Responsáveis</span>
         <AppSelect
           multiple
+          chip-avatars
           :model-value="formSubtask.responsibleUserIds"
           :items="memberItems"
           label="Responsáveis"
@@ -1390,14 +1387,19 @@ const deleteAttachment = async (attachmentId: string) => {
                   v-for="r in selectedSubtask.responsibles"
                   :key="r.userId"
                   class="responsible-chip"
-                  :style="{
-                    background: `color-mix(in srgb, ${getUserTone(r.user.name)} 14%, var(--surface-2))`,
-                    color: getUserTone(r.user.name),
-                    borderColor: `color-mix(in srgb, ${getUserTone(r.user.name)} 28%, var(--border))`,
-                  }"
+                  :title="r.user.name"
                 >
-                  <span class="avatar avatar--sm">{{ getUserInitials(r.user.name) }}</span>
-                  {{ r.user.name }}
+                  <span
+                    class="avatar avatar--sm"
+                    aria-hidden="true"
+                    :style="{
+                      background: `color-mix(in srgb, ${getUserTone(r.user.name)} 20%, var(--surface-3))`,
+                      color: `color-mix(in srgb, ${getUserTone(r.user.name)} 64%, var(--text))`,
+                    }"
+                  >
+                    {{ getUserInitials(r.user.name) }}
+                  </span>
+                  <span class="responsible-name">{{ r.user.name }}</span>
                 </span>
               </div>
             </div>
@@ -1437,6 +1439,7 @@ const deleteAttachment = async (attachmentId: string) => {
             <span class="view-label">Responsáveis</span>
             <AppSelect
               multiple
+              chip-avatars
               :model-value="formSubtask.responsibleUserIds"
               :items="memberItems"
               label="Responsáveis"
@@ -1822,6 +1825,7 @@ const deleteAttachment = async (attachmentId: string) => {
 
 .avatar-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
 }
@@ -1835,12 +1839,13 @@ const deleteAttachment = async (attachmentId: string) => {
   justify-content: center;
   font-size: 9px;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .avatar--sm {
-  width: 18px;
-  height: 18px;
-  font-size: 8px;
+  width: 20px;
+  height: 20px;
+  font-size: 8.5px;
 }
 
 .meta-panel {
@@ -1865,7 +1870,13 @@ const deleteAttachment = async (attachmentId: string) => {
   border-bottom: none;
 }
 
+/* Linha que carrega uma lista (responsáveis): o rótulo sobe e o conteúdo ganha
+   a largura inteira do painel. Espremido na coluna de 1fr ao lado de um dt de
+   88px, um nome como "Bruno Carvalho Mendes" quebrava em 3 linhas dentro da
+   cápsula. */
 .meta-row--stack {
+  grid-template-columns: 1fr;
+  gap: 6px;
   align-items: start;
 }
 
@@ -1878,6 +1889,9 @@ const deleteAttachment = async (attachmentId: string) => {
 
 .meta-row dd {
   margin: 0;
+  /* Item de grid nasce com min-width auto: sem isto, um chip de nome longo
+     empurra a coluna e estoura a largura do painel lateral. */
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1907,21 +1921,40 @@ const deleteAttachment = async (attachmentId: string) => {
   color: var(--text-3);
 }
 
+/* Lista de responsáveis em LINHA que quebra, não em coluna: em coluna cada chip
+   era esticado à largura toda (align-items: stretch) e virava uma cápsula
+   gigante por pessoa. Agora cada chip abraça o próprio conteúdo. */
 .responsible-list {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 
+/* Chip sóbrio: superfície neutra e só o disco de iniciais carrega o tom da
+   pessoa. Cápsula inteira tingida, com 4 pessoas, virava confete. */
 .responsible-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px 4px 4px;
+  height: 26px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 10px 0 3px;
   border-radius: 999px;
   border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
   font-size: 12px;
   font-weight: 500;
+}
+
+.responsible-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .attachment-grid {
@@ -2371,6 +2404,9 @@ const deleteAttachment = async (attachmentId: string) => {
 
 .view-field {
   margin-bottom: 14px;
+  /* Idem .meta-row dd: dentro do .view-grid (1fr 1fr) o auto-min deixaria um
+     nome longo esticar a coluna. */
+  min-width: 0;
 }
 
 .view-label {

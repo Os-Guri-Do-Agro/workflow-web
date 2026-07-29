@@ -13,6 +13,7 @@ import {
   Loader2,
 } from 'lucide-vue-next'
 import { dateOnlyToUtcNoonIso } from '@/utils/date'
+import { avatarTone, initials as personInitials } from '@/utils/avatar'
 
 // Shapes locais (regra de boundary: componente compartilhado não importa tipos
 // de features/*). O membro chega em dois formatos conforme o caller: plano
@@ -93,13 +94,11 @@ const toggleAssignee = (userId?: string) => {
 const isSelected = (userId?: string) =>
   !!userId && Array.isArray(form.value?.assignees) && form.value.assignees.includes(userId)
 
-const initials = (name?: string) =>
-  (name || '?')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() || '')
-    .join('')
+// Iniciais e tom de pessoa vêm do util compartilhado (tokens --avatar-1..6):
+// o mesmo membro aparece igual aqui, no board, no detalhe da tarefa e no
+// ranking da equipe.
+const initials = (name?: string) => personInitials(name || '?')
+const toneOf = (name?: string) => avatarTone(name || '?')
 
 const valid = computed(() => !!form.value?.title?.trim())
 
@@ -212,9 +211,20 @@ const submit = () => {
             type="button"
             class="member-chip"
             :class="{ 'member-chip--active': isSelected(m.user?.id || m.id) }"
+            :title="m.user?.name || m.name"
+            :aria-pressed="isSelected(m.user?.id || m.id)"
             @click="toggleAssignee(m.user?.id || m.id)"
           >
-            <span class="avatar">{{ initials(m.user?.name || m.name) }}</span>
+            <span
+              class="avatar"
+              aria-hidden="true"
+              :style="{
+                background: `color-mix(in srgb, ${toneOf(m.user?.name || m.name)} 20%, var(--surface-3))`,
+                color: `color-mix(in srgb, ${toneOf(m.user?.name || m.name)} 64%, var(--text))`,
+              }"
+            >
+              {{ initials(m.user?.name || m.name) }}
+            </span>
             <span class="member-name">{{ m.user?.name || m.name }}</span>
             <Check v-if="isSelected(m.user?.id || m.id)" :size="12" class="member-check" />
           </button>
@@ -481,6 +491,14 @@ const submit = () => {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
+  /* Empresa com 20+ membros empurrava Anexo e o rodapé para fora da dobra.
+     ~4 fileiras de chips e o resto rola aqui dentro, sem roubar o scroll do
+     corpo do diálogo. */
+  max-height: 172px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 2px;
 }
 
 .empty-line {
@@ -497,6 +515,10 @@ const submit = () => {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  /* Alvo de toque de 36px (denso) sem inflar o chip. */
+  min-height: 36px;
+  max-width: 100%;
+  min-width: 0;
   padding: 5px 10px 5px 5px;
   border-radius: 999px;
   background: var(--surface-2);
@@ -506,6 +528,7 @@ const submit = () => {
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
+  text-align: left;
   transition:
     background var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
@@ -538,10 +561,8 @@ const submit = () => {
   flex-shrink: 0;
 }
 
-.member-chip--active .avatar {
-  background: var(--accent);
-  color: var(--accent-fg);
-}
+/* Selecionado NÃO repinta o avatar de acento: o tom é a identidade da pessoa e
+   precisa ser o mesmo do board. O estado vem da borda, do fundo e do check. */
 
 .member-name {
   max-width: 160px;

@@ -11,17 +11,24 @@ import BreakdownList from '@/features/time/components/BreakdownList.vue'
 import { formatDurationLong } from '@/utils/duration'
 import type { TeamPulseDay } from '@/features/time/composables/useTeamTime'
 
-const props = defineProps<{
-  teamTotalSec: number
-  activeCount: number
-  contributorCount: number
-  avgPerPersonSec: number
-  billableSec: number
-  billablePct: number
-  pulse: TeamPulseDay[]
-  pulseMax: number
-  byActivity: { title: string; sec: number; pct: number }[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** "Grupo" ou o nome da empresa em foco (aparece nos títulos). */
+    scopeLabel?: string
+    teamTotalSec: number
+    activeCount: number
+    contributorCount: number
+    avgPerPersonSec: number
+    billableSec: number
+    billablePct: number
+    pulse: TeamPulseDay[]
+    pulseMax: number
+    byActivity: { title: string; sec: number; pct: number }[]
+    /** Quebra por empresa: só faz sentido (e só vem preenchida) no grupo. */
+    byCompany?: { name: string; sec: number; pct: number }[]
+  }>(),
+  { scopeLabel: 'Equipe', byCompany: () => [] },
+)
 
 const activityItems = computed(() =>
   props.byActivity.map((a) => ({ name: a.title, sec: a.sec, pct: a.pct })),
@@ -31,9 +38,12 @@ const activityItems = computed(() =>
 <template>
   <aside class="trail">
     <RailCard title="Placar do período">
+      <template #aside>
+        <span class="trail-scope">{{ scopeLabel }}</span>
+      </template>
       <div class="trail-hero">
         <span class="trail-hero-val">{{ formatDurationLong(teamTotalSec) }}</span>
-        <span class="trail-hero-lbl">da equipe</span>
+        <span class="trail-hero-lbl">no total</span>
       </div>
 
       <div class="trail-metrics">
@@ -67,11 +77,15 @@ const activityItems = computed(() =>
       </span>
     </RailCard>
 
-    <RailCard title="Ritmo da equipe (7 dias)">
+    <RailCard v-if="byCompany.length > 1" title="Por empresa">
+      <BreakdownList :items="byCompany" />
+    </RailCard>
+
+    <RailCard title="Ritmo (7 dias)">
       <MiniBars :days="pulse" :max="pulseMax" />
     </RailCard>
 
-    <RailCard v-if="activityItems.length" title="Onde a equipe gastou">
+    <RailCard v-if="activityItems.length" title="Onde o tempo foi">
       <BreakdownList :items="activityItems" />
     </RailCard>
   </aside>
@@ -82,6 +96,19 @@ const activityItems = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.trail-scope {
+  max-width: 140px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trail-hero {

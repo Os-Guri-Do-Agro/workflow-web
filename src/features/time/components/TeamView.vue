@@ -1,19 +1,23 @@
 <script setup lang="ts">
 /**
- * Aba Equipe — o placar de tempo da empresa.
+ * Aba Equipe — o placar de tempo do grupo.
  *
- * Deixou de ser painel de ADMIN (jul/2026): virou ranking aberto a qualquer
- * membro, com pódio do período, lista ordenada por tempo registrado e o estado
- * ao vivo de quem está com timer rodando agora.
+ * Duas decisões de produto que moldam esta tela (jul/2026):
+ * - deixou de ser painel de ADMIN e virou ranking aberto a qualquer membro;
+ * - o escopo padrão é o GRUPO (todas as empresas somadas), porque as empresas
+ *   cadastradas são filiais do mesmo grupo e a mesma pessoa trabalha em mais de
+ *   uma; ranquear empresa por empresa partia a mesma equipe em placares
+ *   separados. Dá para focar numa empresa pelo seletor de escopo.
  */
 import { computed, ref } from 'vue'
-import { AlertTriangle, DollarSign, Lock, Trophy } from 'lucide-vue-next'
+import { AlertTriangle, DollarSign, Lock } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import TeamInsightsRail from '@/features/time/components/TeamInsightsRail.vue'
-import { useTeamTime } from '@/features/time/composables/useTeamTime'
+import RankMedal from '@/features/time/components/RankMedal.vue'
+import { useTeamTime, type TeamScope } from '@/features/time/composables/useTeamTime'
 import { avatarTone, initials } from '@/utils/avatar'
-import { formatDurationLong, formatTimer } from '@/utils/duration'
+import { formatClock, formatDurationLong, formatTimer } from '@/utils/duration'
 
 type Preset = 'today' | '7d' | '30d'
 const preset = ref<Preset>('7d')
@@ -22,6 +26,8 @@ const presets: Array<{ id: Preset; label: string }> = [
   { id: '7d', label: '7 dias' },
   { id: '30d', label: '30 dias' },
 ]
+
+const scope = ref<TeamScope>('group')
 
 const range = computed(() => {
   const now = new Date()
@@ -40,6 +46,7 @@ const range = computed(() => {
 })
 
 const {
+  companies,
   rows,
   podium,
   activeCount,
@@ -49,19 +56,51 @@ const {
   billableSec,
   billablePct,
   byActivity,
+  byCompany,
   pulse,
   pulseMax,
   isLoading,
   isError,
   isForbidden,
   refetch,
-} = useTeamTime(range)
+} = useTeamTime(range, scope)
 
 const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
+const isGroup = computed(() => scope.value === 'group')
+/** O seletor só faz sentido com mais de uma empresa no grupo. */
+const showScope = computed(() => companies.value.length > 1)
+
+const scopeLabel = computed(() =>
+  isGroup.value
+    ? 'Grupo'
+    : (companies.value.find((c) => c.id === scope.value)?.name ?? 'Empresa'),
+)
 </script>
 
 <template>
   <div class="team">
+    <!-- Escopo: grupo inteiro ou uma empresa -->
+    <nav v-if="showScope" class="scope" aria-label="Escopo do ranking">
+      <button
+        class="scope__btn"
+        :class="{ 'scope__btn--on': isGroup }"
+        type="button"
+        @click="scope = 'group'"
+      >
+        Grupo
+      </button>
+      <button
+        v-for="c in companies"
+        :key="c.id"
+        class="scope__btn"
+        :class="{ 'scope__btn--on': scope === c.id }"
+        type="button"
+        @click="scope = c.id"
+      >
+        {{ c.name }}
+      </button>
+    </nav>
+
     <!-- Resumo + período -->
     <header class="team-bar">
       <div class="team-summary">
@@ -70,7 +109,8 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
           {{ activeCount }} trabalhando agora
         </span>
         <span class="team-total">
-          Total da equipe: <strong>{{ formatDurationLong(teamTotalSec) }}</strong>
+          {{ scopeLabel }}: <strong>{{ formatDurationLong(teamTotalSec) }}</strong>
+          <template v-if="contributorCount"> em {{ contributorCount }} pessoas</template>
         </span>
       </div>
       <div class="team-presets">
@@ -118,7 +158,7 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
 
     <EmptyState
       v-else-if="rows.length === 0"
-      title="Nenhum membro na empresa"
+      title="Nenhum membro por aqui"
       description="Convide pessoas para a empresa para acompanhar o tempo da equipe."
     />
 
@@ -134,19 +174,30 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
             :style="{ '--pc': avatarTone(p.userName), '--i': i }"
           >
             <header class="pod__head">
+              <RankMedal :place="(p.rank as 1 | 2 | 3)" :size="p.rank === 1 ? 34 : 28" />
               <span class="pod__rank">{{ p.rank }}º</span>
-              <Trophy v-if="p.rank === 1" :size="14" class="pod__trophy" />
             </header>
-            <span class="pod__avatar">{{ initials(p.userName) }}</span>
-            <span class="pod__name" :title="p.userName">
-              {{ p.userName }}
-              <span v-if="p.isMe" class="pod__you">Você</span>
-            </span>
+
+            <div class="pod__who">
+              <span class="pod__avatar">{{ initials(p.userName) }}</span>
+              <!-- O nome trunca num filho próprio: texto solto dentro de um
+                   flex não respeita ellipsis e vazava o card. -->
+              <span class="pod__name">
+                <span class="pod__name-text" :title="p.userName">{{ p.userName }}</span>
+                <span v-if="p.isMe" class="pod__you">Você</span>
+              </span>
+            </div>
+
             <span class="pod__total">{{ formatDurationLong(p.totalSec) }}</span>
             <div class="pod__track">
               <div class="pod__fill" :style="{ width: p.pct + '%' }" />
             </div>
-            <span class="pod__pct">{{ p.pct }}% do total</span>
+            <span class="pod__pct">
+              {{ p.pct }}% do total
+              <template v-if="isGroup && p.companies.length > 1">
+                · {{ p.companies.length }} empresas
+              </template>
+            </span>
           </article>
         </section>
 
@@ -159,8 +210,9 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
             :class="{ 'team-row--live': row.running, 'team-row--me': row.isMe }"
             :style="{ '--pc': avatarTone(row.userName), '--i': i }"
           >
-            <span class="team-rank" :class="{ 'team-rank--top': row.rank <= 3 && row.totalSec > 0 }">
-              {{ row.totalSec > 0 ? `${row.rank}º` : '–' }}
+            <span class="team-rank">
+              <RankMedal v-if="row.rank <= 3 && row.totalSec > 0" :place="(row.rank as 1 | 2 | 3)" :size="22" />
+              <span v-else class="team-rank__num">{{ row.totalSec > 0 ? `${row.rank}º` : '–' }}</span>
             </span>
 
             <span class="team-avatar" :class="{ 'team-avatar--live': row.running }">
@@ -169,13 +221,21 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
 
             <div class="team-main-cell">
               <span class="team-name">
-                {{ row.userName }}
+                <span class="team-name-text">{{ row.userName }}</span>
                 <span v-if="row.isMe" class="team-you">Você</span>
+                <span
+                  v-if="isGroup && row.companies.length"
+                  class="team-where"
+                  :title="row.companies.join(', ')"
+                >
+                  {{ row.companies.join(' · ') }}
+                </span>
               </span>
 
               <div class="team-status">
                 <template v-if="row.running">
                   <span class="team-rec-dot" />
+                  <span class="team-since">desde {{ formatClock(row.running.startedAt) }}</span>
                   <span class="team-desc">{{ row.running.description || 'Sem descrição' }}</span>
                   <span v-if="row.running.activityTitle" class="team-tag team-tag--task">
                     {{ row.running.activityTitle }}
@@ -188,7 +248,7 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
                 <span v-else class="team-idle">Ocioso</span>
               </div>
 
-              <div v-if="hasScore" class="team-track" :aria-label="`${row.pct}% do tempo da equipe`">
+              <div v-if="hasScore" class="team-track" :aria-label="`${row.pct}% do tempo do escopo`">
                 <div class="team-track-fill" :style="{ width: row.pct + '%' }" />
               </div>
             </div>
@@ -206,6 +266,7 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
 
       <TeamInsightsRail
         class="team-rail"
+        :scope-label="scopeLabel"
         :team-total-sec="teamTotalSec"
         :active-count="activeCount"
         :contributor-count="contributorCount"
@@ -215,6 +276,7 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
         :pulse="pulse"
         :pulse-max="pulseMax"
         :by-activity="byActivity"
+        :by-company="isGroup ? byCompany : []"
       />
     </div>
   </div>
@@ -226,6 +288,46 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* ── Seletor de escopo (grupo x empresa) ── */
+.scope {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.scope__btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.scope__btn:hover {
+  color: var(--text);
+}
+
+.scope__btn--on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Mesma divisão da aba individual: placar à esquerda, insights à direita. */
@@ -271,6 +373,8 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   display: inline-flex;
   align-items: center;
   gap: 18px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .team-active {
@@ -332,9 +436,8 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
 }
 
 /* ── Pódio ──────────────────────────────────────────────────────
-   Sem ouro/prata/bronze: a posição é dita pelo número e pelo tamanho da
-   barra. O 1º lugar ganha um realce de superfície e o troféu, nada de
-   sombra colorida. */
+   A hierarquia vem da medalha e do tamanho do número, não de ouro/prata
+   pintados no card. O 1º ganha superfície levemente destacada. */
 .podium {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -345,18 +448,19 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
+  min-width: 0;
   animation: pod-in 420ms var(--spring) backwards;
   animation-delay: calc(var(--i, 0) * 60ms);
 }
 
 .pod--first {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
   background: color-mix(in srgb, var(--accent) 5%, var(--surface));
 }
 
@@ -368,27 +472,31 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
 .pod__head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .pod__rank {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 800;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 
 .pod--first .pod__rank {
-  color: var(--accent);
+  color: var(--text);
 }
 
-.pod__trophy {
-  color: var(--accent);
+.pod__who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
 }
 
 .pod__avatar {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -396,7 +504,7 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   background: color-mix(in srgb, var(--pc) 16%, var(--surface));
   color: color-mix(in srgb, var(--pc) 64%, var(--text));
   border: 1px solid color-mix(in srgb, var(--pc) 32%, transparent);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -404,9 +512,14 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   color: var(--text);
   font-size: 13px;
   font-weight: 650;
+}
+
+.pod__name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -427,10 +540,14 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
 
 .pod__total {
   color: var(--text);
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+
+.pod--first .pod__total {
+  font-size: 22px;
 }
 
 .pod__track {
@@ -456,6 +573,9 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   color: var(--text-4);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @keyframes pod-in {
@@ -516,16 +636,17 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
 
 .team-rank {
   flex: 0 0 auto;
-  min-width: 26px;
+  width: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.team-rank__num {
   color: var(--text-4);
   font-size: 12.5px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.team-rank--top {
-  color: var(--text);
 }
 
 .team-avatar {
@@ -559,9 +680,28 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   display: flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
   color: var(--text);
   font-size: 13.5px;
   font-weight: 650;
+}
+
+.team-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Em quais empresas do grupo a pessoa registrou tempo. */
+.team-where {
+  min-width: 0;
+  color: var(--text-4);
+  font-size: 11px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .team-status {
@@ -581,13 +721,21 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   animation: team-pulse 1.6s ease-in-out infinite;
 }
 
+.team-since {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
 .team-desc {
   color: var(--text-2);
   font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 320px;
+  max-width: 280px;
 }
 
 .team-idle {
@@ -601,6 +749,10 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   font-size: 10.5px;
   font-weight: 650;
   flex: 0 0 auto;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .team-tag--task {
@@ -621,7 +773,7 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   color: var(--success);
 }
 
-/* Barra de placar: proporção do tempo da pessoa no total da equipe. */
+/* Barra de placar: proporção do tempo da pessoa no total do escopo. */
 .team-track {
   height: 4px;
   max-width: 420px;
@@ -730,18 +882,24 @@ const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 980px) {
   .podium {
     grid-template-columns: 1fr;
+  }
+  .team-metrics {
+    gap: 12px;
+  }
+  .team-desc {
+    max-width: 180px;
   }
 }
 
 @media (max-width: 640px) {
-  .team-desc {
-    max-width: 160px;
+  .team-row {
+    flex-wrap: wrap;
   }
-  .team-metrics {
-    gap: 12px;
+  .team-desc {
+    max-width: 140px;
   }
 }
 </style>

@@ -9,6 +9,7 @@ import timeService, {
 } from '@/service/time/time-service'
 import realtimeService from '@/service/realtime/realtime-service'
 import { elapsedSince } from '@/utils/duration'
+import { onTabVisible } from '@/utils/tab-visibility'
 
 export const timeKeys = {
   all: ['time'] as const,
@@ -29,12 +30,21 @@ const sharedNow = ref(Date.now())
 let consumerCount = 0
 let intervalId: number | null = null
 let realtimeUnsub: (() => boolean) | null = null
+let unbindVisibility: (() => void) | null = null
 
 function ensureTicker() {
   if (intervalId === null) {
     intervalId = window.setInterval(() => {
       sharedNow.value = Date.now()
     }, 1000)
+  }
+  // O tique de 1s é congelado pelo browser em aba oculta, e é exatamente aí que
+  // o timer costuma rodar (a pessoa está trabalhando em outra aba). Sem isto, ao
+  // voltar o cronômetro ficava parado no valor velho até o próximo tique.
+  if (!unbindVisibility) {
+    unbindVisibility = onTabVisible(() => {
+      sharedNow.value = Date.now()
+    })
   }
 }
 
@@ -43,6 +53,8 @@ function stopTicker() {
     window.clearInterval(intervalId)
     intervalId = null
   }
+  unbindVisibility?.()
+  unbindVisibility = null
 }
 
 /**
