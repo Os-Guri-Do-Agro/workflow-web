@@ -169,9 +169,29 @@ const previewStyle = computed<QrStyle>(() => ({
   logoUrl: form.logoUrl || undefined,
 }))
 
-// Texto do preview: redirectUrl quando editando; senão o destino digitado; senão um exemplo.
+// Texto do preview: redirectUrl quando editando; senão o destino digitado; senão
+// um exemplo.
+//
+// O destino digitado passa por um atraso curto DE PROPÓSITO: sem ele, cada tecla
+// no campo de destino manda o `qr-code-styling` recalcular a matriz e redesenhar
+// o QR inteiro, e digitar uma URL vira uma sequência de travadas.
+const targetDebounced = ref('')
+let targetTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(
+  () => form.targetUrl,
+  (v) => {
+    if (targetTimer) clearTimeout(targetTimer)
+    targetTimer = setTimeout(() => {
+      targetTimer = null
+      targetDebounced.value = v.trim()
+    }, 350)
+  },
+  { immediate: true },
+)
+
 const previewText = computed(
-  () => props.editing?.redirectUrl || form.targetUrl.trim() || 'https://exemplo.com',
+  () => props.editing?.redirectUrl || targetDebounced.value || 'https://exemplo.com',
 )
 
 function applyPreset(preset: { dark: string; light: string }) {
@@ -338,6 +358,7 @@ function saveDraft() {
 
 onBeforeUnmount(() => {
   if (draftTimer) clearTimeout(draftTimer)
+  if (targetTimer) clearTimeout(targetTimer)
 })
 
 function clearDraft() {

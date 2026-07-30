@@ -29,7 +29,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { EditorContent } from '@tiptap/vue-3'
 import { useTaskDescriptionEditor } from '../composables/useTaskDescriptionEditor'
 import TaskDescriptionBubbleMenu from './TaskDescriptionBubbleMenu.vue'
-import { normalizeHtml, plainTextLength, toEditorHtml } from '../description-html'
+import { normalizeHtml, toEditorHtmlCached } from '../description-html'
 import type { SaveState } from '@/components/ui/save-state'
 import '../styles/task-content.css'
 
@@ -75,8 +75,15 @@ const props = withDefaults(
 
 const emit = defineEmits<{ save: [value: string] }>()
 
-/** HTML aplicado no editor por último, para o watcher não reescrever à toa. */
-const applied = ref(toEditorHtml(props.modelValue))
+/**
+ * Contagem de caracteres, mantida pela extensão `CharacterCount` do TipTap.
+ *
+ * O `tick` existe porque `editor.storage` NÃO é reativo: sem ele o número
+ * congela. É um inteiro que incrementa por transação, e não uma releitura do
+ * documento — a versão anterior recalculava a contagem varrendo o HTML inteiro a
+ * cada tecla, e era a causa principal da digitação travada.
+ */
+const tick = ref(0)
 const dirty = ref(false)
 const focused = ref(false)
 const bubble = ref<InstanceType<typeof TaskDescriptionBubbleMenu> | null>(null)
@@ -92,8 +99,11 @@ function clearTimer() {
 const { editor } = useTaskDescriptionEditor({
   placeholder: props.placeholder,
   editable: !props.disabled,
-  onUpdate: (html) => {
-    applied.value = html
+  onUpdate: () => {
+    // Nada de guardar/derivar o HTML aqui: `onUpdate` roda A CADA TECLA, e
+    // qualquer trabalho O(documento) neste ponto vira travamento de digitação.
+    // Quem precisa do HTML é o `flush`, que roda depois da pausa.
+    tick.value += 1
     dirty.value = true
     clearTimer()
     timer = window.setTimeout(flush, props.debounceMs)
@@ -109,10 +119,13 @@ function flush() {
   clearTimer()
   if (!dirty.value || props.disabled) return
   dirty.value = false
+  // `getHTML()` serializa o documento: caro, mas aqui roda UMA vez por pausa na
+  // digitação, não por tecla.
   const value = normalizeHtml(editor.value?.getHTML() ?? '')
   // O `<p></p>` que o ProseMirror emite para documento vazio já virou '' aqui.
   // Sem essa comparação, abrir e fechar sem editar geraria um PATCH inútil.
-  if (value === normalizeHtml(toEditorHtml(props.modelValue))) return
+  if (value === normalizeHtml(toEditorHtmlCached(props.modelValue))) return
+  applied = value
   emit('save', value)
 }
 
@@ -120,12 +133,22 @@ function flush() {
 function reset() {
   clearTimer()
   dirty.value = false
-  const html = toEditorHtml(props.modelValue)
-  applied.value = html
+  const html = toEditorHtmlCached(props.modelValue)
+  applied = html
+  lastSeen = props.modelValue ?? ''
   editor.value?.commands.setContent(html, { emitUpdate: false })
 }
 
-const characterCount = computed(() => plainTextLength(applied.value))
+/** O(1): a extensão mantém o número, não recalcula o documento. */
+const characterCount = computed(() => {
+  void tick.value
+  return editor.value?.storage.characterCount?.characters() ?? 0
+})
+
+/** Último HTML que ESTE componente aplicou ou gravou, para o watcher comparar. */
+let applied = toEditorHtmlCached(props.modelValue)
+/** Último `modelValue` visto, para descartar o eco do servidor sem custo. */
+let lastSeen = props.modelValue ?? ''
 
 // Conteúdo inicial: o `useEditor` monta com content vazio e o valor pode chegar
 // depois (a query do painel resolve async).
@@ -141,9 +164,18 @@ watch(
     // chega é o estado ANTIGO restaurado pelo rollback, não novidade do servidor.
     // Aceitá-lo apagaria da tela exatamente o texto que falhou ao salvar.
     if (props.state === 'saving' || props.state === 'error') return
-    const incoming = toEditorHtml(value)
-    if (normalizeHtml(incoming) === normalizeHtml(instance.getHTML())) return
-    applied.value = incoming
+
+    // Comparação BARATA primeiro: o caso comum é o eco do que acabamos de
+    // gravar, e aí não há nada a fazer. Só quando o valor é realmente novo é que
+    // vale pagar a conversão e o `setContent`. Antes isto serializava o
+    // documento inteiro (`getHTML()`) a cada resposta do servidor.
+    const cru = value ?? ''
+    if (cru === lastSeen) return
+    lastSeen = cru
+
+    const incoming = toEditorHtmlCached(cru)
+    if (normalizeHtml(incoming) === normalizeHtml(applied)) return
+    applied = incoming
     instance.commands.setContent(incoming, { emitUpdate: false })
   },
   { immediate: true },

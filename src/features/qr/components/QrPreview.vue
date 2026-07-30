@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type QRCodeStyling from 'qr-code-styling'
 import { buildQrOptions, renderInto } from '@/utils/qr-styled'
 import type { QrStyle } from '@/service/qr/qr-service'
@@ -44,11 +44,33 @@ function draw() {
 
 onMounted(draw)
 
-// Redesenha quando texto, tamanho ou qualquer campo do estilo muda.
-watch(
-  () => [props.text, props.size, JSON.stringify(props.style ?? null)],
-  draw,
-)
+/**
+ * Chave barata do estilo, para decidir se vale redesenhar.
+ *
+ * A versão anterior usava `JSON.stringify(props.style)` na EXPRESSÃO DE ORIGEM do
+ * watcher. Origem de watcher é reavaliada a cada mudança reativa do componente,
+ * e `style.logoUrl` é uma data URL de até 200KB: serializar isso repetidamente,
+ * no meio da digitação, trava o diálogo.
+ *
+ * Aqui só entram os campos curtos. O logo participa pelo TAMANHO e pelo começo
+ * da string, o que distingue trocar/remover logo sem nunca copiar os 200KB.
+ */
+const styleKey = computed(() => {
+  const s = props.style
+  if (!s) return ''
+  const logo = s.logoUrl ?? ''
+  return [
+    s.colorDark ?? '',
+    s.colorLight ?? '',
+    s.dotStyle ?? '',
+    s.cornerStyle ?? '',
+    logo.length,
+    logo.slice(0, 48),
+  ].join('|')
+})
+
+// Redesenha quando texto, tamanho ou algum campo do estilo muda de verdade.
+watch(() => [props.text, props.size, styleKey.value], draw)
 
 onBeforeUnmount(() => {
   qr = null

@@ -84,23 +84,66 @@ export function toEditorHtml(raw: string | null | undefined): string {
 }
 
 /**
- * Achata a descrição em uma linha de texto, para resumo em lista e para contagem.
+ * Achata a descrição em uma linha de texto, para resumo em lista.
  *
- * Sanitiza ANTES de tocar no DOM: um `<img onerror>` colocado num `innerHTML`,
- * mesmo de elemento solto, executa. `textContent` de HTML não sanitizado seria
- * seguro, mas o caminho até ele não é.
+ * ## Por que `DOMParser` e não `innerHTML` + DOMPurify
+ *
+ * A primeira versão sanitizava e depois jogava num `div.innerHTML` para ler o
+ * `textContent`. Isso é DOIS parses completos de HTML mais uma varredura do
+ * DOMPurify, e estava sendo chamado dentro de template (a cada render) e a cada
+ * tecla digitada: ~1ms por chamada que, multiplicado por subtarefa e por frame,
+ * derrubava a digitação para algo perto de 10fps.
+ *
+ * `DOMParser.parseFromString` resolve os dois problemas de uma vez. É UM parse,
+ * e o documento que ele cria é **inerte**: não executa script, não carrega
+ * imagem, não dispara `onerror`. Ou seja, é mais rápido E mais seguro que o
+ * caminho anterior — aqui não há nada para sanitizar, porque nada disso vai
+ * parar numa árvore viva.
  */
+const parser = typeof DOMParser !== 'undefined' ? new DOMParser() : null
+
 export function htmlToPlainText(raw: string | null | undefined): string {
   if (!raw) return ''
   if (!isHtmlish(raw)) return raw.replace(/\s+/g, ' ').trim()
-  const holder = document.createElement('div')
-  holder.innerHTML = renderHtml(raw.replace(BLOCK_END, ' '))
-  return (holder.textContent ?? '').replace(/\s+/g, ' ').trim()
+  if (!parser) return raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  const doc = parser.parseFromString(raw.replace(BLOCK_END, ' '), 'text/html')
+  return (doc.body.textContent ?? '').replace(/\s+/g, ' ').trim()
 }
 
-/** Quantidade de caracteres de TEXTO (o markup não conta). */
+/**
+ * Quantidade de caracteres de TEXTO (o markup não conta).
+ *
+ * ATENÇÃO: é O(tamanho do documento). NÃO use por tecla digitada — dentro do
+ * editor existe `editor.storage.characterCount.characters()`, que a extensão
+ * `CharacterCount` do TipTap mantém incrementalmente em O(1).
+ */
 export function plainTextLength(raw: string | null | undefined): number {
   return htmlToPlainText(raw).length
+}
+
+/**
+ * `toEditorHtml` com memória.
+ *
+ * Existe porque o mesmo HTML é convertido de novo a cada render de quem o exibe.
+ * A conversão passa pelo DOMPurify, que não é barato; o resultado, para uma
+ * mesma entrada, é sempre igual. O cache é pequeno e por processo: descrição de
+ * tarefa tem poucas variações vivas ao mesmo tempo.
+ */
+const cache = new Map<string, string>()
+const CACHE_MAX = 60
+
+export function toEditorHtmlCached(raw: string | null | undefined): string {
+  if (!raw) return ''
+  const hit = cache.get(raw)
+  if (hit !== undefined) return hit
+  const out = toEditorHtml(raw)
+  // Descarta o mais antigo quando enche: é cache de render, não de dados.
+  if (cache.size >= CACHE_MAX) {
+    const primeiro = cache.keys().next().value
+    if (primeiro !== undefined) cache.delete(primeiro)
+  }
+  cache.set(raw, out)
+  return out
 }
 
 /** A pessoa usou alguma formatação, ou só digitou parágrafos? */

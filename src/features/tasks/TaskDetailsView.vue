@@ -50,7 +50,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import TaskDescriptionEditor from './components/TaskDescriptionEditor.vue'
-import { htmlToPlainText, toEditorHtml } from './description-html'
+import { htmlToPlainText, toEditorHtmlCached } from './description-html'
 import { useAnalytics } from '@/composables/useAnalytics'
 import './styles/task-content.css'
 
@@ -589,6 +589,28 @@ const updateSubtask = async () => {
 // com as MESMAS iniciais aqui, no board e no ranking da equipe.
 const getUserInitials = (name: string) => initials(name)
 
+// ─── Descrição: derivada em `computed`, NUNCA chamada do template ────────────
+//
+// Converter/sanitizar HTML é O(tamanho do documento). Chamado direto no template,
+// isso roda a CADA RE-RENDER — e no caso do resumo das subtarefas, uma vez por
+// subtarefa por render. Com o painel re-renderizando enquanto se digita, era
+// trabalho suficiente para estourar o orçamento de 16ms do frame e derrubar a
+// tela para algo perto de 10fps. `computed` recalcula só quando a entrada muda.
+const descriptionHtml = computed(() => toEditorHtmlCached(activityInfo.value?.description ?? ''))
+
+const selectedSubtaskHtml = computed(() =>
+  toEditorHtmlCached(selectedSubtask.value?.description ?? ''),
+)
+
+/** Resumo de uma linha por subtarefa, calculado uma vez por mudança da lista. */
+const subtaskSummaries = computed<Record<string, string>>(() => {
+  const out: Record<string, string> = {}
+  for (const task of subtasks.value) {
+    if (task?.description) out[task.id] = htmlToPlainText(task.description)
+  }
+  return out
+})
+
 const goBack = () => {
   router.push(`/tasks/${activeMonthId.value}`)
 }
@@ -759,7 +781,7 @@ const deleteAttachment = async (attachmentId: string) => {
           <div
             v-if="activityInfo.description"
             class="task-prose desc-body"
-            v-html="toEditorHtml(activityInfo.description)"
+            v-html="descriptionHtml"
           />
           <p v-else class="desc-empty">Sem descrição</p>
         </section>
@@ -805,7 +827,7 @@ const deleteAttachment = async (attachmentId: string) => {
                      (mostraria as tags) nem como interpolação crua do campo
                      (idem, depois de a descrição virar texto rico). -->
                 <p v-if="task.description" class="subtask-desc">
-                  {{ htmlToPlainText(task.description) }}
+                  {{ subtaskSummaries[task.id] }}
                 </p>
                 <div class="subtask-meta">
                   <Pill :icon="getStatusConfig(task.status).icon" :color="getStatusConfig(task.status).token">
@@ -1385,7 +1407,7 @@ const deleteAttachment = async (attachmentId: string) => {
             <!-- eslint-disable-next-line vue/no-v-html - sanitizado por `toEditorHtml` -->
             <div
               class="view-value task-prose desc-body"
-              v-html="toEditorHtml(selectedSubtask.description)"
+              v-html="selectedSubtaskHtml"
             />
           </div>
 
