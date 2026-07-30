@@ -1,13 +1,13 @@
+import { readToken } from '@/plugins/tokens'
 // Helpers para os sparklines (ECharts) do Dashboard.
 // O canvas do ECharts não entende `var(--xxx)` nem `color-mix`, então
 // resolvemos a cor em runtime a partir das CSS custom properties.
 
 export function resolveCssColor(input: string): string {
   if (!input.startsWith('var(')) return input
-  const name = input.slice(4, -1).trim()
-  if (typeof window === 'undefined') return '#6366f1'
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return v || '#6366f1'
+  // `readToken` cacheia: ler custom property força recálculo de estilo do
+  // documento, e isto roda por sparkline.
+  return readToken(input.slice(4, -1).trim(), '#6366f1')
 }
 
 export function withAlpha(input: string, alpha: number): string {

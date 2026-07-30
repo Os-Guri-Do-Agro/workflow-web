@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { memoPorArg } from '@/utils/memo'
 import {
   Activity,
   BarChart3,
@@ -473,7 +474,7 @@ function isPointItem(item: RoadmapItem): boolean {
   return item.kind !== 'month' && item.start === item.end
 }
 
-function laneItems(laneId: string): RoadmapItem[] {
+function laneItemsCalc(laneId: string): RoadmapItem[] {
   return annualItems.value
     .filter(
       (item) =>
@@ -524,7 +525,7 @@ function milestoneAnchoredToLane(milestone: RoadmapMilestone, laneId: string): b
   return milestone.quarterId === laneId || milestone.laneId === laneId
 }
 
-function laneMilestones(laneId: string): RoadmapMilestone[] {
+function laneMilestonesCalc(laneId: string): RoadmapMilestone[] {
   return annualMilestones.value.filter(
     (milestone) => milestoneAnchoredToLane(milestone, laneId) && milestonePassesFilters(milestone),
   )
@@ -1165,7 +1166,7 @@ function deliveryStatusLabel(delivery: CalendarDelivery): string {
 }
 
 /** Agenda unificada do mês, ordenada por data; empate mantém a anotação antes. */
-function monthAgenda(month: MonthlyPlan): MonthAgendaItem[] {
+function monthAgendaCalc(month: MonthlyPlan): MonthAgendaItem[] {
   const items: MonthAgendaItem[] = [
     ...month.entries.map<MonthAgendaItem>((entry) => ({
       kind: 'entry',
@@ -1213,7 +1214,7 @@ function openDelivery(delivery: CalendarDelivery) {
   })
 }
 
-function monthCategories(month: MonthlyPlan): Array<{ category: CalendarCategory; count: number; meta: CalendarCategoryMeta }> {
+function monthCategoriesCalc(month: MonthlyPlan): Array<{ category: CalendarCategory; count: number; meta: CalendarCategoryMeta }> {
   return Object.entries(calendarCategoryMeta)
     .map(([category, meta]) => ({
       category: category as CalendarCategory,
@@ -1256,7 +1257,7 @@ const drawerAgenda = computed<MonthAgendaItem[]>(() => {
   return all.filter((item) => item.date === selectedDayKey.value)
 })
 
-function focusItemsFor(month: MonthlyPlan): string[] {
+function focusItemsForCalc(month: MonthlyPlan): string[] {
   return [...month.bullets, ...(extraFocusItems.value[month.key] ?? [])]
 }
 
@@ -1333,7 +1334,7 @@ async function removeFocusItem(month: MonthlyPlan, focusIndex: number) {
   }
 }
 
-function focusPhotosFor(monthKey: string): string[] {
+function focusPhotosForCalc(monthKey: string): string[] {
   return focusPhotos.value[monthKey] ?? []
 }
 
@@ -1415,7 +1416,7 @@ function dateKey(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-function calendarCells(month: MonthlyPlan): Array<{ key: string; day: number | null; date?: string }> {
+function calendarCellsCalc(month: MonthlyPlan): Array<{ key: string; day: number | null; date?: string }> {
   // `month.month` é 0-based (Jan = 0), igual ao que a API grava (schema Prisma:
   // "zero-based (0-11)") e ao que `dateKey` espera. O `-1` que havia aqui tratava
   // como 1-based e jogava o mês inteiro para trás: julho renderizava a grade de
@@ -1669,6 +1670,41 @@ async function removeSelectedMilestone() {
     showError(apiErrorMessage(err, 'Não foi possível remover o marco'))
   }
 }
+
+/* ── Memoizacao dos helpers chamados de template ──────────────────────────
+ *
+ * Estes rodavam a cada re-render, dentro de `v-for`, construindo array novo
+ * por item. O calculo continua igual (`<nome>Calc`); o que muda e so nao
+ * refazer o mesmo trabalho enquanto os dados nao mudam.
+ */
+const calendarCells = memoPorArg(
+  () => [monthlyPlans.value, annualItems.value, annualMilestones.value, extraFocusItems.value, focusPhotos.value, activeStatus.value, onlyOverdue.value, annualViewMode.value, isRoadmapPrinting.value],
+  calendarCellsCalc,
+)
+const monthAgenda = memoPorArg(
+  () => [monthlyPlans.value, annualItems.value, annualMilestones.value, extraFocusItems.value, focusPhotos.value, activeStatus.value, onlyOverdue.value, annualViewMode.value, isRoadmapPrinting.value],
+  monthAgendaCalc,
+)
+const monthCategories = memoPorArg(
+  () => [monthlyPlans.value, annualItems.value, annualMilestones.value, extraFocusItems.value, focusPhotos.value, activeStatus.value, onlyOverdue.value, annualViewMode.value, isRoadmapPrinting.value],
+  monthCategoriesCalc,
+)
+const focusItemsFor = memoPorArg(
+  () => [monthlyPlans.value, annualItems.value, annualMilestones.value, extraFocusItems.value, focusPhotos.value, activeStatus.value, onlyOverdue.value, annualViewMode.value, isRoadmapPrinting.value],
+  focusItemsForCalc,
+)
+const laneItems = memoPorArg(
+  () => [monthlyPlans.value, annualItems.value, annualMilestones.value, extraFocusItems.value, focusPhotos.value, activeStatus.value, onlyOverdue.value, annualViewMode.value, isRoadmapPrinting.value],
+  laneItemsCalc,
+)
+const laneMilestones = memoPorArg(
+  () => [monthlyPlans.value, annualItems.value, annualMilestones.value, extraFocusItems.value, focusPhotos.value, activeStatus.value, onlyOverdue.value, annualViewMode.value, isRoadmapPrinting.value],
+  laneMilestonesCalc,
+)
+const focusPhotosFor = memoPorArg(
+  () => [monthlyPlans.value, annualItems.value, annualMilestones.value, extraFocusItems.value, focusPhotos.value, activeStatus.value, onlyOverdue.value, annualViewMode.value, isRoadmapPrinting.value],
+  focusPhotosForCalc,
+)
 </script>
 
 <template>

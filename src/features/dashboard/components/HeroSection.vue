@@ -27,6 +27,13 @@ const emit = defineEmits<{
   (e: 'new-task'): void
 }>()
 
+/**
+ * Memoizado: `sparkOption` devolve objeto novo a cada chamada, e o `vue-echarts`
+ * compara `option` por identidade. Chamado no template, redesenhava o canvas a
+ * cada render e forçava três `getComputedStyle(documentElement)` junto.
+ */
+const heroSparkOption = computed(() => sparkOption(props.weeklyCreated, 'var(--accent)'))
+
 const hasTrend = computed(() => props.weeklyCreated.some((v) => v > 0))
 const trendDelta = computed(() => props.weeklyCreated.reduce((a, b) => a + b, 0))
 </script>
@@ -108,7 +115,7 @@ const trendDelta = computed(() => props.weeklyCreated.reduce((a, b) => a + b, 0)
             <div v-if="loading" class="spark-skel" />
             <VChart
               v-else-if="hasTrend"
-              :option="sparkOption(weeklyCreated, 'var(--accent)')"
+              :option="heroSparkOption"
               :autoresize="true"
             />
             <div v-else class="spark-empty">

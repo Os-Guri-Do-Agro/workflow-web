@@ -255,7 +255,30 @@ export function applyXpMode(on: boolean): void {
   else root.removeAttribute('data-xp')
 }
 
+/**
+ * Lê uma CSS custom property, com cache.
+ *
+ * `getComputedStyle(document.documentElement)` FORÇA recálculo de estilo do
+ * documento inteiro. Quem precisa da cor em runtime (canvas do echarts, favicon)
+ * chamava isso a cada render — o dashboard fazia quinze dessas por passada.
+ * O valor só muda em `applyThemeTokens`, que limpa o cache.
+ */
+const cacheDeTokens = new Map<string, string>()
+
+export function readToken(name: string, fallback = ''): string {
+  if (typeof document === 'undefined') return fallback
+  const hit = cacheDeTokens.get(name)
+  if (hit !== undefined) return hit
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+  cacheDeTokens.set(name, v)
+  return v
+}
+
 export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral'): void {
+  // Quem resolve `var(--x)` para hex em runtime (canvas do echarts, favicon)
+  // cacheia o valor, porque ler custom property força recálculo de estilo do
+  // documento. Este é o único momento em que esses valores mudam.
+  cacheDeTokens.clear()
   const root = document.documentElement
   const tokens = themeTokens[theme]
   for (const [key, value] of Object.entries(tokens)) {

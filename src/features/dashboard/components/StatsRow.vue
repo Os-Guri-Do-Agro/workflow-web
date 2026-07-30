@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -10,15 +11,37 @@ import type { StatCard } from '@/composables/useDashboardOrchestration'
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
 
-defineProps<{
+const props = defineProps<{
   stats: StatCard[]
   loading: boolean
 }>()
+
+/**
+ * Opções dos sparklines, memoizadas por card.
+ *
+ * Antes o template chamava `sparkOption(...)` direto. Duas consequências, as duas
+ * ruins e nenhuma visível no código:
+ *
+ * 1. A função devolve um OBJETO NOVO a cada chamada. O `vue-echarts` compara a
+ *    prop `option` por identidade, então cada render reaplicava `setOption` e
+ *    redesenhava o canvas dos quatro gráficos, mesmo sem nenhum dado ter mudado.
+ * 2. `sparkOption` resolve cor via `getComputedStyle(document.documentElement)`,
+ *    três vezes por chamada. Isso força recálculo de estilo do documento inteiro,
+ *    doze vezes por render aqui.
+ *
+ * Com `computed`, só recalcula quando `stats` muda de verdade.
+ */
+const options = computed(() => props.stats.map((s) => (s.noData ? null : sparkOption(s.spark, s.color))))
 </script>
 
 <template>
   <section class="stats-row">
-    <div v-for="s in stats" :key="s.title" class="stat-card" :style="{ '--stat-c': s.color }">
+    <div
+      v-for="(s, i) in stats"
+      :key="s.title"
+      class="stat-card"
+      :style="{ '--stat-c': s.color }"
+    >
       <div v-if="loading" class="stat-skel"><Skeleton type="row" /></div>
       <template v-else>
         <div class="stat-card-head">
@@ -31,7 +54,7 @@ defineProps<{
         <div class="stat-footer">
           <span class="stat-label">{{ s.title }}</span>
           <div class="stat-spark">
-            <VChart v-if="!s.noData" :option="sparkOption(s.spark, s.color)" :autoresize="true" />
+            <VChart v-if="options[i]" :option="options[i]" :autoresize="true" />
             <span v-else class="stat-spark-empty" title="Sem atividade registrada">sem atividade</span>
           </div>
         </div>

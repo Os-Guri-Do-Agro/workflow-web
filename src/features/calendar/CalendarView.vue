@@ -476,8 +476,21 @@ function eventMeta(type: string) {
   return EVENT_META[type as EventType] ?? EVENT_FALLBACK
 }
 
+/**
+ * Estilo por TIPO de evento, com identidade estável.
+ *
+ * Devolvia um objeto novo a cada chamada, e é chamado do template por evento por
+ * célula: identidade nova obriga o Vue a repatchar o `style` toda vez. Os tipos
+ * são poucos e fixos, então um objeto por tipo basta.
+ */
+const estiloPorTipo = new Map<string, Record<string, string>>()
+
 function eventStyle(event: CalendarEvent) {
-  return { '--ev-c': eventMeta(event.type).token }
+  const pronto = estiloPorTipo.get(event.type)
+  if (pronto) return pronto
+  const estilo = { '--ev-c': eventMeta(event.type).token }
+  estiloPorTipo.set(event.type, estilo)
+  return estilo
 }
 
 function toDateInputValue(date: Date): string {
@@ -514,15 +527,45 @@ function isAllDayLike(event: CalendarEvent): boolean {
 }
 
 // Eventos com hora (não all-day) que começam no dia informado.
+/**
+ * Memória por dia, atada aos eventos.
+ *
+ * `timedEventsForDay` e `barEventsForDay` são chamadas DO TEMPLATE, uma vez por
+ * célula do mês (~35) e a cada re-render. Cada chamada filtrava a lista do dia
+ * alocando um `Date` por evento. O resultado só muda quando `eventsByDay` muda,
+ * então o `computed` serve de invalidação automática: quando os eventos mudam,
+ * o objeto de cache é recriado vazio e tudo recalcula uma vez só.
+ */
+const cachePorDia = computed(() => {
+  void eventsByDay.value
+  return {
+    timed: new Map<string, CalendarEvent[]>(),
+    barras: new Map<string, CalendarEvent[]>(),
+  }
+})
+
 function timedEventsForDay(date: Date): CalendarEvent[] {
-  return getDayEvents(date).filter(
-    (ev) => !isAllDayLike(ev) && startOfDay(new Date(ev.startDate)).getTime() === startOfDay(date).getTime(),
+  const chave = dateKey(date)
+  const cache = cachePorDia.value.timed
+  const pronto = cache.get(chave)
+  if (pronto) return pronto
+  const inicioDoDia = startOfDay(date).getTime()
+  const lista = getDayEvents(date).filter(
+    (ev) => !isAllDayLike(ev) && startOfDay(new Date(ev.startDate)).getTime() === inicioDoDia,
   )
+  cache.set(chave, lista)
+  return lista
 }
 
 // Eventos-barra (all-day/multi-dia) que cruzam o dia informado.
 function barEventsForDay(date: Date): CalendarEvent[] {
-  return getDayEvents(date).filter((ev) => isAllDayLike(ev))
+  const chave = dateKey(date)
+  const cache = cachePorDia.value.barras
+  const pronto = cache.get(chave)
+  if (pronto) return pronto
+  const lista = getDayEvents(date).filter((ev) => isAllDayLike(ev))
+  cache.set(chave, lista)
+  return lista
 }
 
 function eventPosition(event: CalendarEvent): { top: string; height: string } {
