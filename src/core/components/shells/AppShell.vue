@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, defineAsyncComponent, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import CommandShell from './CommandShell.vue'
 import FocusShell from './FocusShell.vue'
 import CanvasShell from './CanvasShell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
-import AssistantPanel from '@/components/assistant/AssistantPanel.vue'
+/**
+ * Assíncrono porque o painel renderiza markdown da IA, e o markdown puxa o
+ * `highlight.js` (314 KB). Sendo import estático aqui, o destaque de sintaxe
+ * entrava no chunk de ENTRADA e era baixado por quem só abriu a tela de login.
+ * O painel só monta quando alguém abre o assistente, então nada se perde.
+ */
+const AssistantPanel = defineAsyncComponent(
+  () => import('@/components/assistant/AssistantPanel.vue'),
+)
 import AssistantLauncher from '@/components/assistant/AssistantLauncher.vue'
 import WelcomeGuide from '@/components/onboarding/WelcomeGuide.vue'
 import XpTaskbar from './shared/XpTaskbar.vue'

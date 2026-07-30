@@ -10,19 +10,16 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import vuetify from './plugins/vuetify'
-import VChart from 'vue-echarts'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { PieChart } from 'echarts/charts'
 import { createPinia } from 'pinia'
-import { TitleComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { VueQueryPlugin } from '@tanstack/vue-query'
-import { MotionPlugin } from '@vueuse/motion'
 import { applyThemeTokens, type AccentName, type ThemeName } from '@/plugins/tokens'
 import { queryClient } from '@/service/query-client'
 import { startRealtimeQuerySync } from '@/composables/useRealtimeQuerySync'
 
-use([CanvasRenderer, PieChart, TitleComponent, TooltipComponent, LegendComponent])
+// O echarts NÃO é registrado aqui de propósito. Registrar `VChart` global fazia
+// os 536 KB da biblioteca entrarem no chunk de entrada, então quem abria a tela
+// de login baixava os gráficos do dashboard. Cada componente que desenha gráfico
+// importa `vue-echarts` e chama `use()` com os módulos que ele mesmo usa.
 
 const initialTheme: ThemeName =
   (localStorage.getItem('ui.theme') as ThemeName | null) ||
@@ -44,11 +41,12 @@ const app = createApp(App)
 
 const pinia = createPinia()
 
-app.component('VChart', VChart)
 app.use(pinia)
 app.use(vuetify)
 app.use(router)
-app.use(MotionPlugin)
+// Motion: o app usa `motion-v` (componente `<Motion>`) onde precisa de física de
+// mola. O `MotionPlugin` do `@vueuse/motion` ficou aqui desde a Fase P do design
+// system registrando uma diretiva `v-motion` que nenhum componente usou.
 // A instância vem de service/query-client para que logout, troca de empresa e a
 // sincronização por socket possam mexer no mesmo cache que os componentes usam.
 app.use(VueQueryPlugin, { queryClient })

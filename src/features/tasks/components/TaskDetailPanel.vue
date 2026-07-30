@@ -10,10 +10,12 @@
  * Toda edição salva sozinha: texto com debounce, o resto no próprio change.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   AlertCircle,
   CalendarClock,
+  CheckCircle2,
+  Circle,
   ExternalLink,
   File as FileIcon,
   FileText,
@@ -23,6 +25,7 @@ import {
   Users,
   X,
 } from 'lucide-vue-next'
+import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { getUserToken } from '@/utils/authContent'
@@ -37,7 +40,11 @@ import InlineEditText from '@/components/ui/InlineEditText.vue'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import { useActivityDetail } from '../useActivityDetail'
 import { ACTIVITY_PRIORITIES, ACTIVITY_STATUSES, prioritySpec, statusSpec } from '../task-meta'
-import type { ActivityResponsible } from '../activity-types'
+import type { ActivityDetail, ActivityResponsible } from '../activity-types'
+import TaskDescriptionEditor from './TaskDescriptionEditor.vue'
+import SubtaskProgress from './SubtaskProgress.vue'
+import { hasFormatting, isHtmlish, plainTextLength } from '../description-html'
+import { useAnalytics } from '@/composables/useAnalytics'
 
 const props = defineProps<{
   taskId: string
@@ -49,6 +56,8 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 
 const { error: showError } = useToast()
+const queryClient = useQueryClient()
+const { track } = useAnalytics()
 
 const taskIdRef = toRef(props, 'taskId')
 const companyIdRef = computed(() => props.companyId ?? null)
@@ -144,6 +153,49 @@ const subtasks = computed(() => activity.value?.subtasks ?? [])
 const doneSubtasks = computed(() => subtasks.value.filter((s) => s.status === 'DONE').length)
 const attachments = computed(() => activity.value?.attachments ?? [])
 
+// ── Subtarefas: alternar direto no painel ────────────────────────────────────
+//
+// Antes eram somente-leitura aqui ("edição completa na página cheia"), o que
+// obrigava a trocar de tela para marcar um passo como feito. Cada uma tem estado
+// próprio de gravação: um `saving` global travaria a lista inteira.
+const togglingSubtask = ref<string | null>(null)
+
+/** Mexe na subtarefa DENTRO do cache da atividade pai, sem refetch. */
+function patchSubtaskInCache(subtaskId: string, status: string) {
+  queryClient.setQueryData<ActivityDetail>(['activity', props.taskId], (old) => {
+    if (!old?.subtasks) return old
+    return {
+      ...old,
+      subtasks: old.subtasks.map((s) => (s.id === subtaskId ? { ...s, status } : s)),
+    }
+  })
+}
+
+async function toggleSubtask(subtask: { id: string; status: string }) {
+  if (!canEdit.value || togglingSubtask.value) return
+  const previous = subtask.status
+  const next = previous === 'DONE' ? 'TODO' : 'DONE'
+
+  togglingSubtask.value = subtask.id
+  patchSubtaskInCache(subtask.id, next)
+
+  try {
+    await activityService.patchActivityStatus(
+      subtask.id,
+      next,
+      companyIdRef.value ?? undefined,
+    )
+    track('subtask_toggled', { to_status: next, surface: 'panel' })
+  } catch {
+    // Rollback: o anel voltar sozinho é o que impede a tela de mentir sobre o
+    // progresso depois de uma falha de rede.
+    patchSubtaskInCache(subtask.id, previous)
+    showError('Não foi possível atualizar a subtarefa')
+  } finally {
+    togglingSubtask.value = null
+  }
+}
+
 const fullPageLink = computed(() => {
   const monthId = activity.value?.monthId
   if (!monthId) return null
@@ -169,11 +221,21 @@ function saveTitle(value: string) {
 }
 
 function saveDescription(value: string) {
+  // `was_legacy_plain` é medido ANTES de gravar: depois do PATCH o valor no
+  // servidor já é HTML e a informação de origem se perde.
+  track('task_description_edited', {
+    char_count: plainTextLength(value),
+    used_formatting: hasFormatting(value),
+    was_legacy_plain: !!activity.value?.description && !isHtmlish(activity.value.description),
+    surface: 'panel',
+  })
   void saveFields('description', { description: value }, { description: value })
 }
 
 function saveStatus(value: string) {
-  if (value === activity.value?.status) return
+  const from = activity.value?.status
+  if (value === from) return
+  track('task_status_changed', { from: from ?? '', to: value, surface: 'panel' })
   void commitStatus(value)
 }
 
@@ -196,6 +258,10 @@ function saveResponsibles(ids: string[]) {
     const member = known.find((m) => (m.user?.id ?? m.id) === id)
     return { userId: id, user: { id, name: member?.user?.name ?? member?.name ?? '…' } }
   })
+  track('task_assigned', {
+    assignee_count: ids.length,
+    assigned_self: ids.includes(getUserToken()?.sub ?? ''),
+  })
   void saveFields('responsibles', { responsibleUserIds: ids }, { responsibles: optimistic })
 }
 
@@ -212,7 +278,7 @@ function saveMonth(monthId: string) {
 
 // ── Fechamento: nunca fecha em cima de gravação pendente ─────────────────────
 const titleField = ref<InstanceType<typeof InlineEditText> | null>(null)
-const descriptionField = ref<InstanceType<typeof InlineEditText> | null>(null)
+const descriptionField = ref<InstanceType<typeof TaskDescriptionEditor> | null>(null)
 const closing = ref(false)
 const panelRef = ref<HTMLElement | null>(null)
 
@@ -227,7 +293,57 @@ async function close() {
   emit('close')
 }
 
+/**
+ * Seletor do que recebe foco por Tab. `[hidden]` e `disabled` ficam de fora
+ * porque um controle desabilitado (papel sem permissão de editar) não entra na
+ * ordem de tabulação.
+ */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+
+function focusableItems(): HTMLElement[] {
+  const root = panelRef.value
+  if (!root) return []
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => el.offsetParent !== null || el.getAttribute('contenteditable') === 'true',
+  )
+}
+
+/**
+ * Armadilha de foco.
+ *
+ * O painel é `role="dialog" aria-modal="true"`, e um diálogo modal que deixa o
+ * Tab escapar para o board atrás mente para quem navega por teclado ou usa
+ * leitor de tela: o conteúdo de trás está visualmente coberto pelo scrim e
+ * continua alcançável. Circula dentro do painel nos dois sentidos.
+ */
+function trapFocus(event: KeyboardEvent) {
+  const items = focusableItems()
+  const first = items[0]
+  const last = items[items.length - 1]
+  if (!first || !last) {
+    event.preventDefault()
+    panelRef.value?.focus()
+    return
+  }
+  const active = document.activeElement as HTMLElement | null
+
+  if (event.shiftKey && (active === first || active === panelRef.value)) {
+    event.preventDefault()
+    last.focus()
+    return
+  }
+  if (!event.shiftKey && active === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
 function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Tab') {
+    trapFocus(event)
+    return
+  }
   if (event.key !== 'Escape') return
   // O dropdown do AppSelect é teleportado para o body: quando ele está aberto,
   // Esc significa "fechar a lista", não "fechar o painel".
@@ -236,8 +352,11 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 let previousOverflow = ''
+/** Quem tinha o foco antes do painel abrir (normalmente o card do board). */
+let opener: HTMLElement | null = null
 
 onMounted(() => {
+  opener = document.activeElement as HTMLElement | null
   window.addEventListener('keydown', onKeydown)
   previousOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
@@ -247,6 +366,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   document.body.style.overflow = previousOverflow
+  // Devolve o foco a quem abriu. Sem isso o foco volta para o topo do documento
+  // e quem navega por teclado perde o lugar no board.
+  if (opener?.isConnected) opener.focus()
 })
 </script>
 
@@ -442,37 +564,67 @@ onBeforeUnmount(() => {
             </div>
           </section>
 
-          <!-- Descrição -->
+          <!-- Descrição: superfície única, formatação inline no próprio campo -->
           <section class="block">
-            <h3 class="block-label">Descrição</h3>
-            <InlineEditText
+            <div class="block-head">
+              <h3 class="block-label">Descrição</h3>
+              <SaveStatus
+                compact
+                :state="fieldState.description ?? 'idle'"
+                :saved-at="savedAt"
+                :message="fieldError.description ?? ''"
+                @retry="retry('description')"
+              />
+            </div>
+            <TaskDescriptionEditor
               ref="descriptionField"
-              multiline
               :model-value="activity.description ?? ''"
               field-label="Descrição da atividade"
-              placeholder="Descreva o trabalho, critérios de aceitação, links…"
-              :min-rows="4"
               :state="fieldState.description ?? 'idle'"
               :disabled="!canEdit"
               @save="saveDescription"
             />
           </section>
 
-          <!-- Subtarefas (leitura; edição completa na página cheia) -->
+          <!-- Subtarefas: alternáveis aqui, com progresso visível -->
           <section v-if="subtasks.length" class="block">
-            <h3 class="block-label">
-              <ListChecks :size="12" />
-              Subtarefas
-              <span class="count">{{ doneSubtasks }}/{{ subtasks.length }}</span>
-            </h3>
+            <div class="block-head">
+              <h3 class="block-label">
+                <ListChecks :size="12" />
+                Subtarefas
+              </h3>
+              <SubtaskProgress :done="doneSubtasks" :total="subtasks.length" />
+            </div>
             <ul class="subtasks">
               <li v-for="sub in subtasks" :key="sub.id" class="subtask">
-                <Pill :icon="statusSpec(sub.status).icon" :color="statusSpec(sub.status).token">
-                  {{ statusSpec(sub.status).label }}
-                </Pill>
-                <span class="subtask__title" :class="{ 'subtask__title--done': sub.status === 'DONE' }">
+                <button
+                  type="button"
+                  class="subtask__check"
+                  :aria-label="
+                    sub.status === 'DONE'
+                      ? `Marcar “${sub.title}” como pendente`
+                      : `Marcar “${sub.title}” como concluída`
+                  "
+                  :aria-pressed="sub.status === 'DONE'"
+                  :disabled="!canEdit || togglingSubtask === sub.id"
+                  @click="toggleSubtask(sub)"
+                >
+                  <CheckCircle2 v-if="sub.status === 'DONE'" :size="17" class="subtask__on" />
+                  <Circle v-else :size="17" class="subtask__off" />
+                </button>
+                <span
+                  class="subtask__title"
+                  :class="{ 'subtask__title--done': sub.status === 'DONE' }"
+                >
                   {{ sub.title }}
                 </span>
+                <Pill
+                  v-if="sub.status !== 'DONE' && sub.status !== 'TODO'"
+                  :icon="statusSpec(sub.status).icon"
+                  :color="statusSpec(sub.status).token"
+                >
+                  {{ statusSpec(sub.status).label }}
+                </Pill>
               </li>
             </ul>
           </section>
@@ -623,6 +775,15 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Rótulo à esquerda, estado ou métrica à direita, na mesma linha de base. */
+.block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
 }
 
 .block-label {
@@ -810,13 +971,64 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  transition: border-color var(--motion-fast) var(--motion-ease);
+}
+
+.subtask:hover {
+  border-color: var(--border-strong);
+}
+
+.subtask__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.subtask__check:hover:not(:disabled) {
+  transform: scale(1.12);
+}
+
+.subtask__check:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.subtask__check:disabled {
+  cursor: default;
+}
+
+.subtask__check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.subtask__on {
+  color: var(--status-done);
+}
+
+.subtask__off {
+  color: var(--text-4);
+}
+
+.subtask__check:hover:not(:disabled) .subtask__off {
+  color: var(--text-2);
 }
 
 .subtask__title {
+  flex: 1;
+  min-width: 0;
   font-size: 12.5px;
   color: var(--text);
   overflow: hidden;
@@ -900,8 +1112,14 @@ onBeforeUnmount(() => {
   .chip,
   .icon-btn,
   .btn-ghost,
-  .btn-secondary {
+  .btn-secondary,
+  .subtask,
+  .subtask__check {
     transition-duration: 1ms;
+  }
+  .subtask__check:hover:not(:disabled),
+  .subtask__check:active:not(:disabled) {
+    transform: none;
   }
 }
 </style>

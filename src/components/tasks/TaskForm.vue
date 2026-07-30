@@ -14,6 +14,13 @@ import {
 } from 'lucide-vue-next'
 import { dateOnlyToUtcNoonIso } from '@/utils/date'
 import { avatarTone, initials as personInitials } from '@/utils/avatar'
+// Boundary: a regra do repo é que componente compartilhado não importe TIPOS de
+// `features/*` na sua API pública. Isto é outra coisa: `components/tasks/` já é
+// do domínio de tarefa (aqui e no `KanbanBoard`), então consumir o editor de
+// descrição da feature é irmão chamando irmão. A descrição precisa nascer com a
+// MESMA superfície que ela tem na edição, senão a pessoa formata depois de criar.
+// Follow-up (R2): mover `components/tasks/` para dentro de `features/tasks/`.
+import TaskDescriptionEditor from '@/features/tasks/components/TaskDescriptionEditor.vue'
 
 // Shapes locais (regra de boundary: componente compartilhado não importa tipos
 // de features/*). O membro chega em dois formatos conforme o caller: plano
@@ -147,19 +154,22 @@ const submit = () => {
         />
       </label>
 
-      <!-- Description -->
-      <label class="field">
+      <!-- Descrição: mesma superfície fundida da edição, com formatação inline -->
+      <div class="field">
         <span class="label">
           <FileText :size="12" />
           Descrição
         </span>
-        <textarea
-          v-model="form.description"
-          class="input"
-          rows="3"
-          placeholder="Detalhes, critérios de aceitação, links úteis…"
+        <TaskDescriptionEditor
+          :model-value="form.description"
+          field-label="Descrição da atividade"
+          placeholder="Detalhes, critérios de aceitação, links úteis..."
+          variant="field"
+          min-height="76px"
+          hide-count
+          @save="form = { ...form, description: $event }"
         />
-      </label>
+      </div>
 
       <!-- Priority + Due date row -->
       <div class="row">

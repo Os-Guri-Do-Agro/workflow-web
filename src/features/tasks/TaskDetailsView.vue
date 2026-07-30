@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useTasks } from '@/features/tasks/useTasks'
 import { useActivityPublish } from '@/features/tasks/useActivityPublish'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
@@ -50,6 +49,10 @@ import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
+import TaskDescriptionEditor from './components/TaskDescriptionEditor.vue'
+import { htmlToPlainText, toEditorHtml } from './description-html'
+import { useAnalytics } from '@/composables/useAnalytics'
+import './styles/task-content.css'
 
 function getActivityMonthId(activity: any): string | undefined {
   if (!activity) return undefined
@@ -101,8 +104,8 @@ function dueDateForPlanningMonth(
 const route = useRoute()
 const router = useRouter()
 const { publishActivity } = useActivityPublish()
-const { companies } = useTasks()
 const workspaceStore = useWorkspaceStore()
+const { track } = useAnalytics()
 
 const taskId = computed(() => route.params.taskId as string)
 const month = computed(() => route.params.month as string)
@@ -582,8 +585,6 @@ const updateSubtask = async () => {
   }
 }
 
-const getCompanyName = (id: string) => companies.value.find((c) => c.id === id)?.name || '-'
-
 // Iniciais de pessoa vêm do util compartilhado: a mesma pessoa precisa aparecer
 // com as MESMAS iniciais aqui, no board e no ranking da equipe.
 const getUserInitials = (name: string) => initials(name)
@@ -630,15 +631,20 @@ const getPriorityMeta = (priority: number) => PRIORITY_META[priority] ?? PRIORIT
 const getUserTone = (name: string) => avatarTone(name)
 
 const toggleSubtaskStatus = async (task: any) => {
-  const newStatus = task.status === 'DONE' ? 'TODO' : 'DONE'
+  const previousStatus = task.status
+  const newStatus = previousStatus === 'DONE' ? 'TODO' : 'DONE'
   task.status = newStatus
   try {
     await activityService.patchActivityStatus(task.id, newStatus)
     // O card do board mostra o progresso das subtarefas: publicar mantém o
     // contador certo sem esperar o refetch do board.
     publishCurrentActivity()
+    track('subtask_toggled', { to_status: newStatus, surface: 'page' })
     showSuccess('Status atualizado com sucesso')
   } catch (error: any) {
+    // Rollback: sem isto a subtarefa ficava marcada na tela depois de a
+    // gravação falhar, e o contador de progresso mentia até o próximo refetch.
+    task.status = previousStatus
     showError(error.response?.data?.message || 'Erro ao atualizar status')
   }
 }
@@ -745,10 +751,15 @@ const deleteAttachment = async (attachmentId: string) => {
               <Pencil :size="15" />
             </button>
           </div>
+          <!-- eslint-disable-next-line vue/no-v-html - `toEditorHtml` sanitiza
+               com DOMPurify e escapa descrição legada em texto plano. Este
+               v-html era XSS armazenado: a descrição é escrita por usuário e o
+               servidor só passou a sanitizar na escrita nesta rodada, então a
+               leitura continua sendo a defesa do conteúdo que já está no banco. -->
           <div
             v-if="activityInfo.description"
-            class="desc-body"
-            v-html="activityInfo.description"
+            class="task-prose desc-body"
+            v-html="toEditorHtml(activityInfo.description)"
           />
           <p v-else class="desc-empty">Sem descrição</p>
         </section>
@@ -790,7 +801,12 @@ const deleteAttachment = async (attachmentId: string) => {
                     {{ getPriorityMeta(task.priorityNumber).label }}
                   </Pill>
                 </div>
-                <p v-if="task.description" class="subtask-desc">{{ task.description }}</p>
+                <!-- Resumo em UMA linha: aqui a descrição não pode vir como HTML
+                     (mostraria as tags) nem como interpolação crua do campo
+                     (idem, depois de a descrição virar texto rico). -->
+                <p v-if="task.description" class="subtask-desc">
+                  {{ htmlToPlainText(task.description) }}
+                </p>
                 <div class="subtask-meta">
                   <Pill :icon="getStatusConfig(task.status).icon" :color="getStatusConfig(task.status).token">
                     {{ getStatusConfig(task.status).label }}
@@ -1090,10 +1106,17 @@ const deleteAttachment = async (attachmentId: string) => {
         </div>
       </div>
 
-      <label class="field">
+      <div class="field">
         <span class="view-label">Descrição</span>
-        <textarea v-model="formActivity.description" class="field-textarea" rows="4" />
-      </label>
+        <TaskDescriptionEditor
+          :model-value="formActivity.description"
+          field-label="Descrição da atividade"
+          variant="field"
+          min-height="112px"
+          hide-count
+          @save="formActivity.description = $event"
+        />
+      </div>
 
       <div class="field-row">
         <label class="field">
@@ -1227,10 +1250,17 @@ const deleteAttachment = async (attachmentId: string) => {
         <input v-model="formSubtask.title" class="field-input" type="text" />
       </label>
 
-      <label class="field">
+      <div class="field">
         <span class="view-label">Descrição</span>
-        <textarea v-model="formSubtask.description" class="field-textarea" rows="3" />
-      </label>
+        <TaskDescriptionEditor
+          :model-value="formSubtask.description"
+          field-label="Descrição da subtarefa"
+          variant="field"
+          min-height="84px"
+          hide-count
+          @save="formSubtask.description = $event"
+        />
+      </div>
 
       <div class="field-row">
         <label class="field">
@@ -1352,7 +1382,11 @@ const deleteAttachment = async (attachmentId: string) => {
 
           <div v-if="selectedSubtask.description" class="view-field">
             <span class="view-label">Descrição</span>
-            <div class="view-value desc-body" v-html="selectedSubtask.description" />
+            <!-- eslint-disable-next-line vue/no-v-html - sanitizado por `toEditorHtml` -->
+            <div
+              class="view-value task-prose desc-body"
+              v-html="toEditorHtml(selectedSubtask.description)"
+            />
           </div>
 
           <div v-if="selectedSubtask.attachments?.length" class="view-field">
@@ -1419,10 +1453,17 @@ const deleteAttachment = async (attachmentId: string) => {
             <input v-model="formSubtask.title" class="field-input" type="text" />
           </label>
 
-          <label class="field">
+          <div class="field">
             <span class="view-label">Descrição</span>
-            <textarea v-model="formSubtask.description" class="field-textarea" rows="3" />
-          </label>
+            <TaskDescriptionEditor
+              :model-value="formSubtask.description"
+              field-label="Descrição da subtarefa"
+              variant="field"
+              min-height="84px"
+              hide-count
+              @save="formSubtask.description = $event"
+            />
+          </div>
 
           <div class="field-row">
             <label class="field">
@@ -1722,15 +1763,13 @@ const deleteAttachment = async (attachmentId: string) => {
   line-height: 1.25;
 }
 
-.desc-body {
+/* A prosa em si vem de `styles/task-content.css` (mesma folha que o editor usa,
+   para leitura e escrita não divergirem). Aqui só o que é específico da página
+   cheia: o recuo do painel e uma escala um pouco maior, porque é tela inteira e
+   não um campo dentro de painel. Duas classes para ganhar da folha global. */
+.task-prose.desc-body {
   padding: 0 16px 16px;
   font-size: 14px;
-  line-height: 1.6;
-  color: var(--text-2);
-}
-
-.desc-body :deep(p) {
-  margin: 0 0 0.75em;
 }
 
 .desc-empty {

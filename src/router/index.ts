@@ -3,36 +3,6 @@ import { jwtDecode } from 'jwt-decode'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
 import { clearSession } from '@/service/api'
-import BoardView from '@/features/board/BoardView.vue'
-import DashboardView from '@/features/dashboard/DashboardView.vue'
-import TasksView from '@/features/tasks/TasksView.vue'
-import TaskDetailsView from '@/features/tasks/TaskDetailsView.vue'
-import ActivityResolverView from '@/features/tasks/ActivityResolverView.vue'
-import NotFoundView from '@/features/errors/NotFoundView.vue'
-import ReportView from '@/features/reports/ReportView.vue'
-import SettingsView from '@/features/settings/SettingsView.vue'
-import LoginView from '@/features/auth/LoginView.vue'
-import SignupView from '@/features/auth/SignupView.vue'
-import DownloadView from '@/features/download/DownloadView.vue'
-import ReportBugView from '@/features/bug-report/ReportBugView.vue'
-import ReportStatusView from '@/features/bug-report/ReportStatusView.vue'
-import BugReportsListView from '@/features/bug-report/BugReportsListView.vue'
-import BugReportDetailView from '@/features/bug-report/BugReportDetailView.vue'
-import ReposListView from '@/features/repos/ReposListView.vue'
-import RepoBrowserView from '@/features/repos/RepoBrowserView.vue'
-import CompanyVariablesView from '@/features/companies/CompanyVariablesView.vue'
-import CompanyUsersView from '@/features/companies/CompanyUsersView.vue'
-import NotesView from '@/features/notes/NotesView.vue'
-import NoteEditorView from '@/features/notes/NoteEditorView.vue'
-import CalendarView from '@/features/calendar/CalendarView.vue'
-import RoadmapView from '@/features/roadmap/RoadmapView.vue'
-import TimeTrackingView from '@/features/time/TimeTrackingView.vue'
-import QrCodesView from '@/features/qr/QrCodesView.vue'
-import BoardsListView from '@/features/boards/BoardsListView.vue'
-import BoardCanvasView from '@/features/boards/BoardCanvasView.vue'
-import PublicBoardView from '@/features/public/PublicBoardView.vue'
-import PublicRoadmapView from '@/features/public/PublicRoadmapView.vue'
-import PublicNoteView from '@/features/public/PublicNoteView.vue'
 import { usePostHog } from '@/composables/usePostHog'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
@@ -79,47 +49,47 @@ const router = createRouter({
     return { top: savedPosition?.top ?? 0, left: 0 }
   },
   routes: [
-    { path: '/login', name: 'login', component: LoginView },
-    { path: '/signup', name: 'signup', component: SignupView },
-    { path: '/download', name: 'download', component: DownloadView },
+    { path: '/login', name: 'login', component: () => import('@/features/auth/LoginView.vue') },
+    { path: '/signup', name: 'signup', component: () => import('@/features/auth/SignupView.vue') },
+    { path: '/download', name: 'download', component: () => import('@/features/download/DownloadView.vue') },
     {
       path: '/report/:companyId',
       alias: '/reports/:companyId',
       name: 'bug-report',
-      component: ReportBugView,
+      component: () => import('@/features/bug-report/ReportBugView.vue'),
     },
-    { path: '/r/:id', name: 'report-status', component: ReportStatusView },
-    { path: '/public/board/:token', name: 'public-board', component: PublicBoardView },
-    { path: '/public/roadmap/:token', name: 'public-roadmap', component: PublicRoadmapView },
-    { path: '/public/note/:token', name: 'public-note', component: PublicNoteView },
-    { path: '/', name: 'home', component: DashboardView },
-    { path: '/board', name: 'board', component: BoardView },
-    { path: '/boards', name: 'boards', component: BoardsListView },
-    { path: '/boards/:id', name: 'board-canvas', component: BoardCanvasView },
-    { path: '/dashboard', name: 'dashboard', component: DashboardView },
-    { path: '/notes', name: 'notes', component: NotesView },
-    { path: '/notes/:id', name: 'note-editor', component: NoteEditorView },
-    { path: '/calendar', name: 'calendar', component: CalendarView },
-    { path: '/time', name: 'time', component: TimeTrackingView },
+    { path: '/r/:id', name: 'report-status', component: () => import('@/features/bug-report/ReportStatusView.vue') },
+    { path: '/public/board/:token', name: 'public-board', component: () => import('@/features/public/PublicBoardView.vue') },
+    { path: '/public/roadmap/:token', name: 'public-roadmap', component: () => import('@/features/public/PublicRoadmapView.vue') },
+    { path: '/public/note/:token', name: 'public-note', component: () => import('@/features/public/PublicNoteView.vue') },
+    { path: '/', name: 'home', component: () => import('@/features/dashboard/DashboardView.vue') },
+    { path: '/board', name: 'board', component: () => import('@/features/board/BoardView.vue') },
+    { path: '/boards', name: 'boards', component: () => import('@/features/boards/BoardsListView.vue') },
+    { path: '/boards/:id', name: 'board-canvas', component: () => import('@/features/boards/BoardCanvasView.vue') },
+    { path: '/dashboard', name: 'dashboard', component: () => import('@/features/dashboard/DashboardView.vue') },
+    { path: '/notes', name: 'notes', component: () => import('@/features/notes/NotesView.vue') },
+    { path: '/notes/:id', name: 'note-editor', component: () => import('@/features/notes/NoteEditorView.vue') },
+    { path: '/calendar', name: 'calendar', component: () => import('@/features/calendar/CalendarView.vue') },
+    { path: '/time', name: 'time', component: () => import('@/features/time/TimeTrackingView.vue') },
     // Acesso por membership (login basta). Escopo por empresa é via x-company-id.
-    { path: '/qr', name: 'qr', component: QrCodesView },
-    { path: '/roadmap', name: 'roadmap', component: RoadmapView },
-    { path: '/tasks/:month', name: 'tasks', component: TasksView },
-    { path: '/tasks/:month/:taskId', name: 'task-details', component: TaskDetailsView },
-    { path: '/relatorio/:quarterId', name: 'report', component: ReportView },
-    { path: '/settings', name: 'settings', component: SettingsView },
-    { path: '/variables', name: 'variables', component: CompanyVariablesView },
-    { path: '/company-users', name: 'company-users', component: CompanyUsersView, meta: { requiredRole: 'ADMIN' } },
-    { path: '/bug-reports', name: 'bug-reports-list', component: BugReportsListView, meta: { requiredRole: 'WORKER' } },
-    { path: '/bug-reports/:id', name: 'bug-report-detail', component: BugReportDetailView, meta: { requiredRole: 'WORKER' } },
-    { path: '/repos', name: 'repos-list', component: ReposListView },
-    { path: '/repos/:id', name: 'repo-browser', component: RepoBrowserView },
+    { path: '/qr', name: 'qr', component: () => import('@/features/qr/QrCodesView.vue') },
+    { path: '/roadmap', name: 'roadmap', component: () => import('@/features/roadmap/RoadmapView.vue') },
+    { path: '/tasks/:month', name: 'tasks', component: () => import('@/features/tasks/TasksView.vue') },
+    { path: '/tasks/:month/:taskId', name: 'task-details', component: () => import('@/features/tasks/TaskDetailsView.vue') },
+    { path: '/relatorio/:quarterId', name: 'report', component: () => import('@/features/reports/ReportView.vue') },
+    { path: '/settings', name: 'settings', component: () => import('@/features/settings/SettingsView.vue') },
+    { path: '/variables', name: 'variables', component: () => import('@/features/companies/CompanyVariablesView.vue') },
+    { path: '/company-users', name: 'company-users', component: () => import('@/features/companies/CompanyUsersView.vue'), meta: { requiredRole: 'ADMIN' } },
+    { path: '/bug-reports', name: 'bug-reports-list', component: () => import('@/features/bug-report/BugReportsListView.vue'), meta: { requiredRole: 'WORKER' } },
+    { path: '/bug-reports/:id', name: 'bug-report-detail', component: () => import('@/features/bug-report/BugReportDetailView.vue'), meta: { requiredRole: 'WORKER' } },
+    { path: '/repos', name: 'repos-list', component: () => import('@/features/repos/ReposListView.vue') },
+    { path: '/repos/:id', name: 'repo-browser', component: () => import('@/features/repos/RepoBrowserView.vue') },
     // Links antigos de notificações: `/activity/:id` resolve empresa+mês+task
     // via backend e redireciona; `/bugs/:id` era o path antigo de bug reports.
-    { path: '/activity/:id', name: 'activity-resolver', component: ActivityResolverView },
+    { path: '/activity/:id', name: 'activity-resolver', component: () => import('@/features/tasks/ActivityResolverView.vue') },
     { path: '/bugs/:id', redirect: (to) => `/bug-reports/${to.params.id}` },
     // Rota inexistente (ex.: /tickets removido) → 404 amigável.
-    { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView },
+    { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/features/errors/NotFoundView.vue') },
   ],
 })
 

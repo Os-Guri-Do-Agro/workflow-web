@@ -101,16 +101,37 @@ export function parseMemory(absPath) {
   }
 }
 
-// --- READMEs / convenções (padrões) -----------------------------------------
+// --- Documentação e convenções (padrões) ------------------------------------
 
+/**
+ * Documentos indexáveis fora de `docs/specs/`.
+ *
+ * Antes esta função pegava SÓ arquivos chamados `README.md`, e o efeito foi
+ * concreto: `docs/EVOLUCAO.md` (o diagnóstico de produto do repo, com o roadmap
+ * em ondas) nunca aparecia em `npm run spec:query`. Uma sessão inteira de
+ * planejamento quase foi refeita em cima dele por não saber que existia. Também
+ * ficavam de fora `docs/architecture.md`, `docs/screens.md`,
+ * `docs/BACKEND_HANDOFF.md` e o `src/CLAUDE.md`, que é o guia do código.
+ *
+ * Agora: todo `.md` sob `docs/` (menos `docs/specs/`, que entra como spec) e todo
+ * `CLAUDE.md` em qualquer lugar do repo.
+ */
 export function listDocFiles() {
   const out = []
-  for (const sub of ['src', 'docs', 'public']) {
-    walk(path.join(REPO_ROOT, sub), (abs, name) => name === 'README.md', out)
-  }
-  const claude = path.join(REPO_ROOT, 'CLAUDE.md')
-  if (fs.existsSync(claude)) out.push(claude)
-  return out
+
+  // `docs/**/*.md`, exceto o que já é indexado como spec.
+  walk(
+    path.join(REPO_ROOT, 'docs'),
+    (abs, name) => name.endsWith('.md') && !abs.startsWith(SPECS_DIR + path.sep),
+    out,
+  )
+
+  // Guias de código (`CLAUDE.md`) em qualquer nível. `IGNORE_DIRS` mantém
+  // `node_modules`, `dist` e `.git` fora da varredura.
+  walk(REPO_ROOT, (abs, name) => name === 'CLAUDE.md', out)
+
+  // Dedup: um arquivo alcançado pelas duas varreduras seria embedado duas vezes.
+  return [...new Set(out)]
 }
 
 export function parseDoc(absPath) {

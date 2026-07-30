@@ -1,0 +1,178 @@
+/**
+ * Prosa da descrição de uma atividade.
+ *
+ * Fica fora do SFC porque é compartilhada por três superfícies sobre o MESMO
+ * HTML: o editor no painel de detalhe, o editor no formulário de criação, e a
+ * leitura na página cheia. Se a leitura e a escrita divergirem, a pessoa formata
+ * uma coisa e vê outra depois de salvar.
+ *
+ * NÃO é a `note-content.css`. A escala é menor (é um campo dentro de um painel
+ * denso, não uma página de documento) e cobre só os nós que o editor de descrição
+ * habilita: sem título, sem tabela, sem imagem, sem bloco de código, sem
+ * `details`, sem régua. Ver `composables/useTaskDescriptionEditor.ts`.
+ *
+ * Cor só de token. Sem glow, sem sombra colorida, sem gradiente: profundidade
+ * vem de superfície e borda, ênfase vem de peso tipográfico.
+ */
+
+.task-prose {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.task-prose .ProseMirror {
+  outline: none;
+}
+
+.task-prose .ProseMirror > * + * {
+  margin-top: 0.7em;
+}
+
+/* Placeholder do parágrafo vazio: a única pista de que o campo aceita texto. */
+.task-prose .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--text-4);
+  pointer-events: none;
+}
+
+.task-prose p {
+  margin: 0;
+}
+
+/* ── Marcas inline ───────────────────────────────────────────────────────── */
+
+.task-prose strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.task-prose em {
+  font-style: italic;
+}
+
+.task-prose u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.task-prose s {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.task-prose .editor-link,
+.task-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+}
+
+.task-prose code {
+  padding: 0.12em 0.34em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+/* ── Listas ──────────────────────────────────────────────────────────────── */
+
+.task-prose ul,
+.task-prose ol {
+  margin: 0;
+  padding-left: 1.3em;
+}
+
+.task-prose li + li {
+  margin-top: 0.22em;
+}
+
+.task-prose li p {
+  margin: 0;
+}
+
+.task-prose li::marker {
+  color: var(--text-4);
+}
+
+/* ── Checklist ───────────────────────────────────────────────────────────── */
+
+.task-prose ul[data-type='taskList'] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.task-prose ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.task-prose ul[data-type='taskList'] li > label {
+  display: flex;
+  align-items: center;
+  margin-top: 0.24em;
+  user-select: none;
+}
+
+.task-prose ul[data-type='taskList'] li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-prose ul[data-type='taskList'] input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Na leitura o checkbox vem desabilitado pelo sanitizador do servidor: quem
+   alterna o estado é o editor, e um checkbox que muda sem persistir mente. */
+.task-prose ul[data-type='taskList'] input[type='checkbox']:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.task-prose ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--text-4);
+  text-decoration: line-through;
+}
+
+/* ── Citação ─────────────────────────────────────────────────────────────── */
+
+/* Sem barra na lateral: a citação se distingue por superfície própria e recuo,
+   que é o que sobrevive nos dois temas sem virar enfeite. */
+.task-prose blockquote {
+  margin: 0;
+  padding: 8px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+}
+
+.task-prose blockquote p + p {
+  margin-top: 0.5em;
+}
+
+/* ── Seleção ─────────────────────────────────────────────────────────────── */
+
+.task-prose .ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.task-prose .ProseMirror-gapcursor::after {
+  border-top-color: var(--text);
+}
