@@ -1,22 +1,23 @@
 {
-  "generatedAt": "2026-07-23T01:18:50.463Z",
+  "generatedAt": "2026-07-30T02:07:35.533Z",
   "model": "Xenova/all-MiniLM-L6-v2",
   "counts": {
-    "specs": 20,
-    "epics": 1,
-    "memories": 6,
+    "specs": 23,
+    "epics": 2,
+    "memories": 9,
     "enriched": 0
   },
   "statusByName": {
     "Desconhecido": 8,
     "Em Implementação — F1–F4 entregues": 1,
     "Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)": 1,
-    "In Review": 3,
+    "In Review": 5,
     "Planejada (não iniciada)": 1,
     "Concluído": 2,
     "Implementado (código) — migration pendente de aplicar em produção": 1,
     "Pronto para implementar": 1,
     "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)": 1,
+    "Concluído (aguardando deploy do backend para e2e)": 1,
     "aprovada para implementação": 1
   },
   "specs": [
@@ -125,6 +126,26 @@
         "Riscos e Mitigações",
         "Fases",
         "Definition of Done do épico",
+        "Perguntas em Aberto",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/epicos/workflow-v2.md",
+      "kind": "spec",
+      "isEpic": true,
+      "title": "workflow-v2",
+      "status": "In Review",
+      "lastUpdated": "2026-07-29",
+      "sections": [
+        "Visão Geral",
+        "Relação com `docs/EVOLUCAO.md`",
+        "Estado verificado em 2026-07-29",
+        "Auditoria de produto por eixo de growth",
+        "Auditoria de dependências",
+        "Rodadas",
+        "Decisões que valem para todas as rodadas",
+        "Riscos do épico",
         "Perguntas em Aberto",
         "Change Log"
       ]
@@ -460,6 +481,34 @@
       ]
     },
     {
+      "path": "docs/specs/time-tracking-v2.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Time Tracking v2 — paridade Clockify + visão de equipe em tempo real",
+      "status": "Concluído (aguardando deploy do backend para e2e)",
+      "lastUpdated": "2026-07-24",
+      "sections": [
+        "Visão Geral",
+        "Motivação / Contexto de Negócio",
+        "Research Findings",
+        "Riscos e Mitigações",
+        "Requisitos Não-Funcionais",
+        "User Stories",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Considerações de Arquitetura",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Perguntas em Aberto",
+        "Estado da entrega (honesto)",
+        "Change Log"
+      ]
+    },
+    {
       "path": "docs/specs/time-tracking.md",
       "kind": "spec",
       "isEpic": false,
@@ -474,6 +523,33 @@
         "Fora de escopo (v2)",
         "Critérios de aceite"
       ]
+    },
+    {
+      "path": "docs/specs/workflow-v2-r1-tarefa-como-superficie.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "workflow-v2 R1 — A tarefa como superfície de trabalho",
+      "status": "In Review",
+      "lastUpdated": "2026-07-29",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Research Findings",
+        "Riscos e Mitigações",
+        "Requisitos Não-Funcionais",
+        "User Stories",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Considerações de Arquitetura",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Perguntas em Aberto",
+        "Change Log"
+      ]
     }
   ],
   "memories": [
@@ -485,11 +561,25 @@
       "type": "project"
     },
     {
+      "path": "entrega-5-fixes-jul2026.md",
+      "kind": "memory",
+      "name": "entrega-5-fixes-jul2026",
+      "description": "Entrega dos 5 fixes (fonte Geist, tema claro, Meu Tempo, avatares, migração v-dialog→AppDialog) na branch main, NÃO COMMITADA, aguardando review do diff",
+      "type": "project"
+    },
+    {
       "path": "envs-producao-railway.md",
       "kind": "memory",
       "name": "envs-producao-railway",
       "description": "A API em producao (Railway) roda sem ENCRYPTION_KEY/JWT_SECRET conferidas; segredos de empresa cifrados com chave publica do codigo",
       "type": "project"
+    },
+    {
+      "path": "nicolas-ui-taste-premium.md",
+      "kind": "memory",
+      "name": "nicolas-ui-taste-premium",
+      "description": "Gosto de UI do Nicolas — \\\"premium de mercado\\\", não básico; odeia border-left; escolheu direção \\\"profundo + movimento\\\" pro board",
+      "type": "feedback"
     },
     {
       "path": "overnight-fix-program.md",
@@ -503,6 +593,13 @@
       "kind": "memory",
       "name": "qr-microservice-roles-simplification",
       "description": "Estado da simplificação de roles (ADMIN/WORKER) + QR pastas + microserviço de QR por token no work-flow",
+      "type": "project"
+    },
+    {
+      "path": "time-tracking-v2.md",
+      "kind": "memory",
+      "name": "time-tracking-v2",
+      "description": "Time Tracking v2 (paridade Clockify + visão de equipe admin) implementado; deploy do backend pendente p/ e2e",
       "type": "project"
     },
     {
