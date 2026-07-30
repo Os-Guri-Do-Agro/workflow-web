@@ -112,10 +112,93 @@ export interface QrApiTokenCreated extends QrApiToken {
   token: string
 }
 
+/** Filtros da listagem. Todos opcionais; o backend normaliza e aplica tetos. */
+export interface QrListParams {
+  page?: number
+  limit?: number
+  search?: string
+  /** `all` | `personal` | `<companyId>` */
+  scope?: string
+  /** `<folderId>` | `none` */
+  folderId?: string
+}
+
+/** Um projeto (ou "Pessoais") na navegação lateral, com o total DELE. */
+export interface QrScopeCount {
+  key: string
+  label: string
+  count: number
+}
+
+/**
+ * Página da listagem.
+ *
+ * `total` acompanha o filtro ativo (é o número do paginador). `scopes` e
+ * `totalAll` contam o conjunto inteiro sob a busca, ignorando projeto e pasta:
+ * são os números da navegação, que precisam continuar dizendo quantos existem em
+ * cada projeto mesmo com um filtro estreito aplicado.
+ */
+export interface QrListPage {
+  items: QrCode[]
+  total: number
+  page: number
+  limit: number
+  scopes: QrScopeCount[]
+  totalAll: number
+}
+
+/**
+ * Deriva os escopos quando a resposta veio como array (API antiga).
+ * Some junto com a guarda de retrocompatibilidade do `list`.
+ */
+function scopesFromItems(items: QrCode[]): QrScopeCount[] {
+  const pessoais = items.filter((q) => !q.companyId).length
+  const porEmpresa = new Map<string, QrScopeCount>()
+  for (const q of items) {
+    if (!q.companyId) continue
+    const atual = porEmpresa.get(q.companyId)
+    if (atual) atual.count += 1
+    else {
+      porEmpresa.set(q.companyId, {
+        key: q.companyId,
+        label: q.companyName || 'Empresa',
+        count: 1,
+      })
+    }
+  }
+  return [
+    ...(pessoais ? [{ key: 'personal', label: 'Pessoais', count: pessoais }] : []),
+    ...[...porEmpresa.values()].sort((a, b) => b.count - a.count),
+  ]
+}
+
 const qrService = {
-  async list() {
-    const response = await api.get<QrCode[]>('/qr')
-    return response.data
+  /**
+   * Página da listagem.
+   *
+   * ## Por que tolera receber um array
+   *
+   * A API responde envelope quando recebe filtro e array quando não recebe.
+   * Durante a janela de deploy o front novo pode falar com a API antiga, que não
+   * conhece os filtros e devolve o array inteiro. Normalizar aqui, num lugar só,
+   * faz a tela funcionar nos dois mundos sem espalhar `Array.isArray` por
+   * componente. Quando a API nova estiver em produção esta guarda pode sair.
+   */
+  async list(params: QrListParams = {}): Promise<QrListPage> {
+    const response = await api.get<QrCode[] | QrListPage>('/qr', { params })
+    const data = response.data
+
+    if (Array.isArray(data)) {
+      return {
+        items: data,
+        total: data.length,
+        page: 1,
+        limit: data.length || 1,
+        scopes: scopesFromItems(data),
+        totalAll: data.length,
+      }
+    }
+    return data
   },
 
   async get(id: string) {

@@ -3,6 +3,7 @@ import { computed, unref, type MaybeRef } from 'vue'
 import qrService, {
   type CreateQrInput,
   type QrCode,
+  type QrListParams,
   type QrMetrics,
   type UpdateQrInput,
 } from '@/service/qr/qr-service'
@@ -14,12 +15,24 @@ export const qrKeys = {
   metrics: (id: string) => ['qr', 'metrics', id] as const,
 }
 
-/** Lista dos QR do usuário. */
-export function useQrList() {
+/**
+ * Página da listagem de QR.
+ *
+ * A chave carrega os filtros, então cada combinação tem cache próprio. As
+ * mutations continuam invalidando `['qr']` puro: o TanStack casa por PREFIXO,
+ * então uma chave só derruba todas as páginas e nenhuma delas fica mostrando
+ * dado velho depois de criar ou excluir.
+ *
+ * `placeholderData` mantém a página anterior na tela enquanto a próxima chega.
+ * Sem isso a grade sumia a cada clique de paginação e a tela piscava, que é
+ * exatamente a sensação de lentidão que esta entrega existe para tirar.
+ */
+export function useQrList(params: MaybeRef<QrListParams>) {
   return useQuery({
-    queryKey: qrKeys.all,
-    queryFn: () => qrService.list(),
+    queryKey: computed(() => [...qrKeys.all, 'list', unref(params)] as const),
+    queryFn: () => qrService.list(unref(params)),
     staleTime: 1000 * 15,
+    placeholderData: (anterior) => anterior,
   })
 }
 

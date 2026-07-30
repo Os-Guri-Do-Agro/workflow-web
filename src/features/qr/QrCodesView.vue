@@ -1,18 +1,27 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Component } from 'vue'
+/**
+ * Tela de QR codes.
+ *
+ * ## Paginada no servidor, e por quê
+ *
+ * A versão anterior pedia TODOS os QRs e desenhava todos os previews de uma vez.
+ * Cada card monta ~340 nós de SVG; com 441 QRs em produção isso era ~150 mil nós
+ * numa montagem só, e a aba congelava por segundos. O custo era linear no número
+ * de QRs, ou seja, piorava a cada QR criado.
+ *
+ * Agora a lista pede uma página por vez, e busca, projeto e pasta viram filtro de
+ * consulta em vez de filtro em memória.
+ *
+ * ## O que a paginação obrigou a tratar
+ *
+ * Criar um QR joga ele no topo da PÁGINA 1 (o backend ordena por `createdAt`
+ * desc). Quem estava na página 3, ou com busca ativa, criaria e não veria nada
+ * mudar — parece que falhou. Por isso criar volta pra primeira página e limpa a
+ * busca. Pelo mesmo motivo, esvaziar a última página recua uma.
+ */
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  Building2,
-  FolderPlus,
-  Folder,
-  KeyRound,
-  Plus,
-  QrCode as QrCodeIcon,
-  RotateCw,
-  Trash2,
-  User,
-  X,
-} from 'lucide-vue-next'
+import { KeyRound, Plus, QrCode as QrCodeIcon, RotateCw, SearchX, SlidersHorizontal, X } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PasswordConfirmDialog from '@/components/ui/PasswordConfirmDialog.vue'
@@ -21,65 +30,90 @@ import QrCard from './components/QrCard.vue'
 import QrEditDialog from './components/QrEditDialog.vue'
 import QrMetricsDialog from './components/QrMetricsDialog.vue'
 import QrApiTokensDialog from './components/QrApiTokensDialog.vue'
+import QrSidebar from './components/QrSidebar.vue'
+import QrPagination from './components/QrPagination.vue'
 import { useQrList, useQrMutations } from '@/composables/useQrCodes'
 import { useQrFolders, useQrFolderMutations } from '@/composables/useQrFolders'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import type { QrCode, QrFolder, QrStyle } from '@/service/qr/qr-service'
 
-const list = useQrList()
-const { create, update, cancel, remove } = useQrMutations()
-const foldersQuery = useQrFolders()
-const { create: createFolder, remove: removeFolder } = useQrFolderMutations()
-const workspace = useWorkspaceStore()
-
-const qrs = computed<QrCode[]>(() => list.data.value ?? [])
-const allFolders = computed<QrFolder[]>(() => foldersQuery.data.value ?? [])
-
-// ─── Agrupamento por escopo ────────────────────────────────────────────────────
-// Sempre agrupamos: "Pessoais" primeiro e depois UMA seção por empresa distinta.
-// Assim quem só tem QRs de empresa (ou só pessoais) também vê um header nomeado —
-// resolve o "cadê a listagem da empresa?".
-type QrGroup = { key: string; label: string; icon: Component; items: QrCode[] }
-
-const groups = computed<QrGroup[]>(() => {
-  const result: QrGroup[] = []
-
-  const personal = qrs.value.filter((q) => q.scope === 'personal')
-  if (personal.length) {
-    result.push({ key: 'personal', label: 'Pessoais', icon: User, items: personal })
-  }
-
-  // Uma entrada por companyId distinto (preservando a ordem de chegada).
-  const seen = new Set<string>()
-  for (const q of qrs.value) {
-    if (q.scope !== 'company' || !q.companyId || seen.has(q.companyId)) continue
-    seen.add(q.companyId)
-    const items = qrs.value.filter((x) => x.companyId === q.companyId)
-    // Nome vem do backend; fallback = nome no workspace store; senão "Empresa".
-    const label =
-      q.companyName ||
-      workspace.companies.find((c) => c.id === q.companyId)?.name ||
-      'Empresa'
-    result.push({ key: q.companyId, label, icon: Building2, items })
-  }
-
-  return result
-})
-
-// ─── Segmented control (abas): Todos | Pessoais | <Empresa A> | … ──────────────
 const route = useRoute()
 const router = useRouter()
+const workspace = useWorkspaceStore()
+
+// ─── Estado dos filtros ────────────────────────────────────────────────────────
+const PAGE_SIZE = 24
+
 const activeScope = ref<string>(
   typeof route.query.scope === 'string' ? route.query.scope : 'all',
 )
+const activeFolderId = ref<string>('all')
+const page = ref(1)
+/** O que está no campo. Vai pro servidor só depois da pausa (ver watcher). */
+const searchInput = ref('')
+/** O que já virou consulta. */
+const search = ref('')
 
-const tabs = computed(() => [
-  { key: 'all', label: 'Todos', count: qrs.value.length },
-  ...groups.value.map((g) => ({ key: g.key, label: g.label, count: g.items.length })),
-])
+let searchTimer: number | null = null
+watch(searchInput, (value) => {
+  if (searchTimer !== null) window.clearTimeout(searchTimer)
+  // Sem debounce, cada tecla vira uma consulta paginada no banco.
+  searchTimer = window.setTimeout(() => {
+    search.value = value.trim()
+    page.value = 1
+  }, 350)
+})
 
-// ─── Contexto da empresa da aba ativa (p/ pastas + tokens) ─────────────────────
-// activeScope vira um companyId quando a aba de uma empresa está selecionada.
+const listParams = computed(() => ({
+  page: page.value,
+  limit: PAGE_SIZE,
+  ...(search.value ? { search: search.value } : {}),
+  ...(activeScope.value !== 'all' ? { scope: activeScope.value } : {}),
+  ...(activeFolderId.value !== 'all' ? { folderId: activeFolderId.value } : {}),
+}))
+
+const list = useQrList(listParams)
+const { create, update, cancel, remove } = useQrMutations()
+const foldersQuery = useQrFolders()
+const { create: createFolder, remove: removeFolder } = useQrFolderMutations()
+
+const pageData = computed(() => list.data.value)
+const items = computed<QrCode[]>(() => pageData.value?.items ?? [])
+const total = computed(() => pageData.value?.total ?? 0)
+const totalAll = computed(() => pageData.value?.totalAll ?? 0)
+const scopes = computed(() => pageData.value?.scopes ?? [])
+const allFolders = computed<QrFolder[]>(() => foldersQuery.data.value ?? [])
+
+/** Nenhum QR existe (diferente de "o filtro não achou nada"). */
+const vazioDeVerdade = computed(
+  () => !list.isLoading.value && totalAll.value === 0 && !search.value,
+)
+
+// Trocar de projeto ou de pasta sempre reinicia a paginação: manter a página 7
+// ao entrar num projeto com 2 páginas mostraria uma lista vazia.
+watch([activeScope, activeFolderId], () => {
+  page.value = 1
+})
+
+// Persiste o projeto em ?scope= (recarregar/compartilhar mantém o filtro).
+watch(activeScope, (scope) => {
+  const query = { ...route.query }
+  if (scope === 'all') delete query.scope
+  else query.scope = scope
+  void router.replace({ query })
+})
+
+/**
+ * Página que ficou vazia depois de excluir/mover o último item dela.
+ * Sem isto a pessoa fica olhando um vazio que não é vazio de verdade.
+ */
+watch([items, total], ([lista, count]) => {
+  if (!list.isFetching.value && lista.length === 0 && count > 0 && page.value > 1) {
+    page.value = Math.min(page.value - 1, Math.ceil(count / PAGE_SIZE))
+  }
+})
+
+// ─── Contexto do projeto ativo (p/ pastas + tokens) ────────────────────────────
 const activeCompany = computed(() => {
   if (activeScope.value === 'all' || activeScope.value === 'personal') return null
   const c = workspace.companies.find((x) => x.id === activeScope.value)
@@ -87,63 +121,12 @@ const activeCompany = computed(() => {
   return { id: c.id, name: c.name, role: c.myRole }
 })
 const isAdminOfActive = computed(() => activeCompany.value?.role === 'ADMIN')
+// Pessoal: o dono gerencia. Empresa: só ADMIN. O backend valida de novo.
+const canManageFolders = computed(
+  () => activeScope.value === 'personal' || isAdminOfActive.value,
+)
 
-// ─── Pastas ────────────────────────────────────────────────────────────────────
-// Pastas relevantes à aba: empresa → pastas daquela empresa; pessoal → pessoais;
-// "Todos" → todas (só p/ filtrar; criar/excluir exige entrar num escopo).
-const scopeFolders = computed<QrFolder[]>(() => {
-  if (activeScope.value === 'personal') {
-    return allFolders.value.filter((f) => f.scope === 'personal')
-  }
-  if (activeCompany.value) {
-    return allFolders.value.filter((f) => f.companyId === activeCompany.value!.id)
-  }
-  return allFolders.value // aba "Todos": mostra todas para filtrar
-})
-
-// Filtro de pasta: 'all' | 'none' (sem pasta) | <folderId>.
-const activeFolderId = ref<string>('all')
-// Trocar de aba reseta o filtro de pasta (as pastas mudam de escopo).
-watch(activeScope, () => {
-  activeFolderId.value = 'all'
-})
-
-// Grupos visíveis conforme a aba ativa (em "Todos", todos; senão, só o escolhido),
-// já aplicando o filtro de pasta.
-const shownGroups = computed<QrGroup[]>(() => {
-  const base =
-    activeScope.value === 'all'
-      ? groups.value
-      : groups.value.filter((g) => g.key === activeScope.value)
-  if (activeFolderId.value === 'all') return base
-  return base
-    .map((g) => ({
-      ...g,
-      items: g.items.filter((q) =>
-        activeFolderId.value === 'none'
-          ? !q.folderId
-          : q.folderId === activeFolderId.value,
-      ),
-    }))
-    .filter((g) => g.items.length)
-})
-
-// Se a aba ativa deixou de existir (ex.: excluí o último QR daquela empresa), volta p/ "Todos".
-watch(groups, (g) => {
-  if (activeScope.value !== 'all' && !g.some((x) => x.key === activeScope.value)) {
-    activeScope.value = 'all'
-  }
-})
-
-// Persiste a aba em ?scope= (compartilhar/recarregar mantém o filtro).
-watch(activeScope, (scope) => {
-  const query = { ...route.query }
-  if (scope === 'all') delete query.scope
-  else query.scope = scope
-  router.replace({ query })
-})
-
-// ─── Criar / editar ───────────────────────────────────────────────────────────
+// ─── Criar / editar QR ─────────────────────────────────────────────────────────
 const editOpen = ref(false)
 const editing = ref<QrCode | null>(null)
 const saving = computed(() => create.isPending.value || update.isPending.value)
@@ -188,10 +171,15 @@ async function handleSubmit(payload: {
         folderId: payload.folderId,
         style: payload.style,
       })
+      // O QR novo nasce no topo da página 1. Sem voltar pra lá (e sem limpar a
+      // busca) a pessoa cria e não vê nada acontecer.
+      page.value = 1
+      searchInput.value = ''
+      search.value = ''
     }
     editOpen.value = false
   } catch {
-    // Toast já é disparado pelas mutations; mantém o dialog aberto p/ correção.
+    // Toast já disparado pelas mutations; mantém o dialog aberto p/ correção.
   }
 }
 
@@ -222,26 +210,20 @@ async function confirmRemove(password: string) {
   }
 }
 
-// ─── Criar pasta ────────────────────────────────────────────────────────────────
-// Escopo da nova pasta = empresa da aba ativa (só ADMIN) ou pessoal.
+// ─── Pastas ────────────────────────────────────────────────────────────────────
 const creatingFolder = ref(false)
-const newFolderName = ref('')
-async function submitFolder() {
-  const name = newFolderName.value.trim()
-  if (!name) return
+async function submitFolder(name: string) {
   try {
     await createFolder.mutateAsync({
       name,
       companyId: activeCompany.value?.id ?? null,
     })
-    newFolderName.value = ''
     creatingFolder.value = false
   } catch {
     /* toast já disparado */
   }
 }
 
-// ─── Excluir pasta (exige senha) ────────────────────────────────────────────────
 const folderRemoveTarget = ref<QrFolder | null>(null)
 async function confirmFolderRemove(password: string) {
   if (!folderRemoveTarget.value) return
@@ -255,13 +237,8 @@ async function confirmFolderRemove(password: string) {
     /* toast já disparado */
   }
 }
-// Pessoal: dono gerencia. Empresa: só ADMIN pode excluir pasta.
-const canManageFolders = computed(
-  () => activeScope.value === 'personal' || isAdminOfActive.value,
-)
 
-// ─── Mover QR para pasta (ação direta no card) ──────────────────────────────────
-// Pastas do MESMO escopo do QR (empresa dele, ou pessoais se for pessoal).
+// ─── Mover QR para pasta ───────────────────────────────────────────────────────
 function foldersForQr(qr: QrCode): QrFolder[] {
   return qr.companyId
     ? allFolders.value.filter((f) => f.companyId === qr.companyId)
@@ -275,165 +252,148 @@ async function moveQr(qr: QrCode, folderId: string | null) {
   }
 }
 
-// ─── Tokens de API (microserviço) ────────────────────────────────────────────
+// ─── Tokens de API ─────────────────────────────────────────────────────────────
 const tokensOpen = ref(false)
-// Se a empresa ativa some (troca de aba / empresa saiu do store), fecha o dialog
-// para ele não "reabrir sozinho" quando outra empresa virar ativa.
 watch(activeCompany, (c) => {
   if (!c) tokensOpen.value = false
 })
+
+// ─── Navegação em tela estreita ────────────────────────────────────────────────
+// Abaixo de 900px a coluna sai do fluxo e vira gaveta; sem isso ela roubaria
+// metade da largura de um celular.
+const navOpen = ref(false)
+watch([activeScope, activeFolderId], () => {
+  navOpen.value = false
+})
+
+function limparBusca() {
+  searchInput.value = ''
+  search.value = ''
+  page.value = 1
+}
 </script>
 
 <template>
   <div class="qr-view">
-    <header class="qr-head">
-      <div>
-        <p class="qr-eyebrow">Ferramentas</p>
-        <h1 class="qr-title">QR Codes</h1>
-        <p class="qr-sub">Imprima uma vez e troque o destino quando quiser, com métricas de leitura.</p>
-      </div>
-      <div class="qr-head-actions">
-        <button
-          v-if="activeCompany && isAdminOfActive"
-          class="qr-secondary"
-          type="button"
-          @click="tokensOpen = true"
-        >
-          <KeyRound :size="15" />
-          <span>Tokens de API</span>
-        </button>
-        <button class="qr-new" type="button" @click="openCreate">
-          <Plus :size="16" />
-          <span>Novo QR</span>
-        </button>
-      </div>
-    </header>
-
-    <!-- Loading -->
-    <div v-if="list.isLoading.value" class="qr-grid">
-      <div v-for="i in 3" :key="i" class="qr-skel">
-        <Skeleton type="card" />
-        <Skeleton type="text" :lines="2" />
-      </div>
+    <!-- Coluna de navegação -->
+    <div class="qr-nav" :class="{ 'qr-nav--open': navOpen }">
+      <QrSidebar
+        :scopes="scopes"
+        :total-all="totalAll"
+        :folders="allFolders"
+        :active-scope="activeScope"
+        :active-folder-id="activeFolderId"
+        :search="searchInput"
+        :can-manage-folders="canManageFolders"
+        :creating-folder="creatingFolder"
+        :saving-folder="createFolder.isPending.value"
+        @update:search="searchInput = $event"
+        @update:active-scope="activeScope = $event"
+        @update:active-folder-id="activeFolderId = $event"
+        @create-folder="submitFolder"
+        @remove-folder="folderRemoveTarget = $event"
+        @toggle-create="creatingFolder = $event"
+      />
     </div>
 
-    <!-- Erro -->
-    <div v-else-if="list.isError.value" class="qr-state">
-      <p class="qr-state-msg">Não foi possível carregar seus QR codes.</p>
-      <button class="qr-retry" type="button" @click="() => list.refetch()">
-        <RotateCw :size="15" />
-        <span>Tentar de novo</span>
-      </button>
-    </div>
+    <!-- Fundo que fecha a gaveta no mobile -->
+    <button
+      v-if="navOpen"
+      type="button"
+      class="qr-nav-scrim"
+      aria-label="Fechar filtros"
+      @click="navOpen = false"
+    />
 
-    <!-- Vazio -->
-    <EmptyState
-      v-else-if="!qrs.length"
-      :icon="QrCodeIcon"
-      title="Nenhum QR ainda"
-      description="Crie um QR dinâmico: você imprime uma vez e pode trocar para onde ele aponta a qualquer momento, sem reimprimir."
-    >
-      <template #action>
-        <button class="qr-new" type="button" @click="openCreate">
-          <Plus :size="16" />
-          <span>Criar primeiro QR</span>
-        </button>
-      </template>
-    </EmptyState>
-
-    <!-- Conteúdo: segmented control + seções por escopo (SEMPRE com header) -->
-    <template v-else>
-      <!-- Abas: Todos | Pessoais | <Empresa A> | … com contador em cada uma -->
-      <div class="qr-tabs" role="tablist" aria-label="Filtrar QR codes por escopo">
-        <button
-          v-for="tab in tabs"
-          :key="tab.key"
-          type="button"
-          role="tab"
-          class="qr-tab"
-          :class="{ 'qr-tab--active': activeScope === tab.key }"
-          :aria-selected="activeScope === tab.key"
-          @click="activeScope = tab.key"
-        >
-          <span class="qr-tab-label">{{ tab.label }}</span>
-          <span class="qr-tab-count">{{ tab.count }}</span>
-        </button>
-      </div>
-
-      <!-- Barra de pastas: filtra em qualquer aba; criar/excluir só num escopo -->
-      <div v-if="scopeFolders.length || canManageFolders" class="qr-folders">
-        <span class="qr-folders-label"><Folder :size="13" /> Pastas:</span>
-        <button
-          type="button"
-          class="qr-fchip"
-          :class="{ 'qr-fchip--active': activeFolderId === 'all' }"
-          @click="activeFolderId = 'all'"
-        >
-          Todas
-        </button>
-        <button
-          v-for="folder in scopeFolders"
-          :key="folder.id"
-          type="button"
-          class="qr-fchip"
-          :class="{ 'qr-fchip--active': activeFolderId === folder.id }"
-          @click="activeFolderId = folder.id"
-        >
-          <Folder :size="13" />
-          <span>{{ folder.name }}</span>
-          <span class="qr-fchip-count">{{ folder.qrCount }}</span>
-          <span
-            v-if="canManageFolders"
-            class="qr-fchip-del"
-            role="button"
-            aria-label="Excluir pasta"
-            @click.stop="folderRemoveTarget = folder"
+    <!-- Conteúdo -->
+    <div class="qr-main">
+      <header class="qr-head">
+        <div class="qr-head-title">
+          <button
+            type="button"
+            class="qr-nav-toggle"
+            aria-label="Abrir filtros"
+            @click="navOpen = true"
           >
-            <Trash2 :size="12" />
-          </span>
-        </button>
-        <button
-          type="button"
-          class="qr-fchip"
-          :class="{ 'qr-fchip--active': activeFolderId === 'none' }"
-          @click="activeFolderId = 'none'"
-        >
-          Sem pasta
-        </button>
+            <SlidersHorizontal :size="16" />
+          </button>
+          <div>
+            <p class="qr-eyebrow">Ferramentas</p>
+            <h1 class="qr-title">QR Codes</h1>
+          </div>
+        </div>
+        <div class="qr-head-actions">
+          <button
+            v-if="activeCompany && isAdminOfActive"
+            class="qr-secondary"
+            type="button"
+            @click="tokensOpen = true"
+          >
+            <KeyRound :size="15" />
+            <span>Tokens de API</span>
+          </button>
+          <button class="qr-new" type="button" @click="openCreate">
+            <Plus :size="16" />
+            <span>Novo QR</span>
+          </button>
+        </div>
+      </header>
 
-        <!-- Criar pasta (empresa exige ADMIN — backend valida; front esconde) -->
-        <template v-if="canManageFolders">
-          <form v-if="creatingFolder" class="qr-fnew" @submit.prevent="submitFolder">
-            <input
-              v-model="newFolderName"
-              class="qr-fnew-input"
-              placeholder="Nome da pasta"
-              maxlength="80"
-              autofocus
-            />
-            <button type="submit" class="qr-fnew-ok" :disabled="!newFolderName.trim() || createFolder.isPending.value">
-              Criar
-            </button>
-            <button type="button" class="qr-fnew-x" aria-label="Cancelar" @click="creatingFolder = false; newFolderName = ''">
-              <X :size="14" />
-            </button>
-          </form>
-          <button v-else type="button" class="qr-fchip qr-fchip--add" @click="creatingFolder = true">
-            <FolderPlus :size="13" />
-            <span>Nova pasta</span>
+      <!-- Loading -->
+      <div v-if="list.isLoading.value" class="qr-grid">
+        <div v-for="i in 6" :key="i" class="qr-skel">
+          <Skeleton type="card" />
+          <Skeleton type="text" :lines="2" />
+        </div>
+      </div>
+
+      <!-- Erro -->
+      <div v-else-if="list.isError.value" class="qr-state">
+        <p class="qr-state-msg">Não foi possível carregar seus QR codes.</p>
+        <button class="qr-retry" type="button" @click="() => list.refetch()">
+          <RotateCw :size="15" />
+          <span>Tentar de novo</span>
+        </button>
+      </div>
+
+      <!-- Nenhum QR existe -->
+      <EmptyState
+        v-else-if="vazioDeVerdade"
+        :icon="QrCodeIcon"
+        title="Nenhum QR ainda"
+        description="Crie um QR dinâmico: você imprime uma vez e pode trocar para onde ele aponta a qualquer momento, sem reimprimir."
+      >
+        <template #action>
+          <button class="qr-new" type="button" @click="openCreate">
+            <Plus :size="16" />
+            <span>Criar primeiro QR</span>
           </button>
         </template>
-      </div>
+      </EmptyState>
 
-      <section v-for="group in shownGroups" :key="group.key" class="qr-group">
-        <div class="qr-group-head">
-          <component :is="group.icon" :size="15" />
-          <h2 class="qr-group-title">{{ group.label }}</h2>
-          <span class="qr-group-count">{{ group.items.length }}</span>
-        </div>
-        <div class="qr-grid">
+      <!-- O filtro não achou nada (distinto de não ter nenhum QR) -->
+      <EmptyState
+        v-else-if="!items.length"
+        :icon="SearchX"
+        title="Nada encontrado"
+        :description="
+          search
+            ? `Nenhum QR com “${search}” no nome ou no destino, dentro deste filtro.`
+            : 'Nenhum QR neste projeto ou pasta.'
+        "
+      >
+        <template #action>
+          <button v-if="search" class="qr-secondary" type="button" @click="limparBusca">
+            <X :size="15" />
+            <span>Limpar busca</span>
+          </button>
+        </template>
+      </EmptyState>
+
+      <template v-else>
+        <div class="qr-grid" :class="{ 'qr-grid--loading': list.isFetching.value }">
           <QrCard
-            v-for="qr in group.items"
+            v-for="qr in items"
             :key="qr.id"
             :qr="qr"
             :folders="foldersForQr(qr)"
@@ -444,8 +404,16 @@ watch(activeCompany, (c) => {
             @move="(folderId) => moveQr(qr, folderId)"
           />
         </div>
-      </section>
-    </template>
+
+        <QrPagination
+          :page="page"
+          :limit="PAGE_SIZE"
+          :total="total"
+          :loading="list.isFetching.value"
+          @update:page="page = $event"
+        />
+      </template>
+    </div>
 
     <!-- Dialogs -->
     <QrEditDialog
@@ -504,13 +472,52 @@ watch(activeCompany, (c) => {
 </template>
 
 <style scoped>
+/* Duas colunas. A anterior era uma coluna centralizada de 1080px, o que deixava
+   duas faixas mortas nas laterais em tela cheia e empurrava a navegação pro meio
+   do conteúdo, competindo espaço com os próprios cards. */
 .qr-view {
-  max-width: 1080px;
+  display: grid;
+  /* 220px é o mínimo em que "prod-parceiros" + contador cabem sem cortar. A
+     coluna não pode crescer além disso: ela já divide a largura com a navegação
+     do próprio app, e cada pixel a mais aqui sai de uma coluna de cards. */
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  max-width: 1520px;
   margin: 0 auto;
-  padding: 24px 20px 60px;
+  padding: 24px 24px 60px;
+  align-items: start;
+}
+
+.qr-nav {
+  position: sticky;
+  /* Acompanha o scroll: com 8 pastas a navegação some antes da lista acabar. */
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.qr-nav-scrim {
+  display: none;
+}
+
+.qr-nav-toggle {
+  display: none;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.qr-main {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 20px;
+  min-width: 0;
 }
 
 .qr-head {
@@ -519,6 +526,12 @@ watch(activeCompany, (c) => {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.qr-head-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .qr-eyebrow {
@@ -538,11 +551,11 @@ watch(activeCompany, (c) => {
   color: var(--text);
 }
 
-.qr-sub {
-  margin: 4px 0 0;
-  color: var(--text-3);
-  font-size: 13px;
-  max-width: 520px;
+.qr-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .qr-new {
@@ -566,13 +579,6 @@ watch(activeCompany, (c) => {
   filter: brightness(1.05);
 }
 
-.qr-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
 .qr-secondary {
   min-height: 44px;
   display: inline-flex;
@@ -594,234 +600,20 @@ watch(activeCompany, (c) => {
   border-color: var(--border-strong);
 }
 
-/* Barra de pastas */
-.qr-folders {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.qr-folders-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-right: 4px;
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.qr-fchip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 11px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-2);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color var(--motion-fast) var(--motion-ease),
-    background var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
-}
-
-.qr-fchip:hover {
-  border-color: var(--border-strong);
-  color: var(--text);
-}
-
-.qr-fchip--active {
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  color: var(--accent);
-}
-
-.qr-fchip--add {
-  border-style: dashed;
-  color: var(--text-3);
-}
-
-.qr-fchip-count {
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: var(--surface-3);
-  color: var(--text-3);
-  font-size: 10.5px;
-  font-weight: 700;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.qr-fchip-del {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 2px;
-  padding: 2px;
-  border-radius: 999px;
-  color: var(--text-4);
-}
-
-.qr-fchip-del:hover {
-  color: var(--err);
-  background: color-mix(in srgb, var(--err) 12%, transparent);
-}
-
-.qr-fnew {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.qr-fnew-input {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-}
-
-.qr-fnew-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.qr-fnew-ok {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.qr-fnew-ok:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.qr-fnew-x {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text-3);
-  cursor: pointer;
-}
-
-/* Segmented control (abas por escopo) */
-.qr-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-}
-
-.qr-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 0 13px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-3);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 650;
-  cursor: pointer;
-  transition: background var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
-}
-
-.qr-tab:hover {
-  color: var(--text-2);
-  background: color-mix(in srgb, var(--surface) 60%, transparent);
-}
-
-.qr-tab--active {
-  background: var(--surface);
-  border-color: var(--border);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
-}
-
-.qr-tab-count {
-  min-width: 20px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--surface-3);
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 700;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.qr-tab--active .qr-tab-count {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
-}
-
-.qr-group {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.qr-group-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-3);
-}
-
-.qr-group-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 750;
-  color: var(--text-2);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.qr-group-count {
-  min-width: 22px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text-3);
-  font-size: 11px;
-  font-weight: 700;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
+/* 264px e não 300: a coluna de navegação come largura, e com 300 a grade caía
+   para 2 colunas num monitor de 1440 — menos cards visíveis do que na versão
+   centralizada que esta tela veio substituir, o que anularia o ganho. */
 .qr-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(264px, 1fr));
   gap: 16px;
+  transition: opacity var(--motion) var(--motion-ease);
+}
+
+/* Página trocando: esmaece em vez de sumir. A grade sumindo a cada clique é o
+   que faz uma paginação rápida PARECER lenta. */
+.qr-grid--loading {
+  opacity: 0.55;
 }
 
 .qr-skel {
@@ -869,9 +661,60 @@ watch(activeCompany, (c) => {
   border-color: var(--border-strong);
 }
 
+/* ─── Tela estreita: a navegação vira gaveta ──────────────────────────────── */
+@media (max-width: 900px) {
+  .qr-view {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 20px 16px 48px;
+  }
+
+  .qr-nav {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: min(292px, 86vw);
+    max-height: none;
+    padding: 20px 16px;
+    background: var(--surface);
+    box-shadow: var(--shadow-overlay);
+    transform: translateX(-100%);
+    transition: transform var(--motion) var(--motion-ease);
+  }
+
+  .qr-nav--open {
+    transform: translateX(0);
+  }
+
+  .qr-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    border: none;
+    background: var(--scrim, rgb(0 0 0 / 45%));
+    cursor: pointer;
+  }
+
+  .qr-nav-toggle {
+    display: grid;
+  }
+
+  .qr-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+}
+
 @media (max-width: 560px) {
   .qr-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qr-nav,
+  .qr-grid {
+    transition-duration: 1ms;
   }
 }
 </style>
