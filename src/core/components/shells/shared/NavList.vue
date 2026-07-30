@@ -15,6 +15,7 @@ import {
   Milestone,
   Paintbrush,
   QrCode,
+  ScanText,
   type LucideIcon,
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
@@ -32,7 +33,7 @@ export type NavItem = {
   to?: string
   children?: NavItem[]
   role?: 'WORKER' | 'ADMIN'
-  section?: 'Trabalho' | 'Pessoal'
+  section?: 'Trabalho' | 'Pessoal' | 'Ferramentas'
 }
 
 const { quarters } = useNavQuarters()
@@ -61,10 +62,18 @@ const mainItems = computed<NavItem[]>(() => [
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
-  // QR Codes vive em "Trabalho": abrange QRs pessoais + os das empresas do usuário
-  // (o segmented control da view separa por escopo). Acesso por membership.
-  { title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Trabalho' },
   { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },
+])
+
+/**
+ * Ferramentas de INTEGRAÇÃO: o que a empresa consome de fora do workflow, via
+ * API com token (QR dinâmico, leitura de documentos). Seção própria, por
+ * último, para não misturar com o dia a dia de gestão. O QR morava em
+ * "Trabalho" e mudou para cá quando a seção nasceu.
+ */
+const toolsItems = computed<NavItem[]>(() => [
+  { title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Ferramentas' },
+  { title: 'OCR Digital', icon: ScanText, to: '/ocr', section: 'Ferramentas' },
 ])
 
 const taskItem = computed<NavItem | null>(() => {
@@ -107,7 +116,7 @@ const workItems = computed<NavItem[]>(() => {
   return items.filter((i) => userMeetsRole(i.role))
 })
 
-defineExpose({ workItems, personalItems })
+defineExpose({ workItems, personalItems, toolsItems })
 </script>
 
 <template>
@@ -191,6 +200,27 @@ defineExpose({ workItems, personalItems })
       <v-list nav :density="listDensity" class="nav-list">
         <v-list-item
           v-for="item in personalItems"
+          :key="item.title"
+          :to="item.to"
+          :value="item.title"
+          rounded="lg"
+          class="nav-item"
+          color="secondary"
+        >
+          <template #prepend>
+            <component :is="item.icon" :size="15" class="nav-icon" />
+          </template>
+          <v-list-item-title class="nav-label">{{ item.title }}</v-list-item-title>
+        </v-list-item>
+      </v-list>
+    </div>
+
+    <!-- Integração via API (QR, OCR): seção própria, sempre por último. -->
+    <div class="nav-section">
+      <div class="nav-eyebrow">Ferramentas</div>
+      <v-list nav :density="listDensity" class="nav-list">
+        <v-list-item
+          v-for="item in toolsItems"
           :key="item.title"
           :to="item.to"
           :value="item.title"

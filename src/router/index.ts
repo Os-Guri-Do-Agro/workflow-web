@@ -73,6 +73,8 @@ const router = createRouter({
     { path: '/time', name: 'time', component: () => import('@/features/time/TimeTrackingView.vue') },
     // Acesso por membership (login basta). Escopo por empresa é via x-company-id.
     { path: '/qr', name: 'qr', component: () => import('@/features/qr/QrCodesView.vue') },
+    // Ferramenta em desenvolvimento: a página apresenta o produto (spec: docs/specs/ocr-digital.md).
+    { path: '/ocr', name: 'ocr', component: () => import('@/features/ocr/OcrDigitalView.vue') },
     { path: '/roadmap', name: 'roadmap', component: () => import('@/features/roadmap/RoadmapView.vue') },
     { path: '/tasks/:month', name: 'tasks', component: () => import('@/features/tasks/TasksView.vue') },
     { path: '/tasks/:month/:taskId', name: 'task-details', component: () => import('@/features/tasks/TaskDetailsView.vue') },

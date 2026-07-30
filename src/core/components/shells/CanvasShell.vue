@@ -15,6 +15,8 @@ import {
   CalendarRange,
   ChevronDown,
   Paintbrush,
+  QrCode,
+  ScanText,
 } from 'lucide-vue-next'
 import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
@@ -46,6 +48,9 @@ const tabs = computed(() => [
   { to: '/variables', icon: KeyRound, label: 'Variáveis' },
   { to: '/notes', icon: StickyNote, label: 'Notas' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
+  // Ferramentas de integração por último (o Canvas não tem seções; a ordem diz).
+  { to: '/qr', icon: QrCode, label: 'QR Codes' },
+  { to: '/ocr', icon: ScanText, label: 'OCR Digital' },
 ])
 
 const dockItems = computed(() => {

@@ -17,6 +17,7 @@ import {
   Paintbrush,
   Bug,
   QrCode,
+  ScanText,
   Timer,
 } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
@@ -58,7 +59,7 @@ type RailItem = {
   icon: Component
   label: string
   role?: 'WORKER' | 'ADMIN'
-  section: 'Trabalho' | 'Pessoal'
+  section: 'Trabalho' | 'Pessoal' | 'Ferramentas'
 }
 
 /**
@@ -87,11 +88,13 @@ const railItems = computed<RailItem[]>(() => {
   }
   items.push(
     { to: '/variables', icon: KeyRound, label: 'Variáveis', section: 'Trabalho' },
-    { to: '/qr', icon: QrCode, label: 'QR Codes', section: 'Trabalho' },
     { to: '/company-users', icon: Users, label: 'Usuários', role: 'ADMIN', section: 'Trabalho' },
     { to: '/time', icon: Timer, label: 'Meu tempo', section: 'Pessoal' },
     { to: '/notes', icon: StickyNote, label: 'Notas', section: 'Pessoal' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendário', section: 'Pessoal' },
+    // Ferramentas de integração por último, espelhando o NavList do CommandShell.
+    { to: '/qr', icon: QrCode, label: 'QR Codes', section: 'Ferramentas' },
+    { to: '/ocr', icon: ScanText, label: 'OCR Digital', section: 'Ferramentas' },
   )
   return items.filter((i) => userMeetsRole(i.role))
 })

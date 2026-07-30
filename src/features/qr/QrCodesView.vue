@@ -21,7 +21,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { KeyRound, Plus, QrCode as QrCodeIcon, RotateCw, SearchX, SlidersHorizontal, X } from 'lucide-vue-next'
+import { BookOpen, KeyRound, Plus, QrCode as QrCodeIcon, RotateCw, SearchX, SlidersHorizontal, X } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PasswordConfirmDialog from '@/components/ui/PasswordConfirmDialog.vue'
@@ -35,7 +35,15 @@ import QrPagination from './components/QrPagination.vue'
 import { useQrList, useQrMutations } from '@/composables/useQrCodes'
 import { useQrFolders, useQrFolderMutations } from '@/composables/useQrFolders'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import { apiBaseUrl } from '@/service/api'
 import type { QrCode, QrFolder, QrStyle } from '@/service/qr/qr-service'
+
+/**
+ * Docs do integrador (Scalar, servida pela API). Antes esse link só existia
+ * DENTRO do diálogo de tokens, ou seja: quem não sabia que a API existia nunca
+ * descobria. No header, a porta de entrada da integração fica à vista.
+ */
+const integratorDocsUrl = `${apiBaseUrl()}/qr-docs`
 
 const route = useRoute()
 const router = useRouter()
@@ -323,6 +331,15 @@ function limparBusca() {
           </div>
         </div>
         <div class="qr-head-actions">
+          <a
+            class="qr-secondary"
+            :href="integratorDocsUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <BookOpen :size="15" />
+            <span>Docs da API</span>
+          </a>
           <button
             v-if="activeCompany && isAdminOfActive"
             class="qr-secondary"
@@ -593,6 +610,7 @@ function limparBusca() {
   font-size: 13px;
   font-weight: 650;
   cursor: pointer;
+  text-decoration: none; /* a mesma classe veste <button> e <a> (Docs da API) */
   transition: border-color var(--motion-fast) var(--motion-ease);
 }
 
