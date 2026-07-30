@@ -15,6 +15,7 @@ import { VueQueryPlugin } from '@tanstack/vue-query'
 import { applyThemeTokens, type AccentName, type ThemeName } from '@/plugins/tokens'
 import { queryClient } from '@/service/query-client'
 import { startRealtimeQuerySync } from '@/composables/useRealtimeQuerySync'
+import { startPerfProbe } from '@/utils/perf-probe'
 
 // O echarts NÃO é registrado aqui de propósito. Registrar `VChart` global fazia
 // os 536 KB da biblioteca entrarem no chunk de entrada, então quem abria a tela
@@ -30,6 +31,11 @@ const initialAccent: AccentName =
   (localStorage.getItem('ui.accent') as AccentName | null) || 'teal'
 
 applyThemeTokens(initialTheme === 'light' ? 'light' : 'dark', initialAccent)
+
+// Ligada para todo mundo, de propósito: travamento não avisa antes, e sonda que
+// depende de lembrar de um parâmetro na URL nunca está ligada na hora do
+// incidente. Só acorda acima dos limites dela. Relatório: `window.__perf.dump()`.
+startPerfProbe()
 
 const warn = console.warn.bind(console)
 console.warn = (...args) => {
