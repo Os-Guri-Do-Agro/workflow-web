@@ -159,7 +159,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
             />
           </label>
 
-          <label class="timer-field">
+          <div class="timer-field">
             <span class="timer-label">Empresa</span>
             <AppSelect
               :model-value="editor.form.companyId"
@@ -169,9 +169,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
               density="compact"
               @update:model-value="editor.setCompany($event)"
             />
-          </label>
+          </div>
 
-          <label v-if="editor.form.companyId" class="timer-field">
+          <div v-if="editor.form.companyId" class="timer-field">
             <span class="timer-label">Tarefa</span>
             <!-- ActivitySelect (com busca), não AppSelect: a lista de tarefas
                  da empresa passa de dezenas e rolar tudo era a dor. -->
@@ -183,7 +183,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
               density="compact"
               @update:model-value="editor.setActivity($event)"
             />
-          </label>
+          </div>
           <p v-else class="timer-hint">Escolha uma empresa para atribuir uma tarefa.</p>
 
           <label class="timer-toggle">
@@ -235,7 +235,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
             />
           </label>
 
-          <label class="timer-field">
+          <div class="timer-field">
             <span class="timer-label">Empresa</span>
             <AppSelect
               :model-value="companyId"
@@ -245,9 +245,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
               density="compact"
               @update:model-value="onStartCompany($event)"
             />
-          </label>
+          </div>
 
-          <label v-if="companyId" class="timer-field">
+          <div v-if="companyId" class="timer-field">
             <span class="timer-label">Tarefa</span>
             <ActivitySelect
               :model-value="activityId"
@@ -257,7 +257,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
               density="compact"
               @update:model-value="onStartActivity($event)"
             />
-          </label>
+          </div>
           <p v-else class="timer-hint">Escolha uma empresa para atribuir uma tarefa.</p>
 
           <!-- F5 — faturável -->

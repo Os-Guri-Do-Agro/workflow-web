@@ -664,7 +664,7 @@ const presets: Array<{ id: Preset; label: string }> = [
             <span class="tv-label">Descrição</span>
             <input v-model="manualForm.description" class="tv-input" type="text" maxlength="500" />
           </label>
-          <label class="tv-field">
+          <div class="tv-field">
             <span class="tv-label">Empresa</span>
             <AppSelect
               :model-value="manualForm.companyId"
@@ -674,8 +674,8 @@ const presets: Array<{ id: Preset; label: string }> = [
               density="compact"
               @update:model-value="applyCompanyChange(manualForm, $event)"
             />
-          </label>
-          <label v-if="manualForm.companyId" class="tv-field">
+          </div>
+          <div v-if="manualForm.companyId" class="tv-field">
             <span class="tv-label">Tarefa</span>
             <ActivitySelect
               :model-value="manualForm.activityId"
@@ -685,7 +685,7 @@ const presets: Array<{ id: Preset; label: string }> = [
               density="compact"
               @update:model-value="applyActivityChange(manualForm, $event)"
             />
-          </label>
+          </div>
           <label class="tv-field">
             <span class="tv-label">Início</span>
             <input v-model="manualForm.startedAt" class="tv-input" type="datetime-local" />

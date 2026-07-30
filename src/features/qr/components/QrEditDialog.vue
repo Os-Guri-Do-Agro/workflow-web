@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   Building2,
   ImagePlus,
@@ -44,7 +44,7 @@ const emit = defineEmits<{
 }>()
 
 const workspace = useWorkspaceStore()
-const { error: showError } = useToast()
+const { error: showError, info: showInfo } = useToast()
 
 const LOGO_MAX_BYTES = 200 * 1024 // ~200KB
 
@@ -145,6 +145,12 @@ watch(
     form.dotStyle = st?.dotStyle ?? 'square'
     form.cornerStyle = st?.cornerStyle ?? 'square'
     form.logoUrl = st?.logoUrl ?? ''
+
+    // Criação: se sobrou rascunho de uma sessão interrompida (F5, aba fechada,
+    // dialog fechado por acidente), devolve em vez de exigir digitar tudo de novo.
+    if (!props.editing && restoreDraft()) {
+      showInfo('Recuperamos o que você tinha preenchido')
+    }
   },
   { immediate: true },
 )
@@ -172,6 +178,68 @@ function applyPreset(preset: { dark: string; light: string }) {
   form.colorDark = preset.dark
   form.colorLight = preset.light
 }
+
+// ─── Cor por código, e não só pelo seletor do sistema ────────────────────────
+//
+// Antes o hex era um `<span>` só de leitura: para trocar a cor era obrigatório
+// abrir o seletor do sistema operacional, que trabalha em RGB. Quem tinha o
+// código da marca na mão (`#0054E3`) não conseguia colar, e traduzir hex para
+// RGB de cabeça é pedir erro. Agora o campo aceita digitar e colar.
+//
+// Aceita, porque é o que aparece colado na prática: `#0054E3`, `0054e3`, `#08f`,
+// `rgb(0, 84, 227)` e `0, 84, 227`.
+function normalizeColor(raw: string): string | null {
+  const texto = raw.trim().toLowerCase()
+  if (!texto) return null
+
+  const hex = texto.replace(/^#/, '')
+  if (/^[0-9a-f]{6}$/.test(hex)) return `#${hex}`
+  // Forma curta: `#08f` significa `#0088ff`.
+  if (/^[0-9a-f]{3}$/.test(hex)) {
+    return `#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`
+  }
+
+  const rgb = texto.match(/^(?:rgba?\()?\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})/)
+  if (rgb) {
+    const canais = [rgb[1], rgb[2], rgb[3]].map((n) => Number(n))
+    if (canais.every((n) => n >= 0 && n <= 255)) {
+      return `#${canais.map((n) => n.toString(16).padStart(2, '0')).join('')}`
+    }
+  }
+  return null
+}
+
+/**
+ * Rascunhos do que está sendo digitado nos campos de cor.
+ *
+ * Sem isto, `#0054E3` seria rejeitado a cada tecla até o 6º dígito e o campo
+ * ficaria brigando com quem digita. O valor só vai para o form quando forma uma
+ * cor válida; o que está na tela continua sendo o que a pessoa escreveu.
+ */
+const hexDraft = reactive({ dark: '', light: '' })
+
+function onHexInput(which: 'dark' | 'light', raw: string) {
+  hexDraft[which] = raw
+  const cor = normalizeColor(raw)
+  if (!cor) return
+  if (which === 'dark') form.colorDark = cor
+  else form.colorLight = cor
+}
+
+/** Ao sair do campo, descarta rascunho inválido e volta a mostrar a cor real. */
+function onHexBlur(which: 'dark' | 'light') {
+  hexDraft[which] = ''
+}
+
+const hexDarkValue = computed(() => hexDraft.dark || form.colorDark.toUpperCase())
+const hexLightValue = computed(() => hexDraft.light || form.colorLight.toUpperCase())
+
+const hexDarkInvalido = computed(
+  () => !!hexDraft.dark && !normalizeColor(hexDraft.dark),
+)
+const hexLightInvalido = computed(
+  () => !!hexDraft.light && !normalizeColor(hexDraft.light),
+)
 
 // ─── Upload de logo (data URL) ────────────────────────────────────────────────
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -205,8 +273,123 @@ function removeLogo() {
   form.logoUrl = ''
 }
 
+// ─── Não perder o que foi digitado ───────────────────────────────────────────
+//
+// Este formulário é longo (destino, descrição, escopo, pasta, cores, formatos,
+// logo). Antes, um clique no fundo escuro fechava o dialog e apagava tudo, e
+// reabrir começava do zero: quem estava no meio do preenchimento perdia o
+// trabalho sem nenhum aviso. Duas defesas, nesta ordem:
+//
+// 1. Clique no fundo e Esc NÃO fecham enquanto há coisa digitada. Fechar exige
+//    um gesto explícito (o X ou Cancelar).
+// 2. O rascunho fica em `localStorage` a cada mudança, então até um F5 no meio
+//    do preenchimento devolve o formulário como estava.
+//
+// Só vale para CRIAÇÃO. Na edição o estado de partida é o QR salvo, e um
+// rascunho velho sobrescrevendo dado real seria pior que o problema.
+const DRAFT_KEY = 'qr.createDraft'
+
+const isDirty = computed(() => {
+  if (isEdit.value) return false
+  return (
+    !!form.targetUrl.trim() ||
+    !!form.label.trim() ||
+    !!form.companyId ||
+    !!form.folderId ||
+    !!form.logoUrl ||
+    form.colorDark !== '#000000' ||
+    form.colorLight !== '#ffffff' ||
+    form.dotStyle !== 'square' ||
+    form.cornerStyle !== 'square' ||
+    form.active !== true
+  )
+})
+
+let draftTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Grava o rascunho, com atraso e sem o logo.
+ *
+ * As duas coisas existem por medição, não por precaução: gravar no `localStorage`
+ * a cada tecla é I/O síncrono no meio da digitação, e `form.logoUrl` é uma data
+ * URL de até 200KB. Serializar e escrever isso a cada caractere trava a digitação
+ * por centenas de milissegundos (o DevTools acusa o `textarea` bloqueando a UI).
+ *
+ * O logo fica de fora do rascunho de propósito: é o único campo pesado, e
+ * reanexar uma imagem é muito mais barato que redigitar o formulário inteiro.
+ */
+function saveDraft() {
+  if (isEdit.value || !props.modelValue) return
+  if (draftTimer) clearTimeout(draftTimer)
+  draftTimer = setTimeout(() => {
+    draftTimer = null
+    try {
+      if (!isDirty.value) {
+        localStorage.removeItem(DRAFT_KEY)
+        return
+      }
+      const { logoUrl: _logo, ...leve } = form
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(leve))
+    } catch {
+      // Cota cheia ou modo privado: o rascunho é conveniência, não requisito.
+    }
+  }, 600)
+}
+
+onBeforeUnmount(() => {
+  if (draftTimer) clearTimeout(draftTimer)
+})
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // idem
+  }
+}
+
+/** Devolve o rascunho ao form. Ignora chave desconhecida (formato antigo). */
+function restoreDraft(): boolean {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    if (!raw) return false
+    const draft = JSON.parse(raw) as Partial<typeof form>
+    let restaurou = false
+    for (const key of Object.keys(form) as (keyof typeof form)[]) {
+      const value = draft[key]
+      if (value !== undefined && typeof value === typeof form[key]) {
+        // @ts-expect-error chaves e tipos conferidos acima, uma a uma
+        form[key] = value
+        restaurou = true
+      }
+    }
+    return restaurou
+  } catch {
+    return false
+  }
+}
+
+watch(form, saveDraft, { deep: true })
+
+/** Fechamento explícito (X, Cancelar): descarta o rascunho de propósito. */
 function close() {
-  if (!props.loading) emit('update:modelValue', false)
+  if (props.loading) return
+  clearDraft()
+  emit('update:modelValue', false)
+}
+
+/**
+ * Tentativa de fechar por clique no fundo ou Esc. Com formulário preenchido,
+ * ignora e avisa: é o gesto mais fácil de disparar por acidente e o que mais
+ * custava caro.
+ */
+function requestClose() {
+  if (props.loading) return
+  if (isDirty.value) {
+    showInfo('Use o X ou Cancelar para descartar o que você preencheu')
+    return
+  }
+  close()
 }
 
 // Envia só os campos preenchidos: cores/formatos sempre têm valor; logo é opcional.
@@ -224,6 +407,8 @@ function buildStyle(): QrStyle {
 function submit() {
   touched.value = true
   if (!form.targetUrl.trim()) return
+  // Gravou: o rascunho cumpriu a função e sai de cena.
+  clearDraft()
   emit('submit', {
     targetUrl: form.targetUrl.trim(),
     label: form.label.trim(),
@@ -237,8 +422,19 @@ function submit() {
 
 <template>
   <Teleport to="body">
+    <!-- `requestClose`: com formulário preenchido, o clique no fundo não descarta
+         nada. Era o acidente mais caro deste dialog.
+
+         O comentário fica FORA do <Transition> de propósito: Transition aceita um
+         único filho, e um comentário ao lado de um `v-if` conta como segundo nó.
+         O efeito é a saída nunca completar e o overlay ficar preso na tela. -->
     <Transition name="qed-fade">
-      <div v-if="modelValue" class="qed-overlay" @mousedown.self="close">
+      <div
+        v-if="modelValue"
+        class="qed-overlay"
+        @mousedown.self="requestClose"
+        @keydown.esc.stop="requestClose"
+      >
         <section
           class="qed"
           role="dialog"
@@ -298,7 +494,7 @@ function submit() {
               </label>
 
               <!-- Escopo: pessoal x empresa -->
-              <label class="qed-field">
+              <div class="qed-field">
                 <span class="qed-label">Onde salvar</span>
                 <AppSelect
                   :model-value="form.companyId"
@@ -311,10 +507,10 @@ function submit() {
                   <component :is="form.companyId ? Building2 : User" :size="12" />
                   {{ form.companyId ? 'Compartilhado com a empresa selecionada.' : 'Visível só para você.' }}
                 </span>
-              </label>
+              </div>
 
               <!-- Pasta (organiza dentro do escopo) -->
-              <label v-if="folderOptions.length > 1" class="qed-field">
+              <div v-if="folderOptions.length > 1" class="qed-field">
                 <span class="qed-label">Pasta (opcional)</span>
                 <AppSelect
                   :model-value="form.folderId"
@@ -323,7 +519,7 @@ function submit() {
                   label="Pasta"
                   @update:model-value="(v) => (form.folderId = v as string | null)"
                 />
-              </label>
+              </div>
 
               <label class="qed-toggle">
                 <input v-model="form.active" type="checkbox" class="qed-checkbox" />
@@ -355,26 +551,64 @@ function submit() {
                 </div>
 
                 <!-- Cores -->
+                <!-- `div` e não `label`: o bloco tem DOIS controles (o seletor e
+                     o campo de código), e um label repassaria o clique do campo
+                     de texto para o seletor, abrindo o picker do sistema. -->
                 <div class="qed-row">
-                  <label class="qed-color">
+                  <div class="qed-color">
                     <span class="qed-label">Cor dos módulos</span>
-                    <span class="qed-color-wrap">
-                      <input v-model="form.colorDark" type="color" class="qed-color-input" aria-label="Cor dos módulos" />
-                      <span class="qed-color-hex">{{ form.colorDark }}</span>
+                    <span class="qed-color-wrap" :class="{ 'qed-color-wrap--err': hexDarkInvalido }">
+                      <input
+                        v-model="form.colorDark"
+                        type="color"
+                        class="qed-color-input"
+                        aria-label="Escolher a cor dos módulos"
+                      />
+                      <input
+                        class="qed-color-hex"
+                        type="text"
+                        inputmode="text"
+                        spellcheck="false"
+                        autocomplete="off"
+                        maxlength="24"
+                        aria-label="Código da cor dos módulos"
+                        placeholder="#000000"
+                        :value="hexDarkValue"
+                        @input="onHexInput('dark', ($event.target as HTMLInputElement).value)"
+                        @blur="onHexBlur('dark')"
+                      />
                     </span>
-                  </label>
-                  <label class="qed-color">
+                    <span class="qed-hint">Cole o código: #0054E3, 0054e3 ou rgb(0, 84, 227)</span>
+                  </div>
+                  <div class="qed-color">
                     <span class="qed-label">Cor do fundo</span>
-                    <span class="qed-color-wrap">
-                      <input v-model="form.colorLight" type="color" class="qed-color-input" aria-label="Cor do fundo" />
-                      <span class="qed-color-hex">{{ form.colorLight }}</span>
+                    <span class="qed-color-wrap" :class="{ 'qed-color-wrap--err': hexLightInvalido }">
+                      <input
+                        v-model="form.colorLight"
+                        type="color"
+                        class="qed-color-input"
+                        aria-label="Escolher a cor do fundo"
+                      />
+                      <input
+                        class="qed-color-hex"
+                        type="text"
+                        inputmode="text"
+                        spellcheck="false"
+                        autocomplete="off"
+                        maxlength="24"
+                        aria-label="Código da cor do fundo"
+                        placeholder="#FFFFFF"
+                        :value="hexLightValue"
+                        @input="onHexInput('light', ($event.target as HTMLInputElement).value)"
+                        @blur="onHexBlur('light')"
+                      />
                     </span>
-                  </label>
+                  </div>
                 </div>
 
                 <!-- Formatos -->
                 <div class="qed-row">
-                  <label class="qed-field qed-field--half">
+                  <div class="qed-field qed-field--half">
                     <span class="qed-label">Formato dos pontos</span>
                     <AppSelect
                       :model-value="form.dotStyle ?? 'square'"
@@ -383,8 +617,8 @@ function submit() {
                       density="compact"
                       @update:model-value="(v) => (form.dotStyle = v as DotStyle)"
                     />
-                  </label>
-                  <label class="qed-field qed-field--half">
+                  </div>
+                  <div class="qed-field qed-field--half">
                     <span class="qed-label">Formato dos cantos</span>
                     <AppSelect
                       :model-value="form.cornerStyle ?? 'square'"
@@ -393,7 +627,7 @@ function submit() {
                       density="compact"
                       @update:model-value="(v) => (form.cornerStyle = v as CornerStyle)"
                     />
-                  </label>
+                  </div>
                 </div>
 
                 <!-- Logo -->
@@ -802,11 +1036,39 @@ function submit() {
   border-radius: var(--radius-sm);
 }
 
+/* Agora é campo de texto (dá para digitar e colar), não mais um rótulo morto. */
 .qed-color-hex {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-2);
   text-transform: uppercase;
+}
+
+.qed-color-hex::placeholder {
+  color: var(--text-4);
+  text-transform: none;
+}
+
+.qed-color-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* Digitação ainda incompleta ou inválida: avisa sem bloquear a digitação. */
+.qed-color-wrap--err {
+  border-color: color-mix(in srgb, var(--err) 55%, transparent);
+}
+
+.qed-color-wrap--err:focus-within {
+  border-color: var(--err);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--err) 20%, transparent);
 }
 
 /* ─── Logo ─── */
