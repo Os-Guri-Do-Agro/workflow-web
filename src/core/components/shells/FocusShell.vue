@@ -19,6 +19,7 @@ import {
   QrCode,
   ScanText,
   Timer,
+  Plug,
 } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import BrandMark from './shared/BrandMark.vue'
@@ -32,6 +33,7 @@ import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
 
 defineEmits<{
   'open-command-palette': []
@@ -40,6 +42,7 @@ defineEmits<{
 const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspaceStore()
+const isAdminAnywhere = useIsAdminAnywhere()
 
 const { quarters, firstMonth } = useNavQuarters()
 
@@ -96,6 +99,15 @@ const railItems = computed<RailItem[]>(() => {
     { to: '/qr', icon: QrCode, label: 'QR Codes', section: 'Ferramentas' },
     { to: '/ocr', icon: ScanText, label: 'OCR Digital', section: 'Ferramentas' },
   )
+  // Tokens das ferramentas: só ADMIN de alguma empresa (página agregada).
+  if (isAdminAnywhere.value) {
+    items.push({
+      to: '/public-access',
+      icon: Plug,
+      label: 'Acessos Públicos',
+      section: 'Ferramentas',
+    })
+  }
   return items.filter((i) => userMeetsRole(i.role))
 })
 

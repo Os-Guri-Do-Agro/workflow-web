@@ -18,7 +18,7 @@ Content-Type: application/json
 
 | Serviço           | Arquivo                                                  | Domínio                        |
 | ----------------- | -------------------------------------------------------- | ------------------------------ |
-| Auth              | `service/auth/auth-service.ts`                           | Login e signup                 |
+| Auth              | `service/auth/auth-service.ts`                           | Login (não há cadastro público) |
 | User              | `service/user/user-service.ts`                           | CRUD de usuários               |
 | Companies         | `service/companies/companies-services.ts`                | Empresas e membros             |
 | Variables         | `service/companies/variables/variables-services.ts`      | Variáveis de ambiente          |
@@ -53,7 +53,7 @@ Content-Type: application/json
 | Método | Endpoint      | Descrição                     |
 | ------ | ------------- | ----------------------------- |
 | POST   | `/auth/login` | Login (retorna `accessToken`) |
-| POST   | `/user`       | Criar conta (signup)          |
+| POST   | `/user`       | Criar usuário (exige JWT; sem cadastro público) |
 
 ### User
 

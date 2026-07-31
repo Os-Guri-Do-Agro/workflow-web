@@ -113,7 +113,7 @@ Configurável em `/settings`. Aplicado em runtime sem reload (exceto troca de em
 ```mermaid
 flowchart TD
   Route{Rota atual?}
-  Route -->|login, signup, download, bug-report, report-status| Bare[Render bare — sem shell]
+  Route -->|login, download, bug-report, report-status| Bare[Render bare — sem shell]
   Route -->|demais rotas autenticadas| Shell{ui.shell}
   Shell -->|command| CS[CommandShell]
   Shell -->|focus| FS[FocusShell]

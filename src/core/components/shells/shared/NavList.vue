@@ -17,10 +17,12 @@ import {
   QrCode,
   ScanText,
   type LucideIcon,
+  Plug,
 } from 'lucide-vue-next'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const { density } = useUiPreferences()
@@ -38,6 +40,7 @@ export type NavItem = {
 
 const { quarters } = useNavQuarters()
 const workspace = useWorkspaceStore()
+const isAdminAnywhere = useIsAdminAnywhere()
 
 const ROLE_RANK: Record<string, number> = {
   WORKER: 0,
@@ -74,6 +77,18 @@ const mainItems = computed<NavItem[]>(() => [
 const toolsItems = computed<NavItem[]>(() => [
   { title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Ferramentas' },
   { title: 'OCR Digital', icon: ScanText, to: '/ocr', section: 'Ferramentas' },
+  // Tokens das duas ferramentas acima. Só para quem é ADMIN de alguma empresa
+  // (a página é agregada; não depende da empresa ativa).
+  ...(isAdminAnywhere.value
+    ? [
+        {
+          title: 'Acessos Públicos',
+          icon: Plug,
+          to: '/public-access',
+          section: 'Ferramentas',
+        } as NavItem,
+      ]
+    : []),
 ])
 
 const taskItem = computed<NavItem | null>(() => {

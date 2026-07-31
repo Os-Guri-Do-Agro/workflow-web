@@ -74,6 +74,9 @@ useFaviconBadge()
 // (router.replace) para o aviso não repetir em refresh/navegação.
 const REASON_MESSAGES: Record<string, string> = {
   'no-access': 'Você não tem acesso a essa página nesta empresa',
+  // Gate cross-empresa (Acessos Públicos): falar "nesta empresa" contradiria a
+  // regra, que é ser ADMIN em qualquer uma.
+  'admin-only': 'Essa página é para quem administra alguma empresa',
   'canvas-off': 'Este recurso está desativado no momento',
 }
 
@@ -111,7 +114,6 @@ onUnmounted(() => window.removeEventListener('keydown', onAssistantHotkey, true)
 const bare = computed(
   () =>
     route.name === 'login' ||
-    route.name === 'signup' ||
     route.name === 'download' ||
     route.name === 'bug-report' ||
     route.name === 'report-status' ||

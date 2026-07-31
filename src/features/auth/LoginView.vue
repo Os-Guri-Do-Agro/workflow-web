@@ -140,14 +140,6 @@ const features = [
               <ArrowRight :size="15" />
             </template>
           </button>
-
-          <button
-            type="button"
-            class="btn-ghost"
-            @click="router.push('/signup')"
-          >
-            Criar conta gratuita
-          </button>
         </form>
 
         <footer class="form-foot">

@@ -8,7 +8,6 @@ Mapa completo de rotas, layouts, navegação e fluxos de usuário do work-flow.
 flowchart LR
   subgraph public [Rotas públicas — sem App Shell]
     Login["/login"]
-    Signup["/signup"]
     Download["/download"]
     BugPublic["/report/:companyId"]
     BugStatus["/r/:id"]
@@ -42,7 +41,6 @@ flowchart LR
   end
 
   Login --> Dash
-  Signup --> Login
 ```
 
 ## Tabela de rotas
@@ -50,7 +48,6 @@ flowchart LR
 | Rota                    | Nome              | View                   | Shell | Auth    | Role                    |
 | ----------------------- | ----------------- | ---------------------- | ----- | ------- | ----------------------- |
 | `/login`                | login             | `LoginView`            | ❌    | Pública | —                       |
-| `/signup`               | signup            | `SignupView`           | ❌    | Pública | —                       |
 | `/download`             | download          | `DownloadView`         | ❌    | Pública | —                       |
 | `/report/:companyId`    | bug-report        | `ReportBugView`        | ❌    | Pública | —                       |
 | `/reports/:companyId`   | bug-report        | _(alias)_              | ❌    | Pública | —                       |
@@ -122,12 +119,7 @@ A sidebar (`NavList.vue`) organiza itens em duas seções:
 - Formulário e-mail + senha
 - Grava JWT em `localStorage.token`
 - Redirect para `/` após sucesso
-- Link para signup e download do app desktop
-
-#### Signup (`/signup`)
-
-- Criação de conta via `POST /user`
-- Redirect para login após sucesso
+- Link para download do app desktop
 
 #### Download (`/download`)
 
@@ -419,7 +411,7 @@ Overlay global disponível em todas as telas com shell.
 ### Onboarding
 
 ```
-/signup → /login → (JWT) → / (Dashboard)
+/login → (JWT) → / (Dashboard)
 ```
 
 ### Ciclo de tarefa

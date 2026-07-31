@@ -50,7 +50,6 @@ const router = createRouter({
   },
   routes: [
     { path: '/login', name: 'login', component: () => import('@/features/auth/LoginView.vue') },
-    { path: '/signup', name: 'signup', component: () => import('@/features/auth/SignupView.vue') },
     { path: '/download', name: 'download', component: () => import('@/features/download/DownloadView.vue') },
     {
       path: '/report/:companyId',
@@ -75,6 +74,14 @@ const router = createRouter({
     { path: '/qr', name: 'qr', component: () => import('@/features/qr/QrCodesView.vue') },
     // Ferramenta em desenvolvimento: a página apresenta o produto (spec: docs/specs/ocr-digital.md).
     { path: '/ocr', name: 'ocr', component: () => import('@/features/ocr/OcrDigitalView.vue') },
+    // Tokens de API das ferramentas (spec: docs/specs/acessos-publicos.md).
+    // `anyCompanyAdmin`: quem não é ADMIN em NENHUMA empresa não tem o que ver.
+    {
+      path: '/public-access',
+      name: 'public-access',
+      component: () => import('@/features/public-access/PublicAccessView.vue'),
+      meta: { anyCompanyAdmin: true },
+    },
     { path: '/roadmap', name: 'roadmap', component: () => import('@/features/roadmap/RoadmapView.vue') },
     { path: '/tasks/:month', name: 'tasks', component: () => import('@/features/tasks/TasksView.vue') },
     { path: '/tasks/:month/:taskId', name: 'task-details', component: () => import('@/features/tasks/TaskDetailsView.vue') },
@@ -99,7 +106,6 @@ const { capturePageview } = usePostHog()
 
 const PUBLIC_ROUTES = new Set([
   'login',
-  'signup',
   'download',
   'bug-report',
   'report-status',
@@ -133,11 +139,19 @@ function isTokenExpired(token: string): boolean {
 }
 
 /**
- * Papel do usuário na empresa ativa, lido do JWT. Se ainda não há empresa
- * ativa persistida (ex.: deep link logo após o login, antes de qualquer view
- * popular o workspace), usa a primeira empresa do JWT como fallback e já
- * persiste — sem isso o deep link pós-login caía na home por "sem papel".
+ * Existe ALGUMA empresa no JWT onde o usuário é ADMIN? É o gate dos Acessos
+ * Públicos: a página é agregada, então não depende da empresa ativa — quem
+ * administra qualquer empresa entra e vê só as dela.
  */
+function isAdminAnywhere(token: string): boolean {
+  try {
+    const decoded = jwtDecode<{ companies?: { role: string }[] }>(token)
+    return (decoded.companies ?? []).some((c) => c.role === 'ADMIN')
+  } catch {
+    return false
+  }
+}
+
 function activeCompanyRole(token: string): string | null {
   try {
     const decoded = jwtDecode<{ companies?: { companyId: string; role: string }[] }>(token)
@@ -188,6 +202,12 @@ router.beforeEach((to, from) => {
 
   // Aplica meta.requiredRole (antes não era lido por guard nenhum) — esconde
   // bug-reports/empresa de quem não tem papel suficiente na empresa ativa.
+  // Gate cross-empresa: não é sobre a empresa ativa, e sim sobre administrar
+  // alguma. Por isso `reason` próprio (o texto de 'no-access' fala em empresa).
+  if (to.meta.anyCompanyAdmin && token && !isAdminAnywhere(token)) {
+    return { name: 'home', query: { reason: 'admin-only' } }
+  }
+
   const required = to.meta.requiredRole as string | undefined
   if (required && token) {
     const role = activeCompanyRole(token)

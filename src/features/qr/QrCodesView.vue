@@ -29,12 +29,12 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import QrCard from './components/QrCard.vue'
 import QrEditDialog from './components/QrEditDialog.vue'
 import QrMetricsDialog from './components/QrMetricsDialog.vue'
-import QrApiTokensDialog from './components/QrApiTokensDialog.vue'
 import QrSidebar from './components/QrSidebar.vue'
 import QrPagination from './components/QrPagination.vue'
 import { useQrList, useQrMutations } from '@/composables/useQrCodes'
 import { useQrFolders, useQrFolderMutations } from '@/composables/useQrFolders'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
 import { apiBaseUrl } from '@/service/api'
 import type { QrCode, QrFolder, QrStyle } from '@/service/qr/qr-service'
 
@@ -129,6 +129,7 @@ const activeCompany = computed(() => {
   return { id: c.id, name: c.name, role: c.myRole }
 })
 const isAdminOfActive = computed(() => activeCompany.value?.role === 'ADMIN')
+const isAdminAnywhere = useIsAdminAnywhere()
 // Pessoal: o dono gerencia. Empresa: só ADMIN. O backend valida de novo.
 const canManageFolders = computed(
   () => activeScope.value === 'personal' || isAdminOfActive.value,
@@ -260,12 +261,6 @@ async function moveQr(qr: QrCode, folderId: string | null) {
   }
 }
 
-// ─── Tokens de API ─────────────────────────────────────────────────────────────
-const tokensOpen = ref(false)
-watch(activeCompany, (c) => {
-  if (!c) tokensOpen.value = false
-})
-
 // ─── Navegação em tela estreita ────────────────────────────────────────────────
 // Abaixo de 900px a coluna sai do fluxo e vira gaveta; sem isso ela roubaria
 // metade da largura de um celular.
@@ -340,15 +335,18 @@ function limparBusca() {
             <BookOpen :size="15" />
             <span>Docs da API</span>
           </a>
-          <button
-            v-if="activeCompany && isAdminOfActive"
+          <!-- A gestão de tokens virou página própria (Acessos Públicos): um
+               lugar só, com todas as empresas onde o usuário é ADMIN. Por isso
+               o atalho NÃO depende do escopo selecionado aqui (o dialog antigo
+               dependia, porque operava só na empresa da seleção). -->
+          <RouterLink
+            v-if="isAdminAnywhere"
             class="qr-secondary"
-            type="button"
-            @click="tokensOpen = true"
+            to="/public-access"
           >
             <KeyRound :size="15" />
             <span>Tokens de API</span>
-          </button>
+          </RouterLink>
           <button class="qr-new" type="button" @click="openCreate">
             <Plus :size="16" />
             <span>Novo QR</span>
@@ -479,12 +477,6 @@ function limparBusca() {
       @confirm="confirmFolderRemove"
     />
 
-    <QrApiTokensDialog
-      v-if="tokensOpen && activeCompany"
-      :company-id="activeCompany.id"
-      :company-name="activeCompany.name"
-      @close="tokensOpen = false"
-    />
   </div>
 </template>
 

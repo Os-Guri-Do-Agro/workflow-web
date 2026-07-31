@@ -14,10 +14,6 @@ class authService {
   postLogin(data: any): Promise<any> {
     return this.handleRequest(api.post('/auth/login', data), 'Erro ao fazer login')
   }
-
-  signup(data: { name: string; email: string; password: string }): Promise<any> {
-    return this.handleRequest(api.post('/user', data), 'Erro ao criar conta')
-  }
 }
 
 export default new authService()

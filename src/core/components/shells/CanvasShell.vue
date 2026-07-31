@@ -17,6 +17,7 @@ import {
   Paintbrush,
   QrCode,
   ScanText,
+  Plug,
 } from 'lucide-vue-next'
 import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
@@ -29,12 +30,14 @@ import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
 
 const emit = defineEmits<{
   'open-command-palette': []
 }>()
 
 const route = useRoute()
+const isAdminAnywhere = useIsAdminAnywhere()
 const router = useRouter()
 
 const { quarters, firstMonth } = useNavQuarters()
@@ -51,6 +54,10 @@ const tabs = computed(() => [
   // Ferramentas de integração por último (o Canvas não tem seções; a ordem diz).
   { to: '/qr', icon: QrCode, label: 'QR Codes' },
   { to: '/ocr', icon: ScanText, label: 'OCR Digital' },
+  // Tokens das ferramentas: só ADMIN de alguma empresa (página agregada).
+  ...(isAdminAnywhere.value
+    ? [{ to: '/public-access', icon: Plug, label: 'Acessos Públicos' }]
+    : []),
 ])
 
 const dockItems = computed(() => {
