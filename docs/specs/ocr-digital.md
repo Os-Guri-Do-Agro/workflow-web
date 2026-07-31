@@ -8,6 +8,11 @@
 
 ---
 
+> **Integração externa:** o manual entregue a quem consome a API (o Marcel, na
+> Sentia) vive em [ocr-integracao-sentia.md](./ocr-integracao-sentia.md):
+> rotas, exemplos de retorno, os quatro estados de assinatura, o de-para com o
+> cadastro de Empresa e o porquê de o grau de risco não sair do OCR.
+
 ## Visão Geral
 
 Nova ferramenta de integração do workflow, no molde do QR: uma **API com token de
