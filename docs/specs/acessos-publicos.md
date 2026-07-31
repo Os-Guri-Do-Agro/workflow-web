@@ -90,7 +90,7 @@ correta é dono revoga o que é seu.
 |---|---|---|
 | Alto | Escopo novo quebrar cliente em produção no microserviço QR | `scope` nullable; `null` = total; guard trata `null` como passe livre; teste de regressão congela o comportamento de token sem escopo nos dois guards |
 | Médio | Criador-only: token fica sem ninguém que possa revogar pela UI se o criador sair da empresa **ou for rebaixado a WORKER** (o `assertCompanyAdmin` roda antes da regra do criador) | Regra dura mantida (pedido explícito do Nicolas). Válvula de escape DOCUMENTADA: `UPDATE "CompanyApiToken" SET "revokedAt" = now() WHERE id = '...'`. A listagem mostra o criador de cada token, então sempre dá para saber de quem é. Agravante conhecido: a API não tem endpoint de remover membro nem de trocar role, logo o offboarding já é feito no banco de qualquer jeito |
-| Médio | Fechar `POST /user` quebrar o fluxo ADMIN de criar usuário | O modal roda autenticado (axios manda Bearer sempre); teste manual do fluxo + guard exige apenas JWT (não role, para não mudar mais que o pedido) |
+| Médio | Fechar `POST /user` quebrar o fluxo de criar usuário | O modal roda autenticado (o axios manda Bearer e `x-company-id` sempre). Guard exige ADMIN; o botão da tela ganhou o mesmo gate, então WORKER não vê ação que falharia. Exercitado contra a API local: sem token 401, WORKER 403 |
 | Baixo | Duplicidade de gestão (dialog do QR × página nova) | Dialog do QR é REMOVIDO; o botão "Tokens de API" do QR navega para `/public-access`. A página nova absorve a pasta padrão de QR na criação |
 
 ---
@@ -113,7 +113,14 @@ correta é dono revoga o que é seu.
 - Front: some a rota `/signup`, o arquivo `SignupView.vue`, a entrada em
   `PUBLIC_ROUTES`, o botão "Criar conta gratuita" do login e o
   `authService.signup()`.
-- Back: `POST /user` ganha `@UseGuards(JwtAuthGuard)`. Sem JWT → 401.
+- Back: `POST /user` ganha `@UseGuards(JwtAuthGuard, CompanyRoleGuard)` +
+  `@RequireRole(ADMIN)`. Sem JWT → 401; autenticado sem ser ADMIN da empresa
+  → 403. **Endurecido para ADMIN em 31/07 a pedido do Nicolas**, depois que a
+  revisão mostrou que "qualquer autenticado" ainda era (a) sonda de e-mails (o
+  409 "já cadastrado" versus 201 revela quem tem conta) e (b) bloqueio de
+  endereço, já que não existe endpoint de apagar usuário.
+- Front: `CreateUserModal` na tela de Usuários passa a exigir ADMIN
+  (`isActiveCompanyAdmin()`), senão o WORKER veria o botão e levaria 403.
   O comentário de segurança do service é atualizado (a razão histórica de
   ignorar `companyId`/`role` do body permanece válida).
 
@@ -185,8 +192,9 @@ reusando o `ApiTokenService` do QrModule (já exportado). Os endpoints
 - [x] **Given** visitante sem conta **When** acessa `/signup` **Then**
       redireciona para login (rota não existe) e não há botão de cadastro
       no login.
-- [x] **Given** request `POST /user` sem JWT **Then** 401. **Given** ADMIN
-      logado criando usuário pela tela Usuários **Then** funciona como hoje.
+- [x] **Given** request `POST /user` sem JWT **Then** 401. **Given** WORKER
+      autenticado **Then** 403 e nenhum usuário criado. **Given** ADMIN da
+      empresa criando pela tela Usuários **Then** funciona como hoje.
 - [x] **Given** token legado (scope null) **When** chama `/api/v1/qr` e
       `/api/v1/ocr` **Then** ambos respondem como hoje (regressão).
 - [x] **Given** token criado com escopo `ocr` **When** chama `/api/v1/qr`
@@ -218,7 +226,9 @@ reusando o `ApiTokenService` do QrModule (já exportado). Os endpoints
       null.
 - [x] `listAllForUser` — só empresas onde é ADMIN; WORKER não vaza.
 - [x] Guards de escopo — matriz {null, qr, ocr} × {superfície QR, OCR}.
-- [x] `POST /user` — sem JWT 401 (teste de controller/guard).
+- [x] `POST /user` — sem JWT 401, token forjado 401, WORKER 403, sem empresa
+      no request 403, ADMIN 201, e `companyId`/`role` do body ignorados
+      (6 testes, guards reais em `user-create-guard.spec.ts`).
 
 ### Regressão
 - [x] Suítes de QR inteiras verdes (guard e service mudaram).
@@ -337,6 +347,7 @@ de `/api/v1/qr` e `/api/v1/ocr` com P2022 (coluna inexistente).
 
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
+| 2026-07-31 | 1.1 | `POST /user` endurecido de "qualquer autenticado" para **ADMIN da empresa** (decisão do Nicolas após o alerta da revisão de segurança): guard + `RequireRole(ADMIN)`, gate equivalente no botão da tela de Usuários (`isActiveCompanyAdmin`), 6 testes com guards reais. Verificado na API local: 401 sem token, 403 para WORKER, nada gravado | Claude |
 | 2026-07-31 | 1.0 | Implementação completa + revisão adversarial em 3 frentes. Corrigidos: unhandled rejection na revogação, estado de erro da listagem (falha de rede lia-se como "não administra nenhuma empresa"), `aria-label`→`label` nos AppSelect (a prop errada era descartada, selects sem nome acessível), `<label>`→`<div>` nos selects (não rotulava e sequestrava o clique do hint), `aria-pressed` no filtro, `role="status"` no token revelado, botão de revogar com `aria-disabled` + toast explicativo (o `disabled` escondia o motivo), `useIsAdminAnywhere` derivando do store reativo, `reason=admin-only` no redirect, query de pastas sob demanda, select explícito sem `tokenHash` no banco + teto de 500, teste do guard de `POST /user`, docs do repo sem cadastro público. Pendências declaradas ao Nicolas: ordem migration→API no deploy, backfill opcional de escopo, `POST /user` aceita qualquer JWT (não só ADMIN) | Claude |
 | 2026-07-31 | 0.2 | 3 decisões confirmadas pelo Nicolas (dialog morre; escopo QR/OCR/ambas; regra dura na revogação). Status → Em Implementação | Claude |
 | 2026-07-31 | 0.1 | Criação, após research (cadastro público nas duas pontas, token sem escopo, revogação por qualquer ADMIN) | Claude |

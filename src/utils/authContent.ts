@@ -35,6 +35,30 @@ export function getUserToken() {
 }
 
 
+/**
+ * É ADMIN na empresa ativa? Distinto de `getInfoAuth`, que responde "é membro
+ * que edita" (ADMIN ou WORKER). Use este para ações restritas a ADMIN, como
+ * criar usuário: o backend passou a exigir ADMIN em `POST /user` (spec
+ * acessos-publicos), e mostrar o botão para WORKER só entregaria um 403.
+ *
+ * Mesma fonte do outro: `/user/me`, que reflete o banco, não o JWT (que pode
+ * estar velho depois de uma promoção).
+ */
+export async function isActiveCompanyAdmin(): Promise<boolean> {
+  if (!getUserToken()) return false
+  const activeCompanyId = localStorage.getItem('activeCompany')
+  try {
+    const response = await userService.getInfoAuth()
+    const membership = response.companies.find(
+      (company: any) => company.companyId === activeCompanyId,
+    )
+    return membership?.role === 'ADMIN'
+  } catch {
+    // Falha de rede esconde a ação em vez de liberar (o backend é a lei).
+    return false
+  }
+}
+
 export async function getInfoAuth() {
   // Lê o token na hora da chamada — capturar em escopo de módulo congelava o
   // estado do boot (sem token) e escondia botões até o F5 pós-login.

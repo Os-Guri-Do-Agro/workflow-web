@@ -14,7 +14,7 @@ import AddUserModal from './components/AddUserModal.vue'
 import BulkAddUsersModal from './components/BulkAddUsersModal.vue'
 import CreateCompanyModal from './components/CreateCompanyModal.vue'
 import CreateUserModal from '@/components/CreateUserModal.vue'
-import { getInfoAuth } from '@/utils/authContent'
+import { getInfoAuth, isActiveCompanyAdmin } from '@/utils/authContent'
 import { useToast } from '@/composables/useToast'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -47,6 +47,9 @@ const showBulkAddModal = ref(false)
 const showUserAddModal = ref(false)
 const selectedCompany = ref<any>(null)
 const isWorkerRole = ref(false)
+// Criar usuário é ADMIN-only no backend; sem este gate o WORKER via o botão
+// e levava 403 ao enviar o formulário.
+const isAdmin = ref(false)
 const loadingUser = ref(true)
 const loadingSystem = ref(true)
 const { success: showSuccess, error: showError } = useToast()
@@ -140,6 +143,9 @@ onMounted(() => {
   getInfoAuth().then((can) => {
     isWorkerRole.value = can || false
   })
+  isActiveCompanyAdmin().then((can) => {
+    isAdmin.value = can
+  })
   fetchSystemCompanies()
   fetchUserCompanies()
 })
@@ -159,7 +165,7 @@ onMounted(() => {
       </div>
 
       <div class="header-actions">
-        <CreateUserModal v-if="isWorkerRole" />
+        <CreateUserModal v-if="isAdmin" />
         <CreateCompanyModal v-if="isWorkerRole" @created="fetchSystemCompanies" />
       </div>
     </header>
