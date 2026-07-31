@@ -56,10 +56,16 @@ export interface OcrReadResult {
     assinadoEm: string | null
     totalAssinaturas: number
     revogacaoVerificada: boolean
+    carimboTempo?: {
+      presente: boolean
+      verificado: boolean
+      data: string | null
+    } | null
     detalhes: Array<{
       valida: boolean
       tipo: string | null
       assinadoPor: string | null
+      revogacao?: 'ok' | 'revogado' | 'nao_verificada'
       motivo: string | null
     }>
   }

@@ -418,6 +418,18 @@ Regras:
 
 ## Plano de Rollout
 
+- [x] Raízes ICP-Brasil (v5-v13, repositório oficial do ITI) E cadeia gov.br
+      completa (repo.iti.br, via AIA do certificado) commitadas em
+      `workflow-api/trusted-cas/` — o validador carrega do diretório default,
+      sem env.
+- [x] **Smoke com documento REAL cumprido** (NDA do Nicolas assinado no
+      gov.br): `valida: true, tipo: gov.br`. O smoke real pegou dois defeitos
+      que as fixtures sintéticas não pegavam, ambos corrigidos: (1) o gov.br
+      embute só o certificado folha no CMS, então as ACs do diretório entram
+      como material de construção da cadeia; (2) o certificado gov.br é
+      efêmero, então a cadeia é validada na DATA DA ASSINATURA (signingTime), e
+      não em "agora". Smoke permanente em `src/ocr/real-pdf.smoke.spec.ts`
+      (roda com `REAL_SIGNED_PDF=<caminho>`; pula sem a env).
 - [ ] Migration (aditiva) → deploy da API (rotas novas, nada muda) → deploy do front.
 - [ ] Testar com a PetJourney (template + contrato real) antes de divulgar a ferramenta.
 - [ ] Página /ocr sai do estado "em desenvolvimento" no mesmo deploy do front.
@@ -439,7 +451,7 @@ tabelas ficam, sem efeito sobre o resto. Front volta à página de apresentaçã
 
 ## Follow-up (fase 2, fora desta spec)
 
-- [ ] Consulta de revogação (CRL/OCSP) e/ou validação ITI como selo extra.
+- [x] ~~Consulta de revogação (CRL)~~ — implementada em 2026-07-31.
 - [ ] Painel de consumo por empresa no /ocr (a fatura visual da cobrança à parte).
 - [ ] Docx, se aparecer caso real com assinatura validável.
 
@@ -456,6 +468,7 @@ tabelas ficam, sem efeito sobre o resto. Front volta à página de apresentaçã
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-07-30 | 0.1 | Criação, após decisões do Nicolas (motor Claude, ICP-Brasil e/ou gov.br, REST síncrono, hub primeiro) | Claude |
+| 2026-07-31 | 0.5 | Fase 2 aplicada (pedido do Nicolas): revogação via CRL (revogado derruba; inacessível declara), carimbo RFC 3161 verificado como data-referência, CAdES .p7s anexado aceito no endpoint. 3 helpers de PKI de teste extraídos p/ `test-pki.ts`; 12 testes novos (66 no total). Payload ganha `carimboTempo` e `revogacao` por assinatura | Claude |
 | 2026-07-30 | 0.4 | Implementação T1-T8 entregue: schema+migration (não aplicada), guard compartilhado via export, SignatureService (7 testes, PDF adulterado reprova), extractFromPdf (PDF nativo + structured output), bucket privado, service+controllers (boot verificado, /ocr-docs 200, guard 401), webhook HMAC com retentativas, docs Scalar, front de gestão (verificado em navegador com mock). 55 testes verdes. T9 pendente do smoke com contrato REAL (fica com o Nicolas) + /code-review | Claude |
 | 2026-07-30 | 0.3 | Webhook sobe da fase 2 para a fase 1 (T6b: registro por empresa, HMAC, retentativas, webhookStatus); docs do integrador reforçadas como parte da entrega. Spec aprovada pelo Nicolas; status → Em Implementação | Claude |
 | 2026-07-30 | 0.2 | Acervo: todo PDF lido é retido em bucket PRIVADO (pedido do Nicolas — workflow como centralizador das empresas dele). `OcrDocument.storagePath`, `OcrStorageService` (T4b), download por URL assinada na página /ocr, ACs de acesso/isolamento, LGPD muda de descarte p/ controle de acesso | Claude |
