@@ -28,7 +28,6 @@ import { useCompanyBoards } from '@/composables/useCompanyBoards'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { useBacklog } from '@/composables/useBacklog'
 import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
-import { useAnalytics } from '@/composables/useAnalytics'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import { useQueryClient } from '@tanstack/vue-query'
 
@@ -86,7 +85,6 @@ function apiErrorMessage(e: unknown, fallback: string): string {
 const route = useRoute()
 const router = useRouter()
 const queryClient = useQueryClient()
-const { track } = useAnalytics()
 
 const dialog = ref(false)
 const creating = ref(false)
@@ -173,12 +171,6 @@ const createActivity = async () => {
       responsibleUserIds: formActivity.value.assignees || [],
     }
     const created = await activityService.postActivity(payload)
-    track('task_created', {
-      has_description: !!payload.description,
-      has_assignees: payload.responsibleUserIds.length > 0,
-      has_due_date: !!formActivity.value.dueDate,
-      priority: payload.priorityNumber,
-    })
     if (formActivity.value.attachment) {
       const fd = new FormData()
       fd.append('file', formActivity.value.attachment)

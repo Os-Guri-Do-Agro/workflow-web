@@ -3,7 +3,6 @@ import { jwtDecode } from 'jwt-decode'
 import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
 import { clearSession } from '@/service/api'
-import { usePostHog } from '@/composables/usePostHog'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
@@ -101,8 +100,6 @@ const router = createRouter({
     { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/features/errors/NotFoundView.vue') },
   ],
 })
-
-const { capturePageview } = usePostHog()
 
 const PUBLIC_ROUTES = new Set([
   'login',
@@ -220,7 +217,6 @@ router.beforeEach((to, from) => {
 
 router.afterEach(() => {
   NProgress.done()
-  capturePageview()
 })
 
 export default router

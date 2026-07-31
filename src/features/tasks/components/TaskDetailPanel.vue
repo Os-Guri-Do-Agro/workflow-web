@@ -43,8 +43,6 @@ import { ACTIVITY_PRIORITIES, ACTIVITY_STATUSES, prioritySpec, statusSpec } from
 import type { ActivityDetail, ActivityResponsible } from '../activity-types'
 import TaskDescriptionEditor from './TaskDescriptionEditor.vue'
 import SubtaskProgress from './SubtaskProgress.vue'
-import { hasFormatting, isHtmlish, plainTextLength } from '../description-html'
-import { useAnalytics } from '@/composables/useAnalytics'
 
 const props = defineProps<{
   taskId: string
@@ -57,7 +55,6 @@ const emit = defineEmits<{ close: [] }>()
 
 const { error: showError } = useToast()
 const queryClient = useQueryClient()
-const { track } = useAnalytics()
 
 const taskIdRef = toRef(props, 'taskId')
 const companyIdRef = computed(() => props.companyId ?? null)
@@ -185,7 +182,6 @@ async function toggleSubtask(subtask: { id: string; status: string }) {
       next,
       companyIdRef.value ?? undefined,
     )
-    track('subtask_toggled', { to_status: next, surface: 'panel' })
   } catch {
     // Rollback: o anel voltar sozinho é o que impede a tela de mentir sobre o
     // progresso depois de uma falha de rede.
@@ -221,21 +217,12 @@ function saveTitle(value: string) {
 }
 
 function saveDescription(value: string) {
-  // `was_legacy_plain` é medido ANTES de gravar: depois do PATCH o valor no
-  // servidor já é HTML e a informação de origem se perde.
-  track('task_description_edited', {
-    char_count: plainTextLength(value),
-    used_formatting: hasFormatting(value),
-    was_legacy_plain: !!activity.value?.description && !isHtmlish(activity.value.description),
-    surface: 'panel',
-  })
   void saveFields('description', { description: value }, { description: value })
 }
 
 function saveStatus(value: string) {
   const from = activity.value?.status
   if (value === from) return
-  track('task_status_changed', { from: from ?? '', to: value, surface: 'panel' })
   void commitStatus(value)
 }
 
@@ -257,10 +244,6 @@ function saveResponsibles(ids: string[]) {
   const optimistic: ActivityResponsible[] = ids.map((id) => {
     const member = known.find((m) => (m.user?.id ?? m.id) === id)
     return { userId: id, user: { id, name: member?.user?.name ?? member?.name ?? '…' } }
-  })
-  track('task_assigned', {
-    assignee_count: ids.length,
-    assigned_self: ids.includes(getUserToken()?.sub ?? ''),
   })
   void saveFields('responsibles', { responsibleUserIds: ids }, { responsibles: optimistic })
 }

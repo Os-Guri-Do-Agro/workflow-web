@@ -51,7 +51,6 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import TaskDescriptionEditor from './components/TaskDescriptionEditor.vue'
 import { htmlToPlainText, toEditorHtmlCached } from './description-html'
-import { useAnalytics } from '@/composables/useAnalytics'
 import './styles/task-content.css'
 
 function getActivityMonthId(activity: any): string | undefined {
@@ -105,7 +104,6 @@ const route = useRoute()
 const router = useRouter()
 const { publishActivity } = useActivityPublish()
 const workspaceStore = useWorkspaceStore()
-const { track } = useAnalytics()
 
 const taskId = computed(() => route.params.taskId as string)
 const month = computed(() => route.params.month as string)
@@ -661,7 +659,6 @@ const toggleSubtaskStatus = async (task: any) => {
     // O card do board mostra o progresso das subtarefas: publicar mantém o
     // contador certo sem esperar o refetch do board.
     publishCurrentActivity()
-    track('subtask_toggled', { to_status: newStatus, surface: 'page' })
     showSuccess('Status atualizado com sucesso')
   } catch (error: any) {
     // Rollback: sem isto a subtarefa ficava marcada na tela depois de a
