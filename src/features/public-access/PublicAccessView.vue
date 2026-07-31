@@ -402,6 +402,7 @@ function fmtWhen(iso: string | null): string {
 
     <!-- Criação -->
     <AppDialog v-model="createOpen" label="Novo token de acesso" size="md" persistent>
+      <div class="pa-dialog-pad">
       <header class="pa-dialog-head">
         <span class="pa-dialog-icon"><Plug :size="17" /></span>
         <div class="pa-dialog-head-txt">
@@ -467,6 +468,7 @@ function fmtWhen(iso: string | null): string {
           <span>Criar token</span>
         </button>
       </footer>
+      </div>
     </AppDialog>
 
     <ConfirmDialog
@@ -853,6 +855,12 @@ function fmtWhen(iso: string | null): string {
 }
 
 /* ─── Dialog ─────────────────────────────────────────────────────────────── */
+/* O AppDialog entrega a casca sem respiro por dentro: cada dialog monta o seu
+   (o ConfirmDialog faz igual). Sem isto o formulário encostava nas bordas. */
+.pa-dialog-pad {
+  padding: 22px;
+}
+
 .pa-dialog-head {
   display: flex;
   align-items: flex-start;

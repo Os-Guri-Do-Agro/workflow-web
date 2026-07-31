@@ -433,6 +433,32 @@ Regras:
   **Alternativa rejeitada:** processar e descartar — fazia sentido para clientes
   terceiros, não para acervo próprio.
 
+## Configuração (env) e bucket
+
+Levantado a pedido do Nicolas em 31/07: o que precisa existir no ambiente para
+o OCR funcionar 100%.
+
+**O bucket NÃO precisa ser criado à mão.** `OcrStorageService.ensureBucket()`
+cria na primeira gravação, já como **privado** (`{ public: false }`), usando a
+service role key. Se a chave não puder criar bucket, o erro aparece no primeiro
+upload com causa clara, e a leitura responde 502 sem cobrar. Criar manualmente
+no painel do Supabase também funciona: o nome padrão é `ocr-documents` e ele
+tem que ficar **privado** (leitura só por URL assinada de 5 minutos).
+
+| Env | Obrigatória | Default | Para quê |
+|---|---|---|---|
+| `SUPABASE_BUCKET_URL` | sim | — | Projeto Supabase do acervo. **Já existe** (é a mesma dos anexos) |
+| `SUPABASE_SERVICE_ROLE_BUCKET_KEY` | sim | — | Service role key: cria o bucket e assina as URLs. **Já existe** |
+| `ANTHROPIC_API_KEY` | sim | — | Motor de leitura. Sem ela, `extractFromPdf` lança e a leitura falha. **Já existe** |
+| `OCR_BUCKET` | não | `ocr-documents` | Só para usar outro nome de bucket |
+| `OCR_ANTHROPIC_MODEL` | não | `claude-opus-5` | Trocar o modelo da extração sem mexer no resto do app |
+| `OCR_TRUSTED_CA_DIR` | não | `<raiz>/trusted-cas` | As raízes ICP-Brasil e gov.br já estão versionadas ali (12 arquivos) |
+
+Ou seja: **em produção não falta env nova**, as três obrigatórias são as que a
+API já usa para anexos e para o assistente. O que falta conferir no Railway é
+se as três estão lá com valor, porque sem `ANTHROPIC_API_KEY` a leitura falha
+e sem a service key o acervo não grava.
+
 ## Plano de Rollout
 
 - [x] Raízes ICP-Brasil (v5-v13, repositório oficial do ITI) E cadeia gov.br

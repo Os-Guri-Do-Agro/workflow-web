@@ -1024,6 +1024,12 @@ const presets: Array<{ id: Preset; label: string }> = [
 .tv-timer {
   display: flex;
   align-items: center;
+  /* Quebra em QUALQUER largura, não só no mobile: com empresa + tarefa +
+     faturável + cronômetro + botão, a faixa entre ~760px e ~1000px espremia
+     tudo e os elementos colidiam. Quebrando, cada peça mantém o tamanho
+     legível e desce de linha quando não cabe. */
+  flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
   padding: 12px 14px;
   background: var(--surface);
@@ -1039,7 +1045,7 @@ const presets: Array<{ id: Preset; label: string }> = [
 }
 
 .tv-timer-input {
-  flex: 1 1 auto;
+  flex: 1 1 260px;
   min-width: 0;
   height: 44px;
   padding: 0 12px;
@@ -1090,29 +1096,37 @@ const presets: Array<{ id: Preset; label: string }> = [
 }
 
 .tv-timer-clock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
   font-family: var(--font-mono);
   font-size: 22px;
   font-weight: 750;
   color: var(--text);
   font-variant-numeric: tabular-nums;
-  min-width: 96px;
+  /* Em ch, não em px: quem cronometra 3 dígitos de hora (`120:04:31`) fazia o
+     número crescer para dentro do vizinho. Aqui a caixa já nasce do tamanho do
+     pior caso e o layout não se mexe conforme o tempo passa. */
+  min-width: 9ch;
   text-align: right;
+  white-space: nowrap;
 }
 
 /* Cronômetro vivo: ponto vermelho pulsando, casando com o favicon/título. */
 .tv-timer-clock--live {
-  position: relative;
   color: var(--err);
 }
 
+/* O ponto é PARTE DO FLUXO. Antes era absoluto em `left: -14px`, isto é,
+   desenhado fora da própria caixa: ele pousava em cima do rótulo "Faturável"
+   do lado, e a distância variava conforme o número encolhia ou crescia. */
 .tv-timer-clock--live::before {
   content: '';
-  position: absolute;
-  left: -14px;
-  top: 50%;
+  flex: 0 0 auto;
   width: 8px;
   height: 8px;
-  margin-top: -4px;
   border-radius: 999px;
   background: var(--err);
   animation: tv-rec-pulse 1.6s ease-in-out infinite;
@@ -1637,11 +1651,13 @@ const presets: Array<{ id: Preset; label: string }> = [
 }
 
 @media (max-width: 720px) {
-  .tv-timer {
-    flex-wrap: wrap;
-  }
   .tv-timer-selects {
     width: 100%;
+  }
+  /* No celular o cronômetro e o botão dividem a última linha. */
+  .tv-timer-clock {
+    flex: 1 1 auto;
+    justify-content: flex-start;
   }
   .tv-manual-grid,
   .tv-edit-grid {
