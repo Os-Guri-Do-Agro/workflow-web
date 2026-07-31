@@ -87,7 +87,10 @@ const ocrService = {
     form.append('file', file)
     const r = await api.post<OcrTemplate>('/ocr/template', form, {
       params: { companyId },
-      // Derivação passa pelo modelo: mais lenta que um upload comum.
+      // O axios do app força JSON global; sem esta sobrescrita o FormData sai
+      // como application/json e o multer nunca vê o arquivo (mesmo padrão do
+      // upload de bug-report). Derivação passa pelo modelo: timeout maior.
+      headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 120_000,
     })
     return r.data
@@ -122,6 +125,7 @@ const ocrService = {
     form.append('file', file)
     const r = await api.post<OcrReadResult>('/ocr/read-test', form, {
       params: { companyId },
+      headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 120_000,
     })
     return r.data

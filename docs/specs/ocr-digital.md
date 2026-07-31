@@ -3,8 +3,8 @@
 **Status:** Em Implementação
 **Autor:** Claude (p/ Nicolas)
 **Criado em:** 2026-07-30
-**Última atualização:** 2026-07-30
-**Versão:** 0.3
+**Última atualização:** 2026-07-31
+**Versão:** 0.6
 
 ---
 
@@ -12,10 +12,11 @@
 
 Nova ferramenta de integração do workflow, no molde do QR: uma **API com token de
 empresa** que recebe um documento de contrato, lê sozinha (motor: Claude), extrai
-os campos definidos pelo template da empresa, **valida a assinatura digital**
-(ICP-Brasil e/ou gov.br) e devolve tudo pronto para o sistema do cliente
-preencher as lacunas. Um template por empresa; nenhuma tela para o usuário final
-aprender.
+os campos, **valida a assinatura digital** (ICP-Brasil e/ou gov.br) e devolve
+tudo pronto para o sistema do cliente preencher as lacunas. Sem configuração
+nenhuma a leitura já funciona para qualquer formato (schema universal +
+`outrosCampos`); o template é um refinamento opcional por empresa para
+customizar as chaves. Nenhuma tela para o usuário final aprender.
 
 É a versão-produto do leitor que hoje funciona embutido na Sentia via webhook.
 
@@ -69,13 +70,22 @@ segundo Scalar, método novo no `ClaudeService`. `/api/v1/qr` intocado.
 
 ## Como funciona (o contrato da ferramenta)
 
-### 1. Template: um por empresa, "absorvido" uma vez
+### 1. Extração: leitura inteligente por padrão; template opcional por empresa
 
-O ADMIN sobe o documento-modelo na página `/ocr` do workflow. Na hora do upload,
-o Claude lê o modelo **uma vez** e deriva o mapa de extração: quais campos
-existem, onde vivem, que tipo têm (ex.: `empresa`, `cnpj`, `dataAssinatura`,
-`valorMensal`). O ADMIN revisa a lista de campos, ajusta nomes se quiser, salva.
-Esse mapa vira o JSON schema usado em toda leitura seguinte.
+**Sem template (o caminho padrão, v0.6):** todo documento é lido com o schema
+universal de contrato — chaves fixas `tipoDocumento`, `objeto`, `partes[]`
+(nome/papel/cpfCnpj), `dataAssinatura`, `vigenciaInicio`, `vigenciaFim`,
+`valores[]` — mais a válvula `outrosCampos[]` para o que variar entre formatos.
+A empresa pode ter N formatos de contrato sem configurar nada; leituras
+genéricas gravam `templateVersion: 0` no acervo. Racional do Nicolas: o
+template não reduz token nem "treina" nada; obrigá-lo só atrapalhava.
+
+**Com template (opcional):** o ADMIN sobe o documento-modelo na página `/ocr`.
+No upload, o Claude lê o modelo **uma vez** e deriva o mapa de extração: quais
+campos existem, onde vivem, que tipo têm (ex.: `empresa`, `cnpj`,
+`dataAssinatura`, `valorMensal`). O ADMIN revisa a lista, ajusta, salva. Esse
+mapa vira o JSON schema das leituras seguintes — a resposta passa a trazer
+exatamente as chaves da empresa.
 
 Trocar o template é subir outro documento (o "vai atualizando" do requisito).
 O mapa é re-derivado e a versão anterior fica registrada no documento processado
@@ -97,7 +107,7 @@ Content-Type: multipart/form-data     (file) — ou JSON com base64
     "assinadoPor": "FULANO:12345678900",
     "assinadoEm": "2026-07-28T14:22:00Z"
   },
-  "dados": {                          // os campos do template, extraídos
+  "dados": {                          // campos do template OU universais
     "empresa": "PetJourney Ltda",
     "cnpj": "12.345.678/0001-90"
   },
@@ -107,8 +117,8 @@ Content-Type: multipart/form-data     (file) — ou JSON com base64
 
 - A **empresa é o token**: cada token é escopado a uma companyId, então o
   vínculo documento→empresa é automático, sem o integrador mandar id nenhum.
-- Sem template configurado → `409` com mensagem clara ("Empresa ainda não tem
-  template. Configure em /ocr no workflow.").
+- Sem template configurado → leitura **genérica** com o schema universal (não
+  há mais 409; decisão v0.6).
 - PDF apenas nesta fase (ver Considerações de Arquitetura).
 - Resposta síncrona; a leitura leva segundos, não minutos.
 
@@ -241,14 +251,15 @@ Regras:
       **Then** `documentoLido: true`, `assinatura: {valida: false, tipo: null}`,
       `dados` extraídos mesmo assim.
 
-- [ ] **Given** empresa sem template
+- [x] **Given** empresa sem template
       **When** o integrador chama o endpoint
-      **Then** 409 com mensagem orientando a configurar em /ocr.
+      **Then** leitura genérica: `dados` com as chaves universais +
+      `outrosCampos`, `templateVersion: 0` no acervo (decisão v0.6; era 409).
 
-- [ ] **Given** o ADMIN sobe um documento-modelo na página /ocr
+- [ ] **Given** o ADMIN sobe um documento-modelo na página /ocr (opcional)
       **When** o upload conclui
       **Then** a tela mostra os campos que o leitor derivou, o ADMIN pode
-      renomear/remover campos, e salvar ativa o template.
+      renomear/remover campos, e as leituras passam a usar as chaves dele.
 
 - [ ] **Given** um documento com texto tentando instruir o modelo
       **When** processado
@@ -314,6 +325,7 @@ Regras:
 - [ ] `OcrStorageService` — URL assinada expira; caminho segue
       `ocr/<companyId>/<ano>/<documentoId>.pdf`; download de empresa alheia → 403.
 - [ ] Schema derivado do template sempre tem `additionalProperties: false`.
+- [x] Sem template → schema universal (mesma contenção), `templateVersion: 0`.
 - [ ] Guard compartilhado: token revogado → 401; token de outra empresa não lê
       template alheio.
 
@@ -468,6 +480,7 @@ tabelas ficam, sem efeito sobre o resto. Front volta à página de apresentaçã
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-07-30 | 0.1 | Criação, após decisões do Nicolas (motor Claude, ICP-Brasil e/ou gov.br, REST síncrono, hub primeiro) | Claude |
+| 2026-07-31 | 0.6 | Template vira OPCIONAL (decisão do Nicolas: não reduz token, não treina, só atrapalhava; empresa pode ter N formatos). Sem template a leitura usa schema universal (tipoDocumento, objeto, partes[], datas, valores[] + outrosCampos[]) e grava templateVersion 0; 409 eliminado. Fix de upload no front: o axios global força Content-Type JSON e os POSTs de FormData do OCR não sobrescreviam p/ multipart — o multer nunca via o arquivo (provado e2e local: 400 com o bug, atravessa com o fix). Tela /ocr sempre ativa; modelo vira card opcional | Claude |
 | 2026-07-31 | 0.5 | Fase 2 aplicada (pedido do Nicolas): revogação via CRL (revogado derruba; inacessível declara), carimbo RFC 3161 verificado como data-referência, CAdES .p7s anexado aceito no endpoint. 3 helpers de PKI de teste extraídos p/ `test-pki.ts`; 12 testes novos (66 no total). Payload ganha `carimboTempo` e `revogacao` por assinatura | Claude |
 | 2026-07-30 | 0.4 | Implementação T1-T8 entregue: schema+migration (não aplicada), guard compartilhado via export, SignatureService (7 testes, PDF adulterado reprova), extractFromPdf (PDF nativo + structured output), bucket privado, service+controllers (boot verificado, /ocr-docs 200, guard 401), webhook HMAC com retentativas, docs Scalar, front de gestão (verificado em navegador com mock). 55 testes verdes. T9 pendente do smoke com contrato REAL (fica com o Nicolas) + /code-review | Claude |
 | 2026-07-30 | 0.3 | Webhook sobe da fase 2 para a fase 1 (T6b: registro por empresa, HMAC, retentativas, webhookStatus); docs do integrador reforçadas como parte da entrega. Spec aprovada pelo Nicolas; status → Em Implementação | Claude |

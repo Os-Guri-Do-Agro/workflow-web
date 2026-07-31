@@ -2,10 +2,11 @@
 /**
  * OCR Digital: superfície de gestão da ferramenta (spec docs/specs/ocr-digital.md).
  *
- * Dois estados de tela, pela existência do template da empresa ativa:
- * - SEM template: apresentação da ferramenta + upload do documento-modelo.
- * - COM template: gestão completa (campos revisáveis, teste de leitura,
- *   webhook, acervo de documentos lidos com o PDF original abrível).
+ * A ferramenta está SEMPRE ativa (v0.6): sem modelo, a leitura é inteligente
+ * (chaves universais + outrosCampos) e serve para qualquer formato de
+ * contrato. O modelo é um refinamento opcional: quem anexa um documento-modelo
+ * passa a receber exatamente as próprias chaves na resposta. A gestão
+ * (teste de leitura, webhook, acervo) não depende de modelo nenhum.
  *
  * O integrador não usa esta tela: consome POST /api/v1/ocr/read com o token
  * da empresa; as docs dele vivem em /ocr-docs (link no header).
@@ -59,17 +60,12 @@ const { uploadTemplate, updateFields, readTest, setWebhook, deleteWebhook } =
 
 const integratorDocsUrl = `${apiBaseUrl()}/ocr-docs`
 
-// ─── Apresentação (estado sem template) ───────────────────────────────────────
+// ─── Apresentação (onboarding: some quando o acervo tem documentos) ──────────
 const steps = [
   {
-    icon: FileUp,
-    title: 'Um template por empresa',
-    text: 'Você anexa o modelo do documento uma única vez. O leitor absorve esse modelo e passa a reconhecer todo documento que chegar no mesmo formato.',
-  },
-  {
     icon: ScanText,
-    title: 'Leitura sem digitação',
-    text: 'O documento chega e é lido sozinho. Os campos são identificados e extraídos, e o resultado já sai vinculado à empresa correspondente.',
+    title: 'Leitura para qualquer contrato',
+    text: 'Nenhuma configuração: o documento chega e é lido sozinho, seja qual for o formato. Os campos saem estruturados e vinculados à empresa correspondente.',
   },
   {
     icon: BadgeCheck,
@@ -81,7 +77,19 @@ const steps = [
     title: 'Resposta pronta para preencher',
     text: 'A resposta traz o documento lido, o veredito da assinatura e os dados extraídos como parâmetros, prontos para preencher as lacunas do seu fluxo.',
   },
+  {
+    icon: FileUp,
+    title: 'Modelo próprio (opcional)',
+    text: 'Se quiser a resposta com exatamente as suas chaves, anexe um documento-modelo uma única vez e revise os campos derivados. Sem ele, valem as chaves universais.',
+  },
 ]
+
+const showSteps = computed(
+  () =>
+    !template.data.value &&
+    !documents.isLoading.value &&
+    !(documents.data.value ?? []).length,
+)
 
 // ─── Upload do modelo ─────────────────────────────────────────────────────────
 const templateInput = ref<HTMLInputElement | null>(null)
@@ -217,11 +225,17 @@ function fmtWhen(iso: string): string {
 }
 
 function resumoDados(dados: Record<string, unknown>): string {
+  // Só escalares no resumo: a leitura inteligente traz arrays (partes,
+  // valores, outrosCampos) que virariam "[object Object]" aqui.
   const partes = Object.entries(dados)
-    .filter(([, v]) => v !== null && v !== '')
+    .filter(([, v]) => v !== null && v !== '' && typeof v !== 'object')
     .slice(0, 3)
     .map(([k, v]) => `${k}: ${String(v)}`)
-  return partes.join(' · ') || 'sem campos preenchidos'
+  if (partes.length) return partes.join(' · ')
+  const preenchidos = Object.values(dados).filter(
+    (v) => v !== null && v !== '' && (!Array.isArray(v) || v.length),
+  ).length
+  return preenchidos ? `${preenchidos} campos preenchidos` : 'sem campos preenchidos'
 }
 </script>
 
@@ -233,11 +247,11 @@ function resumoDados(dados: Record<string, unknown>): string {
         <p class="ocr-eyebrow">Ferramentas</p>
         <div class="ocr-title-row">
           <h1 class="ocr-title">OCR Digital</h1>
-          <Pill v-if="!template.data.value" :icon="ScanText" color="var(--info)" variant="soft">
-            Aguardando template
+          <Pill v-if="template.data.value" :icon="ShieldCheck" color="var(--success)" variant="soft">
+            Ativo · modelo v{{ template.data.value.version }}
           </Pill>
           <Pill v-else :icon="ShieldCheck" color="var(--success)" variant="soft">
-            Ativo · v{{ template.data.value.version }}
+            Ativo · leitura inteligente
           </Pill>
         </div>
         <p class="ocr-sub">
@@ -251,8 +265,19 @@ function resumoDados(dados: Record<string, unknown>): string {
           <span>Docs da API</span>
         </a>
         <button
-          v-if="template.data.value && isAdmin"
+          v-if="isAdmin"
           class="ocr-secondary"
+          type="button"
+          :disabled="uploadTemplate.isPending.value"
+          @click="pickTemplate"
+        >
+          <Loader2 v-if="uploadTemplate.isPending.value" :size="15" class="spin" />
+          <FileUp v-else :size="15" />
+          <span>{{ template.data.value ? 'Trocar modelo' : 'Modelo próprio (opcional)' }}</span>
+        </button>
+        <button
+          v-if="isAdmin"
+          class="ocr-primary"
           type="button"
           :disabled="readTest.isPending.value"
           @click="pickTest"
@@ -260,17 +285,6 @@ function resumoDados(dados: Record<string, unknown>): string {
           <Loader2 v-if="readTest.isPending.value" :size="15" class="spin" />
           <FlaskConical v-else :size="15" />
           <span>Testar leitura</span>
-        </button>
-        <button
-          v-if="isAdmin"
-          class="ocr-primary"
-          type="button"
-          :disabled="uploadTemplate.isPending.value"
-          @click="pickTemplate"
-        >
-          <Loader2 v-if="uploadTemplate.isPending.value" :size="15" class="spin" />
-          <FileUp v-else :size="15" />
-          <span>{{ template.data.value ? 'Trocar modelo' : 'Enviar modelo' }}</span>
         </button>
       </div>
     </header>
@@ -292,9 +306,9 @@ function resumoDados(dados: Record<string, unknown>): string {
       <Skeleton type="text" :lines="3" />
     </div>
 
-    <!-- SEM template: apresentação + convite ao upload -->
-    <template v-else-if="!template.data.value">
-      <section class="ocr-steps" aria-label="Como funciona">
+    <!-- Ferramenta sempre ativa: onboarding + gestão -->
+    <template v-else>
+      <section v-if="showSteps" class="ocr-steps" aria-label="Como funciona">
         <article v-for="(step, i) in steps" :key="step.title" class="ocr-step">
           <div class="ocr-step-head">
             <span class="ocr-step-n">{{ i + 1 }}</span>
@@ -305,30 +319,9 @@ function resumoDados(dados: Record<string, unknown>): string {
         </article>
       </section>
 
-      <section class="ocr-cta">
-        <div>
-          <h2 class="ocr-cta-title">Comece pelo modelo</h2>
-          <p class="ocr-cta-text">
-            {{
-              isAdmin
-                ? 'Anexe o documento-modelo desta empresa. O leitor absorve o formato, deriva os campos e você revisa antes de liberar ao integrador.'
-                : 'Um ADMIN da empresa precisa anexar o documento-modelo para ativar a ferramenta.'
-            }}
-          </p>
-        </div>
-        <button v-if="isAdmin" class="ocr-primary" type="button" :disabled="uploadTemplate.isPending.value" @click="pickTemplate">
-          <Loader2 v-if="uploadTemplate.isPending.value" :size="15" class="spin" />
-          <FileUp v-else :size="15" />
-          <span>{{ uploadTemplate.isPending.value ? 'Absorvendo o modelo...' : 'Enviar documento-modelo' }}</span>
-        </button>
-      </section>
-    </template>
-
-    <!-- COM template: gestão -->
-    <template v-else>
       <div class="ocr-grid-2">
-        <!-- Campos do template -->
-        <section class="ocr-card">
+        <!-- Campos: do modelo quando existe; universais quando não -->
+        <section v-if="template.data.value" class="ocr-card">
           <header class="ocr-card-head">
             <h2 class="ocr-card-title"><ScanText :size="15" /> Campos extraídos</h2>
             <span class="ocr-card-meta">{{ template.data.value.fileName }} · v{{ template.data.value.version }}</span>
@@ -363,6 +356,39 @@ function resumoDados(dados: Record<string, unknown>): string {
               <Loader2 v-if="updateFields.isPending.value" :size="14" class="spin" />
               <Check v-else :size="14" />
               <span>Salvar campos</span>
+            </button>
+          </footer>
+        </section>
+
+        <section v-else class="ocr-card">
+          <header class="ocr-card-head">
+            <h2 class="ocr-card-title"><ScanText :size="15" /> Campos extraídos</h2>
+            <span class="ocr-card-meta">leitura inteligente</span>
+          </header>
+          <p class="ocr-card-hint">
+            Sem modelo configurado, todo contrato é lido com chaves universais:
+            tipo do documento, objeto, partes (nome, papel, CPF/CNPJ), data de
+            assinatura, vigência e valores. O que variar entre formatos chega em
+            <code class="ocr-inline-code">outrosCampos</code>. Serve para quantos
+            formatos de contrato a empresa tiver.
+          </p>
+          <p class="ocr-card-hint">
+            {{
+              isAdmin
+                ? 'Quer a resposta com exatamente as suas chaves? Anexe um documento-modelo: o leitor deriva os campos e você revisa antes de liberar.'
+                : 'Um ADMIN pode anexar um documento-modelo para customizar as chaves da resposta.'
+            }}
+          </p>
+          <footer v-if="isAdmin" class="ocr-card-foot">
+            <button
+              class="ocr-secondary ocr-secondary--sm"
+              type="button"
+              :disabled="uploadTemplate.isPending.value"
+              @click="pickTemplate"
+            >
+              <Loader2 v-if="uploadTemplate.isPending.value" :size="14" class="spin" />
+              <FileUp v-else :size="14" />
+              <span>{{ uploadTemplate.isPending.value ? 'Absorvendo o modelo...' : 'Enviar modelo (opcional)' }}</span>
             </button>
           </footer>
         </section>
@@ -492,6 +518,8 @@ function resumoDados(dados: Record<string, unknown>): string {
             </div>
             <div class="ocr-doc-meta">
               <span>{{ fmtWhen(doc.createdAt) }}</span>
+              <span class="ocr-doc-sep">·</span>
+              <span>{{ doc.templateVersion ? `modelo v${doc.templateVersion}` : 'leitura inteligente' }}</span>
               <span class="ocr-doc-sep">·</span>
               <span :title="`Modelo ${doc.model}`">{{ doc.tokensIn + doc.tokensOut }} tokens</span>
               <template v-if="doc.webhookStatus !== 'NONE'">
@@ -645,6 +673,21 @@ function resumoDados(dados: Record<string, unknown>): string {
   border-color: var(--border-strong);
 }
 
+.ocr-secondary--sm {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+.ocr-inline-code {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
 .ocr-icon-btn {
   display: grid;
   place-items: center;
@@ -719,33 +762,6 @@ function resumoDados(dados: Record<string, unknown>): string {
   margin: 0;
   color: var(--text-3);
   font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.ocr-cta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-  padding: 22px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--surface);
-}
-
-.ocr-cta-title {
-  margin: 0 0 6px;
-  font-size: 15px;
-  font-weight: 720;
-  color: var(--text);
-}
-
-.ocr-cta-text {
-  margin: 0;
-  color: var(--text-3);
-  font-size: 13px;
-  max-width: 520px;
   line-height: 1.55;
 }
 
