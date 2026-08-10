@@ -190,6 +190,34 @@ const accentForeground: Record<ThemeName, string> = {
   light: '#FFFFFF',
 }
 
+/**
+ * Paleta das tags da atividade, exposta como `--tag-<chave>`.
+ *
+ * Mora aqui, e não num `.vue`, pelo mesmo motivo do resto: hex em componente
+ * quebra num dos temas. A tag guarda no banco só a CHAVE (`blue`, `amber`), e a
+ * tradução para cor acontece por tema, exatamente como os acentos acima. Tom
+ * mais claro no escuro, mais escuro no claro, para o texto do chip continuar
+ * legível sobre a superfície nos dois lados.
+ *
+ * A lista de chaves precisa bater com `TAG_COLOR_KEYS` de
+ * `workflow-api/src/tag/tag.constants.ts`: chave que existe só de um lado vira
+ * tag sem cor.
+ */
+export const tagColors: Record<string, { dark: string; light: string }> = {
+  slate: { dark: '#94A3B8', light: '#475569' },
+  blue: { dark: '#60A5FA', light: '#2563EB' },
+  cyan: { dark: '#22D3EE', light: '#0E7490' },
+  teal: { dark: '#2DD4BF', light: '#0D9488' },
+  green: { dark: '#34D399', light: '#047857' },
+  lime: { dark: '#A3E635', light: '#4D7C0F' },
+  amber: { dark: '#FBBF24', light: '#B45309' },
+  orange: { dark: '#FB923C', light: '#C2410C' },
+  red: { dark: '#F87171', light: '#DC2626' },
+  pink: { dark: '#F472B6', light: '#DB2777' },
+  purple: { dark: '#C084FC', light: '#7E22CE' },
+  indigo: { dark: '#818CF8', light: '#4F46E5' },
+}
+
 export const vuetifyThemeColors = {
   dark: {
     // primary = cor de AÇÃO (azul). Antes apontava para --surface, o que deixava
@@ -286,6 +314,9 @@ export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral
   }
   root.style.setProperty('--accent', accents[accent][theme])
   root.style.setProperty('--accent-fg', accentForeground[theme])
+  for (const [key, pair] of Object.entries(tagColors)) {
+    root.style.setProperty(`--tag-${key}`, pair[theme])
+  }
   root.setAttribute('data-theme', theme)
   root.setAttribute('data-accent', accent)
   root.style.colorScheme = theme

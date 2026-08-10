@@ -10,6 +10,7 @@
  * Toda edição salva sozinha: texto com debounce, o resto no próprio change.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef } from 'vue'
+import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   AlertCircle,
@@ -17,11 +18,10 @@ import {
   CheckCircle2,
   Circle,
   ExternalLink,
-  File as FileIcon,
   FileText,
   Flag,
   ListChecks,
-  Paperclip,
+  Tag as TagIcon,
   Users,
   X,
 } from 'lucide-vue-next'
@@ -40,9 +40,13 @@ import InlineEditText from '@/components/ui/InlineEditText.vue'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import { useActivityDetail } from '../useActivityDetail'
 import { ACTIVITY_PRIORITIES, ACTIVITY_STATUSES, prioritySpec, statusSpec } from '../task-meta'
-import type { ActivityDetail, ActivityResponsible } from '../activity-types'
+import { tagsOf, type ActivityDetail, type ActivityResponsible, type ActivityTag } from '../activity-types'
 import TaskDescriptionEditor from './TaskDescriptionEditor.vue'
 import SubtaskProgress from './SubtaskProgress.vue'
+import TaskAttachments from './TaskAttachments.vue'
+import TaskDocs from './TaskDocs.vue'
+import InheritedDocs from './InheritedDocs.vue'
+import TagInput from '@/components/ui/TagInput.vue'
 
 const props = defineProps<{
   taskId: string
@@ -55,6 +59,7 @@ const emit = defineEmits<{ close: [] }>()
 
 const { error: showError } = useToast()
 const queryClient = useQueryClient()
+const router = useRouter()
 
 const taskIdRef = toRef(props, 'taskId')
 const companyIdRef = computed(() => props.companyId ?? null)
@@ -149,6 +154,31 @@ const dueDateInput = computed(() =>
 const subtasks = computed(() => activity.value?.subtasks ?? [])
 const doneSubtasks = computed(() => subtasks.value.filter((s) => s.status === 'DONE').length)
 const attachments = computed(() => activity.value?.attachments ?? [])
+const docs = computed(() => activity.value?.docs ?? [])
+const inheritedDocs = computed(() => activity.value?.inheritedDocs ?? [])
+
+// ── Tags ─────────────────────────────────────────────────────────────────────
+//
+// Gravam pelo mesmo motor dos outros campos (`saveFields`), então herdam update
+// otimista, rollback e "tentar de novo" de graça. Desvincular NÃO exclui a tag:
+// ela continua no catálogo da empresa.
+const activityTags = computed<ActivityTag[]>(() =>
+  activity.value ? tagsOf(activity.value) : [],
+)
+
+function onTagsChange(next: ActivityTag[]): void {
+  void saveFields(
+    'tags',
+    { tagIds: next.map((t) => t.id) },
+    { tags: next.map((tag) => ({ tag })) },
+  )
+}
+
+/** Documento e anexo vivem na atividade: mudou lá, recarrega o detalhe. */
+function reloadActivity(): void {
+  void refetch()
+  void queryClient.invalidateQueries({ queryKey: ['boards'] })
+}
 
 // ── Subtarefas: alternar direto no painel ────────────────────────────────────
 //
@@ -201,7 +231,19 @@ const fullPageLink = computed(() => {
   }
 })
 
-const isImage = (filename: string) => /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(filename)
+/**
+ * Abre a tarefa pai a partir da subtarefa (link "Abrir no módulo"). Editar o
+ * documento herdado é sempre na origem, nunca daqui.
+ */
+function openParent(): void {
+  const parentId = activity.value?.parentId
+  const monthId = activity.value?.monthId
+  if (!parentId || !monthId) return
+  void router.push({
+    path: `/tasks/${monthId}/${parentId}`,
+    query: props.companyId ? { company: props.companyId } : undefined,
+  })
+}
 
 // ── Gravações ────────────────────────────────────────────────────────────────
 function saveTitle(value: string) {
@@ -262,6 +304,7 @@ function saveMonth(monthId: string) {
 // ── Fechamento: nunca fecha em cima de gravação pendente ─────────────────────
 const titleField = ref<InstanceType<typeof InlineEditText> | null>(null)
 const descriptionField = ref<InstanceType<typeof TaskDescriptionEditor> | null>(null)
+const docsField = ref<InstanceType<typeof TaskDocs> | null>(null)
 const closing = ref(false)
 const panelRef = ref<HTMLElement | null>(null)
 
@@ -270,6 +313,10 @@ async function close() {
   closing.value = true
   titleField.value?.flush()
   descriptionField.value?.flush()
+  // O documento tem autosave próprio (não passa pelo `useActivityDetail`), então
+  // o `waitForIdle` abaixo não o cobre: sem este flush, fechar o painel logo
+  // depois de digitar perderia o último trecho escrito.
+  await docsField.value?.flush()
   await nextTick()
   await waitForIdle()
   closing.value = false
@@ -569,6 +616,40 @@ onBeforeUnmount(() => {
             />
           </section>
 
+          <!-- Tags: cria digitando, reusa da empresa. Remover aqui desvincula,
+               não exclui a tag do catálogo. -->
+          <section class="block">
+            <div class="block-head">
+              <h3 class="block-label">
+                <TagIcon :size="12" />
+                Tags
+              </h3>
+              <SaveStatus
+                compact
+                :state="fieldState.tags ?? 'idle'"
+                :saved-at="savedAt"
+                :message="fieldError.tags ?? ''"
+                @retry="retry('tags')"
+              />
+            </div>
+            <TagInput
+              :model-value="activityTags"
+              :company-id="companyIdRef"
+              :disabled="!canEdit"
+              bare
+              @update:model-value="onTagsChange"
+            />
+          </section>
+
+          <!-- Documentos do módulo (só em subtarefa), somente leitura -->
+          <InheritedDocs
+            v-if="inheritedDocs.length"
+            :docs="inheritedDocs"
+            :parent-id="activity.parentId"
+            :company-id="companyIdRef"
+            @open-parent="openParent"
+          />
+
           <!-- Subtarefas: alternáveis aqui, com progresso visível -->
           <section v-if="subtasks.length" class="block">
             <div class="block-head">
@@ -601,6 +682,16 @@ onBeforeUnmount(() => {
                 >
                   {{ sub.title }}
                 </span>
+                <!-- Quantos documentos a frente tem. O conteúdo não vem aqui:
+                     só o número, para o módulo enxergar onde a spec está. -->
+                <span
+                  v-if="sub._count?.docs"
+                  class="subtask__docs"
+                  :title="`${sub._count.docs} documento(s)`"
+                >
+                  <FileText :size="11" />
+                  {{ sub._count.docs }}
+                </span>
                 <Pill
                   v-if="sub.status !== 'DONE' && sub.status !== 'TODO'"
                   :icon="statusSpec(sub.status).icon"
@@ -612,28 +703,28 @@ onBeforeUnmount(() => {
             </ul>
           </section>
 
-          <!-- Anexos -->
-          <section v-if="attachments.length" class="block">
-            <h3 class="block-label">
-              <Paperclip :size="12" />
-              Anexos
-            </h3>
-            <div class="attachments">
-              <a
-                v-for="att in attachments"
-                :key="att.id"
-                :href="att.url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="attachment"
-              >
-                <img v-if="isImage(att.filename)" :src="att.url" :alt="att.filename" />
-                <span v-else class="attachment__file">
-                  <FileIcon :size="18" />
-                  {{ att.filename }}
-                </span>
-              </a>
-            </div>
+          <!-- Documentos markdown: é onde a spec da tarefa mora -->
+          <section class="block">
+            <TaskDocs
+              ref="docsField"
+              :activity-id="taskId"
+              :docs="docs"
+              :company-id="companyIdRef"
+              :can-edit="canEdit"
+              @changed="reloadActivity"
+            />
+          </section>
+
+          <!-- Arquivos: markup vive só no TaskAttachments -->
+          <section class="block">
+            <TaskAttachments
+              :activity-id="taskId"
+              :attachments="attachments"
+              :company-id="companyIdRef"
+              :can-edit="canEdit"
+              compact
+              @changed="reloadActivity"
+            />
           </section>
 
           <p class="created-at">Criada em {{ formatDateOnly(activity.createdAt) }}</p>
@@ -1024,38 +1115,17 @@ onBeforeUnmount(() => {
   text-decoration: line-through;
 }
 
-.attachments {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
-}
+/* O markup de anexo saiu daqui para o `TaskAttachments.vue`, que é o dono
+   único: eram quatro cópias do mesmo bloco no app. */
 
-.attachment {
-  display: block;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--surface-2);
-  text-decoration: none;
-}
-
-.attachment img {
-  display: block;
-  width: 100%;
-  height: 84px;
-  object-fit: cover;
-}
-
-.attachment__file {
-  display: flex;
+.subtask__docs {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 10px;
-  font-size: 11.5px;
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  gap: 3px;
+  flex: none;
+  color: var(--text-4);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .created-at {

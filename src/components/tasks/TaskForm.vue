@@ -9,9 +9,11 @@ import {
   Flag,
   Users,
   Paperclip,
+  Tag as TagIcon,
   Check,
   Loader2,
 } from 'lucide-vue-next'
+import TagInput from '@/components/ui/TagInput.vue'
 import { dateOnlyToUtcNoonIso } from '@/utils/date'
 import { avatarTone, initials as personInitials } from '@/utils/avatar'
 // Boundary: a regra do repo é que componente compartilhado não importe TIPOS de
@@ -33,13 +35,33 @@ interface TaskFormMember {
   user?: { id: string; name: string }
 }
 
+/** Tag como o chip precisa. Shape local pela mesma regra de boundary acima. */
+interface TaskFormTag {
+  id: string
+  name: string
+  slug: string
+  color: string | null
+}
+
 interface TaskFormModel {
   title: string
   description: string
   priorityNumber: number
   dueDate: string
   assignees: string[]
-  attachment: File | null
+  /**
+   * Vários arquivos. Cada um sobe numa requisição própria depois que a tarefa
+   * existe: o endpoint é single-file e um arquivo recusado não pode derrubar
+   * os outros nem a criação da tarefa.
+   */
+  attachments: File[]
+  tags: TaskFormTag[]
+  /**
+   * Markdown do documento inicial. Vira o documento PRINCIPAL da tarefa, que é
+   * o que as subtarefas herdam quando esta for um módulo.
+   */
+  docContent: string
+  docTitle: string
 }
 
 const emit = defineEmits<{
@@ -52,6 +74,8 @@ const props = defineProps<{
   members: TaskFormMember[]
   modelValue: TaskFormModel
   loading?: boolean
+  /** Escopo do catálogo de tags. Sem ele o campo de tags não aparece. */
+  companyId?: string | null
 }>()
 
 const form = computed({
@@ -71,23 +95,75 @@ const priorities = [
   { value: 5, label: 'P5', tone: 'var(--err)' },
 ]
 
-const onFileChange = (e: Event) => {
+const MAX_BYTES = 10 * 1024 * 1024
+
+/**
+ * Aceita vários arquivos e separa os `.md`: markdown não é anexo, é documento
+ * da tarefa. O primeiro `.md` escolhido vira o conteúdo do documento inicial,
+ * lido aqui mesmo. O servidor recusa `.md` no endpoint de anexo, então mandar
+ * para lá só produziria um 400 confuso.
+ */
+const onFileChange = async (e: Event) => {
   attachmentError.value = ''
   const input = e.target as HTMLInputElement
-  const file = input.files?.[0] ?? null
-  if (file && file.size > 10 * 1024 * 1024) {
-    attachmentError.value = 'O arquivo deve ter menos de 10MB'
-    emit('update:modelValue', { ...props.modelValue, attachment: null })
-    return
+  const picked = Array.from(input.files ?? [])
+  input.value = ''
+  if (!picked.length) return
+
+  const tooBig = picked.filter((f) => f.size > MAX_BYTES)
+  if (tooBig.length) {
+    attachmentError.value =
+      tooBig.length === 1
+        ? `"${tooBig[0]!.name}" tem mais de 10 MB`
+        : `${tooBig.length} arquivos têm mais de 10 MB`
   }
-  emit('update:modelValue', { ...props.modelValue, attachment: file })
+
+  const ok = picked.filter((f) => f.size <= MAX_BYTES)
+  const markdown = ok.filter((f) => /\.(md|markdown)$/i.test(f.name))
+  const files = ok.filter((f) => !/\.(md|markdown)$/i.test(f.name))
+
+  const next: TaskFormModel = {
+    ...props.modelValue,
+    attachments: [...props.modelValue.attachments, ...files],
+  }
+
+  const first = markdown[0]
+  if (first) {
+    next.docContent = await first.text()
+    next.docTitle = first.name.replace(/\.(md|markdown)$/i, '').replace(/[-_]+/g, ' ')
+  }
+
+  emit('update:modelValue', next)
 }
 
-const clearFile = () => {
-  if (fileInputRef.value) fileInputRef.value.value = ''
+const removeFile = (index: number) => {
   attachmentError.value = ''
-  emit('update:modelValue', { ...props.modelValue, attachment: null })
+  emit('update:modelValue', {
+    ...props.modelValue,
+    attachments: props.modelValue.attachments.filter((_, i) => i !== index),
+  })
 }
+
+const onTagsChange = (tags: TaskFormTag[]) => {
+  emit('update:modelValue', { ...props.modelValue, tags })
+}
+
+/** `v-model` do documento: o form é controlado pelo pai, então escreve por emit. */
+const docTitleModel = computed({
+  get: () => props.modelValue.docTitle,
+  set: (docTitle: string) => emit('update:modelValue', { ...props.modelValue, docTitle }),
+})
+
+const docContentModel = computed({
+  get: () => props.modelValue.docContent,
+  set: (docContent: string) =>
+    emit('update:modelValue', { ...props.modelValue, docContent }),
+})
+
+const formatSize = (bytes: number) =>
+  bytes < 1024 * 1024
+    ? `${Math.round(bytes / 1024)} KB`
+    : `${(bytes / 1024 / 1024).toFixed(1).replace('.', ',')} MB`
 
 const toggleAssignee = (userId?: string) => {
   if (!userId) return
@@ -241,42 +317,82 @@ const submit = () => {
         </div>
       </div>
 
-      <!-- Attachment -->
+      <!-- Tags -->
+      <div v-if="companyId" class="field">
+        <span class="label">
+          <TagIcon :size="12" />
+          Tags
+        </span>
+        <TagInput
+          :model-value="form.tags"
+          :company-id="companyId"
+          @update:model-value="onTagsChange"
+        />
+      </div>
+
+      <!-- Documento inicial: vira o principal da tarefa -->
+      <div class="field">
+        <span class="label">
+          <FileText :size="12" />
+          Documento (markdown)
+        </span>
+        <input
+          v-model="docTitleModel"
+          type="text"
+          class="input"
+          placeholder="Leia primeiro"
+          aria-label="Título do documento"
+        />
+        <textarea
+          v-model="docContentModel"
+          class="doc-area"
+          rows="5"
+          spellcheck="false"
+          placeholder="# Contexto&#10;&#10;Cole aqui a spec em markdown. Fica como documento principal da tarefa."
+          aria-label="Conteúdo do documento em markdown"
+        />
+        <p class="field-hint">
+          Arquivos .md escolhidos abaixo preenchem este campo, em vez de virar anexo.
+        </p>
+      </div>
+
+      <!-- Anexos -->
       <div class="field">
         <span class="label">
           <Paperclip :size="12" />
-          Anexo
+          Arquivos
         </span>
         <div class="file-row">
-          <button
-            type="button"
-            class="file-btn"
-            @click="fileInputRef?.click()"
-          >
+          <button type="button" class="file-btn" @click="fileInputRef?.click()">
             <Paperclip :size="13" />
-            <span v-if="!form.attachment">Selecionar arquivo…</span>
-            <span v-else class="file-name">{{ form.attachment.name }}</span>
-          </button>
-          <button
-            v-if="form.attachment"
-            type="button"
-            class="file-clear"
-            aria-label="Remover anexo"
-            @click="clearFile"
-          >
-            <X :size="13" />
+            <span>Selecionar arquivos...</span>
           </button>
           <input
             ref="fileInputRef"
             type="file"
+            multiple
             class="file-input"
             @change="onFileChange"
           />
         </div>
+
+        <ul v-if="form.attachments.length" class="file-list">
+          <li v-for="(file, index) in form.attachments" :key="`${file.name}-${index}`">
+            <span class="file-name">{{ file.name }}</span>
+            <span class="file-size">{{ formatSize(file.size) }}</span>
+            <button
+              type="button"
+              class="file-clear"
+              :aria-label="`Remover ${file.name}`"
+              @click="removeFile(index)"
+            >
+              <X :size="12" />
+            </button>
+          </li>
+        </ul>
+
         <p v-if="attachmentError" class="field-err">{{ attachmentError }}</p>
-        <p v-else-if="form.attachment" class="field-hint">
-          {{ (form.attachment.size / 1024 / 1024).toFixed(2) }} MB · máx 10 MB
-        </p>
+        <p v-else class="field-hint">Até 10 MB por arquivo.</p>
       </div>
     </div>
 
@@ -653,6 +769,64 @@ const submit = () => {
   margin: 0;
   font-size: 11.5px;
   color: var(--err);
+}
+
+.file-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.file-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.file-list .file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.doc-area {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+}
+
+.doc-area:focus {
+  border-color: var(--accent);
+}
+
+.doc-area::placeholder {
+  color: var(--text-4);
 }
 
 .field-hint {

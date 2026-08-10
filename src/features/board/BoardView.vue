@@ -17,6 +17,7 @@ import activityService from '@/service/activities/activity-service'
 import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import TagChip from '@/components/ui/TagChip.vue'
 import TaskDetailPanel from '@/features/tasks/components/TaskDetailPanel.vue'
 
 const { error: showError, success: showSuccess } = useToast()
@@ -33,6 +34,19 @@ const filterPriority = ref<number | null>(null)
 // payload de /dashboard/workspace, entao o recorte e todo no cliente.
 const filterPerson = ref<string | null>(null)
 const filterMonth = ref<string | null>(null)
+
+/**
+ * Filtro por tag, guardado na URL (`?tags=cms,infra`) por SLUG e não por id: o
+ * link fica legível e sobrevive a rename. É o único filtro desta tela que
+ * persiste, por ser o recorte que as pessoas compartilham ("me manda só o do
+ * CMS"); espalhar todo o estado de UI pela query string deixaria a URL ilegível.
+ */
+function parseTagsParam(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.trim()) return []
+  return value.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+const filterTags = ref<string[]>(parseTagsParam(route.query.tags))
 const draggedTask = ref<ActivityItem | null>(null)
 
 type ColumnStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
@@ -90,8 +104,38 @@ const allActivities = computed(() => {
     )
   }
 
+  if (filterTags.value.length) {
+    // E, não OU: cada tag marcada restringe. Com OU, marcar mais tags mostraria
+    // mais cards, que é o oposto de filtrar.
+    activities = activities.filter((a) => {
+      const slugs = new Set((a.tags ?? []).map((t) => t.slug))
+      return filterTags.value.every((slug) => slugs.has(slug))
+    })
+  }
+
   return activities
 })
+
+watch(filterTags, (next) => {
+  const query = { ...route.query }
+  if (next.length) query.tags = next.join(',')
+  else delete query.tags
+  void router.replace({ query })
+})
+
+watch(
+  () => route.query.tags,
+  (value) => {
+    const next = parseTagsParam(value)
+    if (next.join(',') !== filterTags.value.join(',')) filterTags.value = next
+  },
+)
+
+function toggleTagFilter(slug: string): void {
+  filterTags.value = filterTags.value.includes(slug)
+    ? filterTags.value.filter((s) => s !== slug)
+    : [...filterTags.value, slug]
+}
 
 const getColumnTasks = (status: string) => {
   return allActivities.value
@@ -213,7 +257,8 @@ const hasFilters = computed(
     !!filterCompany.value ||
     filterPriority.value !== null ||
     !!filterPerson.value ||
-    !!filterMonth.value,
+    !!filterMonth.value ||
+    filterTags.value.length > 0,
 )
 
 const clearFilters = () => {
@@ -222,6 +267,9 @@ const clearFilters = () => {
   filterPriority.value = null
   filterPerson.value = null
   filterMonth.value = null
+  // Some da URL junto: filtro invisível preso na query string faz alguém
+  // compartilhar um link que mostra menos do que ele estava vendo.
+  filterTags.value = []
 }
 
 /**
@@ -564,6 +612,22 @@ function handleDrop(columnId: ColumnStatus) {
               </div>
 
               <h3 class="card-title">{{ task.title }}</h3>
+
+              <!-- Tags: até 3 chips, o resto vira +N. O board agregado mistura
+                   empresas, e a cor da tag é por empresa. -->
+              <div v-if="task.tags?.length" class="card-tags">
+                <TagChip
+                  v-for="tag in task.tags.slice(0, 3)"
+                  :key="tag.id"
+                  :tag="tag"
+                  interactive
+                  :active="filterTags.includes(tag.slug)"
+                  @select.stop="toggleTagFilter(tag.slug)"
+                />
+                <span v-if="task.tags.length > 3" class="card-tags__more">
+                  +{{ task.tags.length - 3 }}
+                </span>
+              </div>
 
               <div class="card-meta">
                 <span class="meta" :class="{ 'meta--overdue': isOverdue(task) }">
@@ -1033,6 +1097,20 @@ function handleDrop(columnId: ColumnStatus) {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 7px;
+}
+
+.card-tags__more {
+  color: var(--text-4);
+  font-size: 10.5px;
+  font-weight: 600;
 }
 
 .card-meta {

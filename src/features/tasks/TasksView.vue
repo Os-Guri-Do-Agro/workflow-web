@@ -15,6 +15,7 @@ import TaskForm from '@/components/tasks/TaskForm.vue'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import KanbanBoard from '@/components/tasks/KanbanBoard.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import TagChip from '@/components/ui/TagChip.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -38,11 +39,20 @@ interface TaskResponsible {
   user: { name: string }
 }
 
+interface BoardTaskTag {
+  id: string
+  name: string
+  slug: string
+  color: string | null
+}
+
 interface BoardTask {
   id: string
   title?: string
   priorityNumber?: number
   responsibles?: TaskResponsible[]
+  /** Linha da pivot, como a API devolve. O filtro casa por `slug`. */
+  tags?: Array<{ tag: BoardTaskTag }>
 }
 
 type BoardColumns = Record<BoardStatus, BoardTask[]>
@@ -59,8 +69,23 @@ interface ActivityFormModel {
   priorityNumber: number
   dueDate: string
   assignees: string[]
-  attachment: File | null
+  attachments: File[]
+  tags: BoardTaskTag[]
+  docTitle: string
+  docContent: string
 }
+
+const EMPTY_FORM = (): ActivityFormModel => ({
+  title: '',
+  description: '',
+  priorityNumber: 0,
+  dueDate: '',
+  assignees: [],
+  attachments: [],
+  tags: [],
+  docTitle: '',
+  docContent: '',
+})
 
 interface RawMonth {
   id: string
@@ -93,14 +118,7 @@ const currentTab = ref<'board' | 'backlog'>('board')
 const members = ref<CompanyMember[]>([])
 const isWorkerRole = ref(false)
 const { success: showSuccess, error: showError } = useToast()
-const formActivity = ref<ActivityFormModel>({
-  title: '',
-  description: '',
-  priorityNumber: 0,
-  dueDate: '',
-  assignees: [],
-  attachment: null,
-})
+const formActivity = ref<ActivityFormModel>(EMPTY_FORM())
 
 // Local mutable tasks ref for optimistic drag-and-drop updates
 const tasks = ref<BoardColumns>({ TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] })
@@ -169,15 +187,43 @@ const createActivity = async () => {
       ),
       monthId: monthId.value,
       responsibleUserIds: formActivity.value.assignees || [],
+      // As tags já existem (o TagInput cria via `POST /tag`, que é idempotente),
+      // então aqui só vinculamos.
+      tagIds: formActivity.value.tags.map((t) => t.id),
     }
     const created = await activityService.postActivity(payload)
-    if (formActivity.value.attachment) {
-      const fd = new FormData()
-      fd.append('file', formActivity.value.attachment)
-      await activityService.postActivityAttachment(created.id, fd)
+
+    // Documento e anexos são pós-criação: a atividade precisa existir para ter
+    // dono. Falha aqui NÃO desfaz a tarefa criada, só avisa qual parte não foi.
+    const doc = formActivity.value.docContent.trim()
+    if (doc) {
+      try {
+        await activityService.postDoc(created.id, {
+          title: formActivity.value.docTitle.trim() || 'Leia primeiro',
+          content: formActivity.value.docContent,
+          isPrimary: true,
+        })
+      } catch (error: unknown) {
+        showError(apiErrorMessage(error, 'A tarefa foi criada, mas o documento falhou'))
+      }
     }
+
+    // Em paralelo, com erro por arquivo: um recusado (tamanho, extensão) não
+    // pode impedir os outros de subir nem apagar a tarefa recém-criada.
+    await Promise.all(
+      formActivity.value.attachments.map(async (file) => {
+        const fd = new FormData()
+        fd.append('file', file)
+        try {
+          await activityService.postActivityAttachment(created.id, fd)
+        } catch (error: unknown) {
+          showError(apiErrorMessage(error, `Não foi possível enviar "${file.name}"`))
+        }
+      }),
+    )
+
     await refreshTasks()
-    formActivity.value = { title: '', description: '', priorityNumber: 0, dueDate: '', assignees: [], attachment: null }
+    formActivity.value = EMPTY_FORM()
     dialog.value = false
     showSuccess('Atividade criada com sucesso')
   } catch (error: unknown) {
@@ -199,6 +245,60 @@ onMounted(async () => {
 // ── Filters ──
 const filterPriority = ref<number | null>(null)
 const filterStatus = ref<string | null>(null)
+
+/**
+ * Filtro por tag, guardado na URL (`?tags=cms,infra`).
+ *
+ * Só este filtro persiste na URL, e de propósito: "me manda o board só do CMS"
+ * é o recorte que as pessoas compartilham por link. Responsável e prioridade
+ * continuam efêmeros como sempre foram; espalhar tudo pela query string
+ * transformaria a URL num despejo de estado de UI.
+ *
+ * Guardamos o SLUG, não o id: o link continua legível e sobrevive a rename.
+ */
+const filterTags = ref<string[]>(parseTagsParam(route.query.tags))
+
+function parseTagsParam(value: unknown): string[] {
+  if (typeof value !== 'string' || !value.trim()) return []
+  return value.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+watch(filterTags, (next) => {
+  const query = { ...route.query }
+  if (next.length) query.tags = next.join(',')
+  else delete query.tags
+  void router.replace({ query })
+})
+
+// Voltar/avançar no navegador tem que refletir no filtro, senão a URL e a tela
+// discordam depois de um botão de voltar.
+watch(
+  () => route.query.tags,
+  (value) => {
+    const next = parseTagsParam(value)
+    if (next.join(',') !== filterTags.value.join(',')) filterTags.value = next
+  },
+)
+
+/** Todas as tags presentes no board carregado, para os chips do filtro. */
+const boardTags = computed(() => {
+  const seen = new Map<string, { id: string; name: string; slug: string; color: string | null }>()
+  if (!tasks.value) return []
+  for (const status of STATUSES) {
+    for (const task of tasks.value[status] ?? []) {
+      for (const link of task.tags ?? []) {
+        if (!seen.has(link.tag.slug)) seen.set(link.tag.slug, link.tag)
+      }
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+})
+
+function toggleTagFilter(slug: string): void {
+  filterTags.value = filterTags.value.includes(slug)
+    ? filterTags.value.filter((s) => s !== slug)
+    : [...filterTags.value, slug]
+}
 
 const priorityOptions = [
   { value: null, label: 'Todas' },
@@ -223,6 +323,14 @@ const filteredTasks = computed<BoardColumns>(() => {
     if (filterPriority.value !== null) {
       arr = arr.filter((t) => t.priorityNumber === filterPriority.value)
     }
+    if (filterTags.value.length) {
+      // E, não OU: marcar "cms" e "urgente" mostra o que é as duas coisas. Com
+      // OU, cada tag adicionada AUMENTARIA a lista, que é o oposto de filtrar.
+      arr = arr.filter((t) => {
+        const slugs = new Set((t.tags ?? []).map((link) => link.tag.slug))
+        return filterTags.value.every((slug) => slugs.has(slug))
+      })
+    }
     if (filterStatus.value !== null && status !== filterStatus.value) {
       arr = []
     }
@@ -236,6 +344,7 @@ const activeFiltersCount = computed(() => {
   if (selectedUser.value) c++
   if (filterPriority.value !== null) c++
   if (filterStatus.value !== null) c++
+  c += filterTags.value.length
   return c
 })
 
@@ -243,6 +352,9 @@ const clearFilters = () => {
   selectedUser.value = ''
   filterPriority.value = null
   filterStatus.value = null
+  // Limpa a URL junto: filtro invisível continuar na query string é o caminho
+  // certo para alguém compartilhar um link que mostra menos do que ele viu.
+  filterTags.value = []
 }
 
 const allUsers = computed<string[]>(() => {
@@ -512,6 +624,21 @@ const skeletonLanes = [
           </div>
         </div>
 
+        <!-- Tags: só as que existem no board carregado. Combinam por E. -->
+        <div v-if="boardTags.length" class="filter-group filter-group--wide">
+          <label class="filter-label">Tags</label>
+          <div class="filter-chips">
+            <TagChip
+              v-for="tag in boardTags"
+              :key="tag.id"
+              :tag="tag"
+              size="md"
+              interactive
+              :active="filterTags.includes(tag.slug)"
+              @select="toggleTagFilter(tag.slug)"
+            />
+          </div>
+        </div>
 
         <!-- Clear -->
         <button
@@ -644,6 +771,7 @@ const skeletonLanes = [
         v-if="dialog"
         v-model="formActivity"
         :members="members"
+        :company-id="companyId"
         :loading="creating"
         @close="dialog = false"
         @submit="createActivity"
@@ -909,6 +1037,13 @@ const skeletonLanes = [
   display: flex;
   flex-direction: column;
   gap: 5px;
+}
+
+/* A lista de tags cresce com o uso: ocupa a largura que sobrar e quebra em
+   linha, em vez de espremer os outros filtros. */
+.filter-group--wide {
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .filter-label {

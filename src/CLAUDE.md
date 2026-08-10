@@ -32,6 +32,7 @@ Camadas disponíveis como CSS custom properties em `:root` (atualizadas runtime 
 | Família            | Tokens                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------- |
 | **Background**     | `--bg`, `--surface`, `--surface-2`, `--surface-3`                                     |
+| **Tag**            | `--tag-slate`, `--tag-blue`, `--tag-cyan`, `--tag-teal`, `--tag-green`, `--tag-lime`, `--tag-amber`, `--tag-orange`, `--tag-red`, `--tag-pink`, `--tag-purple`, `--tag-indigo` (paleta das tags de atividade; a lista precisa bater com `TAG_COLOR_KEYS` da API) |
 | **Border**         | `--border`, `--border-strong`                                                         |
 | **Text hierarchy** | `--text`, `--text-2` (70%), `--text-3` (48%), `--text-4` (32%)                        |
 | **Status**         | `--status-todo`, `--status-prog`, `--status-test`, `--status-done`, `--status-block`  |
@@ -106,6 +107,8 @@ Em [`components/ui/`](./components/ui/):
 | `TipTapToolbar.vue`    | Toolbar tokenizada de editor. Prop `groups` escolhe o que aparece; `bare` para uso dentro de popover.                |
 | `AppSelect.vue`        | Select padrão (reka-ui Select). Single/multiple. Sem busca.                                                          |
 | `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. Usado no time tracking. |
+| `TagChip.vue` + `tag-palette.ts` | Chip de tag. Cor vem de `var(--tag-<chave>)` (definido em `tokens.ts`, por tema), nunca hex. Tag sem cor recebe uma determinística pelo slug. |
+| `TagInput.vue`         | Campo de tags estilo Azure Boards: chips na caixa, Enter cria a que não existe, Backspace remove a última. Combobox ARIA à mão (não reka) — ver o comentário no arquivo. |
 
 ## Colaboração
 
@@ -137,7 +140,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Público         | [`features/public/PublicBoardView.vue`](./features/public/PublicBoardView.vue)                 | `/public/board/:token` | Board read-only por token                                         |
 | Público         | [`features/public/PublicRoadmapView.vue`](./features/public/PublicRoadmapView.vue)             | `/public/roadmap/:token` | Roadmap read-only por token                                   |
 | Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais mockados                         |
-| Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês                                                   |
+| Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês. Tags, arquivos e documentos `.md` na tarefa (ver abaixo). Filtro por tag em `?tags=slug1,slug2` |
 | Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         | Rota registrada na navegação                                           |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
 | **Notas** ★     | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | Redesenhada na P1 do épico de notas colaborativas. Autosave, pastas com CRUD e aninhamento, bubble/slash menu, modo imersivo. Sub-components em `features/notes/` |
@@ -171,6 +174,31 @@ features/notes/
 **Compartilhamento (P2, código pronto — migration pendente em prod):** `NoteShareDialog` (convidar pessoas VIEW/EDIT + link público revogável), `PublicNoteView` (`/public/note/:token`, HTML via DOMPurify), `useNoteAccess`. Backend: `NoteAccess` + `resolveAccess` central em `note.service.ts`. Nota compartilhada abre em somente-leitura para nível VIEW; 409 no PATCH trata edição concorrente.
 
 Especificações: [épico](../docs/specs/epicos/notas-colaborativas-premium.md) · [P1](../docs/specs/notas-p1-editor-premium.md) · [P2](../docs/specs/notas-p2-compartilhamento.md) · [P3](../docs/specs/notas-p3-edicao-ao-vivo.md) · [P4](../docs/specs/notas-p4-rabisco.md)
+
+### Tarefa: tags, arquivos e documentos
+
+Spec: [tasks-tags-arquivos-markdown.md](../docs/specs/2026/q3/q3-2/tasks-tags-arquivos-markdown.md).
+
+```
+features/tasks/
+  attachment-kind.ts        kindOf/iconOf/labelOf/formatBytes/sortAttachments
+  components/
+    TaskAttachments.vue     DONO ÚNICO do markup de anexo (lista/grade, dropzone, progresso)
+    AttachmentViewer.vue    overlay Teleport: imagem, PDF, setas, foco preso, Esc
+    TaskDocs.vue            lista lateral de documentos + leitor/editor
+    MarkdownDocEditor.vue   textarea mono + preview (renderMarkdown)
+    InheritedDocs.vue       "Do módulo": documentos do pai, somente leitura
+  composables/useActivityDocs.ts   conteúdo sob demanda + autosave com guarda anti-laço
+  styles/markdown-doc.css   prosa do documento (NÃO é a task-content.css)
+```
+
+Três coisas que não são óbvias e custam caro se forem esquecidas:
+
+1. **Conteúdo de documento nunca entra em payload de lista.** O board e o `GET /activity/:id` trazem só metadados e `_count`; o markdown vem por `GET /activity/doc/:id`. Incluir o conteúdo no board multiplica specs de dezenas de KB pelos cards do mês.
+2. **O editor de documento é textarea, não TipTap, de propósito.** O valor do campo é ser markdown fiel para levar ao agente; o round-trip por HTML é lossy. Todo render passa por `renderMarkdown` (marked + DOMPurify).
+3. **Tag não é excluída, nunca.** Tirar a tag da tarefa apaga o vínculo (`PATCH /activity/:id` com `tagIds`), não a tag. A API não tem rota de delete, e isso é a regra, não uma lacuna. Por isso o slug é normalizado (sem acento, sem caixa, sem espaço sobrando) com unicidade no banco: duplicata que entra fica para sempre.
+
+`.md` só existe como documento: `POST /activity/:id/attachment` responde 400 para `.md` apontando o endpoint certo.
 
 ### Sub-components de Variables (F3)
 

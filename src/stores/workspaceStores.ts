@@ -43,6 +43,10 @@ export interface ActivityItem {
   companyId: string
   companyName: string
   myRole: CompanyRole
+  /** Chips no card do /board. Opcional: resposta antiga da API não traz. */
+  tags?: Array<{ id: string; name: string; slug: string; color: string | null }>
+  docCount?: number
+  attachmentCount?: number
 }
 
 export interface WorkspaceCompany {

@@ -17,6 +17,7 @@ export type ActivityField =
   | 'dueDate'
   | 'responsibles'
   | 'month'
+  | 'tags'
 
 function pick<T extends object>(source: T, keys: readonly (keyof T)[]): Partial<T> {
   const out: Partial<T> = {}
@@ -99,6 +100,11 @@ export function useActivityDetail(
         return { id, name: r.user.name, isMe: id === myId }
       })
       card.isMine = card.responsibles.some((r) => r.isMe)
+    }
+    // Sem isto o chip de tag só apareceria no card depois de um refetch: o
+    // /board lê da store do workspace, não do cache do Vue Query.
+    if (patch.tags !== undefined) {
+      card.tags = (patch.tags ?? []).map((link) => link.tag)
     }
   }
 

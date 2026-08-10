@@ -1,4 +1,8 @@
 import api from '../api'
+// Import de TIPO apenas (apagado na compilação): dá contrato real aos métodos
+// de documento sem acoplar o service à feature em runtime. O resto do arquivo
+// ainda é `any` por herança; tipar tudo é limpeza de outra rodada.
+import type { ActivityDoc, ActivityDocMeta } from '@/features/tasks/activity-types'
 
 class activityService {
   private async handleRequest<T>(request: Promise<{ data: T }>, errorMessage: string): Promise<T> {
@@ -80,19 +84,117 @@ class activityService {
     )
   }
 
-  postActivityAttachment(id: string, data: FormData): Promise<any> {
+  /**
+   * Upload de UM arquivo. Vários arquivos = várias chamadas em paralelo, feito
+   * por quem chama: assim cada um tem progresso próprio e um arquivo recusado
+   * (tamanho, extensão bloqueada) não derruba o lote.
+   *
+   * `onProgress` recebe 0..100. O servidor valida tamanho e extensão de novo:
+   * a checagem do cliente é conveniência, não a regra.
+   */
+  postActivityAttachment(
+    id: string,
+    data: FormData,
+    options?: { companyId?: string; onProgress?: (percent: number) => void },
+  ): Promise<any> {
     return this.handleRequest(
       api.post(`/activity/${id}/attachment`, data, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...(options?.companyId ? { 'x-company-id': options.companyId } : {}),
+        },
+        onUploadProgress: (event) => {
+          if (!options?.onProgress) return
+          // `total` some quando o servidor não anuncia o tamanho; nesse caso
+          // segurar em 99 é mais honesto que fingir uma porcentagem.
+          const percent = event.total
+            ? Math.round((event.loaded / event.total) * 100)
+            : 99
+          options.onProgress(Math.min(percent, 100))
+        },
       }),
       'Erro ao fazer upload do anexo',
     )
   }
 
-  deleteAttachment(attachmentId: string): Promise<any> {
+  deleteAttachment(attachmentId: string, companyId?: string): Promise<any> {
     return this.handleRequest(
-      api.delete(`/activity/attachment/${attachmentId}`),
+      api.delete(
+        `/activity/attachment/${attachmentId}`,
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
       'Erro ao deletar anexo',
+    )
+  }
+
+  // ─── Documentos markdown ───────────────────────────────────────────────────
+  //
+  // O detalhe da atividade traz só os METADADOS dos documentos. O conteúdo vem
+  // por aqui, um documento por vez, porque markdown de spec dentro de payload
+  // de lista inviabiliza o board.
+
+  getDoc(docId: string, companyId?: string): Promise<ActivityDoc> {
+    return this.handleRequest(
+      api.get(
+        `/activity/doc/${docId}`,
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
+      'Erro ao carregar documento',
+    )
+  }
+
+  postDoc(
+    activityId: string,
+    data: { title: string; filename?: string; content?: string; isPrimary?: boolean },
+    companyId?: string,
+  ): Promise<ActivityDoc> {
+    return this.handleRequest(
+      api.post(
+        `/activity/${activityId}/doc`,
+        data,
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
+      'Erro ao criar documento',
+    )
+  }
+
+  patchDoc(
+    docId: string,
+    data: { title?: string; filename?: string; content?: string; isPrimary?: boolean },
+    companyId?: string,
+  ): Promise<ActivityDoc> {
+    return this.handleRequest(
+      api.patch(
+        `/activity/doc/${docId}`,
+        data,
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
+      'Erro ao salvar documento',
+    )
+  }
+
+  reorderDocs(
+    activityId: string,
+    docIds: string[],
+    companyId?: string,
+  ): Promise<ActivityDocMeta[]> {
+    return this.handleRequest(
+      api.patch(
+        `/activity/${activityId}/doc/reorder`,
+        { docIds },
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
+      'Erro ao reordenar documentos',
+    )
+  }
+
+  deleteDoc(docId: string, companyId?: string): Promise<{ message: string }> {
+    return this.handleRequest(
+      api.delete(
+        `/activity/doc/${docId}`,
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
+      'Erro ao remover documento',
     )
   }
 

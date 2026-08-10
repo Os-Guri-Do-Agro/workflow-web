@@ -1,0 +1,197 @@
+/**
+ * Prosa dos documentos markdown da tarefa.
+ *
+ * Fica fora do SFC porque três superfícies renderizam o MESMO HTML: o leitor do
+ * documento, o preview lado a lado do editor, e a seção "Do módulo" (documento
+ * herdado do pai, somente leitura). Divergirem significaria a pessoa escrever
+ * olhando um layout e o colega ler noutro.
+ *
+ * NÃO é a `task-content.css`: aquela é um campo de formulário e não tem título,
+ * tabela nem bloco de código. Aqui é documento de verdade, o conteúdo é uma
+ * spec, então a hierarquia de títulos e o bloco de código são o ponto.
+ *
+ * Cor só de token. O HTML sempre vem de `renderMarkdown` (marked + DOMPurify).
+ */
+
+.md-doc {
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+
+.md-doc > *:first-child {
+  margin-top: 0;
+}
+
+.md-doc > *:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Títulos ─────────────────────────────────────────────────────────────── */
+
+.md-doc h1,
+.md-doc h2,
+.md-doc h3,
+.md-doc h4 {
+  color: var(--text);
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 1.6em 0 0.6em;
+}
+
+.md-doc h1 {
+  font-size: 1.5em;
+  letter-spacing: -0.015em;
+}
+
+.md-doc h2 {
+  font-size: 1.25em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+.md-doc h3 {
+  font-size: 1.08em;
+}
+
+.md-doc h4 {
+  font-size: 1em;
+  color: var(--text-2);
+}
+
+/* ── Blocos ──────────────────────────────────────────────────────────────── */
+
+.md-doc p {
+  margin: 0 0 0.9em;
+}
+
+.md-doc ul,
+.md-doc ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.35em;
+}
+
+.md-doc li {
+  margin: 0.25em 0;
+}
+
+.md-doc li::marker {
+  color: var(--text-4);
+}
+
+/* Checklist do GFM: o `- [ ]` que toda spec usa. */
+.md-doc li input[type='checkbox'] {
+  margin-right: 0.5em;
+  accent-color: var(--accent);
+}
+
+.md-doc blockquote {
+  margin: 0 0 0.9em;
+  padding: 0.1em 0 0.1em 1em;
+  /* Faixa à esquerda com a cor de superfície, não a borda colorida que o
+     Nicolas rejeita: a citação se distingue por recuo e tom, não por barra. */
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-3);
+}
+
+.md-doc hr {
+  margin: 1.6em 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Código ──────────────────────────────────────────────────────────────── */
+
+.md-doc code {
+  padding: 0.12em 0.36em;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+.md-doc pre {
+  margin: 0 0 0.9em;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.md-doc pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Tokens do highlight.js. Só tokens de tema: nada de paleta de terceiro, que
+   destoaria do app e ficaria ilegível no tema claro. */
+.md-doc .hljs-keyword,
+.md-doc .hljs-selector-tag,
+.md-doc .hljs-built_in {
+  color: var(--accent);
+}
+
+.md-doc .hljs-string,
+.md-doc .hljs-attr {
+  color: var(--success);
+}
+
+.md-doc .hljs-number,
+.md-doc .hljs-literal {
+  color: var(--warn);
+}
+
+.md-doc .hljs-comment {
+  color: var(--text-4);
+  font-style: italic;
+}
+
+.md-doc .hljs-title,
+.md-doc .hljs-function .hljs-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ── Tabela ──────────────────────────────────────────────────────────────── */
+
+.md-doc table {
+  width: 100%;
+  margin: 0 0 0.9em;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  /* Tabela larga rola dentro do próprio bloco em vez de esticar o documento. */
+  display: block;
+  overflow-x: auto;
+}
+
+.md-doc th,
+.md-doc td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.md-doc th {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 650;
+}
+
+/* ── Links e imagens ─────────────────────────────────────────────────────── */
+
+.md-doc a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-doc img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}

@@ -9,10 +9,13 @@ import {
   Check,
   Calendar,
   ChevronDown,
+  FileText,
+  Paperclip,
   Trash2,
   Inbox,
 } from 'lucide-vue-next'
 import type { LucideIcon } from 'lucide-vue-next'
+import TagChip from '@/components/ui/TagChip.vue'
 import { formatDateOnly, isOverdue } from '@/utils/date'
 // Iniciais e tom da pessoa vêm do util compartilhado: o ranking da equipe usa
 // os mesmos, então a mesma pessoa tem a mesma cor no board e no /time.
@@ -35,6 +38,14 @@ export interface KanbanTaskSubtask {
 export interface KanbanTaskAttachment {
   filename: string
   url: string
+  mimeType?: string | null
+}
+
+export interface KanbanTaskTag {
+  id: string
+  name: string
+  slug: string
+  color: string | null
 }
 
 export interface KanbanTask {
@@ -45,6 +56,10 @@ export interface KanbanTask {
   responsibles?: KanbanTaskResponsible[]
   subtasks?: KanbanTaskSubtask[]
   attachments?: KanbanTaskAttachment[]
+  /** A API devolve a linha da pivot; o card quer a tag. */
+  tags?: Array<{ tag: KanbanTaskTag }>
+  /** Contadores, nunca o conteúdo: markdown de spec não trafega em board. */
+  _count?: { docs?: number; attachments?: number }
 }
 
 export type KanbanApiStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
@@ -176,7 +191,35 @@ const onMove = (evt: DragEndEvent, apiStatus: KanbanApiStatus) => {
 }
 
 const getImageAttachment = (task: KanbanTask) =>
-  task.attachments?.find((a) => /\.(jpg|jpeg|png|gif|webp)$/i.test(a.filename))?.url
+  task.attachments?.find(
+    (a) =>
+      a.mimeType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|avif)$/i.test(a.filename),
+  )?.url
+
+/** Quantos chips cabem antes de o card virar uma nuvem de tags. */
+const MAX_TAGS = 3
+
+const visibleTags = (task: KanbanTask) =>
+  (task.tags ?? []).slice(0, MAX_TAGS).map((link) => link.tag)
+
+const extraTagCount = (task: KanbanTask) =>
+  Math.max((task.tags?.length ?? 0) - MAX_TAGS, 0)
+
+const extraTagNames = (task: KanbanTask) =>
+  (task.tags ?? [])
+    .slice(MAX_TAGS)
+    .map((link) => link.tag.name)
+    .join(', ')
+
+/**
+ * Contadores do card. Preferem `_count` (o que a API manda agora) e caem no
+ * array carregado quando o chamador não passa `_count`: o board agregado do
+ * `/board` e o mensal têm payloads diferentes.
+ */
+const attachmentCount = (task: KanbanTask) =>
+  task._count?.attachments ?? task.attachments?.length ?? 0
+
+const docCount = (task: KanbanTask) => task._count?.docs ?? 0
 
 const onStart = () => {
   isDragging.value = true
@@ -329,7 +372,20 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
                 </button>
               </div>
 
-              <!-- uma única linha de meta: prio · prazo · anel · avatares -->
+              <!-- tags: no máximo 3 chips, o resto vira +N para o card não
+                   crescer sem limite -->
+              <div v-if="task.tags?.length" class="card__tags">
+                <TagChip v-for="tag in visibleTags(task)" :key="tag.id" :tag="tag" />
+                <span
+                  v-if="extraTagCount(task)"
+                  class="card__tags-more"
+                  :title="extraTagNames(task)"
+                >
+                  +{{ extraTagCount(task) }}
+                </span>
+              </div>
+
+              <!-- uma única linha de meta: prio · prazo · anexos · doc · anel · avatares -->
               <div class="card__meta">
                 <span
                   v-if="task.priorityNumber !== undefined"
@@ -348,6 +404,25 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
                 >
                   <Calendar :size="11" />
                   {{ formatDateOnly(task.dueDate, { month: 'short', year: undefined }) }}
+                </span>
+
+                <span
+                  v-if="attachmentCount(task)"
+                  class="chipcount"
+                  :title="`${attachmentCount(task)} arquivo(s)`"
+                >
+                  <Paperclip :size="11" />
+                  {{ attachmentCount(task) }}
+                </span>
+
+                <!-- "tem spec aqui dentro": o número, nunca o conteúdo -->
+                <span
+                  v-if="docCount(task)"
+                  class="chipcount"
+                  :title="`${docCount(task)} documento(s)`"
+                >
+                  <FileText :size="11" />
+                  {{ docCount(task) }}
                 </span>
 
                 <span class="card__spacer" />
@@ -786,6 +861,30 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 
 .card__spacer {
   flex: 1;
+}
+
+.card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 7px;
+}
+
+.card__tags-more {
+  color: var(--text-4);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+/* Contador discreto de arquivo/documento: presença, não destaque. */
+.chipcount {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-4);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* prioridade: sinal na cor do PONTO; o texto fica neutro (sem gritaria) */

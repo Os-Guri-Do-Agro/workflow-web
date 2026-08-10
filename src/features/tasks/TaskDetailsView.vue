@@ -3,6 +3,7 @@ import { computed, ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useActivityPublish } from '@/features/tasks/useActivityPublish'
 import activityService from '@/service/activities/activity-service'
+import { getApiErrorMessage } from '@/service/api'
 import companiesServices from '@/service/companies/companies-services'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useToast } from '@/composables/useToast'
@@ -19,7 +20,6 @@ import {
   ChevronRight,
   Circle,
   Clock,
-  File,
   FileText,
   Flag,
   FlaskConical,
@@ -46,6 +46,11 @@ import {
 import Pill from '@/components/ui/Pill.vue'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import TagInput from '@/components/ui/TagInput.vue'
+import TaskAttachments from '@/features/tasks/components/TaskAttachments.vue'
+import TaskDocs from '@/features/tasks/components/TaskDocs.vue'
+import InheritedDocs from '@/features/tasks/components/InheritedDocs.vue'
+import type { ActivityDocMeta, ActivityTag } from '@/features/tasks/activity-types'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
@@ -283,6 +288,65 @@ const reloadAndPublish = async () => {
   if (await InfoActivity()) publishCurrentActivity()
 }
 
+// ─── Tags, documentos e herança ──────────────────────────────────────────────
+
+const activityTags = computed<ActivityTag[]>(() =>
+  (activityInfo.value?.tags ?? []).map((link: { tag: ActivityTag }) => link.tag),
+)
+const docs = computed<ActivityDocMeta[]>(() => activityInfo.value?.docs ?? [])
+const inheritedDocs = computed<ActivityDocMeta[]>(
+  () => activityInfo.value?.inheritedDocs ?? [],
+)
+
+/**
+ * Documento e anexo vivem na atividade: mudou lá, recarrega e republica.
+ *
+ * A re-sincronização de `selectedSubtask` é obrigatória, não zelo: o modal de
+ * subtarefa segura uma REFERÊNCIA ao objeto antigo, então sem isto o anexo
+ * removido continuaria na tela até fechar e reabrir o modal. Era o que o
+ * `deleteAttachment` desta view fazia antes de o `TaskAttachments` assumir.
+ */
+const reloadActivity = async () => {
+  await reloadAndPublish()
+  if (!selectedSubtask.value) return
+  const fresh = activityInfo.value?.subtasks?.find(
+    (s: { id: string }) => s.id === selectedSubtask.value.id,
+  )
+  if (fresh) selectedSubtask.value = fresh
+}
+
+/**
+ * Desvincular tag NÃO exclui a tag: ela continua no catálogo da empresa. O
+ * `tagIds` é o conjunto completo, então o que sai da lista sai do vínculo.
+ */
+const onTagsChange = async (next: ActivityTag[]) => {
+  const previous = activityInfo.value?.tags ?? []
+  // Otimista: o chip some (ou aparece) na hora, e volta se o servidor recusar.
+  activityInfo.value = {
+    ...activityInfo.value,
+    tags: next.map((tag) => ({ tag })),
+  }
+  try {
+    await activityService.patchActivity(taskId.value, {
+      tagIds: next.map((t) => t.id),
+    })
+    publishCurrentActivity()
+  } catch (error) {
+    activityInfo.value = { ...activityInfo.value, tags: previous }
+    showError(getApiErrorMessage(error, 'Erro ao salvar tags'))
+  }
+}
+
+/** Abre a tarefa do módulo a partir da frente (link do documento herdado). */
+const openParent = () => {
+  const parentId = activityInfo.value?.parentId
+  if (!parentId) return
+  void router.push({
+    path: `/tasks/${activeMonthId.value}/${parentId}`,
+    query: route.query.company ? { company: route.query.company } : undefined,
+  })
+}
+
 const findMembers = async () => {
   const id = localStorage.getItem('activeCompany')
   if (!id) return
@@ -500,19 +564,16 @@ const updateActivity = async () => {
       monthId: newMonthId,
       responsibleUserIds: formActivity.value.responsibleUserIds,
     })
-    if (formActivity.value.attachment) {
-      const fd = new FormData()
-      fd.append('file', formActivity.value.attachment)
-      await activityService.postActivityAttachment(taskId.value, fd)
-    }
+    // O anexo saiu daqui: a edição da atividade não sobe mais arquivo junto. A
+    // seção Arquivos do modal (`TaskAttachments`) sobe na hora, com progresso e
+    // vários de uma vez, e recarrega sozinha. Guardar um arquivo escolhido para
+    // enviar só no "Salvar" era o motivo de o upload parecer que sumiu quando a
+    // pessoa fechava o modal sem salvar.
     applyActivityResponse(updated, newMonthId)
     if (monthChanged) {
       await navigateToMonth(newMonthId)
     }
     syncPlacementSelection()
-    if (formActivity.value.attachment) {
-      await InfoActivity()
-    }
     // Fora do `if (monthChanged)` de propósito: era exatamente esse recuo que
     // deixava a edição comum (título, prioridade, data, responsáveis) sem
     // atualizar nada no board de destino.
@@ -673,18 +734,6 @@ const formatDate = (date: string | null) => {
   return formatDateOnly(date)
 }
 
-const isImage = (filename: string) => /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(filename)
-
-const onActivityFileChange = (f: File | File[]) => {
-  const file = Array.isArray(f) ? f[0] : f
-  if (file && file.size > 10 * 1024 * 1024) {
-    showError('O arquivo excede o limite de 10MB')
-    formActivity.value.attachment = null
-    return
-  }
-  formActivity.value.attachment = file ?? null
-}
-
 const onSubtaskFileChange = (f: File | File[]) => {
   const file = Array.isArray(f) ? f[0] : f
   if (file && file.size > 10 * 1024 * 1024) {
@@ -695,44 +744,15 @@ const onSubtaskFileChange = (f: File | File[]) => {
   formSubtask.value.attachment = file ?? null
 }
 
-// Pontes do `<input type="file">` nativo para os handlers acima (que validam os
-// 10MB). Zerar `input.value` permite escolher o mesmo arquivo de novo; cancelar
-// o seletor não mexe no anexo já escolhido.
-const onActivityFilePick = (e: Event) => {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (file) onActivityFileChange(file)
-}
-
+// Ponte do `<input type="file">` nativo do modal de CRIAR subtarefa, que ainda
+// anexa um arquivo junto com a criação (a atividade ainda não existe, então não
+// há para onde subir antes). Zerar `input.value` permite escolher o mesmo
+// arquivo de novo; cancelar o seletor não mexe no anexo já escolhido.
 const onSubtaskFilePick = (e: Event) => {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (file) onSubtaskFileChange(file)
-}
-
-const deletingAttachment = ref<string | null>(null)
-
-const deleteAttachment = async (attachmentId: string) => {
-  deletingAttachment.value = attachmentId
-  try {
-    await activityService.deleteAttachment(attachmentId)
-    await reloadAndPublish()
-    if (selectedSubtask.value) {
-      const updatedSubtask = activityInfo.value?.subtasks?.find(
-        (s: any) => s.id === selectedSubtask.value.id,
-      )
-      if (updatedSubtask) {
-        selectedSubtask.value = updatedSubtask
-      }
-    }
-    showSuccess('Anexo deletado com sucesso')
-  } catch (error: any) {
-    showError(error.response?.data?.message || 'Erro ao deletar anexo')
-  } finally {
-    deletingAttachment.value = null
-  }
 }
 </script>
 
@@ -781,6 +801,25 @@ const deleteAttachment = async (attachmentId: string) => {
             v-html="descriptionHtml"
           />
           <p v-else class="desc-empty">Sem descrição</p>
+        </section>
+
+        <!-- Documentos do módulo (só quando esta tarefa é uma frente) -->
+        <InheritedDocs
+          v-if="inheritedDocs.length"
+          :docs="inheritedDocs"
+          :parent-id="activityInfo.parentId"
+          :company-id="companyId"
+          @open-parent="openParent"
+        />
+
+        <!-- Documentos markdown: onde a spec da tarefa mora -->
+        <section class="panel">
+          <TaskDocs
+            :activity-id="taskId"
+            :docs="docs"
+            :company-id="companyId"
+            @changed="reloadActivity"
+          />
         </section>
 
         <section class="panel">
@@ -978,32 +1017,28 @@ const deleteAttachment = async (attachmentId: string) => {
           </dl>
         </section>
 
-        <section v-if="activityInfo.attachments?.length" class="panel">
+        <!-- Tags: cria digitando, reusa da empresa. Remover desvincula da
+             tarefa; a tag continua no catálogo. -->
+        <section class="panel">
           <header class="panel-head panel-head--compact">
-            <Paperclip :size="15" />
-            <h2 class="panel-title">Anexos</h2>
+            <TagIcon :size="15" />
+            <h2 class="panel-title">Tags</h2>
           </header>
-          <div class="attachment-grid">
-            <a
-              v-for="att in activityInfo.attachments"
-              :key="att.id"
-              :href="att.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="attachment-item hover-lift"
-            >
-              <img
-                v-if="isImage(att.filename)"
-                :src="att.url"
-                :alt="att.filename"
-                class="attachment-img"
-              />
-              <div v-else class="attachment-file">
-                <File :size="22" />
-                <span>{{ att.filename }}</span>
-              </div>
-            </a>
-          </div>
+          <TagInput
+            :model-value="activityTags"
+            :company-id="companyId"
+            @update:model-value="onTagsChange"
+          />
+        </section>
+
+        <!-- Arquivos: markup vive só no TaskAttachments -->
+        <section class="panel">
+          <TaskAttachments
+            :activity-id="taskId"
+            :attachments="activityInfo.attachments ?? []"
+            :company-id="companyId"
+            @changed="reloadActivity"
+          />
         </section>
 
       </aside>
@@ -1190,49 +1225,25 @@ const deleteAttachment = async (attachmentId: string) => {
         />
       </div>
 
-      <div v-if="activityInfo.attachments?.length" class="view-field">
-        <span class="view-label">Anexos atuais</span>
-        <div class="attachment-grid" style="padding: 0">
-          <div v-for="att in activityInfo.attachments" :key="att.id" class="attachment-wrap">
-            <a :href="att.url" target="_blank" rel="noopener noreferrer" class="attachment-item hover-lift">
-              <img v-if="isImage(att.filename)" :src="att.url" :alt="att.filename" class="attachment-img" style="width: 100px; height: 100px" />
-              <div v-else class="attachment-file" style="width: 100px; height: 100px">
-                <File :size="26" />
-                <span>{{ att.filename }}</span>
-              </div>
-            </a>
-            <button
-              type="button"
-              class="attachment-remove press"
-              :disabled="deletingAttachment === att.id"
-              @click.stop="deleteAttachment(att.id)"
-            >
-              <Loader2 v-if="deletingAttachment === att.id" :size="12" class="spin" />
-              <X v-else :size="12" />
-            </button>
-          </div>
-        </div>
+      <div class="view-field">
+        <span class="view-label">Tags</span>
+        <TagInput
+          :model-value="activityTags"
+          :company-id="companyId"
+          @update:model-value="onTagsChange"
+        />
       </div>
 
-      <div class="field">
-        <span class="view-label">Adicionar anexo</span>
-        <div class="file-pick">
-          <label class="file-btn press">
-            <Paperclip :size="14" />
-            <span>{{ formActivity.attachment ? 'Trocar arquivo' : 'Escolher arquivo' }}</span>
-            <input type="file" class="file-hidden" accept="*/*" @change="onActivityFilePick" />
-          </label>
-          <span v-if="formActivity.attachment" class="file-name">{{ formActivity.attachment.name }}</span>
-          <button
-            v-if="formActivity.attachment"
-            type="button"
-            class="icon-btn press"
-            aria-label="Remover anexo selecionado"
-            @click="formActivity.attachment = null"
-          >
-            <X :size="14" />
-          </button>
-        </div>
+      <!-- Arquivos: o mesmo componente do resto do app, com upload múltiplo e
+           progresso. O antigo "escolher UM arquivo" saiu junto com o markup
+           duplicado. -->
+      <div class="view-field">
+        <TaskAttachments
+          :activity-id="taskId"
+          :attachments="activityInfo.attachments ?? []"
+          :company-id="companyId"
+          @changed="reloadActivity"
+        />
       </div>
     </div>
 
@@ -1408,28 +1419,14 @@ const deleteAttachment = async (attachmentId: string) => {
             />
           </div>
 
-          <div v-if="selectedSubtask.attachments?.length" class="view-field">
-            <span class="view-label">Anexos</span>
-            <div class="attachment-grid">
-              <div v-for="att in selectedSubtask.attachments" :key="att.id" class="attachment-wrap">
-                <a :href="att.url" target="_blank" rel="noopener noreferrer" class="attachment-item hover-lift">
-                  <img v-if="isImage(att.filename)" :src="att.url" :alt="att.filename" class="attachment-img" />
-                  <div v-else class="attachment-file">
-                    <File :size="22" />
-                    <span>{{ att.filename }}</span>
-                  </div>
-                </a>
-                <button
-                  type="button"
-                  class="attachment-remove press"
-                  :disabled="deletingAttachment === att.id"
-                  @click.stop="deleteAttachment(att.id)"
-                >
-                  <Loader2 v-if="deletingAttachment === att.id" :size="12" class="spin" />
-                  <X v-else :size="12" />
-                </button>
-              </div>
-            </div>
+          <div class="view-field">
+            <TaskAttachments
+              :activity-id="selectedSubtask.id"
+              :attachments="selectedSubtask.attachments ?? []"
+              :company-id="companyId"
+              compact
+              @changed="reloadActivity"
+            />
           </div>
 
           <div class="view-grid">
@@ -1509,59 +1506,13 @@ const deleteAttachment = async (attachmentId: string) => {
             />
           </div>
 
-          <div v-if="selectedSubtask.attachments?.length" class="view-field">
-            <span class="view-label">Anexos atuais</span>
-            <div class="attachment-grid" style="padding: 0">
-              <div
-                v-for="att in selectedSubtask.attachments"
-                :key="att.id"
-                class="attachment-wrap"
-              >
-                <a :href="att.url" target="_blank" rel="noopener noreferrer" class="attachment-item hover-lift">
-                  <img
-                    v-if="isImage(att.filename)"
-                    :src="att.url"
-                    :alt="att.filename"
-                    class="attachment-img"
-                    style="width: 100px; height: 100px"
-                  />
-                  <div v-else class="attachment-file" style="width: 100px; height: 100px">
-                    <File :size="26" />
-                    <span>{{ att.filename }}</span>
-                  </div>
-                </a>
-                <button
-                  type="button"
-                  class="attachment-remove press"
-                  :disabled="deletingAttachment === att.id"
-                  @click.stop="deleteAttachment(att.id)"
-                >
-                  <Loader2 v-if="deletingAttachment === att.id" :size="12" class="spin" />
-                  <X v-else :size="12" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="field">
-            <span class="view-label">Adicionar anexo</span>
-            <div class="file-pick">
-              <label class="file-btn press">
-                <Paperclip :size="14" />
-                <span>{{ formSubtask.attachment ? 'Trocar arquivo' : 'Escolher arquivo' }}</span>
-                <input type="file" class="file-hidden" accept="*/*" @change="onSubtaskFilePick" />
-              </label>
-              <span v-if="formSubtask.attachment" class="file-name">{{ formSubtask.attachment.name }}</span>
-              <button
-                v-if="formSubtask.attachment"
-                type="button"
-                class="icon-btn press"
-                aria-label="Remover anexo selecionado"
-                @click="formSubtask.attachment = null"
-              >
-                <X :size="14" />
-              </button>
-            </div>
+          <div class="view-field">
+            <TaskAttachments
+              :activity-id="selectedSubtask.id"
+              :attachments="selectedSubtask.attachments ?? []"
+              :company-id="companyId"
+              @changed="reloadActivity"
+            />
           </div>
         </template>
       </div>
@@ -2015,71 +1966,8 @@ const deleteAttachment = async (attachmentId: string) => {
   white-space: nowrap;
 }
 
-.attachment-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 14px 14px;
-}
-
-.attachment-wrap {
-  position: relative;
-}
-
-.attachment-item {
-  display: block;
-  text-decoration: none;
-  color: inherit;
-}
-
-.attachment-img {
-  width: 80px;
-  height: 80px;
-  object-fit: cover;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-}
-
-.attachment-file {
-  width: 80px;
-  height: 80px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px;
-  color: var(--text-3);
-}
-
-.attachment-file span {
-  font-size: 9px;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 72px;
-  color: var(--text-2);
-}
-
-.attachment-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  border: none;
-  background: var(--err);
-  color: white;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
+/* O markup de anexo saiu desta view para o `TaskAttachments.vue`, que passou
+   a ser o dono unico: o mesmo bloco existia em quatro lugares so aqui. */
 
 .icon-btn {
   width: 32px;
