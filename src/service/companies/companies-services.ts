@@ -23,6 +23,14 @@ class companieService {
     )
   }
 
+  /**
+   * Adiciona UM usuário à empresa com uma role. Só ADMIN da empresa alvo passa
+   * (`@RequireRole(ADMIN)` + revalidação no service do backend).
+   *
+   * Não existe `POST /company/:id/admin`: a rota nunca foi implementada e o
+   * modal de adicionar usuário batia nela (404 silencioso virando toast de erro
+   * genérico). Promover alguém a admin é esta mesma chamada com `role: 'ADMIN'`.
+   */
   postUserCompany(id: string, data: any): Promise<any> {
     const token = localStorage.getItem('token')
     return this.handleRequest(
@@ -80,18 +88,6 @@ class companieService {
         },
       }),
       'Erro ao adicionar membros à empresa em lote',
-    )
-  }
-
-  postCompanyAdmin(id: string, data: any): Promise<any> {
-    const token = localStorage.getItem('token')
-    return this.handleRequest(
-      api.post(`/company/${id}/admin`, data, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }),
-      'Erro ao adicionar administrador à empresa',
     )
   }
 

@@ -7,6 +7,7 @@ import {
   Search,
   Briefcase,
   Shield,
+  Info,
 } from 'lucide-vue-next'
 import companieService from '@/service/companies/companies-services'
 import { getApiErrorMessage } from '@/service/api'
@@ -14,7 +15,7 @@ import AddUserModal from './components/AddUserModal.vue'
 import BulkAddUsersModal from './components/BulkAddUsersModal.vue'
 import CreateCompanyModal from './components/CreateCompanyModal.vue'
 import CreateUserModal from '@/components/CreateUserModal.vue'
-import { getInfoAuth, isActiveCompanyAdmin } from '@/utils/authContent'
+import { isActiveCompanyAdmin } from '@/utils/authContent'
 import { useToast } from '@/composables/useToast'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -46,12 +47,17 @@ const showAddUserModal = ref(false)
 const showBulkAddModal = ref(false)
 const showUserAddModal = ref(false)
 const selectedCompany = ref<any>(null)
-const isWorkerRole = ref(false)
+// Papel do usuário logado NA EMPRESA do card aberto. Um mesmo usuário é ADMIN
+// numa empresa e WORKER noutra, então o gate não pode ser global.
+const selectedCompanyRole = ref<'ADMIN' | 'WORKER'>('WORKER')
 // Criar usuário é ADMIN-only no backend; sem este gate o WORKER via o botão
 // e levava 403 ao enviar o formulário.
 const isAdmin = ref(false)
 const loadingUser = ref(true)
 const loadingSystem = ref(true)
+// Lista vazia por FALHA não é a mesma coisa que lista vazia por não ter vínculo:
+// só a segunda libera a exceção de bootstrap de criar empresa.
+const userCompaniesLoaded = ref(false)
 const { success: showSuccess, error: showError } = useToast()
 
 const roleMeta: Record<
@@ -78,6 +84,17 @@ const filteredSystem = computed(() => {
   return systemCompanies.value.filter(
     (c) => c.name.toLowerCase().includes(q) || c.cnpj.includes(q),
   )
+})
+
+/**
+ * Criar empresa é ADMIN-only, com uma exceção de bootstrap no backend: quem não
+ * tem NENHUM vínculo cria a primeira e vira ADMIN dela. WORKER que já pertence
+ * a alguma empresa é barrado — antes o botão aparecia e devolvia 403.
+ */
+const canCreateCompany = computed(() => {
+  if (loadingUser.value || !userCompaniesLoaded.value) return false
+  if (!userCompanies.value.length) return true
+  return userCompanies.value.some((u) => u.role === 'ADMIN')
 })
 
 const filteredUser = computed(() => {
@@ -110,25 +127,47 @@ const fetchUserCompanies = async () => {
   try {
     const data = await companieService.getCompany()
     userCompanies.value = data
+    userCompaniesLoaded.value = true
   } catch (error) {
+    userCompaniesLoaded.value = false
     showError(getApiErrorMessage(error, 'Erro ao carregar empresas do usuário'))
   } finally {
     loadingUser.value = false
   }
 }
 
+/** Empresa nova entra na lista de vínculos: sem isso o card dela não aparece. */
+const onCompanyCreated = () => {
+  fetchSystemCompanies()
+  fetchUserCompanies()
+}
+
+/**
+ * Papel do usuário logado numa empresa específica, lido do vínculo real
+ * (`GET /company`) em vez do papel na empresa ativa do localStorage — que é o
+ * que `getInfoAuth`/`isActiveCompanyAdmin` respondem e não serve numa lista de
+ * várias empresas. Sem vínculo, WORKER (o menos permissivo).
+ */
+const roleInCompany = (companyId: string): 'ADMIN' | 'WORKER' =>
+  userCompanies.value.find((u) => u.company.id === companyId)?.role === 'ADMIN'
+    ? 'ADMIN'
+    : 'WORKER'
+
 const openAddUser = (company: Company) => {
   selectedCompany.value = company
+  selectedCompanyRole.value = roleInCompany(company.id)
   showAddUserModal.value = true
 }
 
 const openBulkAdd = (company: Company) => {
   selectedCompany.value = company
+  selectedCompanyRole.value = roleInCompany(company.id)
   showBulkAddModal.value = true
 }
 
 const openUserAdd = (userCompany: UserCompany) => {
   selectedCompany.value = userCompany.company
+  selectedCompanyRole.value = userCompany.role === 'ADMIN' ? 'ADMIN' : 'WORKER'
   showUserAddModal.value = true
 }
 
@@ -140,9 +179,6 @@ const onModalMsg = (msg: string, color: string) => {
 onMounted(() => {
   // Fetches independentes: o check de papel não pode segurar (nem quebrar) o
   // carregamento das listas — loadingUser/loadingSystem sempre resolvem.
-  getInfoAuth().then((can) => {
-    isWorkerRole.value = can || false
-  })
   isActiveCompanyAdmin().then((can) => {
     isAdmin.value = can
   })
@@ -166,7 +202,7 @@ onMounted(() => {
 
       <div class="header-actions">
         <CreateUserModal v-if="isAdmin" />
-        <CreateCompanyModal v-if="isWorkerRole" @created="fetchSystemCompanies" />
+        <CreateCompanyModal v-if="canCreateCompany" @created="onCompanyCreated" />
       </div>
     </header>
 
@@ -244,15 +280,21 @@ onMounted(() => {
             </span>
           </header>
 
+          <!-- Gerenciar membros é ADMIN-only no backend. Para quem é membro, o
+               botão não fica desabilitado sem explicação: some e dá o motivo. -->
           <footer class="card-actions">
             <button
+              v-if="item.role === 'ADMIN'"
               class="btn-primary press"
-              :disabled="!isWorkerRole"
               @click="openUserAdd(item)"
             >
               <UserPlus :size="13" />
               Adicionar usuário
             </button>
+            <p v-else class="card-note">
+              <Info :size="12" />
+              Só admins desta empresa podem adicionar pessoas.
+            </p>
           </footer>
         </article>
       </div>
@@ -295,22 +337,20 @@ onMounted(() => {
           </header>
 
           <footer class="card-actions card-actions--split">
-            <button
-              class="btn-primary press"
-              :disabled="!isWorkerRole"
-              @click="openAddUser(company)"
-            >
-              <UserPlus :size="13" />
-              Adicionar
-            </button>
-            <button
-              class="btn-secondary press"
-              :disabled="!isWorkerRole"
-              @click="openBulkAdd(company)"
-            >
-              <Users2 :size="13" />
-              Em lote
-            </button>
+            <template v-if="roleInCompany(company.id) === 'ADMIN'">
+              <button class="btn-primary press" @click="openAddUser(company)">
+                <UserPlus :size="13" />
+                Adicionar
+              </button>
+              <button class="btn-secondary press" @click="openBulkAdd(company)">
+                <Users2 :size="13" />
+                Em lote
+              </button>
+            </template>
+            <p v-else class="card-note">
+              <Info :size="12" />
+              Só admins desta empresa podem adicionar pessoas.
+            </p>
           </footer>
         </article>
       </div>
@@ -319,16 +359,19 @@ onMounted(() => {
     <AddUserModal
       v-model="showAddUserModal"
       :company="selectedCompany"
+      :viewer-role="selectedCompanyRole"
       @success="onModalMsg"
     />
     <AddUserModal
       v-model="showUserAddModal"
       :company="selectedCompany"
+      :viewer-role="selectedCompanyRole"
       @success="onModalMsg"
     />
     <BulkAddUsersModal
       v-model="showBulkAddModal"
       :company="selectedCompany"
+      :viewer-role="selectedCompanyRole"
       @success="onModalMsg"
     />
   </div>
@@ -580,6 +623,22 @@ onMounted(() => {
 
 .card-actions--split > * {
   flex: 1;
+}
+
+/* Motivo no lugar do botão: nada de ação desabilitada sem explicação. */
+.card-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.card-note svg {
+  flex-shrink: 0;
 }
 
 .btn-primary,

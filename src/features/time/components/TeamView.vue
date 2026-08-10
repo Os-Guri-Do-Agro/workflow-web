@@ -14,36 +14,20 @@ import { AlertTriangle, DollarSign, Lock } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import TeamInsightsRail from '@/features/time/components/TeamInsightsRail.vue'
+import PeriodPicker from '@/features/time/components/PeriodPicker.vue'
 import RankMedal from '@/features/time/components/RankMedal.vue'
 import { useTeamTime, type TeamScope } from '@/features/time/composables/useTeamTime'
+import { useTimePeriod } from '@/features/time/composables/useTimePeriod'
 import { avatarTone, initials } from '@/utils/avatar'
 import { formatClock, formatDurationLong, formatTimer } from '@/utils/duration'
 
-type Preset = 'today' | '7d' | '30d'
-const preset = ref<Preset>('7d')
-const presets: Array<{ id: Preset; label: string }> = [
-  { id: 'today', label: 'Hoje' },
-  { id: '7d', label: '7 dias' },
-  { id: '30d', label: '30 dias' },
-]
+/**
+ * Instância PRÓPRIA do período: navegar o mês no ranking não pode mexer no mês
+ * da lista pessoal, e vice-versa. Cada aba lê o placar num contexto diferente.
+ */
+const period = useTimePeriod('team')
 
 const scope = ref<TeamScope>('group')
-
-const range = computed(() => {
-  const now = new Date()
-  const to = new Date(now)
-  to.setHours(23, 59, 59, 999)
-  const from = new Date(now)
-  if (preset.value === 'today') from.setHours(0, 0, 0, 0)
-  else if (preset.value === '7d') {
-    from.setDate(from.getDate() - 6)
-    from.setHours(0, 0, 0, 0)
-  } else {
-    from.setDate(from.getDate() - 29)
-    from.setHours(0, 0, 0, 0)
-  }
-  return { from: from.toISOString(), to: to.toISOString() }
-})
 
 const {
   companies,
@@ -59,11 +43,14 @@ const {
   byCompany,
   pulse,
   pulseMax,
+  pulseDense,
   isLoading,
   isError,
   isForbidden,
   refetch,
-} = useTeamTime(range, scope)
+} = useTeamTime(period, scope)
+
+const pulseTitle = computed(() => `Ritmo (${period.shortLabel.value})`)
 
 const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
 const isGroup = computed(() => scope.value === 'group')
@@ -109,22 +96,22 @@ const scopeLabel = computed(() =>
           {{ activeCount }} trabalhando agora
         </span>
         <span class="team-total">
-          {{ scopeLabel }}: <strong>{{ formatDurationLong(teamTotalSec) }}</strong>
-          <template v-if="contributorCount"> em {{ contributorCount }} pessoas</template>
+          {{ scopeLabel }} · {{ period.label.value }}:
+          <strong>{{ formatDurationLong(teamTotalSec) }}</strong>
+          <template v-if="contributorCount">
+            · {{ contributorCount }} {{ contributorCount === 1 ? 'pessoa' : 'pessoas' }}
+          </template>
         </span>
       </div>
-      <div class="team-presets">
-        <button
-          v-for="p in presets"
-          :key="p.id"
-          class="team-chip"
-          :class="{ 'team-chip--on': preset === p.id }"
-          type="button"
-          @click="preset = p.id"
-        >
-          {{ p.label }}
-        </button>
-      </div>
+      <PeriodPicker
+        :kind="period.kind.value"
+        :month-label="period.anchorLabel.value"
+        :can-go-prev="period.canGoPrev.value"
+        :can-go-next="period.canGoNext.value"
+        @update:kind="period.setKind"
+        @prev="period.prev"
+        @next="period.next"
+      />
     </header>
 
     <!-- Loading -->
@@ -275,6 +262,8 @@ const scopeLabel = computed(() =>
         :billable-pct="billablePct"
         :pulse="pulse"
         :pulse-max="pulseMax"
+        :pulse-title="pulseTitle"
+        :pulse-dense="pulseDense"
         :by-activity="byActivity"
         :by-company="isGroup ? byCompany : []"
       />
@@ -406,33 +395,6 @@ const scopeLabel = computed(() =>
 .team-total strong {
   color: var(--text);
   font-variant-numeric: tabular-nums;
-}
-
-.team-presets {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.team-chip {
-  height: 32px;
-  padding: 0 13px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
-}
-
-.team-chip--on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
 }
 
 /* ── Pódio ──────────────────────────────────────────────────────

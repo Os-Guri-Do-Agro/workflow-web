@@ -1,10 +1,14 @@
 <script setup lang="ts">
 /**
  * Rail lateral de insights do "Meu tempo" — preenche o espaço à direita da lista
- * com leitura rápida do período (total, média/dia, faturável), ritmo dos últimos
- * 7 dias, destaques (melhor dia, sequência, sessão mais longa) e onde o tempo
- * foi, por empresa e por tarefa. Puramente derivado (recebe tudo por props);
- * não faz fetch nem conhece o timer.
+ * com leitura rápida do período (total, média/dia, faturável), ritmo do período
+ * selecionado, destaques (melhor dia, sequência, sessão mais longa) e onde o
+ * tempo foi, por empresa e por tarefa. Puramente derivado (recebe tudo por
+ * props); não faz fetch nem conhece o timer.
+ *
+ * `sampleNote` existe porque nem todo card sai do agregado do servidor: os que
+ * ainda são contados na página de entradas carregada dizem isso em vez de passar
+ * por total do período.
  */
 import { computed } from 'vue'
 import { CalendarCheck, Flame, Hourglass } from 'lucide-vue-next'
@@ -18,13 +22,17 @@ const props = defineProps<{
   rangeBillableSec: number
   avgPerDaySec: number
   billablePct: number
-  last7Days: { key: string; sec: number; wd: string; isToday: boolean }[]
-  last7Max: number
+  pulse: { key: string; sec: number; wd: string; isToday: boolean }[]
+  pulseMax: number
+  pulseTitle: string
+  pulseDense: boolean
   byProject: { name: string; sec: number; pct: number }[]
   byTask: { name: string; sec: number; pct: number }[]
   bestDay: { label: string; sec: number } | null
   streakDays: number
   longestSessionSec: number
+  /** Ex.: "nas 50 entradas carregadas". Vazio quando a lista não está truncada. */
+  sampleNote: string
 }>()
 
 const streakLabel = computed(() =>
@@ -60,8 +68,8 @@ const hasRealTasks = computed(() => props.byTask.some((t) => t.name !== 'Sem tar
       <span class="rail-split-lbl">{{ billablePct }}% do tempo é faturável</span>
     </RailCard>
 
-    <RailCard title="Ritmo (7 dias)">
-      <MiniBars :days="last7Days" :max="last7Max" />
+    <RailCard :title="pulseTitle">
+      <MiniBars :days="pulse" :max="pulseMax" :dense="pulseDense" />
     </RailCard>
 
     <RailCard title="Destaques">
@@ -73,18 +81,22 @@ const hasRealTasks = computed(() => props.byTask.some((t) => t.name !== 'Sem tar
             <span class="rail-fact-lbl">melhor dia ({{ bestDay.label.toLowerCase() }})</span>
           </span>
         </li>
+        <!-- A sequência é contada DENTRO do período: no dia 1º de um mês ela
+             vale 1 mesmo com meio ano de hábito atrás. O rótulo diz isso. -->
         <li v-if="streakDays > 0" class="rail-fact">
           <span class="rail-fact-icon"><Flame :size="14" /></span>
           <span class="rail-fact-main">
             <span class="rail-fact-val">{{ streakLabel }}</span>
-            <span class="rail-fact-lbl">sequência registrando tempo</span>
+            <span class="rail-fact-lbl">registrando tempo, dentro do período</span>
           </span>
         </li>
         <li v-if="longestSessionSec > 0" class="rail-fact">
           <span class="rail-fact-icon"><Hourglass :size="14" /></span>
           <span class="rail-fact-main">
             <span class="rail-fact-val">{{ formatDurationLong(longestSessionSec) }}</span>
-            <span class="rail-fact-lbl">sessão mais longa</span>
+            <span class="rail-fact-lbl">
+              sessão mais longa<template v-if="sampleNote"> ({{ sampleNote }})</template>
+            </span>
           </span>
         </li>
       </ul>
@@ -96,6 +108,7 @@ const hasRealTasks = computed(() => props.byTask.some((t) => t.name !== 'Sem tar
 
     <RailCard v-if="hasRealTasks" title="Top tarefas">
       <BreakdownList :items="byTask" />
+      <p v-if="sampleNote" class="rail-note">Contado {{ sampleNote }}.</p>
     </RailCard>
   </aside>
 </template>
@@ -105,6 +118,14 @@ const hasRealTasks = computed(() => props.byTask.some((t) => t.name !== 'Sem tar
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* Nota de base: diz de onde o número saiu quando não é o agregado do período. */
+.rail-note {
+  margin: 10px 0 0;
+  color: var(--text-4);
+  font-size: 10.5px;
+  line-height: 1.4;
 }
 
 /* Resumo */

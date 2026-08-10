@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import userService from '@/service/user/user-service'
 import companieService from '@/service/companies/companies-services'
 import AppDialog from '@/components/ui/AppDialog.vue'
@@ -19,10 +19,24 @@ type User = {
   email: string
 }
 
-const props = defineProps<{
-  modelValue: boolean
-  company: Company | null
-}>()
+/**
+ * `viewerRole` é o papel de QUEM ABRIU o modal NA EMPRESA ALVO — não na empresa
+ * ativa do localStorage. Numa lista de várias empresas o papel muda por linha,
+ * então quem renderiza é quem sabe. Default 'WORKER': na dúvida, o menos
+ * permissivo.
+ *
+ * Só ADMIN escolhe a função (e portanto só ADMIN pode criar outro admin). O
+ * backend já barra o resto com 403; aqui o ponto é a UI não oferecer o que vai
+ * ser recusado.
+ */
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    company: Company | null
+    viewerRole?: 'ADMIN' | 'WORKER'
+  }>(),
+  { viewerRole: 'WORKER' },
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -35,6 +49,13 @@ const selectedRole = ref<'ADMIN' | 'WORKER'>('WORKER')
 const selectedUsers = ref<User[]>([])
 const loading = ref(false)
 const saving = ref(false)
+
+const canAssignRole = computed(() => props.viewerRole === 'ADMIN')
+
+const roleItems = [
+  { label: 'Trabalhador', value: 'WORKER' },
+  { label: 'Admin', value: 'ADMIN' },
+]
 
 const headers = [
   { title: 'Nome', key: 'name' },
@@ -74,10 +95,12 @@ const save = async () => {
     const firstUser = selectedUsers.value[0]
     const payload = {
       userId: typeof firstUser === 'string' ? firstUser : firstUser?.id || '',
-      role: selectedRole.value,
+      // Cinto além do suspensório: mesmo que algo destrave o select, quem não é
+      // ADMIN não consegue mandar ADMIN no corpo da requisição.
+      role: canAssignRole.value ? selectedRole.value : 'WORKER',
     }
 
-    const res = await companieService.postCompanyAdmin(props.company.id, payload)
+    const res = await companieService.postUserCompany(props.company.id, payload)
     emit('success', res?.message || 'Usuário adicionado com sucesso!', 'success')
     setTimeout(() => {
       close()
@@ -95,7 +118,12 @@ watch(
   (val) => {
     if (!val) {
       selectedUsers.value = []
+      return
     }
+    // Toda abertura começa em WORKER. O modal é uma instância só, reaproveitada
+    // por todas as empresas da lista: sem este reset, quem escolheu "Admin" na
+    // empresa A reabre na B com "Admin" pré-selecionado e promove sem querer.
+    selectedRole.value = 'WORKER'
   },
 )
 
@@ -140,14 +168,18 @@ onMounted(() => {
           Função
         </span>
         <AppSelect
+          v-if="canAssignRole"
           :model-value="selectedRole"
-          :items="[
-            { label: 'Trabalhador', value: 'WORKER' },
-            { label: 'Admin', value: 'ADMIN' },
-          ]"
+          :items="roleItems"
           label="Função"
           @update:model-value="selectedRole = ($event as 'ADMIN' | 'WORKER')"
         />
+        <!-- Sem papel de admin não há escolha a fazer: mostra a função fixa em
+             vez de um select que só teria uma opção. -->
+        <div v-else class="role-fixed">
+          <span class="role-fixed-value">Trabalhador</span>
+          <span class="role-fixed-hint">Só admins da empresa definem a função.</span>
+        </div>
       </div>
 
       <div class="um-search">
@@ -334,6 +366,30 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-2);
+}
+
+/* Função fixa (viewer sem permissão de escolher). */
+.role-fixed {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.role-fixed-value {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.role-fixed-hint {
+  font-size: 11.5px;
+  color: var(--text-3);
 }
 
 /* Busca no padrão do design system (ícone + input transparente). */

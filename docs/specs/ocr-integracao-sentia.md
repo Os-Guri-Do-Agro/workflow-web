@@ -2,8 +2,8 @@
 
 **Para:** Marcel Yassumoto (integração na Sentia)
 **De:** Nicolas / Fluvio
-**Versão:** 1.0
-**Atualizado em:** 2026-07-31
+**Versão:** 1.1
+**Atualizado em:** 2026-08-09
 **Docs interativas (Scalar):** `https://srhub.up.railway.app/ocr-docs`
 
 ---
@@ -66,7 +66,7 @@ https://srhub.up.railway.app
 |---|---|
 | Tamanho máximo do arquivo | 10 MB |
 | Formatos aceitos | PDF assinado (PAdES) ou `.p7s` anexado (CAdES com o documento dentro) |
-| Tempo típico de resposta | 5 a 20 segundos |
+| Tempo típico de resposta | 4 a 20 segundos (contrato digital fica na casa dos 5s) |
 | Timeout recomendado no seu cliente | 120 segundos |
 
 ---
@@ -224,10 +224,127 @@ O valor de `revogacao` em cada detalhe é `"ok"`, `"revogado"` ou
 
 ## 5. O campo `dados`: onde vêm os dados do contrato
 
-Aqui existem **dois formatos possíveis**, e qual você recebe depende de a
-empresa ter ou não um modelo configurado no workflow.
+> **Atualização v1.1 (ago/2026):** `dados` agora traz **`cliente`, `prestador` e
+> `contrato`** em chaves fixas, sem exigir modelo configurado. É o que resolve o
+> "veio pouca coisa". Tudo o que já existia continua igual, então nada do seu
+> código quebra. Comece pela seção 5.0.
 
-### 5.1 Sem modelo configurado (leitura genérica)
+### 5.0 O que você deve usar: `dados.cliente`
+
+A API já sabe qual empresa é a Sentia (é o dono do token). Então ela separa as
+partes do contrato por CNPJ e devolve a **contraparte** já qualificada, que é
+exatamente o que preenche o cadastro de Empresa:
+
+```json
+{
+  "dados": {
+    "cliente": {
+      "cnpj": "50.351.626/0008-97",
+      "razaoSocial": "Beneficência Hospitalar De Cesário Lange",
+      "nomeFantasia": "BHCL Hortolândia",
+      "endereco": {
+        "logradouro": "Rua das Palmeiras, 120",
+        "municipio": "Hortolândia",
+        "uf": "SP",
+        "cep": "13.184-090"
+      },
+      "cnaePrincipal": "8660-7/00",
+      "cnaeDescricao": "Atividades de apoio à gestão de saúde",
+      "cnaesSecundarios": ["8610-1/01"],
+      "grauRisco": 3,
+      "totalColaboradores": 340,
+      "porteReceita": "DEMAIS",
+      "situacaoCadastral": "ATIVA"
+    },
+    "prestador": {
+      "cnpj": "11.222.333/0001-44",
+      "razaoSocial": "Sentia Ltda",
+      "eDonoDoToken": true
+    },
+    "contrato": {
+      "numero": "2026/0142",
+      "vigenciaInicio": "2026-08-01",
+      "vigenciaFim": "2027-07-31",
+      "valorMensal": 12000,
+      "valorTotal": 144000
+    }
+  }
+}
+```
+
+**Toda chave existe sempre**, com `null` no que não estava no documento. Você
+nunca precisa checar se a propriedade existe, só se o valor é nulo.
+
+**`prestador.eDonoDoToken`** merece atenção: quando é `true`, o CNPJ da Sentia
+foi encontrado no documento e a separação é confiável. Quando é `false`, o CNPJ
+do dono do token não apareceu, e o `cliente` foi escolhido pelo papel declarado
+("contratante"). Nesse caso vale confirmar com uma pessoa antes de gravar.
+
+### 5.0.1 De onde veio cada campo: `procedencia`
+
+Nem todo campo sai do contrato. A resposta diz a origem de cada um:
+
+```json
+{
+  "procedencia": {
+    "cliente.cnpj": "documento",
+    "cliente.cnaePrincipal": "receita",
+    "cliente.grauRisco": "nr4"
+  },
+  "camposAusentes": ["cliente.totalColaboradores"]
+}
+```
+
+| Valor | Significa |
+|---|---|
+| `documento` | Foi lido do contrato. É a fonte com mais fé. |
+| `receita` | O contrato não trazia; veio de consulta pública por CNPJ. |
+| `nr4` | Derivado do CNAE pela tabela do Quadro I da NR-4. **Não** foi lido do documento (ver 6.2). |
+
+`camposAusentes` lista o que ficou vazio. Isso separa "o documento não tem esse
+dado" de "a leitura falhou" — antes você não tinha como distinguir os dois.
+
+### 5.0.2 Quanto custou e como foi lido: `extracao`
+
+```json
+{
+  "extracao": {
+    "modo": "text",
+    "modelo": "claude-haiku-4-5",
+    "paginas": 14,
+    "paginasAnalisadas": [1, 2, 3, 4, 5, 6, 12, 13, 14],
+    "cacheHit": false,
+    "tentativas": 1,
+    "tokensIn": 2923,
+    "tokensOut": 577,
+    "custoUsd": 0.0058,
+    "enriquecimento": "ok",
+    "ms": 4427
+  }
+}
+```
+
+Útil para dois casos concretos: conferir a cobrança (`custoUsd`) e entender um
+resultado ruim (`modo: "vision"` com `paginasAnalisadas` curto significa que o
+documento é escaneado e nem todas as páginas foram enviadas).
+
+`cacheHit: true` quer dizer que você reenviou um arquivo idêntico a um já lido:
+o resultado veio do acervo e **não foi cobrado**. A assinatura, essa, é sempre
+revalidada.
+
+---
+
+### 5.1 Formato antigo: continua funcionando
+
+O que segue abaixo é o formato anterior. **Nada foi removido**, então se o seu
+código já lê `partes[]` e `outrosCampos[]`, ele continua funcionando sem
+alteração. Para código novo, prefira `dados.cliente`.
+
+Um detalhe que ficou melhor: campos raros que antes não tinham lugar (contato
+operacional, representante legal, unidades, foro, índice de reajuste, prazo de
+pagamento) continuam saindo em `outrosCampos[]`.
+
+### 5.1.1 Sem modelo configurado (leitura genérica)
 
 Funciona para qualquer contrato, sem configurar nada. As chaves são fixas:
 
@@ -303,13 +420,16 @@ preenchido. O de-para com a tela atual:
 
 | Campo na tela da Sentia | Vem de | Observação |
 |---|---|---|
-| CNPJ | `dados.cnpj` | Normalize antes de salvar (ver 6.1) |
-| Razão social | `dados.razaoSocial` | |
-| Nome fantasia | `dados.nomeFantasia` | Costuma incluir a unidade, ex.: "BHCL Hortolândia" |
-| UF | `dados.uf` | Se vier `null`, derive do CEP |
-| CEP | `dados.cep` | Normalize para 8 dígitos |
-| CNAE principal | `dados.cnaePrincipal` | Formato `8660-7/00` |
-| Grau de risco | **Não vem do OCR** | Ver 6.2, isso é importante |
+| CNPJ | `dados.cliente.cnpj` | Normalize antes de salvar (ver 6.1) |
+| Razão social | `dados.cliente.razaoSocial` | |
+| Nome fantasia | `dados.cliente.nomeFantasia` | Costuma incluir a unidade, ex.: "BHCL Hortolândia" |
+| UF | `dados.cliente.endereco.uf` | |
+| Município | `dados.cliente.endereco.municipio` | |
+| CEP | `dados.cliente.endereco.cep` | Normalize para 8 dígitos |
+| Logradouro | `dados.cliente.endereco.logradouro` | |
+| CNAE principal | `dados.cliente.cnaePrincipal` | Formato `8660-7/00` |
+| **Grau de risco** | `dados.cliente.grauRisco` | **Mudou**: agora vem do OCR, derivado da NR-4. Ver 6.2 |
+| Nº de colaboradores | `dados.cliente.totalColaboradores` | Só quando escrito no contrato; ver 6.3 |
 | Logo | Não vem do OCR | Upload manual |
 
 Usando o exemplo real da unidade de Hortolândia:
@@ -342,26 +462,41 @@ const cnae = soDigitos(dados.cnaePrincipal) // "8660700"
 Compare sempre por dígitos. **Use o CNPJ normalizado como chave** para decidir
 entre criar empresa nova ou atualizar existente.
 
-### 6.2 Grau de risco: por que o OCR não devolve
+### 6.2 Grau de risco: agora vem do OCR, mas continua sendo derivado
 
-Grau de risco **não é informação do contrato**. Ele é definido pelo Quadro I da
-NR-4, que associa cada código CNAE a um grau de 1 a 4. Ou seja: é uma tabela
-oficial, não um dado que se lê do documento.
+**Mudou em ago/2026.** Antes o OCR não devolvia grau de risco e cada integrador
+mantinha a própria tabela. Agora `dados.cliente.grauRisco` vem preenchido, com
+uma garantia importante: o valor **nunca é lido do documento**, é derivado do
+CNAE pela tabela do Quadro I da NR-4 mantida no workflow. Por isso ele sempre
+aparece em `procedencia` como `"nr4"`, e não como `"documento"`.
 
-O jeito certo, e é o que a própria tela da Sentia já faz (o campo aparece
-preenchido e travado): **a Sentia mantém a tabela CNAE para grau de risco e
-deriva o valor a partir do `cnaePrincipal` que o OCR devolveu.**
+O motivo original de não ler do contrato continua de pé: se o redator escreveu
+um grau errado, copiar seria propagar o erro. O que mudou foi só onde a tabela
+oficial é mantida, em um lugar em vez de um por integrador.
 
 ```js
-// grauDeRiscoPorCnae vem da tabela do Quadro I da NR-4, mantida pela Sentia.
-const grauDeRisco = grauDeRiscoPorCnae[soDigitos(dados.cnaePrincipal)] ?? null
+const grau = dados.cliente.grauRisco // 1..4, ou null
+const derivado = resultado.procedencia['cliente.grauRisco'] === 'nr4'
 ```
 
-Se o OCR devolvesse grau de risco, ele estaria chutando ou copiando algo que o
-redator do contrato pode ter escrito errado. Preferimos a tabela oficial. Se
-algum dia o grau vier escrito no documento e vocês quiserem esse dado, dá para
-incluir no modelo como campo separado, deixando claro que é "o que o documento
-alega", não "o que a NR-4 determina".
+**`grauRisco` vem `null` quando o CNAE não está na tabela**, e nunca aproximado
+pela divisão ou pelo grupo do CNAE. Grau de risco dimensiona SESMT; um palpite
+seria pior que um campo vazio. Se você já tem a sua tabela e ela cobre um CNAE
+que o OCR devolveu nulo, use a sua e nos avise para atualizarmos a nossa.
+
+A revisão da tabela em uso aparece nas docs em `/ocr-docs`.
+
+### 6.3 Número de colaboradores: por que costuma vir nulo
+
+`totalColaboradores` só é preenchido quando o número está **literalmente escrito
+no documento** ("a CONTRATANTE declara possuir 340 empregados"). A maior parte
+dos contratos não traz isso, e nesses casos o campo vem `null` e aparece em
+`camposAusentes`.
+
+O que ele **nunca** faz é estimar. `porteReceita` (`ME`, `EPP`, `DEMAIS`) vem da
+base pública e é faixa de **receita**, não de headcount; os dois campos são
+separados justamente para ninguém confundir um com o outro. Se a Sentia precisa
+do número para dimensionar SESMT, ele tem que vir do cliente, não de inferência.
 
 ---
 
@@ -471,13 +606,14 @@ workflow, então nada some silenciosamente.
 
 - [ ] Recebi um token `wfqr_` com escopo de **OCR Digital** e guardei em
       variável de ambiente
-- [ ] Confirmei com o Nicolas se a empresa tem **modelo configurado** (define
-      se `dados` vem com as chaves da Sentia ou no formato genérico)
+- [ ] Uso `dados.cliente` (chaves fixas, sem depender de modelo configurado)
+- [ ] Trato `prestador.eDonoDoToken: false` como "conferir antes de gravar"
+- [ ] Leio `camposAusentes` para separar "não está no documento" de "falhou"
 - [ ] Chamada com timeout de 120s e retentativa só em 502/500
 - [ ] Trato os quatro estados de assinatura: sem assinatura, inválida, válida
       sem checagem de revogação, válida
 - [ ] Normalizo CNPJ, CEP e CNAE para dígitos antes de comparar ou gravar
-- [ ] Derivo o grau de risco da tabela da NR-4 pelo CNAE, não do OCR
+- [ ] Uso `dados.cliente.grauRisco` (derivado da NR-4 pelo OCR) e trato `null`
 - [ ] Guardo `documentoId`, `assinatura.valida`, `tipo`, `assinadoPor` e
       `assinadoEm` junto do cadastro
 - [ ] Se usar webhook: verifico o HMAC com o corpo cru antes de processar

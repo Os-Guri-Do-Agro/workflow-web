@@ -8,6 +8,7 @@ const keys = {
   template: (companyId: string) => ['ocr', 'template', companyId] as const,
   documents: (companyId: string) => ['ocr', 'documents', companyId] as const,
   webhook: (companyId: string) => ['ocr', 'webhook', companyId] as const,
+  consumo: (companyId: string) => ['ocr', 'consumo', companyId] as const,
 }
 
 /** Template da empresa ativa (null = ainda não configurado). */
@@ -27,6 +28,19 @@ export function useOcrDocuments(companyId: MaybeRef<string | null>) {
     queryFn: () => ocrService.listDocuments(unref(companyId) as string),
     enabled: computed(() => !!unref(companyId)),
     staleTime: 15_000,
+  })
+}
+
+/**
+ * Consumo do mês. É o que responde "quanto custou" sem abrir o banco: a
+ * cobrança do OCR é repasse, então o número precisa estar na tela.
+ */
+export function useOcrConsumo(companyId: MaybeRef<string | null>) {
+  return useQuery({
+    queryKey: computed(() => keys.consumo(unref(companyId) ?? '')),
+    queryFn: () => ocrService.consumo(unref(companyId) as string),
+    enabled: computed(() => !!unref(companyId)),
+    staleTime: 60_000,
   })
 }
 
@@ -73,6 +87,7 @@ export function useOcrMutations(companyId: MaybeRef<string | null>) {
     onSuccess: () => {
       // O teste passa pelo caminho REAL: entra no acervo e na cobrança.
       void queryClient.invalidateQueries({ queryKey: keys.documents(cid()) })
+      void queryClient.invalidateQueries({ queryKey: keys.consumo(cid()) })
     },
     onError: (err) =>
       showError(getApiErrorMessage(err, 'Não foi possível ler o documento')),

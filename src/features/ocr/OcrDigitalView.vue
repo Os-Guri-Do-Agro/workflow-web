@@ -38,13 +38,18 @@ import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { apiBaseUrl } from '@/service/api'
 import { useToast } from '@/composables/useToast'
 import {
+  useOcrConsumo,
   useOcrDocuments,
   useOcrMutations,
   useOcrTemplate,
   useOcrWebhook,
   ocrService,
 } from './composables/useOcr'
-import type { OcrField, OcrReadResult } from '@/service/ocr/ocr-service'
+import type {
+  OcrDocumentRow,
+  OcrField,
+  OcrReadResult,
+} from '@/service/ocr/ocr-service'
 
 const workspace = useWorkspaceStore()
 const { success, error: showError } = useToast()
@@ -54,11 +59,63 @@ const isAdmin = computed(() => workspace.activeRole === 'ADMIN')
 
 const template = useOcrTemplate(companyId)
 const documents = useOcrDocuments(companyId)
+const consumo = useOcrConsumo(companyId)
 const webhook = useOcrWebhook(companyId, isAdmin)
 const { uploadTemplate, updateFields, readTest, setWebhook, deleteWebhook } =
   useOcrMutations(companyId)
 
 const integratorDocsUrl = `${apiBaseUrl()}/ocr-docs`
+
+// ─── Consumo e custo ─────────────────────────────────────────────────────────
+// O uso do modelo é repassado ao cliente, então custo é informação de produto,
+// não telemetria: precisa estar legível na tela, não só no log.
+
+const MODOS: Record<string, { rotulo: string; ajuda: string }> = {
+  text: {
+    rotulo: 'leitura por texto',
+    ajuda:
+      'O PDF tinha camada de texto: foi lido sem enviar imagem de página, que é o caminho barato.',
+  },
+  vision: {
+    rotulo: 'leitura por imagem',
+    ajuda:
+      'O documento foi lido pela imagem das páginas. Custa mais, e é o caminho certo para escaneado.',
+  },
+  hybrid: {
+    rotulo: 'leitura mista',
+    ajuda: 'Parte das páginas tinha texto, parte foi lida pela imagem.',
+  },
+}
+
+function rotuloModo(doc: OcrDocumentRow): string {
+  if (doc.cacheHit) return 'releitura do acervo'
+  return MODOS[doc.mode]?.rotulo ?? doc.mode
+}
+
+function tituloModo(doc: OcrDocumentRow): string {
+  if (doc.cacheHit) {
+    return 'Documento idêntico a um já lido: o resultado foi reaproveitado e nada foi cobrado. A assinatura foi validada de novo.'
+  }
+  const partes = [MODOS[doc.mode]?.ajuda ?? '']
+  if (doc.visionReason) partes.push(`Motivo: ${doc.visionReason}.`)
+  if (doc.pages) {
+    partes.push(`Páginas analisadas: ${doc.pagesAnalyzed.length} de ${doc.pages}.`)
+  }
+  if (doc.retrieval) partes.push('Só os trechos relevantes foram enviados.')
+  if (doc.attempts > 1) partes.push('Precisou de uma segunda tentativa.')
+  return partes.filter(Boolean).join(' ')
+}
+
+/** Centavos de dólar exigem 4 casas: com 2, quase toda leitura vira US$ 0,00. */
+function fmtUsd(v: number): string {
+  return `US$ ${v.toFixed(v > 0 && v < 0.01 ? 4 : 2)}`
+}
+
+function fmtCusto(v: number | null, cacheHit: boolean): string {
+  if (cacheHit) return 'sem custo'
+  if (v == null) return 'custo não calculado'
+  return fmtUsd(v)
+}
 
 // ─── Apresentação (onboarding: some quando o acervo tem documentos) ──────────
 const steps = [
@@ -470,6 +527,43 @@ function resumoDados(dados: Record<string, unknown>): string {
         <pre class="ocr-json">{{ JSON.stringify(testResult.dados, null, 2) }}</pre>
       </section>
 
+      <!-- Consumo do mês: a base da cobrança, em dinheiro e não em tokens -->
+      <section v-if="consumo.data.value?.documentos" class="ocr-card ocr-consumo">
+        <header class="ocr-card-head">
+          <h2 class="ocr-card-title"><Braces :size="15" /> Consumo do mês</h2>
+          <span class="ocr-consumo-mes">{{ consumo.data.value.mes }}</span>
+        </header>
+        <div class="ocr-consumo-grid">
+          <div class="ocr-consumo-item">
+            <span class="ocr-consumo-valor">{{ fmtUsd(consumo.data.value.custoUsd) }}</span>
+            <span class="ocr-consumo-rot">custo total</span>
+          </div>
+          <div class="ocr-consumo-item">
+            <span class="ocr-consumo-valor">
+              {{ fmtUsd(consumo.data.value.custoMedioUsd) }}
+            </span>
+            <span class="ocr-consumo-rot">por documento</span>
+          </div>
+          <div class="ocr-consumo-item">
+            <span class="ocr-consumo-valor">{{ consumo.data.value.documentosCobrados }}</span>
+            <span class="ocr-consumo-rot">documentos cobrados</span>
+          </div>
+          <div
+            v-if="consumo.data.value.documentosDeCache"
+            class="ocr-consumo-item"
+            title="Documentos idênticos a outros já lidos: reaproveitados do acervo, sem custo."
+          >
+            <span class="ocr-consumo-valor">{{ consumo.data.value.documentosDeCache }}</span>
+            <span class="ocr-consumo-rot">reaproveitados</span>
+          </div>
+        </div>
+        <p class="ocr-consumo-modos">
+          <template v-for="(qtd, modo) in consumo.data.value.porModo" :key="modo">
+            <span>{{ qtd }} {{ MODOS[modo]?.rotulo ?? modo }}</span>
+          </template>
+        </p>
+      </section>
+
       <!-- Acervo -->
       <section class="ocr-card">
         <header class="ocr-card-head">
@@ -521,7 +615,11 @@ function resumoDados(dados: Record<string, unknown>): string {
               <span class="ocr-doc-sep">·</span>
               <span>{{ doc.templateVersion ? `modelo v${doc.templateVersion}` : 'leitura inteligente' }}</span>
               <span class="ocr-doc-sep">·</span>
-              <span :title="`Modelo ${doc.model}`">{{ doc.tokensIn + doc.tokensOut }} tokens</span>
+              <span :title="tituloModo(doc)">{{ rotuloModo(doc) }}</span>
+              <span class="ocr-doc-sep">·</span>
+              <span :title="`Modelo ${doc.model} · ${doc.tokensIn + doc.tokensOut} tokens`">
+                {{ fmtCusto(doc.costUsd, doc.cacheHit) }}
+              </span>
               <template v-if="doc.webhookStatus !== 'NONE'">
                 <span class="ocr-doc-sep">·</span>
                 <span :class="doc.webhookStatus === 'SENT' ? 'ocr-wh-ok' : 'ocr-wh-fail'">
@@ -1031,6 +1129,51 @@ function resumoDados(dados: Record<string, unknown>): string {
   color: var(--text-4);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
+}
+
+/* ─── Consumo do mês ─────────────────────────────────────────────────────── */
+.ocr-consumo-mes {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  font-size: 0.75rem;
+}
+
+.ocr-consumo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.ocr-consumo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.ocr-consumo-valor {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.ocr-consumo-rot {
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.ocr-consumo-modos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-3);
 }
 
 .ocr-doc-sep {

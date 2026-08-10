@@ -9,8 +9,16 @@ import companiesServices from '@/service/companies/companies-services'
 import realtimeService from '@/service/realtime/realtime-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useCurrentUser } from '@/composables/useCurrentUser'
-import { dayKey, elapsedSince } from '@/utils/duration'
+import {
+  buildPulseBars,
+  type PulseBar,
+  type useTimePeriod,
+} from '@/features/time/composables/useTimePeriod'
+import { elapsedSince } from '@/utils/duration'
 import { onTabVisible } from '@/utils/tab-visibility'
+
+/** Instância do período compartilhada pela aba (ver `useTimePeriod`). */
+type TimePeriodApi = ReturnType<typeof useTimePeriod>
 
 /** `'group'` = todas as empresas do usuário somadas; senão, o id de uma empresa. */
 export type TeamScope = 'group' | (string & {})
@@ -46,14 +54,6 @@ export interface TeamRow {
   isMe: boolean
 }
 
-/** Um dia do gráfico de ritmo. */
-export interface TeamPulseDay {
-  key: string
-  sec: number
-  wd: string
-  isToday: boolean
-}
-
 /** Erro HTTP com response (axios) sem depender do tipo do axios aqui. */
 function statusOf(err: unknown): number | undefined {
   const maybe = err as { response?: { status?: number } } | null
@@ -72,16 +72,6 @@ function retryUnlessClientError(failureCount: number, error: unknown): boolean {
   return failureCount < 2
 }
 
-/** Range fixo dos últimos 7 dias (gráfico de ritmo, independente do preset). */
-function last7Range(): { from: string; to: string } {
-  const now = new Date()
-  const to = new Date(now)
-  to.setHours(23, 59, 59, 999)
-  const from = new Date(now)
-  from.setDate(from.getDate() - 6)
-  from.setHours(0, 0, 0, 0)
-  return { from: from.toISOString(), to: to.toISOString() }
-}
 
 /**
  * T5 (spec time-tracking-v2) — dados da aba Equipe.
@@ -97,8 +87,14 @@ function last7Range(): { from: string; to: string } {
  *
  * Cada empresa do escopo é uma chamada (o backend agrega por empresa); a soma
  * por pessoa, tarefa e dia é feita aqui.
+ *
+ * Recebe a instância inteira do `useTimePeriod` (e não só o range) porque o
+ * gráfico de ritmo precisa do modo e do mês exibido para decidir a
+ * granularidade das colunas. O range pode ser PARCIAL: no período "Tudo" não há
+ * `from` nem `to`, e a API trata ausência como "sem filtro".
  */
-export function useTeamTime(range: Ref<{ from: string; to: string }>, scope: Ref<TeamScope>) {
+export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
+  const { range, pulseRange, staleTime } = period
   const workspace = useWorkspaceStore()
   const { me } = useCurrentUser()
 
@@ -151,36 +147,28 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>, scope: Ref
         queryKey: ['time', 'company-report', id, range.value] as const,
         queryFn: () =>
           timeService.companyReport(
-            {
-              from: range.value.from,
-              to: range.value.to,
-              tzOffset: new Date().getTimezoneOffset(),
-            },
+            { ...range.value, tzOffset: new Date().getTimezoneOffset() },
             id,
           ),
-        staleTime: 1000 * 15,
+        staleTime: staleTime.value,
         retry: retryUnlessClientError,
       })),
     ),
   })
 
-  // Ritmo de 7 dias: mesma chave do report quando o range coincide (preset
-  // "7 dias"), então nesse caso o Vue Query reaproveita e não há request extra.
-  const pulseRange = ref(last7Range())
+  // Ritmo: fora do modo "Hoje" o range é o mesmo do período, então a chave
+  // coincide com a do report acima e o Vue Query serve do cache, sem request
+  // extra. Só o modo "Hoje" gera de fato uma segunda chamada (7 dias).
   const pulseQueries = useQueries({
     queries: computed(() =>
       targetIds.value.map((id) => ({
         queryKey: ['time', 'company-report', id, pulseRange.value] as const,
         queryFn: () =>
           timeService.companyReport(
-            {
-              from: pulseRange.value.from,
-              to: pulseRange.value.to,
-              tzOffset: new Date().getTimezoneOffset(),
-            },
+            { ...pulseRange.value, tzOffset: new Date().getTimezoneOffset() },
             id,
           ),
-        staleTime: 1000 * 60,
+        staleTime: staleTime.value,
         retry: retryUnlessClientError,
       })),
     ),
@@ -384,8 +372,8 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>, scope: Ref
       .sort((a, b) => b.sec - a.sec)
   })
 
-  /** Ritmo dos últimos 7 dias (cronológico), somando as empresas do escopo. */
-  const pulse = computed<TeamPulseDay[]>(() => {
+  /** Ritmo do período (dias no mês, meses em "Tudo"), somando as empresas do escopo. */
+  const pulse = computed<PulseBar[]>(() => {
     const byKey = new Map<string, number>()
     for (const q of pulseQueries.value) {
       for (const d of (q.data as CompanyReport | undefined)?.byDay ?? []) {
@@ -393,24 +381,13 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>, scope: Ref
         byKey.set(key, (byKey.get(key) ?? 0) + d.totalSec)
       }
     }
-    const today = new Date()
-    const todayKey = dayKey(today.toISOString())
-    const out: TeamPulseDay[] = []
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
-      const key = dayKey(d.toISOString())
-      out.push({
-        key,
-        sec: byKey.get(key) ?? 0,
-        wd: d.toLocaleDateString('pt-BR', { weekday: 'narrow' }).toUpperCase(),
-        isToday: key === todayKey,
-      })
-    }
-    return out
+    return buildPulseBars(period.kind.value, period.anchor.value, byKey)
   })
 
   const pulseMax = computed(() => Math.max(1, ...pulse.value.map((d) => d.sec)))
+
+  /** Acima de 12 colunas o gráfico precisa do modo denso do MiniBars. */
+  const pulseDense = computed(() => pulse.value.length > 12)
 
   /**
    * Backend anterior à abertura da visão de equipe (deploy pendente): responde
@@ -464,6 +441,7 @@ export function useTeamTime(range: Ref<{ from: string; to: string }>, scope: Ref
     byCompany,
     pulse,
     pulseMax,
+    pulseDense,
     isLoading,
     isError,
     isForbidden,

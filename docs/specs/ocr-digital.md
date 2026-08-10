@@ -8,6 +8,11 @@
 
 ---
 
+> **Evolução v1 (custo e completude):** a spec que ataca o custo por documento e
+> a pobreza do retorno vive no repo da API, em
+> `workflow-api/docs/specs/2026/q3/q3-2/ocr-v1-custo-e-completude.md`. Ela é
+> aditiva: assinatura, acervo e webhook desta spec continuam valendo.
+>
 > **Integração externa:** o manual entregue a quem consome a API (o Marcel, na
 > Sentia) vive em [ocr-integracao-sentia.md](./ocr-integracao-sentia.md):
 > rotas, exemplos de retorno, os quatro estados de assinatura, o de-para com o

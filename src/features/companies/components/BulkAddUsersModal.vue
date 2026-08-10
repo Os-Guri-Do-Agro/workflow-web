@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import userService from '@/service/user/user-service'
 import companieService from '@/service/companies/companies-services'
 import AppDialog from '@/components/ui/AppDialog.vue'
@@ -19,10 +19,15 @@ type User = {
   email: string
 }
 
-const props = defineProps<{
-  modelValue: boolean
-  company: Company | null
-}>()
+/** Mesmo contrato do AddUserModal: papel do viewer NA EMPRESA ALVO. */
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    company: Company | null
+    viewerRole?: 'ADMIN' | 'WORKER'
+  }>(),
+  { viewerRole: 'WORKER' },
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -33,6 +38,13 @@ const search = ref('')
 const users = ref<User[]>([])
 const selectedRole = ref<'ADMIN' | 'WORKER'>('WORKER')
 const saving = ref(false)
+
+const canAssignRole = computed(() => props.viewerRole === 'ADMIN')
+
+const roleItems = [
+  { label: 'Trabalhador', value: 'WORKER' },
+  { label: 'Admin', value: 'ADMIN' },
+]
 
 const headers = [
   { title: 'Nome', key: 'name' },
@@ -67,7 +79,7 @@ const save = async () => {
 
     const payload = {
       userIds: selectedUsers.value.map((u: any) => (typeof u === 'string' ? u : u.id)),
-      role: selectedRole.value,
+      role: canAssignRole.value ? selectedRole.value : 'WORKER',
     }
 
     const res = await companieService.postCompanyMemberLote(props.company.id, payload)
@@ -89,7 +101,11 @@ watch(
   (val) => {
     if (!val) {
       selectedUsers.value = []
+      return
     }
+    // Ver AddUserModal: instância reaproveitada entre empresas. Em lote o
+    // vazamento de "Admin" promoveria um grupo inteiro de uma vez.
+    selectedRole.value = 'WORKER'
   },
 )
 
@@ -133,14 +149,16 @@ onMounted(() => {
           Função
         </span>
         <AppSelect
+          v-if="canAssignRole"
           :model-value="selectedRole"
-          :items="[
-            { label: 'Trabalhador', value: 'WORKER' },
-            { label: 'Admin', value: 'ADMIN' },
-          ]"
+          :items="roleItems"
           label="Função"
           @update:model-value="selectedRole = ($event as 'ADMIN' | 'WORKER')"
         />
+        <div v-else class="role-fixed">
+          <span class="role-fixed-value">Trabalhador</span>
+          <span class="role-fixed-hint">Só admins da empresa definem a função.</span>
+        </div>
       </div>
 
       <div class="um-search">
@@ -325,6 +343,30 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-2);
+}
+
+/* Função fixa (viewer sem permissão de escolher). */
+.role-fixed {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.role-fixed-value {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.role-fixed-hint {
+  font-size: 11.5px;
+  color: var(--text-3);
 }
 
 /* Busca no padrão do design system (ícone + input transparente). */

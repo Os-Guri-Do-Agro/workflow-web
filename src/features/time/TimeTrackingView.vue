@@ -11,7 +11,9 @@ import SaveStatus from '@/components/ui/SaveStatus.vue'
 import TeamView from '@/features/time/components/TeamView.vue'
 import { useToast } from '@/composables/useToast'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
-import { useTimeEntries, useTimeTracking } from '@/composables/useTimeTracking'
+import { useTimeEntries, useTimeSummary, useTimeTracking } from '@/composables/useTimeTracking'
+import { buildPulseBars, useTimePeriod } from '@/features/time/composables/useTimePeriod'
+import PeriodPicker from '@/features/time/components/PeriodPicker.vue'
 import { useCompanyActivities } from '@/composables/useCompanyActivities'
 import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
 import { getApiErrorMessage } from '@/service/api'
@@ -128,35 +130,16 @@ async function handleContinue(entry: TimeEntry) {
 }
 
 // ─── Filtro por período e empresa ─────────────────────────────────────────────
-type Preset = 'today' | '7d' | '30d'
-const preset = ref<Preset>('7d')
+const period = useTimePeriod()
 const filterCompanyId = ref<string | null | 'all'>('all')
-
-function rangeFor(p: Preset): { from: string; to: string } {
-  const now = new Date()
-  const to = new Date(now)
-  to.setHours(23, 59, 59, 999)
-  const from = new Date(now)
-  if (p === 'today') from.setHours(0, 0, 0, 0)
-  else if (p === '7d') {
-    from.setDate(from.getDate() - 6)
-    from.setHours(0, 0, 0, 0)
-  } else {
-    from.setDate(from.getDate() - 29)
-    from.setHours(0, 0, 0, 0)
-  }
-  return { from: from.toISOString(), to: to.toISOString() }
-}
 
 // F4 — paginação incremental. "Carregar mais" aumenta o take em blocos de 50.
 const PAGE_SIZE = 50
 const limit = ref(PAGE_SIZE)
 
 const entriesFilters = computed(() => {
-  const { from, to } = rangeFor(preset.value)
-  const base: { from: string; to: string; companyId?: string; take: number } = {
-    from,
-    to,
+  const base: { from?: string; to?: string; companyId?: string; take: number } = {
+    ...period.range.value,
     take: limit.value,
   }
   const value = filterCompanyId.value
@@ -168,14 +151,26 @@ const entriesFilters = computed(() => {
 
 const entries = useTimeEntries(entriesFilters)
 
-watch([preset, filterCompanyId], () => {
+watch([() => period.kind.value, () => period.anchor.value, filterCompanyId], () => {
   limit.value = PAGE_SIZE
 })
 
-const hasMore = computed(() => (entries.data.value?.length ?? 0) >= limit.value)
+/**
+ * O backend limita `take` a 200 (`time-tracking.service.ts`), então pedir mais
+ * devolve 200 calado. Sem este teto, no 5º "carregar mais" a lista parava de
+ * crescer e `hasMore` virava false — a nota de amostra sumia e as 200 entradas
+ * passavam por período completo.
+ */
+const MAX_TAKE = 200
+
+const loadedIsCapped = computed(() => (entries.data.value?.length ?? 0) >= MAX_TAKE)
+
+const hasMore = computed(
+  () => limit.value < MAX_TAKE && (entries.data.value?.length ?? 0) >= limit.value,
+)
 
 function loadMore() {
-  limit.value += PAGE_SIZE
+  limit.value = Math.min(limit.value + PAGE_SIZE, MAX_TAKE)
 }
 
 const filterCompanyOptions = computed(() => [
@@ -217,23 +212,75 @@ const groups = computed<DayGroup[]>(() => {
   return [...map.values()].sort((a, b) => (a.key < b.key ? 1 : -1))
 })
 
-const rangeTotalSec = computed(() =>
-  visibleEntries.value.reduce((acc, e) => acc + (e.durationSec ?? 0), 0),
-)
+// ─── Totais do período: servidor, não amostra ─────────────────────────────────
+/**
+ * Somar as entradas da tela dava o número certo por acidente enquanto o período
+ * máximo era 30 dias e cabia nas 50 entradas da primeira página. Com mês e
+ * "Tudo", a lista trunca e o total mentiria para baixo até o usuário clicar
+ * "carregar mais" o bastante. `/time/summary` agrega no servidor, sem paginação.
+ *
+ * O endpoint não aceita `companyId` (só from/to/tzOffset), então com filtro de
+ * empresa a tela volta a derivar da amostra — e diz isso, em vez de exibir
+ * número calado e errado.
+ */
+const summary = useTimeSummary(period.range, period.staleTime)
 
-const rangeBillableSec = computed(() =>
-  visibleEntries.value.reduce((acc, e) => acc + (e.billable ? (e.durationSec ?? 0) : 0), 0),
-)
+const isCompanyFiltered = computed(() => filterCompanyId.value !== 'all')
 
-const todayTotalSec = computed(() => {
-  const today = dayKey(new Date().toISOString())
-  return visibleEntries.value
-    .filter((e) => dayKey(e.startedAt) === today)
-    .reduce((acc, e) => acc + (e.durationSec ?? 0), 0)
+const statsExact = computed(() => !!summary.data.value && !isCompanyFiltered.value)
+
+const sampleByDay = computed(() => new Map(groups.value.map((g) => [g.key, g.totalSec])))
+
+const byDaySec = computed<Map<string, number>>(() => {
+  const s = summary.data.value
+  if (statsExact.value && s) return new Map(s.byDay.map((d) => [d.day, d.totalSec]))
+  return sampleByDay.value
 })
 
-// ─── Rail de insights (derivado das entradas visíveis, sem fetch extra) ────────
-const activeDaysCount = computed(() => groups.value.length)
+const rangeTotalSec = computed(() => {
+  const s = summary.data.value
+  if (statsExact.value && s) return s.totalSec
+  return visibleEntries.value.reduce((acc, e) => acc + (e.durationSec ?? 0), 0)
+})
+
+const rangeBillableSec = computed(() => {
+  const s = summary.data.value
+  if (statsExact.value && s) return s.billableSec
+  return visibleEntries.value.reduce((acc, e) => acc + (e.billable ? (e.durationSec ?? 0) : 0), 0)
+})
+
+/**
+ * "Hoje" continua sendo o número do dia corrente, independente do período
+ * escolhido — é o que a pessoa olha para saber se já bateu o dia. Em período que
+ * não contém hoje (mês passado, por exemplo), some em vez de mostrar zero.
+ */
+const todayKeyNow = computed(() => dayKey(new Date().toISOString()))
+
+const periodHasToday = computed(() => {
+  // No modo "Hoje" o próprio total do período já é o de hoje: dois blocos com o
+  // mesmo rótulo e o mesmo número não informam nada.
+  if (period.kind.value === 'today') return false
+  if (period.kind.value === 'all') return true
+  return period.isCurrentMonth.value
+})
+
+const todayTotalSec = computed(() => byDaySec.value.get(todayKeyNow.value) ?? 0)
+
+/**
+ * Base dos números derivados da amostra. Sem isso, "top tarefas" de um ano
+ * inteiro pareceria completo olhando só as últimas 50 entradas.
+ */
+const loadedCount = computed(() => visibleEntries.value.length)
+/** Truncado tanto por página quanto pelo teto de 200 do servidor. */
+const isSampled = computed(() => hasMore.value || loadedIsCapped.value)
+const sampleNote = computed(() =>
+  isSampled.value ? `nas ${loadedCount.value} entradas carregadas` : '',
+)
+
+// ─── Rail de insights ─────────────────────────────────────────────────────────
+const activeDaysCount = computed(
+  () => [...byDaySec.value.values()].filter((sec) => sec > 0).length,
+)
 
 const avgPerDaySec = computed(() =>
   activeDaysCount.value ? Math.round(rangeTotalSec.value / activeDaysCount.value) : 0,
@@ -243,52 +290,85 @@ const billablePct = computed(() =>
   rangeTotalSec.value ? Math.round((rangeBillableSec.value / rangeTotalSec.value) * 100) : 0,
 )
 
-/** Últimos 7 dias (cronológico) para o mini gráfico de ritmo. */
-const last7Days = computed(() => {
-  const byKey = new Map(groups.value.map((g) => [g.key, g.totalSec]))
-  const now = new Date()
-  const todayKey = dayKey(now.toISOString())
-  const out: { key: string; sec: number; wd: string; isToday: boolean }[] = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now)
-    d.setDate(now.getDate() - i)
-    const key = dayKey(d.toISOString())
-    out.push({
-      key,
-      sec: byKey.get(key) ?? 0,
-      wd: d.toLocaleDateString('pt-BR', { weekday: 'narrow' }).toUpperCase(),
-      isToday: key === todayKey,
-    })
-  }
-  return out
-})
-const last7Max = computed(() => Math.max(1, ...last7Days.value.map((d) => d.sec)))
+/**
+ * Ritmo do período. Fora do modo "Hoje" o range do ritmo é o próprio período,
+ * então esta query tem a MESMA chave do resumo e o Vue Query a serve do cache.
+ */
+const pulseSummary = useTimeSummary(period.pulseRange, period.staleTime)
 
-/** Agrupa as entradas visíveis por um rótulo e devolve o top N com percentual. */
+const pulseByDay = computed<Map<string, number>>(() => {
+  if (period.kind.value !== 'today') return byDaySec.value
+  // Com filtro de empresa o summary não serve (ele ignora `companyId`): o
+  // gráfico mostraria todas as empresas enquanto o resto da tela está filtrado.
+  const s = pulseSummary.data.value
+  if (s && !isCompanyFiltered.value) return new Map(s.byDay.map((d) => [d.day, d.totalSec]))
+  return sampleByDay.value
+})
+
+const pulse = computed(() =>
+  buildPulseBars(period.kind.value, period.anchor.value, pulseByDay.value),
+)
+
+const pulseMax = computed(() => Math.max(1, ...pulse.value.map((d) => d.sec)))
+
+/** Acima de 12 barras o gráfico precisa de gap e fonte menores para não borrar. */
+const pulseDense = computed(() => pulse.value.length > 12)
+
+const pulseTitle = computed(() => `Ritmo (${period.shortLabel.value})`)
+
+/**
+ * Agrupa as entradas visíveis por um rótulo e devolve o top N com percentual.
+ * O denominador é o total DA AMOSTRA, não o do período: misturar um total exato
+ * do servidor com fatias contadas na página faria os percentuais somarem menos
+ * de 100 sem explicação nenhuma na tela.
+ */
 function topBy(label: (e: TimeEntry) => string, limitTo = 5) {
   const map = new Map<string, number>()
+  let total = 0
   for (const e of visibleEntries.value) {
+    const sec = e.durationSec ?? 0
+    total += sec
     const name = label(e)
-    map.set(name, (map.get(name) ?? 0) + (e.durationSec ?? 0))
+    map.set(name, (map.get(name) ?? 0) + sec)
   }
-  const total = rangeTotalSec.value || 1
+  const base = total || 1
   return [...map.entries()]
-    .map(([name, sec]) => ({ name, sec, pct: Math.round((sec / total) * 100) }))
+    .map(([name, sec]) => ({ name, sec, pct: Math.round((sec / base) * 100) }))
     .sort((a, b) => b.sec - a.sec)
     .slice(0, limitTo)
 }
 
-/** Distribuição do tempo por empresa/projeto (top 5), com percentual. */
-const byProject = computed(() => topBy((e) => e.company?.name ?? 'Pessoal'))
+/**
+ * Distribuição por empresa: o summary já entrega isso agregado do período
+ * inteiro (`byCompany`), então aqui não há motivo para contar na amostra.
+ */
+const byProject = computed(() => {
+  const s = summary.data.value
+  if (statsExact.value && s) {
+    const total = s.totalSec || 1
+    return s.byCompany
+      .map((c) => ({ name: c.name, sec: c.totalSec, pct: Math.round((c.totalSec / total) * 100) }))
+      .filter((c) => c.sec > 0)
+      .sort((a, b) => b.sec - a.sec)
+      .slice(0, 5)
+  }
+  return topBy((e) => e.company?.name ?? 'Pessoal')
+})
 
-/** Onde o tempo foi por TAREFA (top 5) — a quebra que mais responde "no quê". */
+/**
+ * Onde o tempo foi por TAREFA (top 5). Único card que não tem equivalente
+ * agregado na API (`/time/summary` não quebra por atividade), por isso continua
+ * na amostra e declara a base quando a lista está truncada.
+ */
 const byTask = computed(() => topBy((e) => e.activity?.title ?? 'Sem tarefa'))
 
-/** Dia mais produtivo do período (rótulo + total). */
+/** Dia mais produtivo do período (rótulo + total), sobre o agregado do período. */
 const bestDay = computed(() => {
-  let best: DayGroup | null = null
-  for (const g of groups.value) if (!best || g.totalSec > best.totalSec) best = g
-  return best ? { label: best.label, sec: best.totalSec } : null
+  let best: { key: string; sec: number } | null = null
+  for (const [key, sec] of byDaySec.value) {
+    if (sec > 0 && (!best || sec > best.sec)) best = { key, sec }
+  }
+  return best ? { label: formatDayLabel(best.key), sec: best.sec } : null
 })
 
 /**
@@ -297,7 +377,7 @@ const bestDay = computed(() => {
  * zeraria a sequência de quem só vai começar à tarde.
  */
 const streakDays = computed(() => {
-  const days = new Set(groups.value.map((g) => g.key))
+  const days = new Set([...byDaySec.value].filter(([, sec]) => sec > 0).map(([key]) => key))
   const cursor = new Date()
   if (!days.has(dayKey(cursor.toISOString()))) cursor.setDate(cursor.getDate() - 1)
   let count = 0
@@ -444,11 +524,6 @@ async function submitManual() {
   }
 }
 
-const presets: Array<{ id: Preset; label: string }> = [
-  { id: 'today', label: 'Hoje' },
-  { id: '7d', label: '7 dias' },
-  { id: '30d', label: '30 dias' },
-]
 </script>
 
 <template>
@@ -608,18 +683,15 @@ const presets: Array<{ id: Preset; label: string }> = [
         <div class="tv-below-main">
       <!-- ─── Filtros + totais ───────────────────────────────────────────── -->
       <section class="tv-controls">
-        <div class="tv-presets">
-          <button
-            v-for="p in presets"
-            :key="p.id"
-            class="tv-chip"
-            :class="{ 'tv-chip--on': preset === p.id }"
-            type="button"
-            @click="preset = p.id"
-          >
-            {{ p.label }}
-          </button>
-        </div>
+        <PeriodPicker
+          :kind="period.kind.value"
+          :month-label="period.anchorLabel.value"
+          :can-go-prev="period.canGoPrev.value"
+          :can-go-next="period.canGoNext.value"
+          @update:kind="period.setKind"
+          @prev="period.prev"
+          @next="period.next"
+        />
 
         <div class="tv-company-filter">
           <AppSelect
@@ -631,12 +703,14 @@ const presets: Array<{ id: Preset; label: string }> = [
         </div>
 
         <div class="tv-totals">
-          <div class="tv-total">
+          <!-- "Hoje" some em período que não contém hoje: zero ali seria lido
+               como "não trabalhei", e não como "fora do recorte". -->
+          <div v-if="periodHasToday" class="tv-total">
             <span class="tv-total-label">Hoje</span>
             <span class="tv-total-value">{{ formatDurationLong(todayTotalSec) }}</span>
           </div>
           <div class="tv-total">
-            <span class="tv-total-label">Período</span>
+            <span class="tv-total-label">{{ period.label.value }}</span>
             <span class="tv-total-value">{{ formatDurationLong(rangeTotalSec) }}</span>
           </div>
           <div v-if="rangeBillableSec > 0" class="tv-total">
@@ -880,13 +954,16 @@ const presets: Array<{ id: Preset; label: string }> = [
           :range-billable-sec="rangeBillableSec"
           :avg-per-day-sec="avgPerDaySec"
           :billable-pct="billablePct"
-          :last7-days="last7Days"
-          :last7-max="last7Max"
+          :pulse="pulse"
+          :pulse-max="pulseMax"
+          :pulse-title="pulseTitle"
+          :pulse-dense="pulseDense"
           :by-project="byProject"
           :by-task="byTask"
           :best-day="bestDay"
           :streak-days="streakDays"
           :longest-session-sec="longestSessionSec"
+          :sample-note="sampleNote"
         />
       </div>
     </template>
@@ -1210,33 +1287,6 @@ const presets: Array<{ id: Preset; label: string }> = [
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
-}
-
-.tv-presets {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.tv-chip {
-  height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
-}
-
-.tv-chip--on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
 }
 
 .tv-company-filter {

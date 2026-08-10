@@ -188,6 +188,9 @@ export function useTimeEntries(filters: MaybeRef<EntriesFilters> = {}) {
  */
 export function useTimeSummary(
   filters: MaybeRef<{ from?: string; to?: string; tzOffset?: number }> = {},
+  // Período "Tudo" é a consulta cara do backend e o histórico antigo não muda:
+  // quem chama pode pedir cache mais longo. Ver `useTimePeriod.staleTime`.
+  staleTime: MaybeRef<number> = 1000 * 15,
 ) {
   const withTz = computed(() => {
     const f = unref(filters)
@@ -196,6 +199,6 @@ export function useTimeSummary(
   return useQuery({
     queryKey: computed(() => timeKeys.summaryFor(withTz.value)),
     queryFn: () => timeService.summary(withTz.value),
-    staleTime: 1000 * 15,
+    staleTime: computed(() => unref(staleTime)),
   })
 }

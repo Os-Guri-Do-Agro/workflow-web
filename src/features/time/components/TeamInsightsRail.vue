@@ -1,15 +1,15 @@
 <script setup lang="ts">
 /**
  * Rail lateral da aba Equipe: leitura rápida do placar do período (total,
- * quem está trabalhando agora, média por pessoa), ritmo dos últimos 7 dias e
- * onde a equipe gastou o tempo. Puramente derivado (recebe tudo por props).
+ * quem está trabalhando agora, média por pessoa), ritmo do período selecionado
+ * e onde a equipe gastou o tempo. Puramente derivado (recebe tudo por props).
  */
 import { computed } from 'vue'
 import RailCard from '@/features/time/components/RailCard.vue'
 import MiniBars from '@/features/time/components/MiniBars.vue'
 import BreakdownList from '@/features/time/components/BreakdownList.vue'
 import { formatDurationLong } from '@/utils/duration'
-import type { TeamPulseDay } from '@/features/time/composables/useTeamTime'
+import type { PulseBar } from '@/features/time/composables/useTimePeriod'
 
 const props = withDefaults(
   defineProps<{
@@ -21,8 +21,11 @@ const props = withDefaults(
     avgPerPersonSec: number
     billableSec: number
     billablePct: number
-    pulse: TeamPulseDay[]
+    pulse: PulseBar[]
     pulseMax: number
+    /** Ex.: "Ritmo (Agosto)". */
+    pulseTitle: string
+    pulseDense: boolean
     byActivity: { title: string; sec: number; pct: number }[]
     /** Quebra por empresa: só faz sentido (e só vem preenchida) no grupo. */
     byCompany?: { name: string; sec: number; pct: number }[]
@@ -81,8 +84,8 @@ const activityItems = computed(() =>
       <BreakdownList :items="byCompany" />
     </RailCard>
 
-    <RailCard title="Ritmo (7 dias)">
-      <MiniBars :days="pulse" :max="pulseMax" />
+    <RailCard :title="pulseTitle">
+      <MiniBars :days="pulse" :max="pulseMax" :dense="pulseDense" />
     </RailCard>
 
     <RailCard v-if="activityItems.length" title="Onde o tempo foi">

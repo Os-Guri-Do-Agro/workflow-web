@@ -23,6 +23,12 @@ export interface OcrTemplate {
   updatedAt: string
 }
 
+/** Por onde a leitura passou. `text` é o caminho barato; `vision` lê a página. */
+export type OcrMode = 'text' | 'vision' | 'hybrid'
+
+/** De onde veio cada campo preenchido. */
+export type OcrFonte = 'documento' | 'receita' | 'nr4'
+
 export interface OcrDocumentRow {
   id: string
   fileName: string
@@ -37,6 +43,29 @@ export interface OcrDocumentRow {
   ms: number
   webhookStatus: 'NONE' | 'SENT' | 'FAILED'
   createdAt: string
+  mode: OcrMode
+  visionReason: string | null
+  pages: number | null
+  pagesAnalyzed: number[]
+  retrieval: boolean
+  cacheHit: boolean
+  attempts: number
+  /** `null` quando o modelo usado não tem preço conhecido. */
+  costUsd: number | null
+  enrichment: 'ok' | 'falhou' | 'desligado' | 'nao_aplicavel'
+}
+
+/** Consumo agregado do mês, para conferir a fatura. */
+export interface OcrConsumo {
+  mes: string
+  documentos: number
+  documentosCobrados: number
+  documentosDeCache: number
+  tokensIn: number
+  tokensOut: number
+  custoUsd: number
+  custoMedioUsd: number
+  porModo: Partial<Record<OcrMode, number>>
 }
 
 export interface OcrWebhookInfo {
@@ -71,6 +100,25 @@ export interface OcrReadResult {
   }
   dados: Record<string, unknown>
   documentoId: string
+  /** Blocos da v1: aditivos, ausentes em leituras antigas. */
+  extracao?: {
+    modo: OcrMode
+    modelo: string
+    paginas: number | null
+    paginasAnalisadas: number[]
+    retrieval: boolean
+    cacheHit: boolean
+    tentativas: number
+    tokensIn: number
+    tokensOut: number
+    custoUsd: number | null
+    enriquecimento: 'ok' | 'falhou' | 'desligado' | 'nao_aplicavel'
+    ms: number
+  }
+  /** Mapa campo → de onde o valor veio. */
+  procedencia?: Record<string, OcrFonte>
+  /** Campos-alvo que ficaram vazios (ausentes no documento, não erro). */
+  camposAusentes?: string[]
 }
 
 const ocrService = {
@@ -113,6 +161,14 @@ const ocrService = {
   },
 
   /** URL assinada de curta duração do PDF original no acervo. */
+  /** @param mes formato YYYY-MM; omitido = mês corrente. */
+  async consumo(companyId: string, mes?: string) {
+    const r = await api.get<OcrConsumo>('/ocr/consumo', {
+      params: { companyId, ...(mes ? { mes } : {}) },
+    })
+    return r.data
+  },
+
   async documentUrl(companyId: string, documentId: string) {
     const r = await api.get<{ url: string }>(`/ocr/documents/${documentId}/url`, {
       params: { companyId },
