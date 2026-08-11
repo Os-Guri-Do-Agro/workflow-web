@@ -19,10 +19,14 @@ const STORAGE = {
   fontScale: 'ui.fontScale',
   xp: 'ui.xp',
   notesViewMode: 'ui.notesViewMode',
+  driveViewMode: 'ui.driveViewMode',
 } as const
 
 /** Grade ou lista na listagem de notas. */
 export type NotesViewMode = 'grid' | 'list'
+
+/** Grade ou lista na listagem do Drive. */
+export type DriveViewMode = 'grid' | 'list'
 
 const readTheme = (): ThemeName => {
   const v = localStorage.getItem(STORAGE.theme) || localStorage.getItem('theme')
@@ -57,6 +61,9 @@ const readXp = (): boolean => localStorage.getItem(STORAGE.xp) === 'true'
 const readNotesViewMode = (): NotesViewMode =>
   localStorage.getItem(STORAGE.notesViewMode) === 'list' ? 'list' : 'grid'
 
+const readDriveViewMode = (): DriveViewMode =>
+  localStorage.getItem(STORAGE.driveViewMode) === 'list' ? 'list' : 'grid'
+
 export const useUiStore = defineStore('ui', () => {
   const theme = ref<ThemeName>(readTheme())
   const accent = ref<AccentName>(readAccent())
@@ -65,6 +72,7 @@ export const useUiStore = defineStore('ui', () => {
   const fontScale = ref<FontScale>(readFontScale())
   const xp = ref<boolean>(readXp())
   const notesViewMode = ref<NotesViewMode>(readNotesViewMode())
+  const driveViewMode = ref<DriveViewMode>(readDriveViewMode())
 
   watch(theme, (v) => {
     localStorage.setItem(STORAGE.theme, v)
@@ -99,9 +107,13 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(STORAGE.notesViewMode, v)
   })
 
+  watch(driveViewMode, (v) => {
+    localStorage.setItem(STORAGE.driveViewMode, v)
+  })
+
   // Aplica a escala salva já no boot (antes de qualquer watch disparar).
   applyFontScale(fontScale.value)
   applyXpMode(xp.value)
 
-  return { theme, accent, density, shell, fontScale, xp, notesViewMode }
+  return { theme, accent, density, shell, fontScale, xp, notesViewMode, driveViewMode }
 })

@@ -9,6 +9,8 @@
 **Antecessora:** [workflow-v2 R1 — A tarefa como superfície de trabalho](../../../workflow-v2-r1-tarefa-como-superficie.md)
 **Repos:** `work-flow` (frontend) + `workflow-api` (backend)
 
+> **Revisão parcial (11/08/2026):** a regra "markdown tem uma casa só, e é o documento" (e o 400 incondicional em `POST /activity/:id/attachment`) foi substituída em [tasks-markdown-anexo-ou-documento.md](./tasks-markdown-anexo-ou-documento.md). `.md` agora pode ser documento **ou** anexo, com a escolha feita pelo usuário na tela; o 400 continua valendo para quem não declara o destino. Todo o resto desta spec segue valendo.
+
 ---
 
 ## Visão Geral

@@ -15,6 +15,7 @@ import {
   CalendarRange,
   ChevronDown,
   Paintbrush,
+  HardDrive,
   QrCode,
   ScanText,
   Plug,
@@ -48,6 +49,7 @@ const tabs = computed(() => [
   { to: '/board', icon: Columns3, label: 'Board' },
   ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas' }] : []),
   { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
+  { to: '/drive', icon: HardDrive, label: 'Drive' },
   { to: '/variables', icon: KeyRound, label: 'Variáveis' },
   { to: '/notes', icon: StickyNote, label: 'Notas' },
   { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
@@ -69,6 +71,7 @@ const dockItems = computed(() => {
   ]
   if (firstMonth.value) items.push({ to: `/tasks/${firstMonth.value.id}`, icon: ListTodo })
   items.push(
+    { to: '/drive', icon: HardDrive },
     { to: '/variables', icon: KeyRound },
     { to: '/notes', icon: StickyNote },
   )

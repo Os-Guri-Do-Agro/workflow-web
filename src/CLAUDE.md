@@ -105,6 +105,7 @@ Em [`components/ui/`](./components/ui/):
 | `AppDialog.vue`        | **Casca de overlay do design system** (Teleport + scrim `--scrim` + Esc + foco entra/volta). Props: `label`, `size` (sm 400/md 520/lg 640/xl 900), `loading` (trava fechar), `persistent`. Conteúdo via slot (header ícone+X, body, footer ghost+primary). **Zero `v-dialog` no código** (migração concluída em jul/2026) e proibido reintroduzir. |
 | `ConfirmDialog.vue`    | Modal de confirmação pronto por cima do AppDialog. Para confirmar exclusão etc., use ele direto.                     |
 | `TipTapToolbar.vue`    | Toolbar tokenizada de editor. Prop `groups` escolhe o que aparece; `bare` para uso dentro de popover.                |
+| `FileViewer.vue`       | Visualizador de arquivo em tela cheia (Teleport, imagem/PDF/markdown, setas, foco preso). Promovido do antigo `AttachmentViewer` das tarefas. `item.url` pronto OU `resolveUrl` assíncrono (Drive: URL assinada fresca). |
 | `AppSelect.vue`        | Select padrão (reka-ui Select). Single/multiple. Sem busca.                                                          |
 | `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. Usado no time tracking. |
 | `TagChip.vue` + `tag-palette.ts` | Chip de tag. Cor vem de `var(--tag-<chave>)` (definido em `tokens.ts`, por tema), nunca hex. Tag sem cor recebe uma determinística pelo slug. |
@@ -146,6 +147,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | **Notas** ★     | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | Redesenhada na P1 do épico de notas colaborativas. Autosave, pastas com CRUD e aninhamento, bubble/slash menu, modo imersivo. Sub-components em `features/notes/` |
 | Calendário      | [`features/calendar/CalendarView.vue`](./features/calendar/CalendarView.vue)                   | `/calendar`        | Google Calendar integration                                           |
 | Time Tracking   | [`features/time/TimeTrackingView.vue`](./features/time/TimeTrackingView.vue)                   | `/time`            | Timer estilo Clockify. Widget global nos 3 shells + `useTimeTracking` (Vue Query + socket `time:*`). Período = **Hoje · Mês navegável · Tudo** (`useTimePeriod` + `PeriodPicker`, uma instância por aba); totais e ritmo vêm de `/time/summary`, não da lista paginada. Spec: [time-periodos-mes-e-lifetime.md](../docs/specs/2026/q3/q3-2/time-periodos-mes-e-lifetime.md) |
+| **Drive** ★     | [`features/drive/DriveView.vue`](./features/drive/DriveView.vue)                               | `/drive`           | Arquivos em bucket PRIVADO (signed URL, nunca URL pública): espaço Pessoal + espaço da empresa ativa, pastas aninhadas, upload multi-arquivo com fila, grade/lista (`ui.driveViewMode`), viewer compartilhado (`components/ui/FileViewer.vue`, com `resolveUrl` assinado). Permissão padrão QR: pessoal = dono; empresa = membro vê/sobe, uploader gerencia o próprio, ADMIN tudo. Spec: docs/specs/2026/q3/q3-2/drive-p1-nativo.md |
 | OCR Digital     | [`features/ocr/OcrDigitalView.vue`](./features/ocr/OcrDigitalView.vue)                         | `/ocr`             | Ferramenta de integração (seção Ferramentas): leitura inteligente sem configuração (template opcional por empresa), acervo de documentos lidos, webhook. Spec: docs/specs/ocr-digital.md |
 | Acessos Públicos | [`features/public-access/PublicAccessView.vue`](./features/public-access/PublicAccessView.vue) | `/public-access`   | Tokens de API das ferramentas (seção Ferramentas): listagem agregada de todas as empresas onde o usuário é ADMIN, escopo por ferramenta (QR/OCR/ambas), revogação só pelo criador. Gate `meta.anyCompanyAdmin`. Spec: docs/specs/acessos-publicos.md |
 | Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only                                                            |
@@ -181,10 +183,10 @@ Spec: [tasks-tags-arquivos-markdown.md](../docs/specs/2026/q3/q3-2/tasks-tags-ar
 
 ```
 features/tasks/
-  attachment-kind.ts        kindOf/iconOf/labelOf/formatBytes/sortAttachments
+  attachment-kind.ts        reexport de @/utils/file-kind (promovido pela spec do Drive)
   components/
     TaskAttachments.vue     DONO ÚNICO do markup de anexo (lista/grade, dropzone, progresso)
-    AttachmentViewer.vue    overlay Teleport: imagem, PDF, setas, foco preso, Esc
+                            (o viewer virou components/ui/FileViewer.vue, compartilhado)
     TaskDocs.vue            lista lateral de documentos + leitor/editor
     MarkdownDocEditor.vue   textarea mono + preview (renderMarkdown)
     InheritedDocs.vue       "Do módulo": documentos do pai, somente leitura
@@ -198,7 +200,15 @@ Três coisas que não são óbvias e custam caro se forem esquecidas:
 2. **O editor de documento é textarea, não TipTap, de propósito.** O valor do campo é ser markdown fiel para levar ao agente; o round-trip por HTML é lossy. Todo render passa por `renderMarkdown` (marked + DOMPurify).
 3. **Tag não é excluída, nunca.** Tirar a tag da tarefa apaga o vínculo (`PATCH /activity/:id` com `tagIds`), não a tag. A API não tem rota de delete, e isso é a regra, não uma lacuna. Por isso o slug é normalizado (sem acento, sem caixa, sem espaço sobrando) com unicidade no banco: duplicata que entra fica para sempre.
 
-`.md` só existe como documento: `POST /activity/:id/attachment` responde 400 para `.md` apontando o endpoint certo.
+**`.md` tem dois destinos e quem escolhe é o usuário** (spec [tasks-markdown-anexo-ou-documento.md](../docs/specs/2026/q3/q3-2/tasks-markdown-anexo-ou-documento.md)): documento (legível, herdado, copiável cru) ou anexo (arquivo na lista). Onde a pergunta aparece:
+
+- **Criação** (`TaskForm`): cada `.md` escolhido vira uma linha com o seletor `Documento | Anexo`. O primeiro do lote assume Documento só se o campo ainda estiver vazio.
+- **Tarefa existente** (`TaskAttachments`): arrastar/escolher um `.md` abre o diálogo de destino antes de qualquer upload. Os arquivos comuns do mesmo lote sobem na hora, sem esperar a resposta.
+- **Seção Documentos** (`TaskDocs`): "Subir .md" não pergunta nada — quem entra por ali já escolheu documento.
+
+No servidor, `POST /activity/:id/attachment` **continua recusando `.md` com 400** a menos que o multipart traga o campo `asFile=true`. A declaração é o que impede um cliente que desconhece a bifurcação de criar anexo `.md` por acidente; a regra vive em `common/upload-rules.ts` (com testes) e nada além dela mudou (10 MB, denylist de executável).
+
+Anexo `.md` é legível: o `FileViewer` baixa o texto e renderiza por `renderMarkdown`. Sem isso, escolher "anexo" devolveria um link opaco.
 
 ### Sub-components de Variables (F3)
 

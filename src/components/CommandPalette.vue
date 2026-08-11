@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Milestone,
   Paintbrush,
+  HardDrive,
   KeyRound,
   Users,
   Settings,
@@ -103,6 +104,7 @@ const staticCommands = computed<Command[]>(() => [
   ...(CANVAS_ENABLED
     ? [{ id: 'nav-canvas', label: 'Canvas', hint: 'Boards de desenho', icon: Paintbrush, section: 'Navegação', keywords: 'desenho lousa whiteboard yjs', action: () => go('/boards') } as Command]
     : []),
+  { id: 'nav-drive', label: 'Drive', hint: 'Arquivos pessoais e da empresa', icon: HardDrive, section: 'Navegação', keywords: 'arquivos anexos upload pastas documentos storage', action: () => go('/drive') },
   { id: 'nav-vars', label: 'Variáveis', hint: 'Credenciais e URLs', icon: KeyRound, section: 'Navegação', keywords: 'senhas secrets env aws', action: () => go('/variables') },
   { id: 'nav-users', label: 'Usuários / Empresas', hint: 'Gestão de acesso', icon: Users, section: 'Navegação', keywords: 'pessoas time membros', action: () => go('/company-users') },
   { id: 'nav-settings', label: 'Configurações', hint: 'Aparência e preferências', icon: Settings, section: 'Navegação', keywords: 'tema shell accent ajustes', action: () => go('/settings') },

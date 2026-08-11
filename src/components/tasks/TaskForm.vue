@@ -23,6 +23,7 @@ import { avatarTone, initials as personInitials } from '@/utils/avatar'
 // MESMA superfície que ela tem na edição, senão a pessoa formata depois de criar.
 // Follow-up (R2): mover `components/tasks/` para dentro de `features/tasks/`.
 import TaskDescriptionEditor from '@/features/tasks/components/TaskDescriptionEditor.vue'
+import { isMarkdownFilename } from '@/features/tasks/attachment-kind'
 
 // Shapes locais (regra de boundary: componente compartilhado não importa tipos
 // de features/*). O membro chega em dois formatos conforme o caller: plano
@@ -98,11 +99,41 @@ const priorities = [
 const MAX_BYTES = 10 * 1024 * 1024
 
 /**
- * Aceita vários arquivos e separa os `.md`: markdown não é anexo, é documento
- * da tarefa. O primeiro `.md` escolhido vira o conteúdo do documento inicial,
- * lido aqui mesmo. O servidor recusa `.md` no endpoint de anexo, então mandar
- * para lá só produziria um 400 confuso.
+ * `.md` escolhido no seletor, com o destino que o usuário deu a ele.
+ *
+ * Markdown tem dois destinos dentro da tarefa e antes desta rodada o form
+ * decidia sozinho: o primeiro `.md` virava o documento e o RESTO era descartado
+ * em silêncio. Quem só queria jogar o arquivo não tinha saída, e quem escolhia
+ * dois `.md` perdia um sem aviso. Agora cada um aparece com a escolha à vista.
  */
+interface MarkdownPick {
+  id: string
+  file: File
+  as: 'doc' | 'file'
+}
+
+const mdPicks = ref<MarkdownPick[]>([])
+let mdSeq = 0
+
+/**
+ * Texto do `.md` que alimentou o campo de documento.
+ *
+ * Serve para saber, na hora de trocar o destino para "anexo", se o campo ainda
+ * é o arquivo puro (pode limpar) ou se a pessoa editou por cima (não pode).
+ */
+const docSource = ref<{ pickId: string; content: string } | null>(null)
+
+/** Anexos comuns: os `.md` têm lista própria, com o seletor de destino. */
+const plainAttachments = computed(() =>
+  props.modelValue.attachments
+    .map((file, index) => ({ file, index }))
+    .filter((entry) => !mdPicks.value.some((pick) => pick.file === entry.file)),
+)
+
+const docTitleFrom = (filename: string) =>
+  filename.replace(/\.(md|markdown)$/i, '').replace(/[-_]+/g, ' ')
+
+/** Aceita vários arquivos; `.md` vai para a lista de destino, o resto é anexo. */
 const onFileChange = async (e: Event) => {
   attachmentError.value = ''
   const input = e.target as HTMLInputElement
@@ -119,21 +150,89 @@ const onFileChange = async (e: Event) => {
   }
 
   const ok = picked.filter((f) => f.size <= MAX_BYTES)
-  const markdown = ok.filter((f) => /\.(md|markdown)$/i.test(f.name))
-  const files = ok.filter((f) => !/\.(md|markdown)$/i.test(f.name))
+  const markdown = ok.filter((f) => isMarkdownFilename(f.name))
+  const files = ok.filter((f) => !isMarkdownFilename(f.name))
 
+  // Só o primeiro `.md` do lote pode virar documento sozinho, e só se o campo
+  // ainda estiver vazio: sobrescrever spec já colada é perda de trabalho.
+  const canAutoDoc = !docSource.value && !props.modelValue.docContent.trim()
+
+  const fresh: MarkdownPick[] = markdown.map((file, i) => ({
+    id: `md-${mdSeq++}`,
+    file,
+    as: canAutoDoc && i === 0 ? 'doc' : 'file',
+  }))
+  mdPicks.value = [...mdPicks.value, ...fresh]
+
+  // Os que ficaram como anexo entram no modelo junto com os arquivos comuns.
+  const asFiles = fresh.filter((pick) => pick.as === 'file').map((pick) => pick.file)
   const next: TaskFormModel = {
     ...props.modelValue,
-    attachments: [...props.modelValue.attachments, ...files],
+    attachments: [...props.modelValue.attachments, ...files, ...asFiles],
   }
 
-  const first = markdown[0]
-  if (first) {
-    next.docContent = await first.text()
-    next.docTitle = first.name.replace(/\.(md|markdown)$/i, '').replace(/[-_]+/g, ' ')
+  const doc = fresh.find((pick) => pick.as === 'doc')
+  if (doc) {
+    const content = await doc.file.text()
+    docSource.value = { pickId: doc.id, content }
+    next.docContent = content
+    next.docTitle = docTitleFrom(doc.file.name)
   }
 
   emit('update:modelValue', next)
+}
+
+/** Troca o destino de um `.md` já escolhido. Documento é exclusivo: só um. */
+const setMarkdownDest = async (pick: MarkdownPick, dest: 'doc' | 'file') => {
+  if (pick.as === dest) return
+
+  let attachments = [...props.modelValue.attachments]
+  let docContent = props.modelValue.docContent
+  let docTitle = props.modelValue.docTitle
+
+  const releaseDoc = (current: MarkdownPick) => {
+    current.as = 'file'
+    if (!attachments.includes(current.file)) attachments = [...attachments, current.file]
+    // Só limpa o campo se ele ainda for o arquivo puro. Texto editado à mão
+    // fica, mesmo que a fonte tenha virado anexo.
+    if (docSource.value?.pickId === current.id && docContent === docSource.value.content) {
+      docContent = ''
+      docTitle = ''
+    }
+    if (docSource.value?.pickId === current.id) docSource.value = null
+  }
+
+  if (dest === 'doc') {
+    const previous = mdPicks.value.find((p) => p.as === 'doc' && p.id !== pick.id)
+    if (previous) releaseDoc(previous)
+
+    const content = await pick.file.text()
+    pick.as = 'doc'
+    attachments = attachments.filter((file) => file !== pick.file)
+    docSource.value = { pickId: pick.id, content }
+    docContent = content
+    docTitle = docTitleFrom(pick.file.name)
+  } else {
+    releaseDoc(pick)
+  }
+
+  emit('update:modelValue', { ...props.modelValue, attachments, docContent, docTitle })
+}
+
+const removeMarkdownPick = (pick: MarkdownPick) => {
+  attachmentError.value = ''
+  mdPicks.value = mdPicks.value.filter((p) => p.id !== pick.id)
+
+  const wasDoc = docSource.value?.pickId === pick.id
+  const untouched = wasDoc && props.modelValue.docContent === docSource.value?.content
+  if (wasDoc) docSource.value = null
+
+  emit('update:modelValue', {
+    ...props.modelValue,
+    attachments: props.modelValue.attachments.filter((file) => file !== pick.file),
+    docContent: untouched ? '' : props.modelValue.docContent,
+    docTitle: untouched ? '' : props.modelValue.docTitle,
+  })
 }
 
 const removeFile = (index: number) => {
@@ -352,7 +451,8 @@ const submit = () => {
           aria-label="Conteúdo do documento em markdown"
         />
         <p class="field-hint">
-          Arquivos .md escolhidos abaixo preenchem este campo, em vez de virar anexo.
+          Um arquivo .md escolhido abaixo pode preencher este campo ou ficar como
+          anexo. Você escolhe.
         </p>
       </div>
 
@@ -376,15 +476,54 @@ const submit = () => {
           />
         </div>
 
-        <ul v-if="form.attachments.length" class="file-list">
-          <li v-for="(file, index) in form.attachments" :key="`${file.name}-${index}`">
-            <span class="file-name">{{ file.name }}</span>
-            <span class="file-size">{{ formatSize(file.size) }}</span>
+        <!-- Markdown: destino à vista, um por linha -->
+        <ul v-if="mdPicks.length" class="md-list">
+          <li v-for="pick in mdPicks" :key="pick.id" class="md-item">
+            <FileText :size="14" class="md-icon" />
+            <span class="file-name">{{ pick.file.name }}</span>
+            <div class="md-seg" role="group" :aria-label="`Destino de ${pick.file.name}`">
+              <button
+                type="button"
+                class="md-seg-btn"
+                :class="{ 'md-seg-btn--on': pick.as === 'doc' }"
+                :aria-pressed="pick.as === 'doc'"
+                @click="setMarkdownDest(pick, 'doc')"
+              >
+                Documento
+              </button>
+              <button
+                type="button"
+                class="md-seg-btn"
+                :class="{ 'md-seg-btn--on': pick.as === 'file' }"
+                :aria-pressed="pick.as === 'file'"
+                @click="setMarkdownDest(pick, 'file')"
+              >
+                Anexo
+              </button>
+            </div>
             <button
               type="button"
               class="file-clear"
-              :aria-label="`Remover ${file.name}`"
-              @click="removeFile(index)"
+              :aria-label="`Remover ${pick.file.name}`"
+              @click="removeMarkdownPick(pick)"
+            >
+              <X :size="12" />
+            </button>
+          </li>
+        </ul>
+
+        <ul v-if="plainAttachments.length" class="file-list">
+          <li
+            v-for="entry in plainAttachments"
+            :key="`${entry.file.name}-${entry.index}`"
+          >
+            <span class="file-name">{{ entry.file.name }}</span>
+            <span class="file-size">{{ formatSize(entry.file.size) }}</span>
+            <button
+              type="button"
+              class="file-clear"
+              :aria-label="`Remover ${entry.file.name}`"
+              @click="removeFile(entry.index)"
             >
               <X :size="12" />
             </button>
@@ -392,6 +531,10 @@ const submit = () => {
         </ul>
 
         <p v-if="attachmentError" class="field-err">{{ attachmentError }}</p>
+        <p v-else-if="mdPicks.length" class="field-hint">
+          Até 10 MB por arquivo. Documento fica legível dentro da tarefa; anexo
+          fica como arquivo para baixar.
+        </p>
         <p v-else class="field-hint">Até 10 MB por arquivo.</p>
       </div>
     </div>
@@ -804,6 +947,72 @@ const submit = () => {
   color: var(--text-4);
   font-variant-numeric: tabular-nums;
   flex: none;
+}
+
+/* Markdown escolhido: nome + para onde ele vai */
+.md-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.md-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+.md-icon {
+  color: var(--accent);
+  flex: none;
+}
+
+.md-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  flex: none;
+}
+
+.md-seg-btn {
+  padding: 4px 9px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.md-seg-btn:hover {
+  color: var(--text);
+}
+
+.md-seg-btn--on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.md-seg-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .doc-area {

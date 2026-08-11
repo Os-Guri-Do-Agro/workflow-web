@@ -21,6 +21,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
+import { isMarkdownFilename } from '@/features/tasks/attachment-kind'
 import { getInfoAuth } from '@/utils/authContent'
 import { dateOnlyToUtcNoonIso, isoToDateOnly, todayDateOnly } from '@/utils/date'
 import { normalizePriority } from '@/utils/priority'
@@ -215,7 +216,12 @@ const createActivity = async () => {
         const fd = new FormData()
         fd.append('file', file)
         try {
-          await activityService.postActivityAttachment(created.id, fd)
+          // `.md` só chega aqui se a pessoa escolheu "Anexo" no formulário; o
+          // servidor exige essa declaração para não criar anexo `.md` por
+          // acidente. Ver `upload-rules.ts`.
+          await activityService.postActivityAttachment(created.id, fd, {
+            asFile: isMarkdownFilename(file.name),
+          })
         } catch (error: unknown) {
           showError(apiErrorMessage(error, `Não foi possível enviar "${file.name}"`))
         }

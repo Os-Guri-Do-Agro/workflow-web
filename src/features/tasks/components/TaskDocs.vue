@@ -8,9 +8,10 @@
  * ordenável, e existe a noção de documento PRINCIPAL, que é o que a filha
  * herda do pai.
  *
- * Subir um `.md` cria documento, não anexo: o arquivo é lido aqui no cliente
- * (FileReader) e vai como texto. O endpoint de anexo recusa `.md` de propósito,
- * para markdown não ter duas casas.
+ * Subir um `.md` AQUI cria documento: o arquivo é lido no cliente e vai como
+ * texto. O mesmo `.md` também pode ficar como anexo — a escolha é oferecida na
+ * seção Arquivos (`TaskAttachments`), que pergunta o destino. Nesta seção não
+ * há pergunta: quem sobe por aqui já escolheu documento.
  */
 import { computed, ref } from 'vue'
 import {

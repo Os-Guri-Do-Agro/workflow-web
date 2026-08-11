@@ -69,6 +69,9 @@ const router = createRouter({
     { path: '/notes/:id', name: 'note-editor', component: () => import('@/features/notes/NoteEditorView.vue') },
     { path: '/calendar', name: 'calendar', component: () => import('@/features/calendar/CalendarView.vue') },
     { path: '/time', name: 'time', component: () => import('@/features/time/TimeTrackingView.vue') },
+    // Drive de arquivos (spec: docs/specs/2026/q3/q3-2/drive-p1-nativo.md).
+    // Acesso por login; escopo pessoal/empresa é resolvido dentro da view.
+    { path: '/drive', name: 'drive', component: () => import('@/features/drive/DriveView.vue') },
     // Acesso por membership (login basta). Escopo por empresa é via x-company-id.
     { path: '/qr', name: 'qr', component: () => import('@/features/qr/QrCodesView.vue') },
     // Ferramenta em desenvolvimento: a página apresenta o produto (spec: docs/specs/ocr-digital.md).

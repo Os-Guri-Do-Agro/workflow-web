@@ -31,6 +31,7 @@ import {
   Pencil,
   Plus,
   Sparkles,
+  Tag as TagIcon,
   Trash2,
   X,
   type LucideIcon,
@@ -50,6 +51,7 @@ import TagInput from '@/components/ui/TagInput.vue'
 import TaskAttachments from '@/features/tasks/components/TaskAttachments.vue'
 import TaskDocs from '@/features/tasks/components/TaskDocs.vue'
 import InheritedDocs from '@/features/tasks/components/InheritedDocs.vue'
+import { isMarkdownFilename } from '@/features/tasks/attachment-kind'
 import type { ActivityDocMeta, ActivityTag } from '@/features/tasks/activity-types'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -376,7 +378,12 @@ const createSubtask = async () => {
     if (formSubtask.value.attachment) {
       const fd = new FormData()
       fd.append('file', formSubtask.value.attachment)
-      await activityService.postActivityAttachment(created.id, fd)
+      // O campo se chama "Anexo": escolher um `.md` aqui já é dizer que ele é
+      // para ficar como arquivo. A escolha documento-ou-anexo mora na seção
+      // Arquivos da subtarefa, depois que ela existe.
+      await activityService.postActivityAttachment(created.id, fd, {
+        asFile: isMarkdownFilename(formSubtask.value.attachment.name),
+      })
     }
     await reloadAndPublish()
     formSubtask.value = {
@@ -632,7 +639,9 @@ const updateSubtask = async () => {
     if (formSubtask.value.attachment) {
       const fd = new FormData()
       fd.append('file', formSubtask.value.attachment)
-      await activityService.postActivityAttachment(selectedSubtask.value.id, fd)
+      await activityService.postActivityAttachment(selectedSubtask.value.id, fd, {
+        asFile: isMarkdownFilename(formSubtask.value.attachment.name),
+      })
     }
     await reloadAndPublish()
     showSubtaskModal.value = false

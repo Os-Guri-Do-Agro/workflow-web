@@ -12,6 +12,7 @@ import {
   BarChart3,
   CalendarRange,
   Bug,
+  HardDrive,
   Milestone,
   Paintbrush,
   QrCode,
@@ -62,6 +63,7 @@ const mainItems = computed<NavItem[]>(() => [
     ? [{ title: 'Canvas', icon: Paintbrush, to: '/boards', section: 'Trabalho' } as NavItem]
     : []),
   { title: 'Roadmap', icon: Milestone, to: '/roadmap', section: 'Trabalho' },
+  { title: 'Drive', icon: HardDrive, to: '/drive', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },

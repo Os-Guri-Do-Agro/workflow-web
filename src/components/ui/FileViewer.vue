@@ -1,18 +1,26 @@
 <script setup lang="ts">
 /**
- * Visualizador de anexo em tela cheia.
+ * Visualizador de arquivo em tela cheia — primitivo do design system,
+ * promovido do `AttachmentViewer` das tarefas (spec drive-p1).
  *
  * `Teleport to="body"` não é preferência: o conteúdo de rota renderiza dentro
  * do `main` do shell, que cria contexto de empilhamento próprio, então nenhum
  * `z-index` de dentro passa por cima do chrome. Teleportar é o que faz o viewer
- * funcionar igual nas três variantes de shell sem a feature conhecê-las (mesma
- * decisão do modo imersivo das notas).
+ * funcionar igual nas três variantes de shell sem a feature conhecê-las.
  *
- * Imagem e PDF renderizam; o resto cai no cartão de download. PDF que o
- * navegador recusa embutir também cai, pelo fallback NATIVO do `<object>`: o
- * conteúdo filho aparece quando o tipo não pode ser renderizado. A alternativa
- * (medir a altura do elemento depois de um prazo) dá falso positivo e esconde
- * PDF que estava funcionando.
+ * Dois modos de obter a URL:
+ * - `item.url` presente (anexos de tarefa: URL pública persistida) — usa direto.
+ * - `resolveUrl` fornecido (Drive: bucket privado) — pede uma URL assinada
+ *   FRESCA ao navegar para o item; expirar com o viewer aberto vira um retry,
+ *   nunca um preview quebrado silencioso.
+ *
+ * Imagem, PDF e markdown renderizam; o resto cai no cartão de download. PDF que
+ * o navegador recusa embutir também cai, pelo fallback NATIVO do `<object>`.
+ *
+ * Markdown tem leitura aqui porque `.md` virou anexo possível na tarefa: sem
+ * isso, quem escolhe "anexo" recebe um link opaco, que é exatamente o que a
+ * regra antiga (recusar `.md` no anexo) queria evitar. O texto é baixado da URL
+ * de exibição e passa por `renderMarkdown`, único caminho de render do app.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
@@ -20,21 +28,36 @@ import {
   ChevronRight,
   Download,
   ExternalLink,
+  LoaderCircle,
   X,
 } from 'lucide-vue-next'
-import {
-  formatBytes,
-  iconOf,
-  isImage,
-  kindOf,
-  labelOf,
-} from '@/features/tasks/attachment-kind'
-import type { ActivityAttachment } from '@/features/tasks/activity-types'
+import { formatBytes, iconOf, isImage, kindOf, labelOf } from '@/utils/file-kind'
+import { renderMarkdown } from '@/composables/useMarkdownRenderer'
+// Prosa do markdown. Follow-up: promover este CSS junto com o viewer (hoje ele
+// ainda mora em `features/tasks/styles/`, de quando o leitor era só da tarefa).
+import '@/features/tasks/styles/markdown-doc.css'
+
+export interface ViewerFile {
+  filename: string
+  mimeType?: string | null
+  size?: number | null
+  /** URL pronta (bucket público). Ausente = usar `resolveUrl`. */
+  url?: string | null
+  uploadedBy?: { name: string } | null
+}
+
+/** URL de exibição e, opcionalmente, uma variante que força download. */
+export interface ResolvedFileUrl {
+  url: string
+  downloadUrl?: string
+}
 
 const props = defineProps<{
-  items: ActivityAttachment[]
+  items: ViewerFile[]
   /** Índice inicial. Trocar reabre no arquivo escolhido. */
   startIndex: number
+  /** Bucket privado: devolve URL assinada fresca para o item. */
+  resolveUrl?: (item: ViewerFile) => Promise<ResolvedFileUrl>
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -44,9 +67,83 @@ const dialogRef = ref<HTMLElement | null>(null)
 /** Quem tinha o foco antes de abrir, para devolver ao fechar. */
 const opener = ref<HTMLElement | null>(null)
 
-const current = computed<ActivityAttachment | undefined>(() => props.items[index.value])
+const current = computed<ViewerFile | undefined>(() => props.items[index.value])
 const kind = computed(() => (current.value ? kindOf(current.value) : 'other'))
 const counter = computed(() => `${index.value + 1} de ${props.items.length}`)
+
+// ─── URL do item atual ────────────────────────────────────────────────────────
+
+const resolved = ref<ResolvedFileUrl | null>(null)
+const resolving = ref(false)
+const resolveError = ref(false)
+
+const displayUrl = computed(() => current.value?.url ?? resolved.value?.url ?? null)
+const downloadUrl = computed(
+  () => resolved.value?.downloadUrl ?? displayUrl.value,
+)
+
+async function loadUrl(): Promise<void> {
+  resolved.value = null
+  resolveError.value = false
+  const item = current.value
+  if (!item || item.url || !props.resolveUrl) return
+  resolving.value = true
+  try {
+    const value = await props.resolveUrl(item)
+    // Navegação mudou o item enquanto resolvia: descarta a resposta velha.
+    if (current.value === item) resolved.value = value
+  } catch {
+    if (current.value === item) resolveError.value = true
+  } finally {
+    if (current.value === item) resolving.value = false
+  }
+}
+
+watch(current, () => void loadUrl(), { immediate: true })
+
+// ─── Markdown: baixa o texto e renderiza ─────────────────────────────────────
+
+const markdownHtml = ref('')
+const markdownLoading = ref(false)
+const markdownFailed = ref(false)
+/** Ignora resposta de arquivo que já não é o da tela (troca rápida de seta). */
+let markdownToken = 0
+
+async function loadMarkdown(url: string): Promise<void> {
+  const token = ++markdownToken
+  markdownHtml.value = ''
+  markdownFailed.value = false
+  markdownLoading.value = true
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(String(response.status))
+    const text = await response.text()
+    if (token !== markdownToken) return
+    markdownHtml.value = renderMarkdown(text)
+  } catch {
+    if (token !== markdownToken) return
+    // Sem drama: o cartão de download continua ali como saída.
+    markdownFailed.value = true
+  } finally {
+    if (token === markdownToken) markdownLoading.value = false
+  }
+}
+
+// Depende da URL, não só do item: no Drive ela chega depois, assinada.
+watch(
+  [current, displayUrl],
+  ([item, url]) => {
+    if (item && url && kindOf(item) === 'markdown') {
+      void loadMarkdown(url)
+      return
+    }
+    markdownToken++
+    markdownHtml.value = ''
+    markdownLoading.value = false
+    markdownFailed.value = false
+  },
+  { immediate: true },
+)
 
 watch(
   () => props.startIndex,
@@ -143,9 +240,9 @@ onBeforeUnmount(() => {
           <div class="viewer__actions">
             <span v-if="items.length > 1" class="viewer__counter">{{ counter }}</span>
             <a
-              v-if="current"
+              v-if="displayUrl"
               class="viewer__btn"
-              :href="current.url"
+              :href="displayUrl"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Abrir em nova aba"
@@ -154,9 +251,9 @@ onBeforeUnmount(() => {
               <ExternalLink :size="15" />
             </a>
             <a
-              v-if="current"
+              v-if="downloadUrl && current"
               class="viewer__btn"
-              :href="current.url"
+              :href="downloadUrl"
               :download="current.filename"
               aria-label="Baixar arquivo"
               title="Baixar"
@@ -185,17 +282,33 @@ onBeforeUnmount(() => {
             <ChevronLeft :size="20" />
           </button>
 
+          <div v-if="resolving" class="viewer__fallback" aria-live="polite">
+            <LoaderCircle :size="28" class="viewer__spinner" />
+            <p class="viewer__fallback-hint">Preparando visualização segura…</p>
+          </div>
+
+          <div v-else-if="resolveError && current" class="viewer__fallback">
+            <component :is="iconOf(current)" :size="34" />
+            <p class="viewer__fallback-name">{{ current.filename }}</p>
+            <p class="viewer__fallback-hint">
+              Não foi possível preparar o arquivo agora.
+            </p>
+            <button type="button" class="viewer__download press" @click="loadUrl()">
+              Tentar de novo
+            </button>
+          </div>
+
           <img
-            v-if="current && isImage(current)"
-            :src="current.url"
+            v-else-if="current && displayUrl && isImage(current)"
+            :src="displayUrl"
             :alt="current.filename"
             class="viewer__image"
           />
 
           <object
-            v-else-if="current && kind === 'pdf'"
+            v-else-if="current && displayUrl && kind === 'pdf'"
             class="viewer__pdf"
-            :data="current.url"
+            :data="displayUrl"
             type="application/pdf"
           >
             <!-- Fallback nativo do <object>: aparece quando o navegador recusa
@@ -206,12 +319,33 @@ onBeforeUnmount(() => {
               <p class="viewer__fallback-hint">
                 Este arquivo não abre aqui dentro. Baixe para visualizar.
               </p>
-              <a class="viewer__download" :href="current.url" :download="current.filename">
+              <a
+                v-if="downloadUrl"
+                class="viewer__download"
+                :href="downloadUrl"
+                :download="current.filename"
+              >
                 <Download :size="15" />
                 Baixar
               </a>
             </div>
           </object>
+
+          <div
+            v-else-if="current && displayUrl && kind === 'markdown' && !markdownFailed"
+            class="viewer__md"
+          >
+            <div v-if="markdownLoading" class="viewer__md-load">
+              <LoaderCircle :size="16" class="viewer__spinner" />
+              Carregando o texto…
+            </div>
+            <!--
+              eslint-disable-next-line vue/no-v-html
+              Passou por `renderMarkdown`, que é marked + DOMPurify. É o único
+              caminho de render de markdown do app.
+            -->
+            <article v-else class="viewer__md-doc md-doc" v-html="markdownHtml" />
+          </div>
 
           <div v-else-if="current" class="viewer__fallback">
             <component :is="iconOf(current)" :size="34" />
@@ -222,7 +356,12 @@ onBeforeUnmount(() => {
                 · {{ formatBytes(current.size) }}
               </template>
             </p>
-            <a class="viewer__download" :href="current.url" :download="current.filename">
+            <a
+              v-if="downloadUrl"
+              class="viewer__download"
+              :href="downloadUrl"
+              :download="current.filename"
+            >
               <Download :size="15" />
               Baixar
             </a>
@@ -360,6 +499,32 @@ onBeforeUnmount(() => {
   background: var(--surface);
 }
 
+/* Markdown: coluna de leitura, não largura total — texto corrido em 1400px é
+   ilegível, e a prosa (.md-doc) é a mesma do documento da tarefa. */
+.viewer__md {
+  width: min(820px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  padding: 26px 30px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.viewer__md-load {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.viewer__md-doc {
+  color: var(--text);
+}
+
 .viewer__fallback {
   display: flex;
   flex-direction: column;
@@ -386,18 +551,30 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
+.viewer__spinner {
+  animation: viewer-spin 0.9s linear infinite;
+}
+
+@keyframes viewer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .viewer__download {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   margin-top: 6px;
   padding: 8px 14px;
+  border: none;
   border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-fg);
   font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .viewer__nav {

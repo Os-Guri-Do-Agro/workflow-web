@@ -16,6 +16,7 @@ import {
   CalendarRange,
   Paintbrush,
   Bug,
+  HardDrive,
   QrCode,
   ScanText,
   Timer,
@@ -79,6 +80,7 @@ const railItems = computed<RailItem[]>(() => {
       ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas', section: 'Trabalho' as const }]
       : []),
     { to: '/roadmap', icon: Milestone, label: 'Roadmap', section: 'Trabalho' },
+    { to: '/drive', icon: HardDrive, label: 'Drive', section: 'Trabalho' },
     { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER', section: 'Trabalho' },
   ]
   if (firstMonth.value) {

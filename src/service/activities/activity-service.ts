@@ -91,12 +91,21 @@ class activityService {
    *
    * `onProgress` recebe 0..100. O servidor valida tamanho e extensão de novo:
    * a checagem do cliente é conveniência, não a regra.
+   *
+   * `asFile` só importa para `.md`: declara que o usuário escolheu deixar o
+   * arquivo como anexo em vez de virar documento da tarefa. Sem essa
+   * declaração o servidor recusa `.md`, de propósito — ver `upload-rules.ts`.
    */
   postActivityAttachment(
     id: string,
     data: FormData,
-    options?: { companyId?: string; onProgress?: (percent: number) => void },
+    options?: {
+      companyId?: string
+      onProgress?: (percent: number) => void
+      asFile?: boolean
+    },
   ): Promise<any> {
+    if (options?.asFile) data.append('asFile', 'true')
     return this.handleRequest(
       api.post(`/activity/${id}/attachment`, data, {
         headers: {

@@ -9,11 +9,28 @@
  *
  * Upload de vários arquivos = várias requisições em paralelo, de propósito: o
  * endpoint é single-file, cada arquivo tem progresso próprio e um recusado
- * (12MB, `.exe`, `.md`) não derruba os outros.
+ * (12MB, `.exe`) não derruba os outros.
+ *
+ * `.md` é o único que para no meio do caminho: markdown tem dois destinos
+ * dentro da tarefa (documento legível ou arquivo anexado) e quem escolhe é o
+ * usuário, num diálogo, na hora. Antes desta rodada o servidor simplesmente
+ * recusava e mandava usar a seção Documentos — o que resolvia a ambiguidade
+ * matando metade do caso de uso.
  */
 import { computed, ref } from 'vue'
-import { FolderOpen, Grid2x2, List, Loader2, Trash2, Upload } from 'lucide-vue-next'
-import AttachmentViewer from './AttachmentViewer.vue'
+import {
+  FileText,
+  FolderOpen,
+  Grid2x2,
+  List,
+  Loader2,
+  Paperclip,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-vue-next'
+import FileViewer from '@/components/ui/FileViewer.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import activityService from '@/service/activities/activity-service'
 import { getApiErrorMessage } from '@/service/api'
@@ -22,6 +39,7 @@ import {
   formatBytes,
   iconOf,
   isImage,
+  isMarkdownFilename,
   labelOf,
   sortAttachments,
 } from '@/features/tasks/attachment-kind'
@@ -42,7 +60,7 @@ const props = withDefaults(
 /** `changed` avisa o pai para recarregar a atividade (o anexo vive nela). */
 const emit = defineEmits<{ changed: [] }>()
 
-const { error: showError } = useToast()
+const { error: showError, success: showSuccess } = useToast()
 
 const VIEW_STORAGE_KEY = 'tasks.attachments.view'
 const view = ref<'grid' | 'list'>(
@@ -84,14 +102,17 @@ async function uploadOne(file: File): Promise<void> {
     data.append('file', file)
     await activityService.postActivityAttachment(props.activityId, data, {
       companyId: props.companyId ?? undefined,
+      // Markdown só é aceito como anexo com a escolha declarada, e aqui ela já
+      // foi feita no diálogo de destino.
+      asFile: isMarkdownFilename(file.name),
       onProgress: (percent) => {
         const found = uploading.value.find((u) => u.id === entry.id)
         if (found) found.percent = percent
       },
     })
   } catch (err) {
-    // O servidor recusa por tamanho, extensão bloqueada ou `.md`. A mensagem
-    // dele já é em pt-BR e diz o que fazer, então repassamos em vez de inventar.
+    // O servidor recusa por tamanho ou extensão bloqueada. A mensagem dele já é
+    // em pt-BR e diz o que fazer, então repassamos em vez de inventar.
     showError(getApiErrorMessage(err, `Não foi possível enviar "${file.name}"`))
   } finally {
     // Sai da lista de qualquer jeito: item de upload que fracassou e fica
@@ -102,9 +123,83 @@ async function uploadOne(file: File): Promise<void> {
 
 async function handleFiles(files: FileList | null): Promise<void> {
   if (!files?.length || !props.canEdit) return
-  // Paralelo: cada arquivo tem a sua barra e o seu erro.
-  await Promise.all(Array.from(files).map((file) => uploadOne(file)))
-  emit('changed')
+
+  const picked = Array.from(files)
+  const markdown = picked.filter((file) => isMarkdownFilename(file.name))
+  const rest = picked.filter((file) => !isMarkdownFilename(file.name))
+
+  // Os comuns sobem na hora; os `.md` esperam a escolha de destino. Segurar o
+  // lote inteiro por causa de um markdown seria pior: o resto já pode subir.
+  if (rest.length) {
+    // Paralelo: cada arquivo tem a sua barra e o seu erro.
+    await Promise.all(rest.map((file) => uploadOne(file)))
+    emit('changed')
+  }
+
+  if (markdown.length) pendingMarkdown.value = markdown
+}
+
+// ─── Markdown: documento ou anexo ────────────────────────────────────────────
+
+/** `.md` escolhidos e ainda sem destino. O diálogo abre por causa deles. */
+const pendingMarkdown = ref<File[]>([])
+const resolvingMarkdown = ref(false)
+
+/** `leia-primeiro.md` vira "Leia primeiro": o título é para ler, não é o disco. */
+function titleFromFilename(filename: string): string {
+  const base = filename.replace(/\.(md|markdown)$/i, '').replace(/[-_]+/g, ' ').trim()
+  if (!base) return 'Documento'
+  return base.charAt(0).toUpperCase() + base.slice(1)
+}
+
+function dismissMarkdown(): void {
+  if (resolvingMarkdown.value) return
+  pendingMarkdown.value = []
+}
+
+/**
+ * Vira documento: o arquivo é lido AQUI e vai como texto, igual ao "Subir .md"
+ * da seção Documentos. Sequencial porque cada criação renumera `position` no
+ * servidor, e em paralelo dois documentos disputariam a mesma posição.
+ */
+async function markdownAsDoc(): Promise<void> {
+  const files = pendingMarkdown.value
+  if (!files.length) return
+  resolvingMarkdown.value = true
+  try {
+    for (const file of files) {
+      const content = await file.text()
+      await activityService.postDoc(
+        props.activityId,
+        { title: titleFromFilename(file.name), filename: file.name, content },
+        props.companyId ?? undefined,
+      )
+    }
+    pendingMarkdown.value = []
+    showSuccess(
+      files.length === 1
+        ? `"${files[0]!.name}" virou documento da tarefa`
+        : `${files.length} documentos criados`,
+    )
+    emit('changed')
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não foi possível criar o documento'))
+  } finally {
+    resolvingMarkdown.value = false
+  }
+}
+
+async function markdownAsFile(): Promise<void> {
+  const files = pendingMarkdown.value
+  if (!files.length) return
+  resolvingMarkdown.value = true
+  try {
+    pendingMarkdown.value = []
+    await Promise.all(files.map((file) => uploadOne(file)))
+    emit('changed')
+  } finally {
+    resolvingMarkdown.value = false
+  }
 }
 
 function onDrop(event: DragEvent): void {
@@ -211,7 +306,9 @@ function openViewer(index: number): void {
       <span>
         Arraste arquivos aqui ou <strong>clique para escolher</strong>
       </span>
-      <span class="files__hint">Até 10 MB por arquivo. Arquivos .md viram documentos.</span>
+      <span class="files__hint">
+        Até 10 MB por arquivo. Um .md pergunta se vira documento ou anexo.
+      </span>
     </div>
 
     <ul v-if="uploading.length" class="files__uploading">
@@ -308,7 +405,100 @@ function openViewer(index: number): void {
       </li>
     </ul>
 
-    <AttachmentViewer
+    <!-- Destino do markdown: a pergunta que o servidor não pode responder -->
+    <AppDialog
+      :model-value="pendingMarkdown.length > 0"
+      label="Destino do arquivo markdown"
+      size="md"
+      :loading="resolvingMarkdown"
+      persistent
+      @update:model-value="dismissMarkdown"
+    >
+      <div class="mdq">
+        <header class="mdq__head">
+          <span class="mdq__icon">
+            <FileText :size="17" />
+          </span>
+          <div class="mdq__titles">
+            <h2 class="mdq__title">
+              {{ pendingMarkdown.length === 1 ? 'Este markdown entra como…' : 'Estes markdowns entram como…' }}
+            </h2>
+            <p class="mdq__sub">
+              {{
+                pendingMarkdown.length === 1
+                  ? pendingMarkdown[0]?.name
+                  : `${pendingMarkdown.length} arquivos .md`
+              }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="mdq__close"
+            aria-label="Cancelar"
+            :disabled="resolvingMarkdown"
+            @click="dismissMarkdown"
+          >
+            <X :size="16" />
+          </button>
+        </header>
+
+        <ul v-if="pendingMarkdown.length > 1" class="mdq__files">
+          <li v-for="file in pendingMarkdown" :key="file.name">
+            <FileText :size="12" />
+            {{ file.name }}
+          </li>
+        </ul>
+
+        <div class="mdq__options">
+          <button
+            type="button"
+            class="mdq__opt hover-lift"
+            :disabled="resolvingMarkdown"
+            @click="markdownAsDoc"
+          >
+            <span class="mdq__opt-icon mdq__opt-icon--accent">
+              <FileText :size="18" />
+            </span>
+            <span class="mdq__opt-name">Documento da tarefa</span>
+            <span class="mdq__opt-desc">
+              Fica legível aqui dentro, editável, com markdown cru para copiar.
+              As subtarefas herdam o documento principal.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            class="mdq__opt hover-lift"
+            :disabled="resolvingMarkdown"
+            @click="markdownAsFile"
+          >
+            <span class="mdq__opt-icon">
+              <Paperclip :size="18" />
+            </span>
+            <span class="mdq__opt-name">Anexo</span>
+            <span class="mdq__opt-desc">
+              Fica na lista de arquivos, do jeito que veio. Abre no visualizador
+              e pode ser baixado.
+            </span>
+          </button>
+        </div>
+
+        <footer class="mdq__foot">
+          <Loader2 v-if="resolvingMarkdown" :size="13" class="spin" />
+          <span v-if="resolvingMarkdown">Enviando…</span>
+          <button
+            v-else
+            type="button"
+            class="mdq__cancel press"
+            @click="dismissMarkdown"
+          >
+            Cancelar
+          </button>
+        </footer>
+      </div>
+    </AppDialog>
+
+    <FileViewer
       v-if="viewerIndex !== null"
       :items="items"
       :start-index="viewerIndex"
@@ -693,6 +883,197 @@ function openViewer(index: number): void {
 .files__row-kill:hover {
   color: var(--err);
   background: color-mix(in srgb, var(--err) 10%, transparent);
+}
+
+/* ─── Diálogo de destino do markdown ──────────────────────────────────────── */
+
+.mdq {
+  padding: 16px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mdq__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mdq__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  flex: none;
+}
+
+.mdq__titles {
+  min-width: 0;
+  flex: 1;
+}
+
+.mdq__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.mdq__sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdq__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+  flex: none;
+}
+
+.mdq__close:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.mdq__close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mdq__files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 116px;
+  overflow-y: auto;
+}
+
+.mdq__files li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.mdq__options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .mdq__options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mdq__opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
+}
+
+.mdq__opt:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--accent);
+}
+
+.mdq__opt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mdq__opt:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mdq__opt-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.mdq__opt-icon--accent {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.mdq__opt-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.mdq__opt-desc {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.mdq__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 32px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.mdq__cancel {
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mdq__cancel:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .spin {
