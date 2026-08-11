@@ -14,6 +14,14 @@ import api from '../api'
 
 export type DriveScope = 'personal' | 'company'
 
+/**
+ * Espelho do DEFAULT do servidor (`DRIVE_MAX_FILE_BYTES`). Serve só para a
+ * recusa local de conveniência no dropzone; a regra de verdade é do servidor.
+ * Se a env de produção mudar, expor o limite efetivo por endpoint de config é
+ * o follow-up registrado na spec.
+ */
+export const DRIVE_MAX_FILE_BYTES_CLIENT = 25 * 1024 * 1024
+
 export interface DriveOwner {
   id: string
   name: string

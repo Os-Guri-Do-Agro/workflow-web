@@ -43,13 +43,16 @@ export function useDriveFileMutations() {
   const { success, error: showError } = useToast()
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: driveKeys.all })
+  // Renomear não muda contadores de pasta: só a listagem de arquivos refaz.
+  const invalidateFiles = () =>
+    queryClient.invalidateQueries({ queryKey: ['drive', 'files'] })
 
   const rename = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       driveService.updateFile(id, { name }),
     onSuccess: () => {
       success('Arquivo renomeado')
-      void invalidate()
+      void invalidateFiles()
     },
     onError: (err) =>
       showError(getApiErrorMessage(err, 'Não foi possível renomear o arquivo')),

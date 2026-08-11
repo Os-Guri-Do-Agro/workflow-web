@@ -23,7 +23,7 @@ import { avatarTone, initials as personInitials } from '@/utils/avatar'
 // MESMA superfície que ela tem na edição, senão a pessoa formata depois de criar.
 // Follow-up (R2): mover `components/tasks/` para dentro de `features/tasks/`.
 import TaskDescriptionEditor from '@/features/tasks/components/TaskDescriptionEditor.vue'
-import { isMarkdownFilename } from '@/features/tasks/attachment-kind'
+import { isMarkdownFilename } from '@/utils/file-kind'
 
 // Shapes locais (regra de boundary: componente compartilhado não importa tipos
 // de features/*). O membro chega em dois formatos conforme o caller: plano

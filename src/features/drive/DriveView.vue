@@ -12,6 +12,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { refDebounced } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import {
   CloudUpload,
@@ -43,7 +44,9 @@ import {
   useDriveFolders,
 } from './composables/useDriveFolders'
 import { useDriveFileMutations, useDriveFiles } from './composables/useDriveFiles'
-import driveService from '@/service/drive/drive-service'
+import driveService, {
+  DRIVE_MAX_FILE_BYTES_CLIENT,
+} from '@/service/drive/drive-service'
 import type { DriveFile, DriveFolderNode, DriveScope } from './types'
 import { useCurrentUser } from '@/composables/useCurrentUser'
 import { useUiStore } from '@/stores/uiStores'
@@ -81,16 +84,12 @@ const folderId = ref<string | null>(
   typeof route.query.folder === 'string' ? route.query.folder : null,
 )
 const search = ref('')
-const debouncedSearch = ref('')
+// refDebounced (padrão das Notas): sem timer manual pra vazar no unmount.
+const debouncedSearch = refDebounced(search, 300)
 const page = ref(1)
 
-let searchTimer: number | null = null
-watch(search, (value) => {
-  if (searchTimer !== null) window.clearTimeout(searchTimer)
-  searchTimer = window.setTimeout(() => {
-    debouncedSearch.value = value
-    page.value = 1
-  }, 300)
+watch(debouncedSearch, () => {
+  page.value = 1
 })
 
 watch([scope, folderId], () => {
@@ -103,6 +102,19 @@ watch([scope, folderId], () => {
     },
   })
 })
+
+// Sync de volta: back/forward do navegador muda a query e a tela acompanha.
+// Guardas de igualdade impedem o eco do router.replace acima virar laço.
+watch(
+  () => [route.query.scope, route.query.folder],
+  () => {
+    const nextScope = scopeFromQuery()
+    const nextFolder =
+      typeof route.query.folder === 'string' ? route.query.folder : null
+    if (nextScope !== scope.value) scope.value = nextScope
+    if (nextFolder !== folderId.value) folderId.value = nextFolder
+  },
+)
 
 // Empresa ativa sumiu (logout/troca): espaço da empresa deixa de existir.
 watch(hasCompany, (value) => {
@@ -196,15 +208,24 @@ function withDownloadParam(url: string, name: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(name)}`
 }
 
-/** Snapshot da listagem no momento de abrir: refetch não bagunça o viewer. */
-const viewerSession = ref<{ files: DriveFile[]; items: ViewerFile[] } | null>(null)
+/**
+ * Snapshot da listagem no momento de abrir: refetch não bagunça o viewer.
+ * O vínculo item→arquivo vai por `id` embutido no ViewerFile (interface
+ * estrutural aceita a propriedade extra), não por posição de array.
+ */
+type ViewerItem = ViewerFile & { id: string }
+const viewerSession = ref<{
+  byId: Map<string, DriveFile>
+  items: ViewerItem[]
+} | null>(null)
 const viewerIndex = ref<number | null>(null)
 
 function openViewer(index: number) {
   const snapshot = files.value.slice()
   viewerSession.value = {
-    files: snapshot,
+    byId: new Map(snapshot.map((file) => [file.id, file])),
     items: snapshot.map((file) => ({
+      id: file.id,
       filename: file.name,
       mimeType: file.mimeType,
       size: file.size,
@@ -215,9 +236,8 @@ function openViewer(index: number) {
 }
 
 async function resolveViewerUrl(item: ViewerFile): Promise<ResolvedFileUrl> {
-  const session = viewerSession.value
-  const idx = session?.items.indexOf(item) ?? -1
-  const file = idx >= 0 ? session?.files[idx] : undefined
+  const id = (item as ViewerItem).id
+  const file = id ? viewerSession.value?.byId.get(id) : undefined
   if (!file) throw new Error('Arquivo fora da sessão do visualizador')
   const url = await driveService.fileUrl(file.id)
   return { url, downloadUrl: withDownloadParam(url, file.name) }
@@ -401,7 +421,6 @@ function selectScope(nextScope: DriveScope, nextFolderId: string | null) {
   scope.value = nextScope
   folderId.value = nextFolderId
   search.value = ''
-  debouncedSearch.value = ''
 }
 
 const isSearching = computed(() => debouncedSearch.value.trim().length > 0)
@@ -500,7 +519,13 @@ const loading = computed(() => filesQuery.isLoading.value)
         @delete-folder="(folder) => (confirmState = { kind: 'folder', folder })"
       />
 
-      <UploadDropzone ref="dropRef" class="drive-main" :uploader="uploader" @uploaded="fileMut.invalidate()">
+      <UploadDropzone
+        ref="dropRef"
+        class="drive-main"
+        :uploader="uploader"
+        :max-bytes="DRIVE_MAX_FILE_BYTES_CLIENT"
+        @uploaded="fileMut.invalidate()"
+      >
         <!-- Breadcrumb (fora de busca) / rótulo de resultados -->
         <nav v-if="!isSearching" class="drive-crumbs" aria-label="Caminho da pasta">
           <button type="button" class="drive-crumb" @click="folderId = null">

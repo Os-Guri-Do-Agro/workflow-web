@@ -35,7 +35,7 @@ import { formatBytes, iconOf, isImage, kindOf, labelOf } from '@/utils/file-kind
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 // Prosa do markdown. Follow-up: promover este CSS junto com o viewer (hoje ele
 // ainda mora em `features/tasks/styles/`, de quando o leitor era só da tarefa).
-import '@/features/tasks/styles/markdown-doc.css'
+import '@/styles/markdown-doc.css'
 
 export interface ViewerFile {
   filename: string

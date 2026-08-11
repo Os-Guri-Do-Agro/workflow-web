@@ -15,7 +15,7 @@ import { useQuery } from '@tanstack/vue-query'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import activityService from '@/service/activities/activity-service'
 import type { ActivityDoc, ActivityDocMeta } from '../activity-types'
-import '@/features/tasks/styles/markdown-doc.css'
+import '@/styles/markdown-doc.css'
 
 const props = withDefaults(
   defineProps<{

@@ -42,7 +42,7 @@ import {
   isMarkdownFilename,
   labelOf,
   sortAttachments,
-} from '@/features/tasks/attachment-kind'
+} from '@/utils/file-kind'
 import type { ActivityAttachment } from '@/features/tasks/activity-types'
 
 const props = withDefaults(

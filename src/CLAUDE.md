@@ -191,7 +191,8 @@ features/tasks/
     MarkdownDocEditor.vue   textarea mono + preview (renderMarkdown)
     InheritedDocs.vue       "Do módulo": documentos do pai, somente leitura
   composables/useActivityDocs.ts   conteúdo sob demanda + autosave com guarda anti-laço
-  styles/markdown-doc.css   prosa do documento (NÃO é a task-content.css)
+  styles/task-content.css   (a prosa do documento virou src/styles/markdown-doc.css,
+                            compartilhada com o FileViewer do design system)
 ```
 
 Três coisas que não são óbvias e custam caro se forem esquecidas:

@@ -10,6 +10,8 @@
  */
 import { ref } from 'vue'
 import { CloudUpload, RotateCcw, X } from 'lucide-vue-next'
+import { getApiErrorMessage } from '@/service/api'
+import { formatBytes } from '@/utils/file-kind'
 import type { UploadQueueItem } from '@/features/drive/types'
 
 const props = withDefaults(
@@ -52,6 +54,9 @@ function onDrop(event: DragEvent) {
 async function addFiles(list: FileList) {
   const files = Array.from(list)
   await Promise.all(files.map((file) => uploadOne(file)))
+  // Um emit por LOTE, não por arquivo: soltar 20 arquivos gera uma onda de
+  // invalidação/refetch no pai, não vinte.
+  if (files.length > 0) emit('uploaded')
 }
 
 async function uploadOne(file: File, existing?: UploadQueueItem) {
@@ -70,9 +75,10 @@ async function uploadOne(file: File, existing?: UploadQueueItem) {
   item.error = null
   item.percent = 0
 
-  // Recusa local do óbvio: economiza o request, com a MESMA mensagem do server.
+  // Recusa local do óbvio, economizando o request. Conveniência: a regra de
+  // verdade (e a env que a configura) mora no servidor.
   if (file.size > props.maxBytes) {
-    item.error = `O arquivo deve ter menos de ${Math.round(props.maxBytes / (1024 * 1024))} MB`
+    item.error = `O arquivo deve ter menos de ${formatBytes(props.maxBytes)}`
     queue.value = [...queue.value]
     return
   }
@@ -84,21 +90,20 @@ async function uploadOne(file: File, existing?: UploadQueueItem) {
     })
     item.percent = 100
     queue.value = [...queue.value]
-    emit('uploaded')
     // Sucesso sai da fila sozinho; erro fica até o usuário decidir.
     window.setTimeout(() => {
       queue.value = queue.value.filter((q) => q.key !== item.key)
     }, 1600)
   } catch (error) {
-    item.error =
-      (error as { userMessage?: string })?.userMessage ??
-      'Falha no envio. Tente novamente.'
+    item.error = getApiErrorMessage(error, 'Falha no envio. Tente novamente.')
     queue.value = [...queue.value]
   }
 }
 
 function retry(item: UploadQueueItem) {
-  void uploadOne(item.file, item)
+  void uploadOne(item.file, item).then(() => {
+    if (!item.error) emit('uploaded')
+  })
 }
 
 function dismiss(item: UploadQueueItem) {

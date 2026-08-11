@@ -301,36 +301,40 @@ manual + CDP no resto.
 
 ## Tasks Técnicas
 
-- [ ] **T1** - Schema: `DriveFolder` + `DriveFile` no `schema.prisma` +
+- [x] **T1** - Schema: `DriveFolder` + `DriveFile` no `schema.prisma` +
   migration `20260811120000_drive_files` à mão (com SQL de compensação escrito
   junto, em comentário no rodapé)
-- [ ] **T2** - `drive-storage.service.ts` (bucket privado, paths canônicos,
+- [x] **T2** - `drive-storage.service.ts` (bucket privado, paths canônicos,
   signed single/batch) *(independente de T1)*
-- [ ] **T3** - Generalizar `upload-rules.ts` (`assertUploadAllowed`) mantendo
+- [x] **T3** - Generalizar `upload-rules.ts` (`assertUploadAllowed`) mantendo
   `assertAttachmentAllowed` como wrapper
-- [ ] **T4** - `drive.service.ts`: resolvers de acesso + CRUD de pasta (com
+- [x] **T4** - `drive.service.ts`: resolvers de acesso + CRUD de pasta (com
   validação de ciclo) + CRUD de arquivo + delete recursivo *(depende de T1-T3)*
-- [ ] **T5** - `drive.controller.ts` + DTOs + module + registro no
+- [x] **T5** - `drive.controller.ts` + DTOs + module + registro no
   `app.module.ts` + `.env.example` *(depende de T4)*
-- [ ] **T6** - Testes unitários dos resolvers, do `assertUploadAllowed` e do
-  ciclo de pasta *(depende de T4)*
+- [x] **T6** - Testes unitários dos resolvers, do `assertUploadAllowed` e do
+  ciclo de pasta *(depende de T4)* - 25 testes passando
 - [ ] **T7** - Aplicar migration em produção (à mão, fora de pico) e smoke test
   dos endpoints com dois usuários/duas empresas *(depende de T5; gate humano)*
-- [ ] **T8** - Front: `drive-service.ts` + `types.ts` + composables com query
+- [x] **T8** - Front: `drive-service.ts` + `types.ts` + composables com query
   keys por empresa *(depende de T5)*
-- [ ] **T9** - Front: promover `AttachmentViewer` → `components/ui/FileViewer.vue`
-  com resolvedor assíncrono de URL; atualizar os 5 pontos de uso; regressão
-  manual dos anexos de tarefa *(independente de T8)*
-- [ ] **T10** - Front: `DriveView` + sidebar + grade/lista + empty/skeleton +
+- [x] **T9** - Front: promover `AttachmentViewer` → `components/ui/FileViewer.vue`
+  com resolvedor assíncrono de URL; atualizar os pontos de uso (o único import
+  direto era `TaskAttachments.vue`); `attachment-kind.ts` virou
+  `src/utils/file-kind.ts` e o `markdown-doc.css` subiu para `src/styles/`
+  (fronteira components/ui → features zerada) *(independente de T8)*
+- [x] **T10** - Front: `DriveView` + sidebar + grade/lista + empty/skeleton +
   toggle persistido *(depende de T8)*
-- [ ] **T11** - Front: `UploadDropzone` com fila e progresso por item
+- [x] **T11** - Front: `UploadDropzone` com fila e progresso por item
   *(depende de T8)*
-- [ ] **T12** - Front: diálogos (nova pasta, mover, confirmar exclusão com
+- [x] **T12** - Front: diálogos (nova pasta, mover, confirmar exclusão com
   contagem) + renomear inline *(depende de T10)*
-- [ ] **T13** - Navegação: rota + NavList + FocusShell + CanvasShell +
+- [x] **T13** - Navegação: rota + NavList + FocusShell + CanvasShell +
   CommandPalette + `src/CLAUDE.md` *(depende de T10)*
-- [ ] **T14** - Verificação: `npx tsc --noEmit` nos dois repos, `/code-review`
-  no diff, fluxo manual completo com screenshots CDP *(depende de tudo)*
+- [x] **T14** - Verificação: typecheck e lint limpos nos dois repos,
+  `/code-review` no diff (fixes aplicados, ver Change Log), tela exercitada
+  nos dois escopos via Edge headless + mock de API (screenshots) *(depende de
+  tudo; o e2e real contra produção fica com o T7)*
 
 ---
 
@@ -418,8 +422,23 @@ manual + CDP no resto.
 - [ ] Limpeza de arquivos pessoais órfãos se um dia existir deleção de usuário -
   registrado no risco Baixo; sem prazo.
 
+## Follow-ups (do code-review, fora do escopo da P1)
+
+- Contadores da sidebar rodam 2 COUNTs globais por listagem; com acervo grande,
+  mover para cálculo só na página 1 ou endpoint próprio com cache.
+- Limite de upload no cliente é espelho do default do servidor
+  (`DRIVE_MAX_FILE_BYTES_CLIENT`); se a env de produção mudar, expor o limite
+  efetivo num endpoint de config.
+- `UploadDropzone` é genérico (recebe `uploader`); na P2, promover para
+  `components/ui` e fazer `TaskAttachments` delegar a fila para ele (mesmo
+  movimento feito com o `FileViewer`).
+- `DriveStorageService` duplica o molde do `OcrStorageService` por decisão
+  registrada (Considerações de Arquitetura); um storage-base compartilhado é
+  trabalho da spec da Decisão 13.
+
 ## Change Log
 
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-08-11 | 0.1 | Criação (research consolidado dos dois repos) | Nicolas (via spec-driven) |
+| 2026-08-11 | 0.2 | Implementação da P1 (tudo menos T7). Ajustes pós-review: upload em escrita única (storage antes do banco, id gerado na aplicação; elimina a janela de linha com `storagePath` vazio), campo `sha256` removido (hash síncrono de até 25 MB sem consumidor), `requireScope` unifica a validação de membership das listagens, dropzone emite invalidação por lote, viewer referencia arquivo por id, sync bidirecional da URL, `refDebounced` na busca, fronteira `components/ui` → `features` zerada (`file-kind.ts` + `markdown-doc.css` promovidos) | Claude (via spec-driven) |

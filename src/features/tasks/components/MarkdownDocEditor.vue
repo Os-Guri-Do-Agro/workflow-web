@@ -17,7 +17,7 @@ import { Columns2, Eye, PencilLine } from 'lucide-vue-next'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import SaveStatus from '@/components/ui/SaveStatus.vue'
 import type { SaveState } from '@/components/ui/save-state'
-import '@/features/tasks/styles/markdown-doc.css'
+import '@/styles/markdown-doc.css'
 
 const props = withDefaults(
   defineProps<{
