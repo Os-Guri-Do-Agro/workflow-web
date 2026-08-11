@@ -15,6 +15,19 @@ export interface DriveFolderNode extends DriveFolder {
   depth: number
 }
 
+/**
+ * Seção de empresa na sidebar (modelo QR): todas as empresas do usuário
+ * aparecem, independentemente da empresa ativa do topo.
+ */
+export interface DriveCompanySection {
+  id: string
+  name: string
+  /** ADMIN nesta empresa (gerencia pastas e qualquer arquivo dela). */
+  canManage: boolean
+  count: number
+  tree: DriveFolderNode[]
+}
+
 /** Item da fila de upload do dropzone. */
 export interface UploadQueueItem {
   key: string

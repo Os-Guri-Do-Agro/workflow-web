@@ -157,9 +157,11 @@ Prisma + Supabase Storage · roles `ADMIN`/`WORKER` por empresa (`UserCompany`).
 
 - [ ] **AC1 Given** usuário autenticado **When** `GET /drive/files?scope=personal`
   **Then** só arquivos com `ownerId = eu` e `companyId = null` retornam.
-- [ ] **AC2 Given** membro da empresa A com `x-company-id: A` **When**
-  `GET /drive/files?scope=company` **Then** só arquivos com `companyId = A`
-  retornam; com `x-company-id` de empresa da qual não sou membro, 403 (guard).
+- [ ] **AC2 Given** membro da empresa A **When**
+  `GET /drive/files?scope=company&companyId=A` **Then** só arquivos com
+  `companyId = A` retornam; com `companyId` (query ou header) de empresa da
+  qual não sou membro, 403. A empresa alvo é explícita e independe da empresa
+  ativa do topo (v0.3).
 - [ ] **AC3 Given** arquivo pessoal de outro usuário **When** qualquer rota com
   o id dele (`GET .../url`, `PATCH`, `DELETE`) **Then** 404.
 - [ ] **AC4 Given** WORKER que não subiu o arquivo de empresa **When**
@@ -203,9 +205,10 @@ Prisma + Supabase Storage · roles `ADMIN`/`WORKER` por empresa (`UserCompany`).
 
 ### Comportamentais - UI
 
-- [ ] **AC16 Given** `/drive` aberto **Then** sidebar mostra Pessoal e a
-  empresa ativa com contadores de arquivos por escopo; alternar escopo atualiza
-  a listagem e persiste em `?scope=`.
+- [ ] **AC16 Given** `/drive` aberto **Then** sidebar mostra Pessoal e TODAS
+  as empresas do usuário, cada uma com contador; clicar numa empresa mostra os
+  arquivos dela sem alterar a empresa ativa do topo; a seleção persiste em
+  `?scope=personal|<companyId>` (v0.3).
 - [ ] **AC17 Given** arrastar 3 arquivos para a área **Then** 3 requests
   paralelos com progresso individual; falha de um não cancela os outros; item
   com erro mostra retry ou remoção da fila.
@@ -215,9 +218,10 @@ Prisma + Supabase Storage · roles `ADMIN`/`WORKER` por empresa (`UserCompany`).
 - [ ] **AC19 Given** clicar em imagem ou PDF **Then** `FileViewer` abre com URL
   fresca (300 s); outros tipos mostram cartão de download. Toggle grade/lista
   persistido via `useUiPreferences()`.
-- [ ] **AC20 Given** troca de empresa ativa **Then** a listagem de empresa
-  reflete a nova empresa sem mostrar dados da anterior (query keys prefixadas
-  por `companyId`).
+- [ ] **AC20 Given** troca de empresa selecionada na sidebar **Then** a
+  listagem reflete a nova empresa sem mostrar dados da anterior (query keys
+  prefixadas pela empresa SELECIONADA); permissões (Nova pasta, gerenciar
+  arquivo) seguem a MINHA role naquela empresa, não na ativa (v0.3).
 - [ ] **AC21** Item "Drive" aparece na navegação dos três shells (NavList,
   FocusShell rail, CanvasShell tabs+dock) e na Command Palette, seção Trabalho,
   visível para WORKER.
@@ -352,13 +356,18 @@ manual + CDP no resto.
   serviço público retorna `getPublicUrl` por contrato e tem delete silencioso.
   **Alternativa rejeitada:** um "StorageService v2" compartilhado agora; vira
   refactor transversal, é trabalho da spec da Decisão 13.
-- **Decisão:** sidebar mostra Pessoal + **empresa ativa** apenas (não todas as
-  empresas do usuário, como o QR faz).
-  **Motivo:** o resto do app inteiro opera na empresa ativa
-  (`x-company-id`); agregar várias empresas numa tela exige o gate
-  `anyCompanyAdmin` e complica cache. O QR agrega porque tokens de API são
-  administrados cross-empresa.
-  **Alternativa rejeitada:** agregado multi-empresa; reavaliar na P3.
+- **Decisão (v0.3, revisada pelo Nicolas na revisão de produto):** sidebar
+  mostra Pessoal + **TODAS as empresas do usuário**, modelo QR. Clicar numa
+  empresa mostra os arquivos dela SEM alterar a empresa ativa do topo; a
+  empresa alvo vai explícita na query (`companyId`) e o guard valida
+  membership de qualquer fonte.
+  **Motivo:** exigir troca de empresa ativa pra ver arquivos é fricção sem
+  ganho; o vínculo já existe no dado e o interceptor do axios respeita header
+  explícito por request.
+  **Alternativa rejeitada:** a decisão original (só empresa ativa), descartada
+  por gap de UX apontado na revisão; `GET /drive/folders` devolve todas as
+  pastas visíveis numa resposta e os contadores por empresa saem de um
+  `groupBy` único.
 - **Decisão:** mover arquivo nunca troca escopo (pessoal ↔ empresa) na P1.
   **Motivo:** trocar escopo é mudança de dono e de path no storage (copy +
   delete) com semântica de permissão nova; é feature de P2/P3.
@@ -442,3 +451,4 @@ manual + CDP no resto.
 |---|---|---|---|
 | 2026-08-11 | 0.1 | Criação (research consolidado dos dois repos) | Nicolas (via spec-driven) |
 | 2026-08-11 | 0.2 | Implementação da P1 (tudo menos T7). Ajustes pós-review: upload em escrita única (storage antes do banco, id gerado na aplicação; elimina a janela de linha com `storagePath` vazio), campo `sha256` removido (hash síncrono de até 25 MB sem consumidor), `requireScope` unifica a validação de membership das listagens, dropzone emite invalidação por lote, viewer referencia arquivo por id, sync bidirecional da URL, `refDebounced` na busca, fronteira `components/ui` → `features` zerada (`file-kind.ts` + `markdown-doc.css` promovidos) | Claude (via spec-driven) |
+| 2026-08-11 | 0.3 | Sidebar multi-empresa (modelo QR), decisão revisada pelo Nicolas: `GET /drive/folders` devolve todas as pastas visíveis, `GET /drive/files` aceita `companyId` explícito com counts por empresa (`groupBy` único), seleção local em `?scope=personal\|<companyId>` sem tocar na empresa ativa, permissões por role NA empresa selecionada. AC2/AC16/AC20 atualizados; 28 testes na API (3 novos de multi-empresa) | Claude (via spec-driven) |

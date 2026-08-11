@@ -1,34 +1,36 @@
 <script setup lang="ts">
 /**
- * Navegação do Drive: dois espaços (Pessoal e a empresa ativa) com a árvore de
- * pastas de cada um. Anatomia herdada do `QrSidebar`; hierarquia por
- * indentação e peso tipográfico, sem `border-left` (convenção do projeto).
+ * Navegação do Drive, modelo QR: Pessoal + TODAS as empresas do usuário, cada
+ * uma com contador; clicar numa empresa mostra os arquivos dela sem tocar na
+ * empresa ativa do topo. Só o espaço selecionado expande a árvore de pastas
+ * (todas abertas viraria uma coluna rolável sem hierarquia legível).
  *
- * Ações de pasta (subpasta/mover/renomear/excluir) aparecem no hover/foco e
- * respeitam a permissão do espaço: pessoal = sempre; empresa = só ADMIN.
+ * Hierarquia por indentação e peso tipográfico, sem `border-left` (convenção
+ * do projeto). Ações de pasta no hover/foco, gateadas por permissão do espaço:
+ * pessoal = sempre; empresa = só ADMIN daquela empresa.
  */
 import { ref } from 'vue'
-import { Building2, FolderPlus, User } from 'lucide-vue-next'
+import { Building2, ChevronRight, FolderPlus, User } from 'lucide-vue-next'
 import DriveSidebarRow from './DriveSidebarRow.vue'
-import type { DriveFolderNode, DriveScope } from '@/features/drive/types'
+import type {
+  DriveCompanySection,
+  DriveFolderNode,
+  DriveScope,
+} from '@/features/drive/types'
 
 defineProps<{
-  activeScope: DriveScope
+  /** 'personal' ou o id da empresa selecionada. */
+  activeKey: string
   activeFolderId: string | null
   personalTree: DriveFolderNode[]
-  companyTree: DriveFolderNode[]
   personalCount: number
-  companyCount: number
-  companyName: string | null
-  /** Sem empresa ativa: o espaço da empresa aparece desabilitado. */
-  hasCompany: boolean
-  canManagePersonal: boolean
-  canManageCompany: boolean
+  companies: DriveCompanySection[]
 }>()
 
 const emit = defineEmits<{
-  select: [scope: DriveScope, folderId: string | null]
-  'create-folder': [scope: DriveScope, parentId: string | null]
+  /** scope + companyId (null = pessoal) + pasta. */
+  select: [scope: DriveScope, companyId: string | null, folderId: string | null]
+  'create-folder': [companyId: string | null, parentId: string | null]
   'rename-folder': [folder: DriveFolderNode]
   'move-folder': [folder: DriveFolderNode]
   'delete-folder': [folder: DriveFolderNode]
@@ -54,85 +56,94 @@ function toggle(id: string) {
           type="button"
           class="ds-item ds-item--root"
           :class="{
-            'ds-item--active': activeScope === 'personal' && activeFolderId === null,
+            'ds-item--active': activeKey === 'personal' && activeFolderId === null,
           }"
-          @click="emit('select', 'personal', null)"
+          :aria-expanded="activeKey === 'personal'"
+          @click="emit('select', 'personal', null, null)"
         >
           <User :size="14" class="ds-item-icon" />
           <span class="ds-item-label">Pessoal</span>
           <span class="ds-count">{{ personalCount }}</span>
         </button>
         <button
-          v-if="canManagePersonal"
           type="button"
           class="ds-add press"
           aria-label="Nova pasta pessoal"
           title="Nova pasta"
-          @click="emit('create-folder', 'personal', null)"
+          @click="emit('create-folder', null, null)"
         >
           <FolderPlus :size="14" />
         </button>
       </div>
 
-      <DriveSidebarRow
-        v-for="node in personalTree"
-        :key="node.id"
-        :node="node"
-        :active-folder-id="activeScope === 'personal' ? activeFolderId : null"
-        :collapsed="collapsed"
-        :can-manage="canManagePersonal"
-        @select="(id) => emit('select', 'personal', id)"
-        @toggle="toggle"
-        @create="(id) => emit('create-folder', 'personal', id)"
-        @rename="(f) => emit('rename-folder', f)"
-        @move="(f) => emit('move-folder', f)"
-        @remove="(f) => emit('delete-folder', f)"
-      />
+      <template v-if="activeKey === 'personal'">
+        <DriveSidebarRow
+          v-for="node in personalTree"
+          :key="node.id"
+          :node="node"
+          :active-folder-id="activeFolderId"
+          :collapsed="collapsed"
+          :can-manage="true"
+          @select="(id) => emit('select', 'personal', null, id)"
+          @toggle="toggle"
+          @create="(id) => emit('create-folder', null, id)"
+          @rename="(f) => emit('rename-folder', f)"
+          @move="(f) => emit('move-folder', f)"
+          @remove="(f) => emit('delete-folder', f)"
+        />
+      </template>
     </div>
 
-    <!-- ─── Empresa ativa ───────────────────────────────────────────────── -->
-    <div class="ds-group">
+    <!-- ─── Uma seção por empresa do usuário ────────────────────────────── -->
+    <div v-for="company in companies" :key="company.id" class="ds-group">
       <div class="ds-rootline">
         <button
           type="button"
           class="ds-item ds-item--root"
           :class="{
-            'ds-item--active': activeScope === 'company' && activeFolderId === null,
+            'ds-item--active': activeKey === company.id && activeFolderId === null,
           }"
-          :disabled="!hasCompany"
-          :title="hasCompany ? undefined : 'Selecione uma empresa para usar este espaço'"
-          @click="emit('select', 'company', null)"
+          :aria-expanded="activeKey === company.id"
+          @click="emit('select', 'company', company.id, null)"
         >
+          <ChevronRight
+            :size="13"
+            class="ds-chevron"
+            :class="{ 'ds-chevron--open': activeKey === company.id }"
+            aria-hidden="true"
+          />
           <Building2 :size="14" class="ds-item-icon" />
-          <span class="ds-item-label">{{ companyName ?? 'Empresa' }}</span>
-          <span v-if="hasCompany" class="ds-count">{{ companyCount }}</span>
+          <span class="ds-item-label">{{ company.name }}</span>
+          <span class="ds-count">{{ company.count }}</span>
         </button>
         <button
-          v-if="hasCompany && canManageCompany"
+          v-if="company.canManage"
           type="button"
           class="ds-add press"
-          aria-label="Nova pasta da empresa"
+          :aria-label="`Nova pasta em ${company.name}`"
           title="Nova pasta"
-          @click="emit('create-folder', 'company', null)"
+          @click="emit('create-folder', company.id, null)"
         >
           <FolderPlus :size="14" />
         </button>
       </div>
 
-      <DriveSidebarRow
-        v-for="node in companyTree"
-        :key="node.id"
-        :node="node"
-        :active-folder-id="activeScope === 'company' ? activeFolderId : null"
-        :collapsed="collapsed"
-        :can-manage="canManageCompany"
-        @select="(id) => emit('select', 'company', id)"
-        @toggle="toggle"
-        @create="(id) => emit('create-folder', 'company', id)"
-        @rename="(f) => emit('rename-folder', f)"
-        @move="(f) => emit('move-folder', f)"
-        @remove="(f) => emit('delete-folder', f)"
-      />
+      <template v-if="activeKey === company.id">
+        <DriveSidebarRow
+          v-for="node in company.tree"
+          :key="node.id"
+          :node="node"
+          :active-folder-id="activeFolderId"
+          :collapsed="collapsed"
+          :can-manage="company.canManage"
+          @select="(id) => emit('select', 'company', company.id, id)"
+          @toggle="toggle"
+          @create="(id) => emit('create-folder', company.id, id)"
+          @rename="(f) => emit('rename-folder', f)"
+          @move="(f) => emit('move-folder', f)"
+          @remove="(f) => emit('delete-folder', f)"
+        />
+      </template>
     </div>
   </aside>
 </template>
@@ -141,7 +152,7 @@ function toggle(id: string) {
 .ds {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   width: 240px;
   flex: none;
   padding-right: 14px;
@@ -181,18 +192,13 @@ function toggle(id: string) {
   color: var(--text);
 }
 
-.ds-item:hover:not(:disabled) {
+.ds-item:hover {
   background: var(--surface-2);
 }
 
 .ds-item--active {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--text);
-}
-
-.ds-item:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .ds-item-icon {
@@ -216,6 +222,16 @@ function toggle(id: string) {
   background: var(--surface-2);
   border-radius: 999px;
   padding: 1px 7px;
+}
+
+.ds-chevron {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.ds-chevron--open {
+  transform: rotate(90deg);
 }
 
 .ds-add {

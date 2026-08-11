@@ -10,6 +10,7 @@ import { getApiErrorMessage } from '@/service/api'
 
 export function useDriveFiles(params: {
   scope: MaybeRef<DriveScope>
+  /** Empresa SELECIONADA na sidebar (null = escopo pessoal). */
   companyId: MaybeRef<string | null>
   folderId: MaybeRef<string | null>
   search: MaybeRef<string>
@@ -28,6 +29,7 @@ export function useDriveFiles(params: {
     queryFn: () =>
       driveService.listFiles({
         scope: unref(params.scope),
+        companyId: unref(params.companyId),
         folderId: unref(params.folderId),
         search: unref(params.search).trim() || undefined,
         page: unref(params.page),

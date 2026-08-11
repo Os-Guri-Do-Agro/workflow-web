@@ -60,11 +60,16 @@ export interface DriveFilesPage {
   page: number
   pageSize: number
   /** Contadores da sidebar — ignoram o filtro ativo (padrão QR). */
-  counts: { personal: number; company: number }
+  counts: {
+    personal: number
+    companies: Array<{ companyId: string; files: number }>
+  }
 }
 
 export interface ListDriveFilesParams {
   scope: DriveScope
+  /** Empresa alvo quando scope=company (modelo QR: independe da ativa). */
+  companyId?: string | null
   /** Pasta atual; null/ausente = raiz do espaço. Ignorado quando há busca. */
   folderId?: string | null
   search?: string
@@ -75,10 +80,9 @@ export interface ListDriveFilesParams {
 const driveService = {
   // ─── Pastas ─────────────────────────────────────────────────────────────────
 
-  async listFolders(scope: DriveScope): Promise<DriveFolder[]> {
-    const { data } = await api.get<DriveFolder[]>('/drive/folders', {
-      params: { scope },
-    })
+  /** TODAS as pastas visíveis (pessoais + de cada empresa) numa resposta só. */
+  async listFolders(): Promise<DriveFolder[]> {
+    const { data } = await api.get<DriveFolder[]>('/drive/folders')
     return data
   },
 
@@ -115,6 +119,7 @@ const driveService = {
     const { data } = await api.get<DriveFilesPage>('/drive/files', {
       params: {
         scope: params.scope,
+        companyId: params.companyId ?? undefined,
         folderId: params.folderId ?? undefined,
         search: params.search || undefined,
         page: params.page,

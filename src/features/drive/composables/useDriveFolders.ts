@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { computed, unref, type MaybeRef } from 'vue'
 import driveService, {
   type DriveFolder,
   type DriveScope,
@@ -9,13 +8,13 @@ import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
 
 /**
- * Chaves SEMPRE prefixadas pela empresa ativa: trocar de empresa não pode
- * servir cache da anterior (AC20 da spec drive-p1).
+ * Chave de arquivos SEMPRE prefixada pela empresa SELECIONADA na sidebar
+ * (modelo QR: independente da empresa ativa do topo). Pastas vêm todas numa
+ * resposta só, então a chave é única por usuário logado.
  */
 export const driveKeys = {
   all: ['drive'] as const,
-  folders: (companyId: string | null, scope: DriveScope) =>
-    ['drive', 'folders', companyId ?? 'none', scope] as const,
+  folders: ['drive', 'folders'] as const,
   files: (
     companyId: string | null,
     scope: DriveScope,
@@ -26,7 +25,7 @@ export const driveKeys = {
     [
       'drive',
       'files',
-      companyId ?? 'none',
+      companyId ?? 'personal',
       scope,
       folderId ?? 'root',
       search,
@@ -74,18 +73,11 @@ export function folderPath(
   return path
 }
 
-export function useDriveFolders(
-  scope: MaybeRef<DriveScope>,
-  companyId: MaybeRef<string | null>,
-  enabled: MaybeRef<boolean> = true,
-) {
+export function useDriveFolders() {
   return useQuery<DriveFolder[]>({
-    queryKey: computed(() =>
-      driveKeys.folders(unref(companyId), unref(scope)),
-    ),
-    queryFn: () => driveService.listFolders(unref(scope)),
+    queryKey: driveKeys.folders,
+    queryFn: () => driveService.listFolders(),
     staleTime: 1000 * 30,
-    enabled: computed(() => unref(enabled)),
   })
 }
 

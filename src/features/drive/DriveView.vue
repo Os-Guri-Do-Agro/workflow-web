@@ -47,7 +47,12 @@ import { useDriveFileMutations, useDriveFiles } from './composables/useDriveFile
 import driveService, {
   DRIVE_MAX_FILE_BYTES_CLIENT,
 } from '@/service/drive/drive-service'
-import type { DriveFile, DriveFolderNode, DriveScope } from './types'
+import type {
+  DriveCompanySection,
+  DriveFile,
+  DriveFolderNode,
+  DriveScope,
+} from './types'
 import { useCurrentUser } from '@/composables/useCurrentUser'
 import { useUiStore } from '@/stores/uiStores'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
@@ -63,23 +68,42 @@ const { me } = useCurrentUser()
 const { error: showError } = useToast()
 
 // ─── Estado de navegação (URL é a fonte) ─────────────────────────────────────
+// Modelo QR: a sidebar lista TODAS as empresas do usuário e a seleção é local
+// da tela (`?scope=personal|<companyId>`), sem tocar na empresa ativa do topo.
 
-const activeCompanyId = computed(() => workspace.activeCompanyId)
-const hasCompany = computed(() => !!activeCompanyId.value)
-const companyName = computed(
-  () =>
-    workspace.companies.find((c) => c.id === activeCompanyId.value)?.name ??
-    null,
-)
-const isAdmin = computed(() => workspace.isAdmin)
+/** Empresas do usuário (id, nome, minha role) — vêm do workspace store. */
+const memberCompanies = computed(() => workspace.companies)
 
-function scopeFromQuery(): DriveScope {
-  return route.query.scope === 'company' && hasCompany.value
-    ? 'company'
-    : 'personal'
+function scopeKeyFromQuery(): string {
+  const raw = route.query.scope
+  return typeof raw === 'string' && raw.length > 0 ? raw : 'personal'
 }
 
-const scope = ref<DriveScope>(scopeFromQuery())
+/** 'personal' ou o id da empresa selecionada. */
+const selectedKey = ref<string>(scopeKeyFromQuery())
+const selectedCompanyId = computed<string | null>(() =>
+  selectedKey.value === 'personal' ? null : selectedKey.value,
+)
+const scope = computed<DriveScope>(() =>
+  selectedCompanyId.value ? 'company' : 'personal',
+)
+const selectedCompany = computed(() =>
+  memberCompanies.value.find((c) => c.id === selectedCompanyId.value),
+)
+
+// Seleção aponta para empresa que não é minha (URL velha, saí da empresa):
+// volta pro Pessoal assim que a lista de empresas estiver carregada.
+watch([memberCompanies, selectedCompanyId], ([companies, companyId]) => {
+  if (
+    companyId &&
+    companies.length > 0 &&
+    !companies.some((c) => c.id === companyId)
+  ) {
+    selectedKey.value = 'personal'
+    folderId.value = null
+  }
+})
+
 const folderId = ref<string | null>(
   typeof route.query.folder === 'string' ? route.query.folder : null,
 )
@@ -92,12 +116,12 @@ watch(debouncedSearch, () => {
   page.value = 1
 })
 
-watch([scope, folderId], () => {
+watch([selectedKey, folderId], () => {
   page.value = 1
   void router.replace({
     query: {
       ...route.query,
-      scope: scope.value,
+      scope: selectedKey.value,
       folder: folderId.value ?? undefined,
     },
   })
@@ -108,37 +132,39 @@ watch([scope, folderId], () => {
 watch(
   () => [route.query.scope, route.query.folder],
   () => {
-    const nextScope = scopeFromQuery()
+    const nextKey = scopeKeyFromQuery()
     const nextFolder =
       typeof route.query.folder === 'string' ? route.query.folder : null
-    if (nextScope !== scope.value) scope.value = nextScope
+    if (nextKey !== selectedKey.value) selectedKey.value = nextKey
     if (nextFolder !== folderId.value) folderId.value = nextFolder
   },
 )
 
-// Empresa ativa sumiu (logout/troca): espaço da empresa deixa de existir.
-watch(hasCompany, (value) => {
-  if (!value && scope.value === 'company') {
-    scope.value = 'personal'
-    folderId.value = null
-  }
-})
-
 // ─── Dados ───────────────────────────────────────────────────────────────────
 
-const personalFoldersQuery = useDriveFolders('personal', activeCompanyId)
-const companyFoldersQuery = useDriveFolders('company', activeCompanyId, hasCompany)
+// Uma resposta com TODAS as pastas visíveis; o front agrupa por empresa.
+const foldersQuery = useDriveFolders()
+const allFolders = computed(() => foldersQuery.data.value ?? [])
 
 const personalTree = computed(() =>
-  buildFolderTree(personalFoldersQuery.data.value ?? []),
+  buildFolderTree(allFolders.value.filter((f) => f.companyId === null)),
 )
-const companyTree = computed(() =>
-  buildFolderTree(companyFoldersQuery.data.value ?? []),
-)
+const treeByCompany = computed(() => {
+  const map = new Map<string, ReturnType<typeof buildFolderTree>>()
+  for (const company of memberCompanies.value) {
+    map.set(
+      company.id,
+      buildFolderTree(
+        allFolders.value.filter((f) => f.companyId === company.id),
+      ),
+    )
+  }
+  return map
+})
 
 const filesQuery = useDriveFiles({
   scope,
-  companyId: activeCompanyId,
+  companyId: selectedCompanyId,
   folderId,
   search: debouncedSearch,
   page,
@@ -149,13 +175,28 @@ const total = computed(() => filesQuery.data.value?.total ?? 0)
 const pageSize = computed(() => filesQuery.data.value?.pageSize ?? 50)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const counts = computed(
-  () => filesQuery.data.value?.counts ?? { personal: 0, company: 0 },
+  () =>
+    filesQuery.data.value?.counts ?? {
+      personal: 0,
+      companies: [] as Array<{ companyId: string; files: number }>,
+    },
+)
+
+/** Seções da sidebar: uma por empresa do usuário, com contador e árvore. */
+const companySections = computed<DriveCompanySection[]>(() =>
+  memberCompanies.value.map((company) => ({
+    id: company.id,
+    name: company.name,
+    canManage: company.myRole === 'ADMIN',
+    count:
+      counts.value.companies.find((c) => c.companyId === company.id)?.files ??
+      0,
+    tree: treeByCompany.value.get(company.id) ?? [],
+  })),
 )
 
 const activeFolders = computed(() =>
-  scope.value === 'personal'
-    ? (personalFoldersQuery.data.value ?? [])
-    : (companyFoldersQuery.data.value ?? []),
+  allFolders.value.filter((f) => f.companyId === selectedCompanyId.value),
 )
 
 const breadcrumb = computed(() => folderPath(activeFolders.value, folderId.value))
@@ -171,15 +212,19 @@ watch(
   },
 )
 
-// ─── Permissões (padrão QR) ──────────────────────────────────────────────────
+// ─── Permissões (padrão QR, por empresa SELECIONADA) ─────────────────────────
+
+const selectedIsAdmin = computed(
+  () => selectedCompany.value?.myRole === 'ADMIN',
+)
 
 const canManageFolderHere = computed(() =>
-  scope.value === 'personal' ? true : isAdmin.value,
+  scope.value === 'personal' ? true : selectedIsAdmin.value,
 )
 
 function canManageFile(file: DriveFile): boolean {
   if (file.companyId === null) return true
-  return isAdmin.value || (!!me.value && file.ownerId === me.value.id)
+  return selectedIsAdmin.value || (!!me.value && file.ownerId === me.value.id)
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────
@@ -195,7 +240,7 @@ function uploader(file: File, onProgress: (percent: number) => void) {
   return driveService.upload(
     file,
     {
-      companyId: scope.value === 'company' ? activeCompanyId.value : null,
+      companyId: selectedCompanyId.value,
       folderId: folderId.value,
     },
     onProgress,
@@ -261,7 +306,7 @@ async function download(file: DriveFile) {
 // ─── Diálogos ────────────────────────────────────────────────────────────────
 
 type NameDialogState =
-  | { mode: 'create-folder'; scope: DriveScope; parentId: string | null }
+  | { mode: 'create-folder'; companyId: string | null; parentId: string | null }
   | { mode: 'rename-folder'; folder: DriveFolderNode }
   | { mode: 'rename-file'; file: DriveFile }
 
@@ -295,7 +340,7 @@ function submitName(name: string) {
     folderMut.create.mutate(
       {
         name,
-        companyId: state.scope === 'company' ? activeCompanyId.value : null,
+        companyId: state.companyId,
         parentId: state.parentId,
       },
       { onSuccess: () => (nameDialog.value = null) },
@@ -322,7 +367,9 @@ type MoveDialogState =
 const moveDialog = ref<MoveDialogState | null>(null)
 
 const moveDialogTree = computed(() =>
-  scope.value === 'personal' ? personalTree.value : companyTree.value,
+  selectedCompanyId.value
+    ? (treeByCompany.value.get(selectedCompanyId.value) ?? [])
+    : personalTree.value,
 )
 
 const moveDialogItemName = computed(() =>
@@ -417,8 +464,12 @@ function submitConfirm() {
 
 // ─── Sidebar / navegação ─────────────────────────────────────────────────────
 
-function selectScope(nextScope: DriveScope, nextFolderId: string | null) {
-  scope.value = nextScope
+function selectScope(
+  _nextScope: DriveScope,
+  companyId: string | null,
+  nextFolderId: string | null,
+) {
+  selectedKey.value = companyId ?? 'personal'
   folderId.value = nextFolderId
   search.value = ''
 }
@@ -483,7 +534,7 @@ const loading = computed(() => filesQuery.isLoading.value)
           v-if="canManageFolderHere"
           type="button"
           class="drive-btn drive-btn--ghost press"
-          @click="nameDialog = { mode: 'create-folder', scope, parentId: folderId }"
+          @click="nameDialog = { mode: 'create-folder', companyId: selectedCompanyId, parentId: folderId }"
         >
           <FolderPlus :size="14" />
           Nova pasta
@@ -502,18 +553,13 @@ const loading = computed(() => filesQuery.isLoading.value)
 
     <div class="drive-body">
       <DriveSidebar
-        :active-scope="scope"
+        :active-key="selectedKey"
         :active-folder-id="folderId"
         :personal-tree="personalTree"
-        :company-tree="companyTree"
         :personal-count="counts.personal"
-        :company-count="counts.company"
-        :company-name="companyName"
-        :has-company="hasCompany"
-        :can-manage-personal="true"
-        :can-manage-company="isAdmin"
+        :companies="companySections"
         @select="selectScope"
-        @create-folder="(s, parentId) => (nameDialog = { mode: 'create-folder', scope: s, parentId })"
+        @create-folder="(companyId, parentId) => (nameDialog = { mode: 'create-folder', companyId, parentId })"
         @rename-folder="(folder) => (nameDialog = { mode: 'rename-folder', folder })"
         @move-folder="(folder) => (moveDialog = { kind: 'folder', folder })"
         @delete-folder="(folder) => (confirmState = { kind: 'folder', folder })"
@@ -530,7 +576,7 @@ const loading = computed(() => filesQuery.isLoading.value)
         <nav v-if="!isSearching" class="drive-crumbs" aria-label="Caminho da pasta">
           <button type="button" class="drive-crumb" @click="folderId = null">
             <House :size="12" />
-            {{ scope === 'personal' ? 'Pessoal' : (companyName ?? 'Empresa') }}
+            {{ selectedCompany?.name ?? 'Pessoal' }}
           </button>
           <template v-for="crumb in breadcrumb" :key="crumb.id">
             <span class="drive-crumb-sep" aria-hidden="true">/</span>
