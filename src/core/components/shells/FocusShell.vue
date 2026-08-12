@@ -560,13 +560,16 @@ const showTasks = computed(() =>
   background: var(--bg);
 }
 
+/* Altura mínima 56px, não 44px fixo: os botões do topo têm alvo de 44px
+   (a11y 50+), e 44 de barra com 44 de botão deixava os ícones colados nas
+   bordas, sem respiro vertical. */
 .slim-top {
-  height: 44px;
+  min-height: 56px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  padding: 6px 16px;
   gap: 10px;
 }
 
