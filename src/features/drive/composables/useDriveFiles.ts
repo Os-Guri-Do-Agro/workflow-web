@@ -3,6 +3,7 @@ import { computed, unref, type MaybeRef } from 'vue'
 import driveService, {
   type DriveFilesPage,
   type DriveScope,
+  type DriveSort,
 } from '@/service/drive/drive-service'
 import { driveKeys } from './useDriveFolders'
 import { useToast } from '@/composables/useToast'
@@ -14,6 +15,7 @@ export function useDriveFiles(params: {
   companyId: MaybeRef<string | null>
   folderId: MaybeRef<string | null>
   search: MaybeRef<string>
+  sort: MaybeRef<DriveSort>
   page: MaybeRef<number>
 }) {
   return useQuery<DriveFilesPage>({
@@ -23,6 +25,7 @@ export function useDriveFiles(params: {
         unref(params.scope),
         unref(params.folderId),
         unref(params.search).trim(),
+        unref(params.sort),
         unref(params.page),
       ),
     ),
@@ -32,6 +35,7 @@ export function useDriveFiles(params: {
         companyId: unref(params.companyId),
         folderId: unref(params.folderId),
         search: unref(params.search).trim() || undefined,
+        sort: unref(params.sort),
         page: unref(params.page),
       }),
     // Página anterior visível enquanto a próxima carrega (sem "piscar" skeleton).

@@ -13,7 +13,18 @@ import {
 
 export function useUiPreferences() {
   const store = useUiStore()
-  const { theme, accent, density, shell, fontScale, xp } = storeToRefs(store)
+  const {
+    theme,
+    accent,
+    density,
+    shell,
+    fontScale,
+    xp,
+    idleGuard,
+    idleWarnMin,
+    timerSounds,
+    pickerShowDone,
+  } = storeToRefs(store)
   const vuetifyTheme = useTheme()
 
   const setTheme = (value: ThemeName) => {
@@ -47,6 +58,24 @@ export function useUiPreferences() {
     store.xp = !store.xp
   }
 
+  // Aviso de ociosidade do timer (spec timer-ociosidade).
+  const setIdleGuard = (value: boolean) => {
+    store.idleGuard = value
+  }
+
+  const setIdleWarnMin = (value: number) => {
+    store.idleWarnMin = value
+  }
+
+  // Meu tempo (spec time-selecao-de-tarefa-e-som).
+  const setTimerSounds = (value: boolean) => {
+    store.timerSounds = value
+  }
+
+  const setPickerShowDone = (value: boolean) => {
+    store.pickerShowDone = value
+  }
+
   return {
     theme,
     accent,
@@ -54,6 +83,14 @@ export function useUiPreferences() {
     shell,
     fontScale,
     xp,
+    idleGuard,
+    idleWarnMin,
+    setIdleGuard,
+    setIdleWarnMin,
+    timerSounds,
+    pickerShowDone,
+    setTimerSounds,
+    setPickerShowDone,
     setTheme,
     toggleTheme,
     setAccent,

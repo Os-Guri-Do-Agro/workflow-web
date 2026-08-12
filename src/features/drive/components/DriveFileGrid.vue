@@ -1,11 +1,20 @@
 <script setup lang="ts">
 /**
- * Grade de arquivos do Drive. Preview real para imagem (URL assinada da
- * listagem), glifo por tipo para o resto. Ações no hover/foco; gerenciar
- * (renomear/mover/excluir) só aparece para quem pode (dono do upload ou ADMIN).
+ * Grade de arquivos do Drive.
+ *
+ * O card é a unidade de leitura do produto, então ele carrega: capa rica
+ * (`FileCover`), nome com quebra em duas linhas (nome de arquivo real não cabe
+ * em uma), metadados na base e ações que aparecem no hover/foco.
+ *
+ * As ações são DUAS visíveis (visualizar, baixar) mais um menu com o resto.
+ * A versão anterior empilhava cinco botões de 26px no canto: virava uma barra
+ * de ícones minúsculos que competia com a capa e não dizia o que cada um fazia.
  */
-import { Download, Eye, FolderInput, Pencil, Trash2 } from 'lucide-vue-next'
-import { formatBytes, iconOf, labelOf } from '@/utils/file-kind'
+import { Download, Eye, MoreVertical, Share2 } from 'lucide-vue-next'
+import FileCover from './FileCover.vue'
+import FileActionsMenu from './FileActionsMenu.vue'
+import { formatBytes, labelOf } from '@/utils/file-kind'
+import { shortDate } from '@/features/drive/format'
 import type { DriveFile } from '@/features/drive/types'
 
 defineProps<{
@@ -16,14 +25,12 @@ defineProps<{
 const emit = defineEmits<{
   open: [index: number]
   download: [file: DriveFile]
+  share: [file: DriveFile]
+  details: [file: DriveFile]
   rename: [file: DriveFile]
   move: [file: DriveFile]
   remove: [file: DriveFile]
 }>()
-
-function fileLike(file: DriveFile) {
-  return { filename: file.name, mimeType: file.mimeType }
-}
 </script>
 
 <template>
@@ -31,31 +38,28 @@ function fileLike(file: DriveFile) {
     <article
       v-for="(file, index) in files"
       :key="file.id"
-      class="dg-card hover-lift"
+      class="dg-card"
       role="listitem"
     >
       <button
         type="button"
-        class="dg-thumb"
+        class="dg-cover"
         :aria-label="`Visualizar ${file.name}`"
         @click="emit('open', index)"
       >
-        <img
-          v-if="file.previewUrl"
-          :src="file.previewUrl"
-          :alt="file.name"
-          class="dg-thumb-img"
-          loading="lazy"
-        />
-        <component :is="iconOf(fileLike(file))" v-else :size="30" class="dg-thumb-icon" />
+        <FileCover :file="file" />
       </button>
 
       <div class="dg-body">
         <p class="dg-name" :title="file.name">{{ file.name }}</p>
         <p class="dg-meta">
-          {{ labelOf(fileLike(file)) }}
-          <template v-if="formatBytes(file.size)"> · {{ formatBytes(file.size) }}</template>
-          <template v-if="file.owner"> · {{ file.owner.name }}</template>
+          <span>{{ formatBytes(file.size) || labelOf({ filename: file.name, mimeType: file.mimeType }) }}</span>
+          <span class="dg-dot" aria-hidden="true">·</span>
+          <span>{{ shortDate(file.createdAt) }}</span>
+          <template v-if="file.owner">
+            <span class="dg-dot" aria-hidden="true">·</span>
+            <span class="dg-owner">{{ file.owner.name }}</span>
+          </template>
         </p>
       </div>
 
@@ -67,7 +71,7 @@ function fileLike(file: DriveFile) {
           title="Visualizar"
           @click="emit('open', index)"
         >
-          <Eye :size="14" />
+          <Eye :size="16" />
         </button>
         <button
           type="button"
@@ -76,37 +80,38 @@ function fileLike(file: DriveFile) {
           title="Baixar"
           @click="emit('download', file)"
         >
-          <Download :size="14" />
+          <Download :size="16" />
         </button>
-        <template v-if="canManage(file)">
-          <button
-            type="button"
-            class="dg-act press"
-            :aria-label="`Renomear ${file.name}`"
-            title="Renomear"
-            @click="emit('rename', file)"
-          >
-            <Pencil :size="14" />
-          </button>
-          <button
-            type="button"
-            class="dg-act press"
-            :aria-label="`Mover ${file.name}`"
-            title="Mover"
-            @click="emit('move', file)"
-          >
-            <FolderInput :size="14" />
-          </button>
-          <button
-            type="button"
-            class="dg-act dg-act--danger press"
-            :aria-label="`Excluir ${file.name}`"
-            title="Excluir"
-            @click="emit('remove', file)"
-          >
-            <Trash2 :size="14" />
-          </button>
-        </template>
+        <button
+          v-if="canManage(file)"
+          type="button"
+          class="dg-act press"
+          :aria-label="`Compartilhar ${file.name}`"
+          title="Compartilhar por link"
+          @click="emit('share', file)"
+        >
+          <Share2 :size="16" />
+        </button>
+        <FileActionsMenu
+          :file="file"
+          :can-manage="canManage(file)"
+          @details="emit('details', file)"
+          @download="emit('download', file)"
+          @share="emit('share', file)"
+          @rename="emit('rename', file)"
+          @move="emit('move', file)"
+          @remove="emit('remove', file)"
+        >
+          <template #trigger>
+            <button
+              type="button"
+              class="dg-act press"
+              :aria-label="`Mais ações para ${file.name}`"
+            >
+              <MoreVertical :size="16" />
+            </button>
+          </template>
+        </FileActionsMenu>
       </div>
     </article>
   </div>
@@ -115,8 +120,8 @@ function fileLike(file: DriveFile) {
 <style scoped>
 .dg {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 16px;
 }
 
 .dg-card {
@@ -128,56 +133,73 @@ function fileLike(file: DriveFile) {
   background: var(--surface);
   overflow: hidden;
   transition:
+    transform var(--motion) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
     box-shadow var(--motion) var(--motion-ease);
 }
 
 .dg-card:hover,
 .dg-card:focus-within {
+  transform: translateY(-2px);
   border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
 }
 
-.dg-thumb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 116px;
+@media (prefers-reduced-motion: reduce) {
+  .dg-card {
+    transition: border-color var(--motion-fast) var(--motion-ease);
+  }
+  .dg-card:hover,
+  .dg-card:focus-within {
+    transform: none;
+  }
+}
+
+.dg-cover {
+  display: block;
   border: none;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-2);
-  cursor: pointer;
   padding: 0;
-}
-
-.dg-thumb-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.dg-thumb-icon {
-  color: var(--text-3);
+  background: none;
+  cursor: pointer;
+  text-align: left;
 }
 
 .dg-body {
-  padding: 10px 12px 12px;
+  padding: 12px 14px 14px;
   min-width: 0;
 }
 
 .dg-name {
   margin: 0;
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
+  line-height: 1.35;
+  /* Duas linhas: nome de arquivo real raramente cabe em uma. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 
 .dg-meta {
-  margin: 3px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 0 0;
   color: var(--text-3);
   font-size: 11px;
+  min-width: 0;
+}
+
+.dg-dot {
+  opacity: 0.6;
+}
+
+.dg-owner {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,31 +207,48 @@ function fileLike(file: DriveFile) {
 
 .dg-acts {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  display: none;
+  top: 10px;
+  right: 10px;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--border);
+  gap: 2px;
+  padding: 3px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
 }
 
 .dg-card:hover .dg-acts,
 .dg-card:focus-within .dg-acts {
-  display: inline-flex;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* Sem hover (toque): as ações ficam sempre visíveis, senão são inalcançáveis. */
+@media (hover: none) {
+  .dg-acts {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
 }
 
 .dg-act {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
@@ -218,9 +257,5 @@ function fileLike(file: DriveFile) {
 .dg-act:hover {
   background: var(--surface-2);
   color: var(--text);
-}
-
-.dg-act--danger:hover {
-  color: var(--err);
 }
 </style>

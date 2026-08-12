@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import {
   Check,
   Sun,
@@ -7,6 +7,9 @@ import {
   Columns3,
   LayoutPanelLeft,
   Square,
+  Timer,
+  Play,
+  Volume2,
   Upload,
   FileCode,
   Loader2,
@@ -16,6 +19,9 @@ import {
   EyeOff,
 } from 'lucide-vue-next'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useIdleAlerts } from '@/composables/useIdleAlerts'
+import { useTimerSounds } from '@/composables/useTimerSounds'
+import { idleDetectionPermission, idleDetectionState } from '@/composables/useIdleDetection'
 import { useToast } from '@/composables/useToast'
 import importService from '@/service/import/import-service'
 import notificationsService from '@/service/notifications/notifications-service'
@@ -84,7 +90,68 @@ const {
   setDensity,
   setShell,
   setFontScale,
+  idleGuard,
+  idleWarnMin,
+  setIdleGuard,
+  setIdleWarnMin,
+  timerSounds,
+  pickerShowDone,
+  setTimerSounds,
+  setPickerShowDone,
 } = useUiPreferences()
+
+// ── Som do cronômetro ────────────────────────────────────────────────────
+const { playStart, playStop } = useTimerSounds()
+
+/**
+ * Prévia: toca o par completo (início e, logo depois, parada) mesmo com a
+ * preferência desligada — quem está decidendo precisa ouvir antes de ligar.
+ */
+function previewSound() {
+  const wasOn = timerSounds.value
+  if (!wasOn) setTimerSounds(true)
+  playStart()
+  window.setTimeout(() => {
+    playStop()
+    if (!wasOn) window.setTimeout(() => setTimerSounds(false), 600)
+  }, 700)
+}
+
+// ── Aviso de ociosidade (spec timer-ociosidade) ──────────────────────────
+const idleAlerts = useIdleAlerts()
+const idleWarnOptions = [5, 10, 15, 30]
+
+onMounted(() => {
+  // Popula `idleDetectionState` (o estado é compartilhado e reativo).
+  void idleDetectionPermission()
+})
+
+/**
+ * Estado legível das duas permissões. O texto precisa dizer o que fazer quando
+ * está bloqueado: uma vez negada, nenhuma API reabre o prompt, só o cadeado da
+ * barra de endereço.
+ */
+const idleStatusText = computed(() => {
+  if (!idleAlerts.supported) {
+    return 'Este navegador não envia notificações do sistema. O aviso aparece só dentro do Nevo.'
+  }
+  if (idleAlerts.blocked.value) {
+    return 'Notificações bloqueadas. Libere no cadeado da barra de endereço para ser avisado com o navegador minimizado.'
+  }
+  if (!idleAlerts.granted.value) {
+    return 'Sem permissão, o aviso só aparece dentro do Nevo, e não alcança você em outro app.'
+  }
+  if (idleDetectionState.value === 'granted') {
+    return 'Notificação do sistema ativa, com detecção de atividade em todo o computador.'
+  }
+  if (idleDetectionState.value === 'unsupported') {
+    return 'Notificação do sistema ativa. Neste navegador a atividade é medida só dentro do Nevo.'
+  }
+  if (idleDetectionState.value === 'denied') {
+    return 'Notificação ativa, mas a detecção em todo o computador foi bloqueada: trabalhar em outro programa pode parecer inatividade. Libere no cadeado da barra de endereço.'
+  }
+  return 'Notificação do sistema ativa. Falta permitir a detecção de atividade em todo o computador.'
+})
 
 const accentOptions: { name: AccentName; label: string }[] = [
   { name: 'teal', label: 'Padrão' },
@@ -398,6 +465,123 @@ const shellOptions: {
         </div>
       </div>
 
+      <!-- Meu tempo: som e seletor de tarefa -->
+      <div class="settings-card">
+        <div class="card-section-title">
+          <Volume2 :size="13" style="vertical-align: -2px; margin-right: 4px" />
+          Meu tempo
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Som ao iniciar e parar o cronômetro</span>
+            <span class="setting-desc">
+              Um toque curto e discreto quando você começa e quando termina. Clique em ouvir
+              para experimentar.
+            </span>
+          </div>
+          <div class="setting-actions">
+            <button type="button" class="sound-preview" @click="previewSound">
+              <Play :size="12" />
+              Ouvir
+            </button>
+            <button
+              type="button"
+              class="toggle"
+              :class="{ 'toggle--on': timerSounds }"
+              @click="setTimerSounds(!timerSounds)"
+            >
+              <span class="toggle-knob" />
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Mostrar tarefas concluídas no seletor</span>
+            <span class="setting-desc">
+              Por padrão o seletor de tarefa esconde o que já foi concluído, para achar mais
+              rápido o que ainda está em aberto.
+            </span>
+          </div>
+          <button
+            type="button"
+            class="toggle"
+            :class="{ 'toggle--on': pickerShowDone }"
+            @click="setPickerShowDone(!pickerShowDone)"
+          >
+            <span class="toggle-knob" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Aviso de ociosidade do timer (spec timer-ociosidade) -->
+      <div class="settings-card">
+        <div class="card-section-title">
+          <Timer :size="13" style="vertical-align: -2px; margin-right: 4px" />
+          Aviso de ociosidade
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Avisar quando eu esquecer o timer rodando</span>
+            <span class="setting-desc">
+              Sem atividade no computador, o Nevo avisa e, se você não responder, para o
+              tempo no último momento em que estava ativo. Nada é perdido: dá para recuperar
+              o período em um clique.
+            </span>
+          </div>
+          <button
+            type="button"
+            class="toggle"
+            :class="{ 'toggle--on': idleGuard }"
+            @click="setIdleGuard(!idleGuard)"
+          >
+            <span class="toggle-knob" />
+          </button>
+        </div>
+
+        <div v-if="idleGuard" class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Tempo parado até o aviso</span>
+            <span class="setting-desc">
+              Depois do aviso, você ainda tem um terço desse tempo para responder antes do
+              corte ({{ Math.round(idleWarnMin / 3) }} min agora).
+            </span>
+          </div>
+          <div class="segmented">
+            <button
+              v-for="opt in idleWarnOptions"
+              :key="opt"
+              class="segmented-btn"
+              :class="{ 'segmented-btn--active': idleWarnMin === opt }"
+              @click="setIdleWarnMin(opt)"
+            >
+              {{ opt }} min
+            </button>
+          </div>
+        </div>
+
+        <div v-if="idleGuard" class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Aviso fora do navegador</span>
+            <span class="setting-desc">{{ idleStatusText }}</span>
+          </div>
+          <button
+            v-if="idleAlerts.nextStep.value"
+            type="button"
+            class="idle-perm-btn"
+            :disabled="idleAlerts.requesting.value"
+            @click="idleAlerts.requestNext()"
+          >
+            {{ idleAlerts.stepLabel.value }}
+          </button>
+          <span v-else-if="idleAlerts.granted.value" class="idle-perm-ok">
+            <Check :size="13" /> Ativo
+          </span>
+        </div>
+      </div>
+
       <!-- Notifications Discord -->
       <div class="settings-card">
         <div class="card-section-title">
@@ -676,6 +860,74 @@ const shellOptions: {
 .setting-row--column {
   flex-direction: column;
   align-items: stretch;
+}
+
+/* ── Meu tempo ───────────────────────────────────────────────────────── */
+
+.setting-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sound-preview {
+  min-height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.sound-preview:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* ── Aviso de ociosidade ─────────────────────────────────────────────── */
+
+.idle-perm-btn {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter var(--motion-fast) var(--motion-ease);
+}
+
+.idle-perm-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.idle-perm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.idle-perm-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 /* ── Discord notifications ───────────────────────────────────────────── */

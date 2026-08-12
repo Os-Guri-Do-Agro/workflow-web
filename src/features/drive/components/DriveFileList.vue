@@ -3,9 +3,13 @@
  * Lista densa de arquivos do Drive. Renomear é INLINE aqui (InlineEditText,
  * Esc desfaz), a grade usa dialog — mesma mutation por trás.
  */
-import { Download, Eye, FolderInput, Trash2 } from 'lucide-vue-next'
+import { nextTick } from 'vue'
+import { Download, Eye, MoreVertical, Share2 } from 'lucide-vue-next'
 import InlineEditText from '@/components/ui/InlineEditText.vue'
-import { formatBytes, iconOf, labelOf } from '@/utils/file-kind'
+import FileActionsMenu from './FileActionsMenu.vue'
+import FileCover from './FileCover.vue'
+import { formatBytes, labelOf } from '@/utils/file-kind'
+import { shortDate } from '@/features/drive/format'
 import type { DriveFile } from '@/features/drive/types'
 
 defineProps<{
@@ -16,6 +20,8 @@ defineProps<{
 const emit = defineEmits<{
   open: [index: number]
   download: [file: DriveFile]
+  share: [file: DriveFile]
+  details: [file: DriveFile]
   'rename-inline': [file: DriveFile, name: string]
   move: [file: DriveFile]
   remove: [file: DriveFile]
@@ -25,31 +31,38 @@ function fileLike(file: DriveFile) {
   return { filename: file.name, mimeType: file.mimeType }
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? ''
-    : date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+/**
+ * "Renomear" aqui não abre dialog: o nome já é um campo editável na linha
+ * (`InlineEditText`), então a ação é levar o cursor até ele com o texto
+ * selecionado. Sem isto o item de menu ficava decorativo.
+ */
+function focusRename(fileId: string) {
+  void nextTick(() => {
+    const field = document.querySelector<HTMLInputElement>(
+      `[data-file-row="${CSS.escape(fileId)}"] .inline-edit__field`,
+    )
+    field?.focus()
+    field?.select()
+  })
 }
 </script>
 
 <template>
   <div class="dl" role="list">
-    <div v-for="(file, index) in files" :key="file.id" class="dl-row" role="listitem">
+    <div
+      v-for="(file, index) in files"
+      :key="file.id"
+      class="dl-row"
+      role="listitem"
+      :data-file-row="file.id"
+    >
       <button
         type="button"
         class="dl-thumb"
         :aria-label="`Visualizar ${file.name}`"
         @click="emit('open', index)"
       >
-        <img
-          v-if="file.previewUrl"
-          :src="file.previewUrl"
-          :alt="''"
-          class="dl-thumb-img"
-          loading="lazy"
-        />
-        <component :is="iconOf(fileLike(file))" v-else :size="16" />
+        <FileCover :file="file" :height="32" mode="thumb" />
       </button>
 
       <div class="dl-name">
@@ -73,7 +86,7 @@ function formatDate(value: string): string {
       <span class="dl-cell dl-cell--kind">{{ labelOf(fileLike(file)) }}</span>
       <span class="dl-cell dl-cell--size">{{ formatBytes(file.size) }}</span>
       <span class="dl-cell dl-cell--owner">{{ file.owner?.name ?? '' }}</span>
-      <span class="dl-cell dl-cell--date">{{ formatDate(file.createdAt) }}</span>
+      <span class="dl-cell dl-cell--date">{{ shortDate(file.createdAt) }}</span>
 
       <span class="dl-acts">
         <button
@@ -94,26 +107,36 @@ function formatDate(value: string): string {
         >
           <Download :size="14" />
         </button>
-        <template v-if="canManage(file)">
-          <button
-            type="button"
-            class="dl-act press"
-            :aria-label="`Mover ${file.name}`"
-            title="Mover"
-            @click="emit('move', file)"
-          >
-            <FolderInput :size="14" />
-          </button>
-          <button
-            type="button"
-            class="dl-act dl-act--danger press"
-            :aria-label="`Excluir ${file.name}`"
-            title="Excluir"
-            @click="emit('remove', file)"
-          >
-            <Trash2 :size="14" />
-          </button>
-        </template>
+        <button
+          v-if="canManage(file)"
+          type="button"
+          class="dl-act press"
+          :aria-label="`Compartilhar ${file.name}`"
+          title="Compartilhar por link"
+          @click="emit('share', file)"
+        >
+          <Share2 :size="15" />
+        </button>
+        <FileActionsMenu
+          :file="file"
+          :can-manage="canManage(file)"
+          @details="emit('details', file)"
+          @download="emit('download', file)"
+          @share="emit('share', file)"
+          @rename="focusRename(file.id)"
+          @move="emit('move', file)"
+          @remove="emit('remove', file)"
+        >
+          <template #trigger>
+            <button
+              type="button"
+              class="dl-act press"
+              :aria-label="`Mais ações para ${file.name}`"
+            >
+              <MoreVertical :size="15" />
+            </button>
+          </template>
+        </FileActionsMenu>
       </span>
     </div>
   </div>
@@ -218,16 +241,34 @@ function formatDate(value: string): string {
   width: 96px;
 }
 
+/*
+ * `opacity`, nunca `display: none`. O menu de ações é portalado para o body e
+ * o dropdown do reka é modal: ao abrir, o body fica com `pointer-events: none`
+ * e a linha PERDE o `:hover`. Com `display:none` o próprio gatilho sumiria do
+ * layout, o floating-ui recalcularia a âncora sobre um retângulo 0x0 e o menu
+ * saltaria para o canto da viewport. Mantendo o elemento no fluxo, a âncora
+ * continua válida enquanto o menu estiver aberto.
+ */
 .dl-acts {
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 2px;
   flex: none;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-ease);
 }
 
 .dl-row:hover .dl-acts,
-.dl-row:focus-within .dl-acts {
-  display: inline-flex;
+.dl-row:focus-within .dl-acts,
+.dl-acts:has([data-state='open']) {
+  opacity: 1;
+}
+
+/* Sem hover (toque): as ações precisam estar sempre alcançáveis. */
+@media (hover: none) {
+  .dl-acts {
+    opacity: 1;
+  }
 }
 
 .dl-act {

@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { AlertTriangle, DollarSign, Play, Square, Timer as TimerIcon } from 'lucide-vue-next'
+import {
+  AlertTriangle,
+  BellRing,
+  DollarSign,
+  Play,
+  Square,
+  Timer as TimerIcon,
+} from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
-import ActivitySelect from '@/components/ui/ActivitySelect.vue'
+import TaskPicker from '@/components/ui/TaskPicker.vue'
 import SaveStatus from '@/components/ui/SaveStatus.vue'
 import { useTimeTracking } from '@/composables/useTimeTracking'
 import { useCompanyActivities } from '@/composables/useCompanyActivities'
 import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
+import { useTimerIdleGuard } from '@/composables/useTimerIdleGuard'
+import { useIdleAlerts } from '@/composables/useIdleAlerts'
+import { useTimerSounds } from '@/composables/useTimerSounds'
 import { useToast } from '@/composables/useToast'
 import { useCurrentUser } from '@/composables/useCurrentUser'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
@@ -17,7 +27,8 @@ const { me } = useCurrentUser()
 const { error: showError } = useToast()
 const workspace = useWorkspaceStore()
 const { isRunning, elapsedSec, start, stop } = useTimeTracking()
-const { optionsFor, companyOf } = useCompanyActivities()
+const { companyOf } = useCompanyActivities()
+const { playStart, playStop } = useTimerSounds()
 
 const isOpen = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
@@ -35,6 +46,36 @@ const billable = ref(false)
 
 // ─── Edição ao vivo (estado rodando, T2) ──────────────────────────────────────
 const editor = useRunningEntryEditor({ companyOf })
+
+// ─── Ociosidade (spec timer-ociosidade) ───────────────────────────────────────
+// As AÇÕES do alerta ficam no card fixo (IdleAlert.vue); aqui o widget só
+// reflete o estado: pílula âmbar no trigger e uma linha no painel.
+const idle = useTimerIdleGuard()
+const alerts = useIdleAlerts()
+
+const idleWarning = computed(() => isRunning.value && idle.phase.value === 'warning')
+
+/** Minutos parados, para o texto do aviso. */
+const idleMinutes = computed(() => Math.max(1, Math.round(idle.idleSec.value / 60)))
+
+/** "Parar em 4:12" enquanto a carência corre. */
+const cutCountdown = computed(() => formatTimer(idle.secondsToCut.value))
+
+/** Linha discreta de permissão: pede quando dá, orienta quando está bloqueada. */
+async function handleEnableAlerts() {
+  if (alerts.nextStep.value === null && alerts.blocked.value) {
+    showError('Libere as notificações no cadeado da barra de endereço para receber o aviso')
+    return
+  }
+  await alerts.requestNext()
+}
+
+/** Texto da linha muda conforme o passo que falta. */
+const permissionText = computed(() =>
+  alerts.nextStep.value === 'detection'
+    ? 'Permita a detecção de atividade para não parar seu tempo à toa'
+    : 'Ative as notificações para ser avisado fora do navegador',
+)
 
 // "Pessoal" + empresas do usuário.
 const companyOptions = computed(() => [
@@ -73,6 +114,9 @@ function close() {
 }
 
 async function handleStart() {
+  // Antes do await: a ativação do gesto expira e o prompt de permissão seria
+  // recusado se pedíssemos depois da resposta da rede.
+  alerts.askOnStart()
   try {
     await start.mutateAsync({
       description: description.value.trim() || undefined,
@@ -80,6 +124,9 @@ async function handleStart() {
       activityId: companyId.value ? activityId.value : null,
       billable: billable.value,
     })
+    // Som depois da confirmação do servidor: tocar antes prometeria um começo
+    // que ainda pode falhar.
+    playStart()
     description.value = ''
     activityId.value = null
     billable.value = false
@@ -93,6 +140,7 @@ async function handleStop() {
   try {
     editor.flush() // salva a última edição pendente antes de parar
     await stop.mutateAsync()
+    playStop()
     close()
   } catch {
     showError('Não foi possível parar o timer')
@@ -124,9 +172,19 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
     <!-- Trigger: pílula com cronômetro quando rodando; botão play quando parado -->
     <button
       class="timer-trigger"
-      :class="{ 'timer-trigger--running': isRunning, 'timer-trigger--active': isOpen }"
+      :class="{
+        'timer-trigger--running': isRunning,
+        'timer-trigger--active': isOpen,
+        'timer-trigger--idle': idleWarning,
+      }"
       type="button"
-      :title="isRunning ? 'Timer em andamento' : 'Iniciar timer'"
+      :title="
+        idleWarning
+          ? 'Sem atividade: o timer vai parar'
+          : isRunning
+            ? 'Timer em andamento'
+            : 'Iniciar timer'
+      "
       @click="toggleOpen"
     >
       <span v-if="isRunning" class="timer-dot" />
@@ -173,11 +231,12 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 
           <div v-if="editor.form.companyId" class="timer-field">
             <span class="timer-label">Tarefa</span>
-            <!-- ActivitySelect (com busca), não AppSelect: a lista de tarefas
-                 da empresa passa de dezenas e rolar tudo era a dor. -->
-            <ActivitySelect
+            <!-- TaskPicker, não select plano: a lista de uma empresa passa de
+                 dezenas, e o menu navega por trimestre e mês como o resto do
+                 produto (spec time-selecao-de-tarefa-e-som). -->
+            <TaskPicker
               :model-value="editor.form.activityId"
-              :items="optionsFor(editor.form.companyId)"
+              :company-id="editor.form.companyId"
               placeholder="Sem tarefa"
               label="Tarefa"
               density="compact"
@@ -205,11 +264,32 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
             />
           </div>
 
+          <!-- O aviso de ociosidade com as ações NÃO mora aqui: ele precisa
+               aparecer com o painel fechado, então vive no card fixo
+               (components/onboarding/IdleAlert.vue, montado no AppShell). Aqui
+               fica só o eco discreto, para quem abriu o painel entender o
+               estado da pílula âmbar. -->
+          <p v-if="idleWarning" class="timer-idle-hint">
+            Sem atividade há {{ idleMinutes }} min. O tempo para em {{ cutCountdown }}.
+          </p>
+
           <!-- F3 — aviso de timer esquecido (âmbar), sem parar automaticamente. -->
           <div v-if="forgotten" class="timer-warn" role="alert">
             <AlertTriangle :size="15" />
             <span>Timer rodando há {{ runningHours }}h. Ainda está trabalhando?</span>
           </div>
+
+          <!-- Sem permissão, o aviso não alcança quem está fora do navegador,
+               que é justamente o caso que importa. -->
+          <button
+            v-if="alerts.needsPermission.value"
+            class="timer-perm"
+            type="button"
+            @click="handleEnableAlerts"
+          >
+            <BellRing :size="13" />
+            <span>{{ permissionText }}</span>
+          </button>
 
           <button
             class="timer-btn timer-btn--stop"
@@ -249,9 +329,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 
           <div v-if="companyId" class="timer-field">
             <span class="timer-label">Tarefa</span>
-            <ActivitySelect
+            <TaskPicker
               :model-value="activityId"
-              :items="optionsFor(companyId)"
+              :company-id="companyId"
               placeholder="Sem tarefa"
               label="Tarefa"
               density="compact"
@@ -324,6 +404,17 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 .timer-trigger--running {
   border-color: var(--accent);
   color: var(--text);
+}
+
+/* Ociosidade: a pílula vira âmbar e pulsa, mesmo com o painel fechado. */
+.timer-trigger--idle {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface-2));
+  color: var(--text);
+}
+
+.timer-trigger--idle .timer-dot {
+  background: var(--warn);
 }
 
 .timer-clock {
@@ -461,6 +552,45 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
   gap: 3px;
   background: color-mix(in srgb, var(--success) 16%, transparent);
   color: var(--success);
+}
+
+/* Ociosidade — eco do estado no painel (as ações ficam no card fixo). */
+.timer-idle-hint {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+  color: var(--warn);
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Convite discreto de permissão (só quando falta). */
+.timer-perm {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.timer-perm:hover {
+  color: var(--text);
+  border-color: var(--accent);
 }
 
 /* F3 — banner de timer esquecido (âmbar). */

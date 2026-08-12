@@ -79,7 +79,7 @@ O layout principal é gerenciado por [`core/components/shells/AppShell.vue`](./c
 
 Trocar a variante é feito em `/settings` e é aplicada em runtime (sem reload).
 
-**Para rotas sem shell** (`login`, `download`): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas.
+**Para rotas sem shell** (`login`, `download`, `public-file` e as públicas de board/roadmap/bug-report): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas. Rota nova sem shell precisa entrar em DOIS lugares: no `bare` do `AppShell` e no `PUBLIC_ROUTES` do router (senão o guard manda pro login).
 
 **Componentes shared dos shells** em [`core/components/shells/shared/`](./core/components/shells/shared/):
 
@@ -105,9 +105,10 @@ Em [`components/ui/`](./components/ui/):
 | `AppDialog.vue`        | **Casca de overlay do design system** (Teleport + scrim `--scrim` + Esc + foco entra/volta). Props: `label`, `size` (sm 400/md 520/lg 640/xl 900), `loading` (trava fechar), `persistent`. Conteúdo via slot (header ícone+X, body, footer ghost+primary). **Zero `v-dialog` no código** (migração concluída em jul/2026) e proibido reintroduzir. |
 | `ConfirmDialog.vue`    | Modal de confirmação pronto por cima do AppDialog. Para confirmar exclusão etc., use ele direto.                     |
 | `TipTapToolbar.vue`    | Toolbar tokenizada de editor. Prop `groups` escolhe o que aparece; `bare` para uso dentro de popover.                |
-| `FileViewer.vue`       | Visualizador de arquivo em tela cheia (Teleport, imagem/PDF/markdown, setas, foco preso). Promovido do antigo `AttachmentViewer` das tarefas. `item.url` pronto OU `resolveUrl` assíncrono (Drive: URL assinada fresca). |
+| `FileViewer.vue`       | Visualizador de arquivo em tela cheia (Teleport, imagem/PDF/markdown/vídeo/áudio, setas, foco preso). Promovido do antigo `AttachmentViewer` das tarefas. `item.url` pronto OU `resolveUrl` assíncrono (Drive: URL assinada fresca). |
 | `AppSelect.vue`        | Select padrão (reka-ui Select). Single/multiple. Sem busca.                                                          |
-| `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. Usado no time tracking. |
+| `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. **Não é mais usado no time tracking** (ver `TaskPicker`); segue disponível para lista plana. |
+| `TaskPicker.vue`       | Seletor de tarefa do Meu tempo: menu navegável trimestre → mês → tarefa, busca global sem acento, atalhos (Recentes / Minhas), concluídas ocultas por padrão e teclado completo. Props `modelValue` + `companyId` (ele mesmo busca a árvore, via `useTaskPicker`). Inclui **subtarefas**. |
 | `TagChip.vue` + `tag-palette.ts` | Chip de tag. Cor vem de `var(--tag-<chave>)` (definido em `tokens.ts`, por tema), nunca hex. Tag sem cor recebe uma determinística pelo slug. |
 | `TagInput.vue`         | Campo de tags estilo Azure Boards: chips na caixa, Enter cria a que não existe, Backspace remove a última. Combobox ARIA à mão (não reka) — ver o comentário no arquivo. |
 
@@ -146,14 +147,88 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
 | **Notas** ★     | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | Redesenhada na P1 do épico de notas colaborativas. Autosave, pastas com CRUD e aninhamento, bubble/slash menu, modo imersivo. Sub-components em `features/notes/` |
 | Calendário      | [`features/calendar/CalendarView.vue`](./features/calendar/CalendarView.vue)                   | `/calendar`        | Google Calendar integration                                           |
-| Time Tracking   | [`features/time/TimeTrackingView.vue`](./features/time/TimeTrackingView.vue)                   | `/time`            | Timer estilo Clockify. Widget global nos 3 shells + `useTimeTracking` (Vue Query + socket `time:*`). Período = **Hoje · Mês navegável · Tudo** (`useTimePeriod` + `PeriodPicker`, uma instância por aba); totais e ritmo vêm de `/time/summary`, não da lista paginada. Spec: [time-periodos-mes-e-lifetime.md](../docs/specs/2026/q3/q3-2/time-periodos-mes-e-lifetime.md) |
-| **Drive** ★     | [`features/drive/DriveView.vue`](./features/drive/DriveView.vue)                               | `/drive`           | Arquivos em bucket PRIVADO (signed URL, nunca URL pública): espaço Pessoal + espaço da empresa ativa, pastas aninhadas, upload multi-arquivo com fila, grade/lista (`ui.driveViewMode`), viewer compartilhado (`components/ui/FileViewer.vue`, com `resolveUrl` assinado). Permissão padrão QR: pessoal = dono; empresa = membro vê/sobe, uploader gerencia o próprio, ADMIN tudo. Spec: docs/specs/2026/q3/q3-2/drive-p1-nativo.md |
+| Time Tracking   | [`features/time/TimeTrackingView.vue`](./features/time/TimeTrackingView.vue)                   | `/time`            | Timer estilo Clockify. Widget global nos 3 shells + `useTimeTracking` (Vue Query + socket `time:*`). Período = **Hoje · Mês navegável · Tudo** (`useTimePeriod` + `PeriodPicker`, uma instância por aba); totais e ritmo vêm de `/time/summary`, não da lista paginada. **Aviso de ociosidade** (ver abaixo). Specs: [time-periodos-mes-e-lifetime.md](../docs/specs/2026/q3/q3-2/time-periodos-mes-e-lifetime.md) · [timer-ociosidade.md](../docs/specs/2026/q3/q3-2/timer-ociosidade.md) |
+| **Drive** ★     | [`features/drive/DriveView.vue`](./features/drive/DriveView.vue)                               | `/drive`           | Arquivos em bucket PRIVADO (signed URL, nunca URL pública). Sidebar **multi-empresa** (modelo QR): Pessoal + TODAS as empresas do usuário, seleção em `?scope=personal\|<companyId>` sem mexer na empresa ativa do topo. Capas derivadas no navegador (`useFileCover`: pdf.js p/ 1ª página, frame de vídeo, snippet de texto, capa tipográfica por extensão em `file-palette.ts`), menu de ações reka-ui, painel de detalhes, ordenação, upload com fila, viewer compartilhado (`components/ui/FileViewer.vue`). **Link público** de download (`/f/:token`, rota sem shell): token revogável, URL assinada de 60s gerada no acesso e nunca persistida. Permissão padrão QR: pessoal = dono; empresa = membro vê/sobe, uploader gerencia o próprio, ADMIN tudo. Spec: docs/specs/2026/q3/q3-2/drive-p1-nativo.md |
 | OCR Digital     | [`features/ocr/OcrDigitalView.vue`](./features/ocr/OcrDigitalView.vue)                         | `/ocr`             | Ferramenta de integração (seção Ferramentas): leitura inteligente sem configuração (template opcional por empresa), acervo de documentos lidos, webhook. Spec: docs/specs/ocr-digital.md |
 | Acessos Públicos | [`features/public-access/PublicAccessView.vue`](./features/public-access/PublicAccessView.vue) | `/public-access`   | Tokens de API das ferramentas (seção Ferramentas): listagem agregada de todas as empresas onde o usuário é ADMIN, escopo por ferramenta (QR/OCR/ambas), revogação só pelo criador. Gate `meta.anyCompanyAdmin`. Spec: docs/specs/acessos-publicos.md |
 | Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only                                                            |
 | Configurações   | [`features/settings/SettingsView.vue`](./features/settings/SettingsView.vue)                   | `/settings`        | Tema, acento, densidade, shell variant                                |
 
 ★ = redesign completo entregue pelo design-system-evolution spec.
+
+### Seleção de tarefa e som do Meu tempo
+
+Spec: [time-selecao-de-tarefa-e-som.md](../docs/specs/2026/q3/q3-2/time-selecao-de-tarefa-e-som.md).
+
+O seletor de tarefa do time tracking (`components/ui/TaskPicker.vue` +
+`composables/useTaskPicker.ts`) lê `GET /activity/picker`, **não** o payload do
+dashboard. A diferença importa:
+
+1. **O dashboard exclui subtarefas** (`parentId: null`, deliberado para o board
+   agregado não duplicar métricas), então elas nunca podiam receber tempo. A rota
+   do picker inclui, com o título do pai junto.
+2. **`workspaceData` era carregado uma vez por sessão**, então tarefa criada
+   agora só aparecia depois de recarregar a página. A query do picker tem
+   `staleTime` de 30s e revalida ao abrir o menu.
+3. **Concluídas ficam ocultas** por padrão (`ui.pickerShowDone`), porque em
+   empresa madura elas são a maioria e enterravam a tarefa certa. O estado vazio
+   oferece "Mostrar N concluídas" quando é isso que está escondendo tudo.
+
+Navegação, busca e contagens são 100% locais (a árvore vem inteira numa
+requisição, só com títulos). Ordem da raiz: Sem tarefa → Recentes (por empresa,
+em `localStorage`) → Minhas tarefas → Trimestres.
+
+**Sons** (`composables/useTimerSounds.ts`): sintetizados com Web Audio no mesmo
+molde do `useXpSounds` (sem arquivo binário, volume baixo). Arpejo ascendente ao
+iniciar, o mesmo descendo com um toque seco ao parar, com variação de ±5 cents
+por execução para não cansar. Tocam DEPOIS da confirmação do servidor e só em
+gesto do usuário: o corte por ociosidade é silencioso de propósito. Preferência
+`ui.timerSounds`, com prévia em `/settings`.
+
+### Aviso de ociosidade do timer
+
+Spec: [timer-ociosidade.md](../docs/specs/2026/q3/q3-2/timer-ociosidade.md).
+
+Sem atividade por 15 min com o timer rodando, o Nevo avisa (notificação do
+sistema com botões + favicon e título piscando); se ninguém responder em mais 5,
+a entrada é encerrada **no instante da última atividade** e o tempo ocioso não
+entra em total nenhum, com recuperação de um clique por 12h.
+
+```
+composables/
+  idle-state.ts          estado compartilhado (refs + localStorage + IDLE_DEBUG)
+  useIdleDetection.ts    sensores: IdleDetector (SO) + eventos de DOM + cross-tab
+  useTimerIdleGuard.ts   política: alerta → carência → corte, ações e recuperação
+  useSystemNotification.ts  permissão, service worker e notificação com actions
+  useIdleAlerts.ts       as duas permissões, sempre sob gesto do usuário
+components/onboarding/   IdleAlert.vue (card com as ações), IdlePermissionPrompt.vue
+public/idle-sw.js        service worker SÓ de notificação (sem handler de fetch)
+```
+
+Cinco coisas que não são óbvias:
+
+1. **Ociosidade nunca sai do cliente.** O backend recebe só o fim da entrada
+   (`POST /time/stop` com `endedAt` retroativo, que marca `autoStopped`). Nada de
+   "fulano está ocioso" no socket ou na visão de equipe: o produto é de gestão de
+   tempo, não de vigilância, e esse sinal faria o time abandonar o timer.
+2. **A última atividade é da ORIGEM, não da aba** (`localStorage` +
+   evento `storage`). Sem isso, a aba esquecida em segundo plano mataria o timer
+   de quem está trabalhando na outra aba.
+3. **As permissões só podem ser pedidas dentro de um clique**, e o pedido roda
+   ANTES do `await` do start (a ativação do gesto expira e não sobrevive à
+   resposta da rede). Pontos de pedido: card do primeiro acesso e os três botões
+   de iniciar timer.
+4. **O service worker não tem handler de `fetch`** — existe só porque notificação
+   com botões exige `ServiceWorkerRegistration.showNotification`. Não intercepta
+   nem cacheia nada; reverter o front exige `unregister()` (ver Plano de Rollback
+   da spec).
+5. **As ações do alerta vivem fora do popover do timer** (`IdleAlert.vue`, montado
+   no AppShell). Foi o que a verificação de ponta a ponta mostrou: com os botões
+   dentro do painel fechado, quem voltava ao computador não via nada na tela.
+
+Para exercitar sem esperar 20 minutos: `?idleDebug=1` (só em dev) usa 30s de
+aviso e 15s de carência, e ignora o sinal da `IdleDetector` (a API só informa
+"parado há pelo menos 60s", o que atropelaria limiares de segundos).
 
 ### Estrutura de Notas (P1 do épico de notas colaborativas)
 
@@ -183,7 +258,7 @@ Spec: [tasks-tags-arquivos-markdown.md](../docs/specs/2026/q3/q3-2/tasks-tags-ar
 
 ```
 features/tasks/
-  attachment-kind.ts        reexport de @/utils/file-kind (promovido pela spec do Drive)
+  (o antigo attachment-kind.ts foi promovido para @/utils/file-kind pela spec do Drive)
   components/
     TaskAttachments.vue     DONO ÚNICO do markup de anexo (lista/grade, dropzone, progresso)
                             (o viewer virou components/ui/FileViewer.vue, compartilhado)

@@ -31,7 +31,16 @@ import {
   LoaderCircle,
   X,
 } from 'lucide-vue-next'
-import { formatBytes, iconOf, isImage, kindOf, labelOf } from '@/utils/file-kind'
+import hljs from 'highlight.js/lib/common'
+import 'highlight.js/styles/github-dark.css'
+import {
+  formatBytes,
+  iconOf,
+  isImage,
+  kindOf,
+  labelOf,
+  type AttachmentKind,
+} from '@/utils/file-kind'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 // Prosa do markdown. Follow-up: promover este CSS junto com o viewer (hoje ele
 // ainda mora em `features/tasks/styles/`, de quando o leitor era só da tarefa).
@@ -141,6 +150,80 @@ watch(
     markdownHtml.value = ''
     markdownLoading.value = false
     markdownFailed.value = false
+  },
+  { immediate: true },
+)
+
+// ─── Texto, código e JSON: lê e mostra formatado ─────────────────────────────
+
+/**
+ * Antes, tudo que não fosse imagem, PDF ou markdown caía no cartão de download.
+ * Na prática isso significava que abrir um `.json`, um `.sql` ou um `.txt` do
+ * Drive respondia "baixe para ver" — o visualizador não visualizava.
+ *
+ * Aqui o conteúdo é lido e exibido com realce (highlight.js, o mesmo do
+ * navegador de repositórios). JSON ainda passa por um `JSON.parse` +
+ * `stringify` indentado antes: arquivo de API vem numa linha só, e uma linha
+ * de 40 mil caracteres não é leitura, é rolagem horizontal.
+ */
+const TEXT_KINDS = new Set<AttachmentKind>(['text', 'code', 'sheet'])
+const TEXT_VIEW_MAX_BYTES = 2 * 1024 * 1024
+
+const textHtml = ref('')
+const textLoading = ref(false)
+const textFailed = ref(false)
+let textToken = 0
+
+function isTextViewable(item: ViewerFile): boolean {
+  if (!TEXT_KINDS.has(kindOf(item))) return false
+  // Planilha de verdade (xlsx) é binária; só o CSV cai aqui como texto.
+  if (kindOf(item) === 'sheet' && !/\.csv$/i.test(item.filename)) return false
+  return (item.size ?? 0) <= TEXT_VIEW_MAX_BYTES
+}
+
+async function loadText(url: string, item: ViewerFile): Promise<void> {
+  const token = ++textToken
+  textHtml.value = ''
+  textFailed.value = false
+  textLoading.value = true
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(String(response.status))
+    let raw = await response.text()
+    if (token !== textToken) return
+
+    const extension = item.filename.split('.').pop()?.toLowerCase() ?? ''
+    if (extension === 'json') {
+      try {
+        raw = JSON.stringify(JSON.parse(raw), null, 2)
+      } catch {
+        // JSON inválido continua legível como texto puro.
+      }
+    }
+
+    const language = hljs.getLanguage(extension) ? extension : ''
+    textHtml.value = language
+      ? hljs.highlight(raw, { language, ignoreIllegals: true }).value
+      : hljs.highlightAuto(raw).value
+  } catch {
+    if (token !== textToken) return
+    textFailed.value = true
+  } finally {
+    if (token === textToken) textLoading.value = false
+  }
+}
+
+watch(
+  [current, displayUrl],
+  ([item, url]) => {
+    if (item && url && isTextViewable(item)) {
+      void loadText(url, item)
+      return
+    }
+    textToken++
+    textHtml.value = ''
+    textLoading.value = false
+    textFailed.value = false
   },
   { immediate: true },
 )
@@ -305,6 +388,35 @@ onBeforeUnmount(() => {
             class="viewer__image"
           />
 
+          <!--
+            Vídeo e áudio tocam AQUI: mandar quem clicou num .mp4 baixar 40 MB
+            para conferir se é o take certo é o mesmo que não ter visualizador.
+            `key` no src força o elemento a recarregar ao trocar de item, senão
+            o player mantém o buffer do arquivo anterior.
+          -->
+          <!--
+            Sem `autoplay`: a política dos navegadores bloqueia mídia com som
+            iniciada sem gesto do usuário, então o atributo só produzia um
+            player parado fingindo que ia tocar. Quem abriu o arquivo dá o play.
+          -->
+          <video
+            v-else-if="current && displayUrl && kind === 'video'"
+            :key="displayUrl"
+            class="viewer__media"
+            :src="displayUrl"
+            controls
+            playsinline
+          />
+
+          <div
+            v-else-if="current && displayUrl && kind === 'audio'"
+            class="viewer__audio"
+          >
+            <component :is="iconOf(current)" :size="42" class="viewer__audio-icon" />
+            <p class="viewer__audio-name">{{ current.filename }}</p>
+            <audio :key="displayUrl" class="viewer__audio-player" :src="displayUrl" controls />
+          </div>
+
           <object
             v-else-if="current && displayUrl && kind === 'pdf'"
             class="viewer__pdf"
@@ -345,6 +457,22 @@ onBeforeUnmount(() => {
               caminho de render de markdown do app.
             -->
             <article v-else class="viewer__md-doc md-doc" v-html="markdownHtml" />
+          </div>
+
+          <div
+            v-else-if="current && displayUrl && isTextViewable(current) && !textFailed"
+            class="viewer__text"
+          >
+            <div v-if="textLoading" class="viewer__md-load">
+              <LoaderCircle :size="16" class="viewer__spinner" />
+              Carregando o conteúdo…
+            </div>
+            <!--
+              eslint-disable-next-line vue/no-v-html
+              O HTML vem do highlight.js, que ESCAPA o texto de entrada e só
+              emite `<span class="hljs-*">` — não repassa marcação do arquivo.
+            -->
+            <pre v-else class="viewer__code"><code v-html="textHtml" /></pre>
           </div>
 
           <div v-else-if="current" class="viewer__fallback">
@@ -497,6 +625,68 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.viewer__media {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius);
+  background: #000;
+}
+
+/* Texto e código: coluna larga (código tem linhas longas), mas com teto. */
+.viewer__text {
+  width: min(1100px, 100%);
+  height: 100%;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.viewer__code {
+  margin: 0;
+  padding: 18px 20px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+/* O tema do hljs pinta o próprio fundo; aqui quem manda é o token do app. */
+.viewer__code :deep(.hljs),
+.viewer__code code {
+  background: transparent;
+  color: var(--text);
+}
+
+.viewer__audio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  min-width: min(420px, 100%);
+}
+
+.viewer__audio-icon {
+  color: var(--text-3);
+}
+
+.viewer__audio-name {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  word-break: break-word;
+}
+
+.viewer__audio-player {
+  width: 100%;
 }
 
 /* Markdown: coluna de leitura, não largura total — texto corrido em 1400px é

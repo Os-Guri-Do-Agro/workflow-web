@@ -4,14 +4,8 @@
  * recursão por template (o componente se referencia pelo nome do arquivo) é
  * tipada de graça, ao contrário do render-function auto-referente.
  */
-import {
-  ChevronRight,
-  Folder,
-  FolderInput,
-  FolderPlus,
-  Pencil,
-  Trash2,
-} from 'lucide-vue-next'
+import { ChevronRight, Folder, MoreVertical } from 'lucide-vue-next'
+import FolderActionsMenu from './FolderActionsMenu.vue'
 import type { DriveFolderNode } from '@/features/drive/types'
 
 const props = defineProps<{
@@ -60,44 +54,26 @@ function isCollapsed(): boolean {
         <span class="dsr-count">{{ node._count?.files ?? 0 }}</span>
       </button>
 
-      <span v-if="canManage" class="dsr-acts">
-        <button
-          type="button"
-          class="dsr-act press"
-          :aria-label="`Nova subpasta em ${node.name}`"
-          title="Nova subpasta"
-          @click.stop="emit('create', node.id)"
-        >
-          <FolderPlus :size="12" />
-        </button>
-        <button
-          type="button"
-          class="dsr-act press"
-          :aria-label="`Mover pasta ${node.name}`"
-          title="Mover"
-          @click.stop="emit('move', node)"
-        >
-          <FolderInput :size="12" />
-        </button>
-        <button
-          type="button"
-          class="dsr-act press"
-          :aria-label="`Renomear pasta ${node.name}`"
-          title="Renomear"
-          @click.stop="emit('rename', node)"
-        >
-          <Pencil :size="12" />
-        </button>
-        <button
-          type="button"
-          class="dsr-act dsr-act--danger press"
-          :aria-label="`Excluir pasta ${node.name}`"
-          title="Excluir"
-          @click.stop="emit('remove', node)"
-        >
-          <Trash2 :size="12" />
-        </button>
-      </span>
+      <FolderActionsMenu
+        v-if="canManage"
+        class="dsr-acts"
+        :folder-name="node.name"
+        @create="emit('create', node.id)"
+        @rename="emit('rename', node)"
+        @move="emit('move', node)"
+        @remove="emit('remove', node)"
+      >
+        <template #trigger>
+          <button
+            type="button"
+            class="dsr-act press"
+            :aria-label="`Ações da pasta ${node.name}`"
+            @click.stop
+          >
+            <MoreVertical :size="14" />
+          </button>
+        </template>
+      </FolderActionsMenu>
     </div>
 
     <template v-if="!isCollapsed()">
@@ -204,24 +180,39 @@ function isCollapsed(): boolean {
   cursor: default;
 }
 
+/*
+ * `opacity`, nunca `display:none`: o menu é portalado e modal, então ao abrir
+ * o body perde `pointer-events`, a linha perde `:hover` e o gatilho sairia do
+ * layout — o floating-ui reancoraria sobre um retângulo vazio e o menu pularia
+ * para o canto da tela. Mesmo motivo da lista de arquivos.
+ */
 .dsr-acts {
-  display: none;
+  display: inline-flex;
   align-items: center;
   gap: 2px;
   padding-right: 4px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-ease);
 }
 
 .dsr-row:hover .dsr-acts,
-.dsr-row:focus-within .dsr-acts {
-  display: inline-flex;
+.dsr-row:focus-within .dsr-acts,
+.dsr-acts:has([data-state='open']) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .dsr-acts {
+    opacity: 1;
+  }
 }
 
 .dsr-act {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border: none;
   border-radius: 4px;
   background: transparent;

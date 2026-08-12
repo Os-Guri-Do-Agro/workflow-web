@@ -15,9 +15,10 @@
  */
 import { computed, ref } from 'vue'
 import {
-  ArrowDown,
-  ArrowUp,
   Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   FileText,
@@ -119,6 +120,37 @@ function titleFromFilename(filename: string): string {
   return base.charAt(0).toUpperCase() + base.slice(1)
 }
 
+/** Posição da aba aberta: as ações da barra agem sobre ela. */
+const selectedIndex = computed(() =>
+  props.docs.findIndex((doc) => doc.id === selectedId.value),
+)
+
+// ─── Minimizar ───────────────────────────────────────────────────────────────
+//
+// Um documento de spec ocupa a tela inteira, e quem quer chegar nas subtarefas
+// paga o preço em rolagem. Recolher é preferência de quem trabalha, não estado
+// da tarefa: fica no `localStorage`, igual ao modo do editor.
+
+const COLLAPSE_KEY = 'tasks.docs.collapsed'
+const collapsed = ref(localStorage.getItem(COLLAPSE_KEY) === '1')
+
+function toggleCollapse(): void {
+  // Recolher desmonta o editor: descarrega o autosave pendente antes, senão o
+  // que foi digitado nos últimos segundos morre com o componente.
+  if (!collapsed.value) flush()
+  collapsed.value = !collapsed.value
+  localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0')
+}
+
+/** Resumo de uma linha no lugar do editor: qual documento ficaria aberto. */
+const collapsedSummary = computed(() => {
+  const principal = props.docs.find((doc) => doc.isPrimary) ?? props.docs[0]
+  if (!principal) return ''
+  const resto = props.docs.length - 1
+  if (!resto) return principal.title
+  return `${principal.title} e mais ${resto}`
+})
+
 // ─── Renomear ────────────────────────────────────────────────────────────────
 
 const renamingId = ref<string | null>(null)
@@ -212,13 +244,23 @@ function onDeleteDialog(open: boolean): void {
 <template>
   <section class="docs">
     <header class="docs__head">
-      <h3 class="docs__title">
+      <button
+        type="button"
+        class="docs__title"
+        :aria-expanded="!collapsed"
+        :title="collapsed ? 'Expandir documentos' : 'Minimizar documentos'"
+        @click="toggleCollapse"
+      >
+        <ChevronDown :size="13" class="docs__chev" :class="{ 'docs__chev--up': collapsed }" />
         <FileText :size="12" />
         Documentos
         <span v-if="docs.length" class="docs__count">{{ docs.length }}</span>
-      </h3>
+        <span v-if="collapsed && collapsedSummary" class="docs__summary">
+          {{ collapsedSummary }}
+        </span>
+      </button>
 
-      <div v-if="canEdit" class="docs__head-actions">
+      <div v-if="canEdit && !collapsed" class="docs__head-actions">
         <button
           type="button"
           class="docs__ghost press"
@@ -249,7 +291,7 @@ function onDeleteDialog(open: boolean): void {
       </div>
     </header>
 
-    <div v-if="!docs.length" class="docs__empty">
+    <div v-if="!docs.length && !collapsed" class="docs__empty">
       <FileText :size="18" />
       <p class="docs__empty-title">Nenhum documento ainda</p>
       <p class="docs__empty-hint">
@@ -258,22 +300,27 @@ function onDeleteDialog(open: boolean): void {
       </p>
     </div>
 
-    <div v-else class="docs__body">
-      <ul class="docs__list">
-        <li v-for="(doc, index) in docs" :key="doc.id" class="docs__item">
+    <template v-else-if="!collapsed">
+      <!-- Abas, como num editor de código: o documento aberto é uma aba ligada
+           ao conteúdo abaixo. A lista lateral que existia aqui desperdiçava uma
+           coluna inteira para dois ou três nomes e roubava largura justamente
+           de quem precisa dela (markdown + preview lado a lado). -->
+      <div class="docs__tabbar">
+        <div class="docs__tabs" role="tablist" aria-label="Documentos da tarefa">
           <button
+            v-for="doc in docs"
+            :key="doc.id"
             type="button"
-            class="docs__pick"
-            :class="{ 'docs__pick--on': doc.id === selectedId }"
-            :aria-current="doc.id === selectedId"
+            role="tab"
+            class="docs__tab"
+            :class="{ 'docs__tab--on': doc.id === selectedId }"
+            :aria-selected="doc.id === selectedId"
+            :title="`${doc.filename}${doc.isPrimary ? ' · principal' : ''}`"
             @click="selectedId = doc.id"
+            @dblclick="canEdit && startRename(doc)"
           >
-            <Star
-              v-if="doc.isPrimary"
-              :size="11"
-              class="docs__star"
-              aria-label="Documento principal"
-            />
+            <Star v-if="doc.isPrimary" :size="11" class="docs__tab-star" />
+            <FileText v-else :size="11" class="docs__tab-icon" />
             <input
               v-if="renamingId === doc.id"
               v-model="renameValue"
@@ -283,75 +330,77 @@ function onDeleteDialog(open: boolean): void {
               @keydown.esc.prevent="renamingId = null"
               @blur="commitRename(doc)"
             />
-            <span v-else class="docs__name" @dblclick.stop="startRename(doc)">
-              {{ doc.title }}
-            </span>
+            <span v-else class="docs__tab-name">{{ doc.title }}</span>
           </button>
-
-          <div v-if="canEdit" class="docs__item-actions">
-            <button
-              type="button"
-              class="docs__mini"
-              :disabled="index === 0"
-              aria-label="Mover para cima"
-              @click="move(index, -1)"
-            >
-              <ArrowUp :size="12" />
-            </button>
-            <button
-              type="button"
-              class="docs__mini"
-              :disabled="index === docs.length - 1"
-              aria-label="Mover para baixo"
-              @click="move(index, 1)"
-            >
-              <ArrowDown :size="12" />
-            </button>
-            <button
-              type="button"
-              class="docs__mini"
-              :class="{ 'docs__mini--on': doc.isPrimary }"
-              :disabled="doc.isPrimary"
-              :aria-label="
-                doc.isPrimary ? 'Já é o principal' : 'Marcar como principal'
-              "
-              :title="
-                doc.isPrimary
-                  ? 'Principal: é o que as subtarefas herdam'
-                  : 'Marcar como principal'
-              "
-              @click="makePrimary(doc)"
-            >
-              <Star :size="12" />
-            </button>
-            <button
-              type="button"
-              class="docs__mini docs__mini--kill"
-              aria-label="Remover documento"
-              @click="pendingDelete = doc"
-            >
-              <Trash2 :size="12" />
-            </button>
-          </div>
-        </li>
-      </ul>
-
-      <div class="docs__pane">
-        <div class="docs__pane-bar">
-          <span class="docs__filename">{{ selected?.filename }}</span>
-          <div class="docs__pane-actions">
-            <button type="button" class="docs__ghost press" @click="copyRaw">
-              <Check v-if="copied" :size="13" />
-              <Copy v-else :size="13" />
-              {{ copied ? 'Copiado' : 'Copiar markdown' }}
-            </button>
-            <button type="button" class="docs__ghost press" @click="download">
-              <Download :size="13" />
-              Baixar
-            </button>
-          </div>
         </div>
 
+        <!-- Ações do documento ABERTO. Antes viviam escondidas no hover de cada
+             linha da lista, o que não se descobre sem passar o mouse por cima. -->
+        <div class="docs__tab-actions">
+          <button
+            v-if="canEdit"
+            type="button"
+            class="docs__mini"
+            :disabled="selectedIndex <= 0"
+            aria-label="Mover documento para a esquerda"
+            title="Mover para a esquerda"
+            @click="move(selectedIndex, -1)"
+          >
+            <ChevronLeft :size="14" />
+          </button>
+          <button
+            v-if="canEdit"
+            type="button"
+            class="docs__mini"
+            :disabled="selectedIndex < 0 || selectedIndex === docs.length - 1"
+            aria-label="Mover documento para a direita"
+            title="Mover para a direita"
+            @click="move(selectedIndex, 1)"
+          >
+            <ChevronRight :size="14" />
+          </button>
+          <button
+            v-if="canEdit && selected"
+            type="button"
+            class="docs__mini"
+            :class="{ 'docs__mini--on': selected.isPrimary }"
+            :disabled="selected.isPrimary"
+            :aria-label="selected.isPrimary ? 'Já é o principal' : 'Marcar como principal'"
+            :title="
+              selected.isPrimary
+                ? 'Principal: é o que as subtarefas herdam'
+                : 'Marcar como principal'
+            "
+            @click="makePrimary(selected)"
+          >
+            <Star :size="14" />
+          </button>
+
+          <span class="docs__sep" aria-hidden="true" />
+
+          <button type="button" class="docs__ghost press" @click="copyRaw">
+            <Check v-if="copied" :size="13" />
+            <Copy v-else :size="13" />
+            <span class="docs__ghost-label">{{ copied ? 'Copiado' : 'Copiar markdown' }}</span>
+          </button>
+          <button type="button" class="docs__ghost press" title="Baixar .md" @click="download">
+            <Download :size="13" />
+            <span class="docs__ghost-label">Baixar</span>
+          </button>
+          <button
+            v-if="canEdit && selected"
+            type="button"
+            class="docs__mini docs__mini--kill"
+            aria-label="Remover documento"
+            title="Remover documento"
+            @click="pendingDelete = selected"
+          >
+            <Trash2 :size="14" />
+          </button>
+        </div>
+      </div>
+
+      <div class="docs__pane">
         <div v-if="isLoadingContent" class="docs__loading">
           <Loader2 :size="15" class="spin" />
           <span>Carregando documento...</span>
@@ -375,7 +424,7 @@ function onDeleteDialog(open: boolean): void {
           @retry="retry"
         />
       </div>
-    </div>
+    </template>
 
     <ConfirmDialog
       v-if="pendingDelete"
@@ -392,10 +441,16 @@ function onDeleteDialog(open: boolean): void {
 </template>
 
 <style scoped>
+/* A seção é dona do próprio respiro: o `.panel` que a hospeda não tem padding
+   (é ele quem dá a borda e o raio), então cabeçalho e estados vazios pagam o
+   seu, e só a faixa de abas + editor vai de ponta a ponta, de propósito. */
 .docs {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  min-width: 0;
+  /* Quem decide se os rótulos das ações cabem é a largura DESTA seção (ela vive
+     na página cheia e no painel lateral do board), não a da janela. */
+  container-type: inline-size;
 }
 
 .docs__head {
@@ -403,18 +458,61 @@ function onDeleteDialog(open: boolean): void {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding: 12px 14px;
 }
 
+/* O título é o botão de minimizar: alvo grande, sem inventar um ícone extra
+   competindo com as ações de criação à direita. */
 .docs__title {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0;
+  min-width: 0;
+  margin: 0 -6px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-3);
+  font-family: inherit;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  cursor: pointer;
+}
+
+.docs__title:hover {
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+
+.docs__title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.docs__chev {
+  color: var(--text-4);
+  flex: none;
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.docs__chev--up {
+  transform: rotate(-90deg);
+}
+
+/* Qual documento está lá dentro, sem precisar expandir para descobrir. */
+.docs__summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-4);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .docs__count {
@@ -431,8 +529,7 @@ function onDeleteDialog(open: boolean): void {
   letter-spacing: 0;
 }
 
-.docs__head-actions,
-.docs__pane-actions {
+.docs__head-actions {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -477,6 +574,7 @@ function onDeleteDialog(open: boolean): void {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  margin: 0 14px 14px;
   padding: 22px 16px;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
@@ -498,110 +596,145 @@ function onDeleteDialog(open: boolean): void {
   max-width: 42ch;
 }
 
-.docs__body {
-  display: grid;
-  grid-template-columns: 190px 1fr;
-  gap: 10px;
-  align-items: start;
-}
+/* ─── Faixa de abas ──────────────────────────────────────────────────────── */
 
-.docs__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.docs__tabbar {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.docs__item {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.docs__pick {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 5px;
+  align-items: stretch;
+  gap: 8px;
+  padding-left: 8px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+}
+
+.docs__tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.docs__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.docs__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 9px 12px;
+  border: none;
+  /* A aba ativa engole a linha de baixo da faixa e encosta no conteúdo: é isso
+     que faz o par aba/documento ler como uma coisa só. */
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-3);
   font-family: inherit;
-  font-size: 12px;
-  text-align: left;
+  font-size: 12.5px;
   cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 
-.docs__pick:hover {
-  background: var(--surface-2);
+.docs__tab + .docs__tab {
+  box-shadow: inset 1px 0 0 var(--border);
 }
 
-.docs__pick--on {
-  background: var(--surface-2);
-  border-color: var(--border);
+.docs__tab:hover {
+  color: var(--text-2);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+}
+
+/* Dois nomes de classe de propósito: precisa ganhar do separador
+   (`.docs__tab + .docs__tab`), que também é `box-shadow` e tem a mesma força. */
+.docs__tab.docs__tab--on {
+  background: var(--surface);
+  border-bottom-color: var(--surface);
   color: var(--text);
   font-weight: 600;
+  /* Fio de acento no topo: a marca de "este é o aberto" que sobrevive sem cor
+     de fundo forte, do mesmo jeito que um editor de código faz. */
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
-.docs__pick:focus-visible {
+.docs__tab:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
-.docs__star {
+.docs__tab-star {
   color: var(--accent);
   flex: none;
 }
 
-.docs__name {
+.docs__tab-icon {
+  color: var(--text-4);
+  flex: none;
+}
+
+.docs__tab-name {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .docs__rename {
-  width: 100%;
+  width: 14ch;
+  min-width: 8ch;
   border: none;
   outline: none;
   background: transparent;
   color: var(--text);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
-.docs__item-actions {
+.docs__tab-actions {
   display: flex;
-  gap: 1px;
-  opacity: 0;
-  transition: opacity var(--motion-fast) var(--motion-ease);
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 0 8px 0 4px;
+  flex: none;
 }
 
-.docs__item:hover .docs__item-actions,
-.docs__item:focus-within .docs__item-actions {
-  opacity: 1;
+.docs__sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border);
 }
 
 .docs__mini {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-4);
   cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .docs__mini:hover:not(:disabled) {
   color: var(--text);
   background: var(--surface-3);
+}
+
+.docs__mini:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .docs__mini--on {
@@ -611,6 +744,7 @@ function onDeleteDialog(open: boolean): void {
 
 .docs__mini--kill:hover:not(:disabled) {
   color: var(--err);
+  background: color-mix(in srgb, var(--err) 10%, transparent);
 }
 
 .docs__mini:disabled {
@@ -621,24 +755,14 @@ function onDeleteDialog(open: boolean): void {
 .docs__pane {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   min-width: 0;
 }
 
-.docs__pane-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.docs__filename {
-  color: var(--text-4);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* O editor preenche o cartão de ponta a ponta: dentro de um painel com raio e
+   `overflow: hidden`, borda e raio próprios virariam moldura dupla. */
+.docs__pane :deep(.mde) {
+  border: none;
+  border-radius: 0;
 }
 
 .docs__loading {
@@ -648,8 +772,6 @@ function onDeleteDialog(open: boolean): void {
   padding: 26px;
   color: var(--text-3);
   font-size: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
 }
 
 .spin {
@@ -662,21 +784,23 @@ function onDeleteDialog(open: boolean): void {
   }
 }
 
-@media (max-width: 720px) {
-  .docs__body {
-    grid-template-columns: 1fr;
+/* Painel estreito (o lateral do board, por exemplo): os rótulos saem e ficam
+   só os ícones, para as abas não perderem espaço para a barra de ações. */
+@container (max-width: 560px) {
+  .docs__ghost-label {
+    display: none;
   }
-  .docs__list {
-    flex-direction: row;
-    flex-wrap: wrap;
+  .docs__ghost {
+    padding: 4px 7px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spin {
+  .spin,
+  .docs__tab,
+  .docs__mini,
+  .docs__chev {
     animation: none;
-  }
-  .docs__item-actions {
     transition: none;
   }
 }

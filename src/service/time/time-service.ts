@@ -109,8 +109,16 @@ const timeService = {
     return response.data
   },
 
-  async stop() {
-    const response = await api.post<TimeEntry>('/time/stop')
+  /**
+   * Para o timer. `endedAt` (ISO) fecha num instante PASSADO — corte por
+   * ociosidade: o tempo entre a última atividade real e agora não entra em
+   * total nenhum. Sem o parâmetro, fecha em agora, como sempre.
+   */
+  async stop(endedAt?: string) {
+    const response = await api.post<TimeEntry>(
+      '/time/stop',
+      endedAt ? { endedAt } : undefined,
+    )
     return response.data
   },
 

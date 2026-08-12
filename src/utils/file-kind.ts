@@ -116,13 +116,25 @@ export function extensionOf(filename: string): string {
 
 export function kindOf(file: FileLike): AttachmentKind {
   const mime = file.mimeType?.toLowerCase() ?? ''
+  const extensionKind = EXTENSION_KIND[extensionOf(file.filename)]
+
+  // A EXTENSÃO VENCE quando as duas fontes discordam sobre mídia. O mimetype é
+  // declarado pelo cliente e vem do registro do sistema: o Windows rotula `.ts`
+  // como `video/mp2t`, então um arquivo TypeScript abriria um `<video>` que
+  // nunca carrega (e, no Drive, seria baixado inteiro para procurar um frame).
+  // Discordância só importa aqui; nos demais tipos o mimetype segue mandando.
+  const mimeIsMedia = mime.startsWith('video/') || mime.startsWith('audio/')
+  if (mimeIsMedia && extensionKind && extensionKind !== 'video' && extensionKind !== 'audio') {
+    return extensionKind
+  }
+
   if (mime.startsWith('image/')) return 'image'
   if (mime === 'application/pdf') return 'pdf'
   if (mime === 'text/markdown') return 'markdown'
   if (mime.startsWith('video/')) return 'video'
   if (mime.startsWith('audio/')) return 'audio'
 
-  return EXTENSION_KIND[extensionOf(file.filename)] ?? 'other'
+  return extensionKind ?? 'other'
 }
 
 export function iconOf(file: FileLike): LucideIcon {
@@ -133,10 +145,22 @@ export function labelOf(file: FileLike): string {
   return KIND_LABEL[kindOf(file)]
 }
 
-/** O viewer sabe renderizar. Todo o resto cai no cartão de download. */
+/**
+ * O viewer sabe renderizar; todo o resto cai no cartão de download.
+ *
+ * NÃO é o gate do `FileViewer` — ele decide por `kind` no próprio template.
+ * Existe para quem precisa da mesma pergunta ANTES de abrir (ex.: decidir se
+ * um item vira link de preview ou de download direto).
+ */
 export function isPreviewable(file: FileLike): boolean {
   const kind = kindOf(file)
-  return kind === 'image' || kind === 'pdf' || kind === 'markdown'
+  return (
+    kind === 'image' ||
+    kind === 'pdf' ||
+    kind === 'markdown' ||
+    kind === 'video' ||
+    kind === 'audio'
+  )
 }
 
 /**

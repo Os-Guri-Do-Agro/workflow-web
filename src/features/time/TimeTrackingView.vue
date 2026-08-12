@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { AlertTriangle, DollarSign, Pencil, Play, Plus, Square, Trash2, Users, X } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
-import ActivitySelect from '@/components/ui/ActivitySelect.vue'
+import TaskPicker from '@/components/ui/TaskPicker.vue'
 import TimeInsightsRail from '@/features/time/components/TimeInsightsRail.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -16,6 +16,8 @@ import { buildPulseBars, useTimePeriod } from '@/features/time/composables/useTi
 import PeriodPicker from '@/features/time/components/PeriodPicker.vue'
 import { useCompanyActivities } from '@/composables/useCompanyActivities'
 import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
+import { useIdleAlerts } from '@/composables/useIdleAlerts'
+import { useTimerSounds } from '@/composables/useTimerSounds'
 import { getApiErrorMessage } from '@/service/api'
 import type { TimeEntry } from '@/service/time/time-service'
 import {
@@ -33,7 +35,11 @@ const { error: showError, success } = useToast()
 const workspace = useWorkspaceStore()
 const { isRunning, elapsedSec, start, stop, createManual, updateEntry, deleteEntry } =
   useTimeTracking()
-const { optionsFor, companyOf } = useCompanyActivities()
+const { companyOf } = useCompanyActivities()
+const { playStart, playStop } = useTimerSounds()
+// Ociosidade: a view é um dos pontos de início do timer, então também é onde o
+// pedido de permissão do aviso pode ser ancorado (spec timer-ociosidade).
+const alerts = useIdleAlerts()
 
 // ─── Abas: Meu tempo | Equipe ─────────────────────────────────────────────────
 // A aba Equipe era exclusiva de ADMIN; virou o ranking da empresa, aberto a
@@ -90,6 +96,8 @@ const forgotten = computed(() => isRunning.value && elapsedSec.value > FORGOTTEN
 const runningHours = computed(() => Math.floor(elapsedSec.value / 3600))
 
 async function handleStart() {
+  // Antes do await: o pedido de permissão precisa do gesto vivo (ver useIdleAlerts).
+  alerts.askOnStart()
   try {
     await start.mutateAsync({
       description: timerForm.description.trim() || undefined,
@@ -97,6 +105,7 @@ async function handleStart() {
       activityId: timerForm.companyId ? timerForm.activityId : null,
       billable: timerForm.billable,
     })
+    playStart()
     timerForm.description = ''
     timerForm.activityId = null
     timerForm.billable = false
@@ -109,6 +118,7 @@ async function handleStop() {
   try {
     editor.flush() // garante que a última edição pendente foi salva antes de parar
     await stop.mutateAsync()
+    playStop()
   } catch {
     showError('Não foi possível parar o timer')
   }
@@ -116,6 +126,7 @@ async function handleStop() {
 
 // F6 — "Continuar": reinicia um timer com a mesma descrição/empresa/tarefa.
 async function handleContinue(entry: TimeEntry) {
+  alerts.askOnStart()
   try {
     await start.mutateAsync({
       description: entry.description || undefined,
@@ -123,6 +134,7 @@ async function handleContinue(entry: TimeEntry) {
       activityId: entry.activityId,
       billable: entry.billable,
     })
+    playStart()
     success('Timer retomado')
   } catch (e) {
     showError(getApiErrorMessage(e, 'Não foi possível retomar o timer'))
@@ -579,10 +591,10 @@ async function submitManual() {
               density="compact"
               @update:model-value="applyCompanyChange(timerForm, $event)"
             />
-            <ActivitySelect
+            <TaskPicker
               v-if="timerForm.companyId"
               :model-value="timerForm.activityId"
-              :items="optionsFor(timerForm.companyId)"
+              :company-id="timerForm.companyId"
               placeholder="Sem tarefa"
               label="Tarefa"
               density="compact"
@@ -626,10 +638,10 @@ async function submitManual() {
               density="compact"
               @update:model-value="editor.setCompany($event)"
             />
-            <ActivitySelect
+            <TaskPicker
               v-if="editor.form.companyId"
               :model-value="editor.form.activityId"
-              :items="optionsFor(editor.form.companyId)"
+              :company-id="editor.form.companyId"
               placeholder="Sem tarefa"
               label="Tarefa"
               density="compact"
@@ -751,9 +763,9 @@ async function submitManual() {
           </div>
           <div v-if="manualForm.companyId" class="tv-field">
             <span class="tv-label">Tarefa</span>
-            <ActivitySelect
+            <TaskPicker
               :model-value="manualForm.activityId"
-              :items="optionsFor(manualForm.companyId)"
+              :company-id="manualForm.companyId"
               placeholder="Sem tarefa"
               label="Tarefa"
               density="compact"
@@ -895,10 +907,10 @@ async function submitManual() {
                   />
                   <!-- Busca também aqui: trocar a tarefa de uma entrada já
                        fechada tinha o mesmo problema de rolar dezenas de itens. -->
-                  <ActivitySelect
+                  <TaskPicker
                     v-if="editForm.companyId"
                     :model-value="editForm.activityId"
-                    :items="optionsFor(editForm.companyId)"
+                    :company-id="editForm.companyId"
                     placeholder="Sem tarefa"
                     label="Tarefa"
                     density="compact"

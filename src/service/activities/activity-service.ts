@@ -213,6 +213,52 @@ class activityService {
       'Erro ao sugerir atividade',
     )
   }
+
+  /**
+   * Árvore trimestre → mês → tarefa do seletor do Meu tempo. Diferente do
+   * payload do dashboard, inclui SUBTAREFAS (que também recebem apontamento de
+   * tempo) e traz só o que o menu desenha.
+   */
+  getPickerTree(companyId: string): Promise<PickerTree> {
+    return this.handleRequest(
+      api.get<PickerTree>('/activity/picker', {
+        headers: { 'x-company-id': companyId },
+      }),
+      'Erro ao buscar tarefas',
+    )
+  }
+}
+
+export type PickerStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+
+export interface PickerActivity {
+  id: string
+  title: string
+  status: PickerStatus
+  dueDate: string | null
+  /** Título da tarefa pai quando é subtarefa (senão null). */
+  parentTitle: string | null
+  isSubtask: boolean
+  isMine: boolean
+}
+
+export interface PickerMonth {
+  id: string
+  /** Nome como está no banco ("August"); a UI traduz. */
+  name: string
+  number: number
+  activities: PickerActivity[]
+}
+
+export interface PickerQuarter {
+  id: string
+  label: string
+  months: PickerMonth[]
+}
+
+export interface PickerTree {
+  companyId: string
+  quarters: PickerQuarter[]
 }
 
 export default new activityService()

@@ -107,6 +107,23 @@ const handleNew = () => {
   // Opens the command palette (where user can quick-create / navigate)
   emit('open-command-palette')
 }
+
+/**
+ * Roda do mouse anda a faixa de navegação na horizontal.
+ *
+ * Faixa que rola para o lado é inalcançável com mouse comum: o gesto natural é
+ * girar a roda, que sem isto rola a página e deixa a navegação parada. Só
+ * intercepta quando há de fato o que rolar, senão a página deixaria de rolar
+ * com o cursor sobre a barra.
+ */
+const onTabsWheel = (event: WheelEvent) => {
+  const el = event.currentTarget as HTMLElement
+  if (el.scrollWidth <= el.clientWidth) return
+  // Trackpad já manda deltaX: nesse caso o navegador resolve sozinho.
+  if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
+  event.preventDefault()
+  el.scrollLeft += event.deltaY
+}
 </script>
 
 <template>
@@ -119,17 +136,22 @@ const handleNew = () => {
           <CompanySwitcher variant="inline" />
         </div>
 
-        <nav class="tabs">
-          <button
-            v-for="tab in tabs"
-            :key="tab.to"
-            class="tab"
-            :class="{ 'tab--active': isActive(tab.to) }"
-            @click="router.push(tab.to)"
-          >
-            <component :is="tab.icon" :size="14" />
-            <span>{{ tab.label }}</span>
-          </button>
+        <!-- A faixa rola; "Tarefas" fica fixa ao lado dela. O menu de Tarefas
+             abre para fora da barra e seria recortado por um container com
+             overflow, então ele não pode viver dentro da faixa rolável. -->
+        <div class="nav-row">
+          <nav class="tabs" aria-label="Navegação principal" @wheel="onTabsWheel">
+            <button
+              v-for="tab in tabs"
+              :key="tab.to"
+              class="tab"
+              :class="{ 'tab--active': isActive(tab.to) }"
+              @click="router.push(tab.to)"
+            >
+              <component :is="tab.icon" :size="14" />
+              <span>{{ tab.label }}</span>
+            </button>
+          </nav>
 
           <!-- Tarefas with quarter/month dropdown -->
           <div
@@ -174,21 +196,23 @@ const handleNew = () => {
               </div>
             </div>
           </div>
-        </nav>
+        </div>
 
-        <div class="spacer" />
-
-        <CmdKButton variant="full" placeholder="Buscar ou pular…" @open="emit('open-command-palette')" />
-        <button class="new-btn" title="Novo (Ctrl+K)" @click="handleNew">
-          <Plus :size="14" />
-          <span>Novo</span>
-        </button>
-        <HelpButton />
-        <TimerWidget />
-        <InboxBell />
-        <XpToggle />
-        <ThemeToggle />
-        <UserMenu :show-name="false" />
+        <!-- Grupo que NUNCA encolhe: era ele que sumia da barra quando a
+             navegação crescia (empresa com muitos itens, tela de 1280). -->
+        <div class="nav-actions">
+          <CmdKButton variant="full" placeholder="Buscar ou pular…" @open="emit('open-command-palette')" />
+          <button class="new-btn" title="Novo (Ctrl+K)" @click="handleNew">
+            <Plus :size="14" />
+            <span>Novo</span>
+          </button>
+          <HelpButton />
+          <TimerWidget />
+          <InboxBell />
+          <XpToggle />
+          <ThemeToggle />
+          <UserMenu :show-name="false" />
+        </div>
       </div>
     </header>
 
@@ -247,19 +271,55 @@ const handleNew = () => {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: none;
+}
+
+/* A navegação é a ÚNICA parte elástica da barra: marca e ações são fixas.
+   Sem `min-width: 0` um item de flex não encolhe abaixo do próprio conteúdo, e
+   era isso que empurrava busca, "Novo" e o menu do usuário para fora da barra
+   assim que a empresa tinha itens de menu demais. */
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-left: 12px;
 }
 
 .tabs {
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-left: 12px;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* Esmaece a borda direita quando há mais item do que cabe. Sem transbordo, o
+     conteúdo termina antes da faixa esmaecida e nada muda. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  flex: none;
 }
 
 .tab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex: none;
+  /* Rótulo em duas linhas inflava a barra de 52px para 71px e ainda assim
+     transbordava. Item de navegação não quebra: ou cabe, ou rola. */
+  white-space: nowrap;
   padding: 7px 12px;
   border-radius: 7px;
   background: transparent;
@@ -297,6 +357,7 @@ const handleNew = () => {
 
 .tab-wrap {
   position: relative;
+  flex: none;
 }
 
 .tasks-pop {
@@ -384,10 +445,6 @@ const handleNew = () => {
 
 .pop-item--active .pop-icon {
   color: var(--text);
-}
-
-.spacer {
-  flex: 1;
 }
 
 .new-btn {

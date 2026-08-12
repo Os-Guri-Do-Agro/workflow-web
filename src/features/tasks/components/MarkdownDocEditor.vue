@@ -48,6 +48,36 @@ function setMode(next: Mode): void {
   localStorage.setItem(MODE_KEY, next)
 }
 
+// ─── Rolagem casada entre os dois painéis ────────────────────────────────────
+//
+// No modo dividido, rolar o markdown e ver o preview parado quebra a única
+// razão de existir do modo: comparar fonte e resultado na mesma altura. A
+// sincronia é proporcional (fração do percurso), não linha a linha: mapear
+// linha de origem para nó renderizado exigiria source map do marked, e o ganho
+// não paga a complexidade num documento que já é lido de cima para baixo.
+
+const inputRef = ref<HTMLTextAreaElement | null>(null)
+const previewRef = ref<HTMLElement | null>(null)
+/** Trava de um quadro: sem ela, A rola B, que rola A, e a rolagem "gruda". */
+let syncing = false
+
+function syncScroll(origem: 'input' | 'preview'): void {
+  if (syncing || mode.value !== 'split') return
+  const de = origem === 'input' ? inputRef.value : previewRef.value
+  const para = origem === 'input' ? previewRef.value : inputRef.value
+  if (!de || !para) return
+
+  const percursoDe = de.scrollHeight - de.clientHeight
+  const percursoPara = para.scrollHeight - para.clientHeight
+  if (percursoDe <= 0 || percursoPara <= 0) return
+
+  syncing = true
+  para.scrollTop = (de.scrollTop / percursoDe) * percursoPara
+  requestAnimationFrame(() => {
+    syncing = false
+  })
+}
+
 const html = computed(() => renderMarkdown(props.modelValue))
 const charCount = computed(() => props.modelValue.length)
 /** Avisa a partir de 80% do teto, antes de o servidor recusar. */
@@ -143,6 +173,7 @@ function onKeydown(event: KeyboardEvent): void {
     <div class="mde__panes">
       <textarea
         v-if="mode !== 'preview' && !readonly"
+        ref="inputRef"
         class="mde__input"
         :value="modelValue"
         spellcheck="false"
@@ -150,6 +181,7 @@ function onKeydown(event: KeyboardEvent): void {
         placeholder="# Título&#10;&#10;Escreva em markdown. O que estiver aqui é o que vai para o agente."
         @input="onInput"
         @keydown="onKeydown"
+        @scroll="syncScroll('input')"
         @focus="emit('focus')"
         @blur="emit('blur')"
       />
@@ -161,8 +193,10 @@ function onKeydown(event: KeyboardEvent): void {
       -->
       <div
         v-if="mode !== 'edit' || readonly"
+        ref="previewRef"
         class="mde__preview md-doc"
         v-html="html"
+        @scroll="syncScroll('preview')"
       />
     </div>
   </div>
@@ -173,11 +207,19 @@ function onKeydown(event: KeyboardEvent): void {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  height: 100%;
+  /* Altura própria, e não "cresce com o documento": sem um teto, o painel do
+     markdown rolava por dentro e o preview esticava até o fim, então os dois
+     nunca ficavam na mesma altura e a rolagem casada não tinha o que casar.
+     Com o teto, cada painel tem a sua barra e o par anda junto. */
+  height: clamp(340px, 62vh, 820px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   overflow: hidden;
+  /* O que decide se cabem dois painéis lado a lado é a largura DESTE editor,
+     não a da janela: ele vive tanto na página cheia quanto no painel lateral
+     do board. Container query responde a pergunta certa. */
+  container-type: inline-size;
 }
 
 .mde__bar {
@@ -238,6 +280,7 @@ function onKeydown(event: KeyboardEvent): void {
 .mde__panes {
   display: grid;
   grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
   flex: 1;
   min-height: 0;
 }
@@ -248,7 +291,7 @@ function onKeydown(event: KeyboardEvent): void {
 
 .mde__input {
   width: 100%;
-  min-height: 260px;
+  min-height: 0;
   padding: 14px;
   border: none;
   outline: none;
@@ -272,16 +315,31 @@ function onKeydown(event: KeyboardEvent): void {
 .mde__preview {
   padding: 14px 16px;
   overflow-y: auto;
-  min-height: 260px;
+  min-height: 0;
+  /* Cap de leitura que só age quando o painel é grande: no modo dividido cada
+     lado fica abaixo disto e nada muda; no modo só-preview, que ocupa a
+     largura toda da página, o texto vira uma coluna centrada em vez de linhas
+     de ponta a ponta. */
+  width: 100%;
+  max-width: 94ch;
+  margin-inline: auto;
 }
 
-@media (max-width: 720px) {
-  /* Dois painéis lado a lado em tela estreita deixam os dois inúteis. */
+/* Dois painéis lado a lado num editor estreito deixam os dois inúteis: com
+   ~380px cada, o markdown cru quebra toda linha e o bloco de código vira
+   escada. O corte é 840px porque abaixo disso cada painel ficaria com menos de
+   ~420px, que é o piso de conforto para ~60 caracteres na mono de 12,5px.
+   Empilhado, cada painel usa a largura inteira do editor. */
+@container (max-width: 840px) {
   .mde--split .mde__panes {
     grid-template-columns: 1fr;
+    /* Empilhado, os dois dividem a altura em partes iguais e cada um rola por
+       dentro: linha `auto` deixaria um esticar e o outro encolher. */
+    grid-template-rows: 1fr 1fr;
   }
   .mde--split .mde__preview {
     border-top: 1px solid var(--border);
+    max-width: none;
   }
   .mde--split .mde__input {
     border-right: none;

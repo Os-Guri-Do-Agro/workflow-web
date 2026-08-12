@@ -50,6 +50,13 @@ const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: () => import('@/features/auth/LoginView.vue') },
     { path: '/download', name: 'download', component: () => import('@/features/download/DownloadView.vue') },
+    // Link público de arquivo do Drive. Curto de propósito: é endereço colado
+    // em conversa, e cada caractere a mais é chance de quebrar na cópia.
+    {
+      path: '/f/:token',
+      name: 'public-file',
+      component: () => import('@/features/drive/PublicFileView.vue'),
+    },
     {
       path: '/report/:companyId',
       alias: '/reports/:companyId',
@@ -107,6 +114,7 @@ const router = createRouter({
 const PUBLIC_ROUTES = new Set([
   'login',
   'download',
+  'public-file',
   'bug-report',
   'report-status',
   'public-board',

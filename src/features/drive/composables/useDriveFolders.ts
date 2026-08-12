@@ -20,6 +20,7 @@ export const driveKeys = {
     scope: DriveScope,
     folderId: string | null,
     search: string,
+    sort: string,
     page: number,
   ) =>
     [
@@ -29,6 +30,7 @@ export const driveKeys = {
       scope,
       folderId ?? 'root',
       search,
+      sort,
       page,
     ] as const,
 }

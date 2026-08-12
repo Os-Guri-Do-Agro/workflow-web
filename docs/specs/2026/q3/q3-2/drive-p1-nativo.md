@@ -318,8 +318,16 @@ manual + CDP no resto.
   `app.module.ts` + `.env.example` *(depende de T4)*
 - [x] **T6** - Testes unitários dos resolvers, do `assertUploadAllowed` e do
   ciclo de pasta *(depende de T4)* - 25 testes passando
-- [ ] **T7** - Aplicar migration em produção (à mão, fora de pico) e smoke test
-  dos endpoints com dois usuários/duas empresas *(depende de T5; gate humano)*
+- [x] **T7a** - Migration `20260811120000_drive_files`: **já aplicada em
+  produção** (verificado: `DriveFile` e `DriveFolder` existem). Storage
+  verificado contra o Supabase real com `scripts/drive-storage-smoke.mjs`:
+  bucket privado, signed URL serve com content-type correto, URL pública
+  responde 400, batch de assinaturas ok (AC14 e AC15 atendidos de verdade)
+- [ ] **T7b** - Aplicar `20260811150000_drive_share_links` em produção:
+  `node scripts/run-prod-migration.mjs 20260811150000_drive_share_links`
+  *(gate humano; bloqueado pelo classificador de segurança nesta sessão)*
+- [ ] **T7c** - Smoke test dos endpoints com dois usuários/duas empresas após
+  o deploy da API *(depende de T7b)*
 - [x] **T8** - Front: `drive-service.ts` + `types.ts` + composables com query
   keys por empresa *(depende de T5)*
 - [x] **T9** - Front: promover `AttachmentViewer` → `components/ui/FileViewer.vue`
@@ -371,6 +379,24 @@ manual + CDP no resto.
 - **Decisão:** mover arquivo nunca troca escopo (pessoal ↔ empresa) na P1.
   **Motivo:** trocar escopo é mudança de dono e de path no storage (copy +
   delete) com semântica de permissão nova; é feature de P2/P3.
+- **Decisão (v0.4):** link público em tabela própria (`DriveShareLink`), e não
+  `ShareResourceType` ganhando `FILE`.
+  **Motivo:** `ShareLink.companyId` é NOT NULL (board e roadmap sempre têm
+  empresa) e arquivo pessoal não tem empresa nenhuma — justamente o caso mais
+  comum de compartilhar. Usar a tabela existente exigiria relaxar uma coluna
+  usada por board, roadmap e notas em produção. A tabela nova também carrega
+  `downloadCount`/`lastAccessAt`, que não fazem sentido nos outros tipos.
+  **Alternativa rejeitada:** `ALTER TABLE "ShareLink" ALTER COLUMN "companyId"
+  DROP NOT NULL` (mexe em tabela de três features vivas) ou forçar o
+  `companyId` da empresa ativa em arquivo pessoal (mentira no dado: o arquivo
+  não pertence àquela empresa).
+- **Decisão (v0.4):** capas derivadas no NAVEGADOR, não no servidor.
+  **Motivo:** thumbnail server-side exige ffmpeg e renderizador de PDF no
+  container; o Railway já é frágil no deploy e o custo por upload viraria CPU
+  de render. No cliente, o custo é de quem está olhando a pasta, e existe
+  fallback desenhado (capa tipográfica) para todo caso que falhar.
+  **Alternativa rejeitada:** worker de thumbnail no backend (registrado como
+  fora de escopo no épico; vale reconsiderar se o acervo crescer muito).
 - **Decisão:** delete de pasta é recursivo com confirmação (contagem de itens
   no `ConfirmDialog` em modo danger), sem senha.
   **Motivo:** fricção proporcional; senha (padrão QR) protege recurso com
@@ -431,6 +457,96 @@ manual + CDP no resto.
 - [ ] Limpeza de arquivos pessoais órfãos se um dia existir deleção de usuário -
   registrado no risco Baixo; sem prazo.
 
+## v0.4 - Capas ricas, redesign e link público
+
+Rodada de produto pedida na revisão ("está em 5%"). Três frentes:
+
+**1. Capas de verdade, derivadas no navegador**
+(`features/drive/composables/useFileCover.ts` + `components/FileCover.vue`)
+
+| Tipo | Capa |
+|---|---|
+| imagem | URL assinada da listagem |
+| PDF | primeira página rasterizada com pdf.js (chunk lazy de 415 KB) |
+| vídeo | frame extraído a 10% da duração com `<video>` + `<canvas>` |
+| texto/md/código | primeiras linhas do arquivo (fetch com `Range`) |
+| demais | capa tipográfica: extensão grande + cor da família (`file-palette.ts`) |
+
+Guardas contra virar peso morto: só deriva quando o card entra na viewport
+(`useElementVisibility`), cache de módulo por `fileId`, no máximo 2
+rasterizações simultâneas, e o backend só assina URL para derivar capa de
+arquivo abaixo de 12 MB (`needsCoverSource`). Falha cai na capa tipográfica,
+que é estado desenhado, não erro.
+
+**2. Redesign**: card de 232px com capa de 150px (era 180/116 com ícone de
+30px), nome em duas linhas, duas ações visíveis + menu reka-ui com seis itens
+rotulados (eram cinco ícones de 26px sem rótulo), painel de detalhes lateral,
+ordenação (recentes/nome/tamanho, com `id` como desempate para a paginação não
+embaralhar), vídeo e áudio tocando dentro do viewer.
+
+**3. Link público** (`DriveShareLink`, migration `20260811150000`): quem pode
+gerenciar o arquivo gera link revogável, com validade opcional e contador de
+downloads. A rota pública resolve token, gera URL assinada de 60s e
+redireciona; a URL assinada nunca é persistida, então revogar corta o acesso de
+fato. Página `/f/:token` sem shell, com nome/tipo/tamanho antes do botão e
+mensagens distintas para inexistente, revogado e expirado.
+
+### Correções da rodada de review da v0.4
+
+O review adversarial achou 12 defeitos reais na primeira versão da v0.4. Os que
+valem registro porque a causa não é óbvia:
+
+1. **Capa sumia para sempre.** Todos os derivadores rejeitam ao serem
+   abortados, e o `catch` gravava `{kind:'none'}` no cache de módulo sem
+   distinguir abort de falha. Trocar de pasta durante uma rasterização marcava
+   aqueles PDFs como "sem capa" pelo resto da sessão. Agora `signal.aborted`
+   sai do `catch` sem cachear.
+2. **Um webm de gravação de tela travava TODAS as capas.** `MediaRecorder`
+   reporta `duration = Infinity`, e atribuir isso a `currentTime` lança
+   `TypeError` dentro do handler: a Promise nunca resolvia e o slot de render
+   ficava preso. Dois desses esgotavam os 2 slots e nenhuma capa renderizava
+   mais. Corrigido com `Number.isFinite` e timeout de 15s.
+3. **Menu saltava para o canto da tela no modo lista.** O dropdown do reka é
+   modal e zera `pointer-events` do body; a linha perdia `:hover`, a barra com
+   `display:none` saía do layout e o floating-ui reancorava sobre um retângulo
+   0x0. Agora a barra usa `opacity` e se mantém visível via
+   `:has([data-state='open'])`.
+4. **`.ts` abria player de vídeo.** O Windows rotula TypeScript como
+   `video/mp2t`; `kindOf` confiava no mimetype. Agora, quando as duas fontes
+   discordam sobre mídia, a extensão vence. Verificado no browser: badge "TS",
+   sem player.
+5. **Lista rasterizava PDF a 480px para um quadrado de 32px.** `FileCover`
+   ganhou `mode="thumb"`, que só usa a imagem já assinada.
+6. **Vídeo cortava aos 5 minutos.** A URL assinada de `fileUrl` alimenta o
+   `<video>`; os range requests seguintes voltavam 403 e o player travava mudo.
+   TTL passou para 1h.
+7. Race no `ShareFileDialog` que podia exibir (e copiar) o link de outro
+   arquivo; trigger do menu virou `<button>` (era `<span>`, inalcançável por
+   teclado); "Renomear" da lista agora foca o campo em vez de abrir Detalhes;
+   `encodeURIComponent` no token da página pública; cache de capas com teto de
+   150 entradas.
+
+### Rodada de acabamento (revisão visual do Nicolas)
+
+1. **Dois `<select>` nativos** eram os únicos do projeto inteiro (toolbar de
+   ordenação e validade do link). Trocados por `AppSelect` (reka-ui). O trigger
+   dele é `width: 100%` e a classe não chega na raiz headless, então o de
+   ordenação vai dentro de um wrapper de largura fixa — sem isso ele estica e
+   quebra a toolbar em três linhas.
+2. **`ShareFileDialog` sem padding.** O `AppDialog` é casca pura (conteúdo 100%
+   slot), então o respiro é de quem preenche; o conteúdo encostava na borda.
+   Ganhou o mesmo cabeçalho (ícone + título + X, com divisor) e `padding: 16px`
+   dos outros diálogos do Drive.
+3. **Visualizar mandava baixar.** JSON, SQL, CSV, txt e código caíam no cartão
+   de download: o visualizador não visualizava. Agora o `FileViewer` lê o
+   conteúdo e mostra com realce (highlight.js, o mesmo do navegador de
+   repositórios), e JSON passa por `parse` + `stringify` indentado antes —
+   resposta de API vem numa linha só, e uma linha de 40 mil caracteres não é
+   leitura. Teto de 2 MB.
+4. **Quatro ícones de 12px por pasta na sidebar** viraram um `FolderActionsMenu`
+   (mesmo padrão do menu de arquivo), com o mesmo cuidado de `opacity` em vez
+   de `display:none` para não desancorar o menu portalado.
+
 ## Follow-ups (do code-review, fora do escopo da P1)
 
 - Contadores da sidebar rodam 2 COUNTs globais por listagem; com acervo grande,
@@ -451,4 +567,6 @@ manual + CDP no resto.
 |---|---|---|---|
 | 2026-08-11 | 0.1 | Criação (research consolidado dos dois repos) | Nicolas (via spec-driven) |
 | 2026-08-11 | 0.2 | Implementação da P1 (tudo menos T7). Ajustes pós-review: upload em escrita única (storage antes do banco, id gerado na aplicação; elimina a janela de linha com `storagePath` vazio), campo `sha256` removido (hash síncrono de até 25 MB sem consumidor), `requireScope` unifica a validação de membership das listagens, dropzone emite invalidação por lote, viewer referencia arquivo por id, sync bidirecional da URL, `refDebounced` na busca, fronteira `components/ui` → `features` zerada (`file-kind.ts` + `markdown-doc.css` promovidos) | Claude (via spec-driven) |
+| 2026-08-11 | 0.4.1 | Acabamento após revisão visual: `<select>` nativos trocados por `AppSelect`, `ShareFileDialog` com cabeçalho e padding do padrão, visualizador de texto/código/JSON com realce (o que caía em "baixar" agora abre), menu único nas pastas da sidebar | Claude (via spec-driven) |
+| 2026-08-11 | 0.4 | Capas ricas por tipo (pdf.js, frame de vídeo, snippet, capa tipográfica), redesign do card e do menu de ações, painel de detalhes, ordenação, vídeo/áudio no viewer, e link público de download (`DriveShareLink` + migration `20260811150000` + rota `/f/:token`). Verificado contra o Supabase real: bucket privado, signed URL 200, URL pública 400. Decisão divergente do plano: tabela própria em vez de `ShareLink` ganhando `FILE`, porque `ShareLink.companyId` é NOT NULL e arquivo pessoal não tem empresa | Claude (via spec-driven) |
 | 2026-08-11 | 0.3 | Sidebar multi-empresa (modelo QR), decisão revisada pelo Nicolas: `GET /drive/folders` devolve todas as pastas visíveis, `GET /drive/files` aceita `companyId` explícito com counts por empresa (`groupBy` único), seleção local em `?scope=personal\|<companyId>` sem tocar na empresa ativa, permissões por role NA empresa selecionada. AC2/AC16/AC20 atualizados; 28 testes na API (3 novos de multi-empresa) | Claude (via spec-driven) |

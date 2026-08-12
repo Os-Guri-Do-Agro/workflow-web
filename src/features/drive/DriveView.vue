@@ -24,6 +24,7 @@ import {
   Search,
   X,
 } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -34,6 +35,8 @@ import FileViewer, {
 import DriveSidebar from './components/DriveSidebar.vue'
 import DriveFileGrid from './components/DriveFileGrid.vue'
 import DriveFileList from './components/DriveFileList.vue'
+import FileDetailsPanel from './components/FileDetailsPanel.vue'
+import ShareFileDialog from './components/ShareFileDialog.vue'
 import DriveNameDialog from './components/DriveNameDialog.vue'
 import DriveMoveDialog from './components/DriveMoveDialog.vue'
 import UploadDropzone from './components/UploadDropzone.vue'
@@ -46,6 +49,7 @@ import {
 import { useDriveFileMutations, useDriveFiles } from './composables/useDriveFiles'
 import driveService, {
   DRIVE_MAX_FILE_BYTES_CLIENT,
+  type DriveSort,
 } from '@/service/drive/drive-service'
 import type {
   DriveCompanySection,
@@ -162,11 +166,23 @@ const treeByCompany = computed(() => {
   return map
 })
 
+const SORT_OPTIONS = [
+  { label: 'Mais recentes', value: 'recent' },
+  { label: 'Nome (A-Z)', value: 'name' },
+  { label: 'Maiores primeiro', value: 'size' },
+] as const
+
+const sort = ref<DriveSort>('recent')
+watch(sort, () => {
+  page.value = 1
+})
+
 const filesQuery = useDriveFiles({
   scope,
   companyId: selectedCompanyId,
   folderId,
   search: debouncedSearch,
+  sort,
   page,
 })
 
@@ -301,6 +317,34 @@ async function download(file: DriveFile) {
   } catch (error) {
     showError(getApiErrorMessage(error, 'Não foi possível baixar o arquivo'))
   }
+}
+
+// ─── Compartilhar e detalhes ─────────────────────────────────────────────────
+
+const shareTarget = ref<DriveFile | null>(null)
+const detailsTarget = ref<DriveFile | null>(null)
+
+/** Detalhes segue a listagem: renomear com o painel aberto não deixa dado velho. */
+watch(files, (list) => {
+  const current = detailsTarget.value
+  if (!current) return
+  const fresh = list.find((f) => f.id === current.id)
+  detailsTarget.value = fresh ?? null
+})
+
+const detailsFolderName = computed(() => {
+  const target = detailsTarget.value
+  if (!target?.folderId) return null
+  return allFolders.value.find((f) => f.id === target.folderId)?.name ?? null
+})
+
+function openDetails(file: DriveFile) {
+  detailsTarget.value = file
+}
+
+function openViewerFromDetails() {
+  const index = files.value.findIndex((f) => f.id === detailsTarget.value?.id)
+  if (index >= 0) openViewer(index)
 }
 
 // ─── Diálogos ────────────────────────────────────────────────────────────────
@@ -507,6 +551,20 @@ const loading = computed(() => filesQuery.isLoading.value)
           </button>
         </div>
 
+        <!--
+          Wrapper com largura fixa: o trigger do AppSelect é `width: 100%`, e a
+          classe passada ao componente não chega nele (raiz headless), então
+          sem este div o select esticaria e quebraria a toolbar em três linhas.
+        -->
+        <div class="drive-sort">
+          <AppSelect
+            v-model="sort"
+            density="compact"
+            :items="SORT_OPTIONS"
+            label="Ordenar arquivos"
+          />
+        </div>
+
         <div class="drive-viewtoggle" role="group" aria-label="Modo de exibição">
           <button
             type="button"
@@ -630,6 +688,8 @@ const loading = computed(() => filesQuery.isLoading.value)
           :can-manage="canManageFile"
           @open="openViewer"
           @download="download"
+          @share="(file) => (shareTarget = file)"
+          @details="openDetails"
           @rename="(file) => (nameDialog = { mode: 'rename-file', file })"
           @move="(file) => (moveDialog = { kind: 'file', file })"
           @remove="(file) => (confirmState = { kind: 'file', file })"
@@ -641,6 +701,8 @@ const loading = computed(() => filesQuery.isLoading.value)
           :can-manage="canManageFile"
           @open="openViewer"
           @download="download"
+          @share="(file) => (shareTarget = file)"
+          @details="openDetails"
           @rename-inline="(file, name) => fileMut.rename.mutate({ id: file.id, name })"
           @move="(file) => (moveDialog = { kind: 'file', file })"
           @remove="(file) => (confirmState = { kind: 'file', file })"
@@ -667,9 +729,20 @@ const loading = computed(() => filesQuery.isLoading.value)
           </button>
         </footer>
       </UploadDropzone>
+
+      <FileDetailsPanel
+        :file="detailsTarget"
+        :folder-name="detailsFolderName"
+        :can-manage="detailsTarget ? canManageFile(detailsTarget) : false"
+        @close="detailsTarget = null"
+        @open="openViewerFromDetails"
+        @download="detailsTarget && download(detailsTarget)"
+        @share="shareTarget = detailsTarget"
+      />
     </div>
 
     <!-- Overlays -->
+    <ShareFileDialog :file="shareTarget" @close="shareTarget = null" />
     <DriveNameDialog
       :model-value="nameDialog !== null"
       :title="nameDialogTitle"
@@ -804,6 +877,11 @@ const loading = computed(() => filesQuery.isLoading.value)
 
 .drive-search-clear:hover {
   color: var(--text);
+}
+
+.drive-sort {
+  width: 168px;
+  flex: none;
 }
 
 .drive-viewtoggle {

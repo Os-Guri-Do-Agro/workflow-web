@@ -29,6 +29,9 @@ import { useOnboarding } from '@/composables/useOnboarding'
 import { useToast } from '@/composables/useToast'
 import { useTimerDocumentTitle } from '@/composables/useTimerDocumentTitle'
 import { useFaviconBadge } from '@/composables/useFaviconBadge'
+import { useTimerIdleGuard } from '@/composables/useTimerIdleGuard'
+import IdlePermissionPrompt from '@/components/onboarding/IdlePermissionPrompt.vue'
+import IdleAlert from '@/components/onboarding/IdleAlert.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const route = useRoute()
@@ -69,6 +72,10 @@ useTimerDocumentTitle()
 // Badge vermelho de "gravando" no favicon enquanto o timer roda (mesmo ponto
 // sempre-presente, mesmo singleton de estado).
 useFaviconBadge()
+// Aviso de ociosidade: sente a atividade, avisa aos 15 min e corta o tempo
+// ocioso se ninguém responder. Mora aqui porque precisa valer com qualquer
+// shell e em qualquer rota, não só onde o widget do timer está montado.
+useTimerIdleGuard()
 
 // Redirects do guard chegam com ?reason=... — traduz em toast e limpa a query
 // (router.replace) para o aviso não repetir em refresh/navegação.
@@ -115,6 +122,7 @@ const bare = computed(
   () =>
     route.name === 'login' ||
     route.name === 'download' ||
+    route.name === 'public-file' ||
     route.name === 'bug-report' ||
     route.name === 'report-status' ||
     route.name === 'public-board' ||
@@ -195,6 +203,11 @@ const openPalette = () => paletteRef.value?.open()
     <AssistantLauncher />
     <AssistantPanel />
     <WelcomeGuide />
+    <!-- Convite de permissão do aviso de ociosidade (some assim que decidido). -->
+    <IdlePermissionPrompt />
+    <!-- Aviso de ociosidade com as ações: fica fora do popover do timer para
+         estar na tela quando a pessoa volta ao computador. -->
+    <IdleAlert />
     <!-- Easter egg Windows XP (só quando o modo XP está ligado): ícones de área
          de trabalho, title bar da "janela" de conteúdo e barra de tarefas. -->
     <template v-if="xp">

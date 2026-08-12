@@ -103,12 +103,23 @@ export function useTimeTracking() {
     },
   })
 
+  const onStopped = () => {
+    queryClient.setQueryData(timeKeys.current, null)
+    void invalidateAll()
+  }
+
   const stop = useMutation({
     mutationFn: () => timeService.stop(),
-    onSuccess: () => {
-      queryClient.setQueryData(timeKeys.current, null)
-      void invalidateAll()
-    },
+    onSuccess: onStopped,
+  })
+
+  // Corte por ociosidade: fecha a entrada no instante da última atividade real.
+  // Mutation separada (e não um parâmetro opcional em `stop`) porque o tipo de
+  // variável do vue-query tornaria obrigatório passar argumento nas dezenas de
+  // `stop.mutateAsync()` que já existem.
+  const stopAt = useMutation({
+    mutationFn: (endedAt: string) => timeService.stop(endedAt),
+    onSuccess: onStopped,
   })
 
   const createManual = useMutation({
@@ -165,6 +176,7 @@ export function useTimeTracking() {
     elapsedSec,
     start,
     stop,
+    stopAt,
     createManual,
     updateEntry,
     deleteEntry,

@@ -16,7 +16,7 @@
  * viram duas. A checagem local de slug existe só para o rótulo do item de
  * criação não mentir.
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Loader2, Plus, Tag as TagIcon } from 'lucide-vue-next'
 import TagChip from './TagChip.vue'
 import { useTags } from '@/composables/useTags'
@@ -48,7 +48,51 @@ const creating = ref(false)
 const highlighted = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 const rootRef = ref<HTMLElement | null>(null)
+const boxRef = ref<HTMLElement | null>(null)
+const listRef = ref<HTMLElement | null>(null)
 const listboxId = `tag-listbox-${Math.random().toString(36).slice(2, 9)}`
+
+/**
+ * A lista vai para o `body` por `Teleport`, posicionada em `fixed`.
+ *
+ * Motivo: o campo vive dentro de cartões com `overflow: hidden` (o painel da
+ * tarefa é um deles), e cartão pequeno recortava a lista pela metade — parecia
+ * que o campo tinha quebrado. Posicionar em relação à viewport tira a lista de
+ * qualquer contexto de recorte, ao custo de reposicionar a cada scroll.
+ */
+const listStyle = ref<Record<string, string>>({})
+
+/** Altura de referência para decidir se abre para baixo ou para cima. */
+const LIST_MAX_HEIGHT = 260
+
+function placeList(): void {
+  const box = boxRef.value
+  if (!box) return
+  const rect = box.getBoundingClientRect()
+  const abaixo = window.innerHeight - rect.bottom - 8
+  const acima = rect.top - 8
+  // Vira para cima só quando não cabe embaixo E cabe melhor em cima: campo no
+  // rodapé da tela abria uma lista de 4px de altura.
+  const paraCima = abaixo < Math.min(LIST_MAX_HEIGHT, 180) && acima > abaixo
+  listStyle.value = {
+    left: `${Math.round(rect.left)}px`,
+    width: `${Math.round(rect.width)}px`,
+    maxHeight: `${Math.round(Math.min(LIST_MAX_HEIGHT, paraCima ? acima : abaixo))}px`,
+    ...(paraCima
+      ? { bottom: `${Math.round(window.innerHeight - rect.top + 4)}px` }
+      : { top: `${Math.round(rect.bottom + 4)}px` }),
+  }
+}
+
+// `capture: true` porque o scroll costuma acontecer num container interno (a
+// coluna lateral da tarefa), e evento de scroll não sobe por bubbling.
+function watchViewport(ligar: boolean): void {
+  const metodo = ligar ? 'addEventListener' : 'removeEventListener'
+  window[metodo]('scroll', placeList, true)
+  window[metodo]('resize', placeList)
+}
+
+onBeforeUnmount(() => watchViewport(false))
 
 const selectedIds = computed(() => new Set(props.modelValue.map((t) => t.id)))
 const trimmed = computed(() => term.value.trim())
@@ -80,13 +124,23 @@ watch([suggestions, canCreate], () => {
 
 function openList(): void {
   if (props.disabled) return
+  const jaAberta = open.value
   open.value = true
+  placeList()
+  if (!jaAberta) watchViewport(true)
 }
 
 function closeList(): void {
   open.value = false
   term.value = ''
+  watchViewport(false)
 }
+
+// A lista cresce e encolhe conforme o que foi digitado; reposiciona para o modo
+// "abre para cima" não ficar preso à altura de um instante anterior.
+watch(optionCount, () => {
+  if (open.value) void nextTick(placeList)
+})
 
 function attach(tag: ActivityTag): void {
   if (selectedIds.value.has(tag.id)) return
@@ -167,8 +221,10 @@ function onKeydown(event: KeyboardEvent): void {
 
 function onFocusOut(event: FocusEvent): void {
   const next = event.relatedTarget as Node | null
-  // Clique num item da lista tira o foco do input; fechar aí engoliria a escolha.
-  if (next && rootRef.value?.contains(next)) return
+  // Clique num item da lista tira o foco do input; fechar aí engoliria a
+  // escolha. A lista está teleportada para o `body`, então NÃO está dentro do
+  // root: sem checá-la à parte, escolher uma tag pelo mouse não funcionaria.
+  if (next && (rootRef.value?.contains(next) || listRef.value?.contains(next))) return
   closeList()
 }
 </script>
@@ -180,7 +236,7 @@ function onFocusOut(event: FocusEvent): void {
     :class="{ 'taginput--bare': bare, 'taginput--disabled': disabled }"
     @focusout="onFocusOut"
   >
-    <div class="taginput__box" @click="inputRef?.focus()">
+    <div ref="boxRef" class="taginput__box" @click="inputRef?.focus()">
       <TagChip
         v-for="tag in modelValue"
         :key="tag.id"
@@ -209,7 +265,15 @@ function onFocusOut(event: FocusEvent): void {
       />
     </div>
 
-    <div v-if="open" :id="listboxId" class="taginput__list" role="listbox">
+    <Teleport to="body">
+      <div
+        v-if="open"
+        :id="listboxId"
+        ref="listRef"
+        class="taginput__list"
+        role="listbox"
+        :style="listStyle"
+      >
       <div v-if="isFetching && !catalog.length" class="taginput__state">
         <Loader2 :size="14" class="spin" />
         <span>Carregando tags...</span>
@@ -250,16 +314,17 @@ function onFocusOut(event: FocusEvent): void {
         <span>Criar tag "{{ trimmed }}"</span>
       </button>
 
-      <div
-        v-if="!suggestions.length && !canCreate && !isFetching"
-        class="taginput__state"
-      >
-        <TagIcon :size="14" />
-        <span>{{
-          term ? 'Nenhuma tag encontrada' : 'Digite para criar a primeira tag'
-        }}</span>
+        <div
+          v-if="!suggestions.length && !canCreate && !isFetching"
+          class="taginput__state"
+        >
+          <TagIcon :size="14" />
+          <span>{{
+            term ? 'Nenhuma tag encontrada' : 'Digite para criar a primeira tag'
+          }}</span>
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -314,14 +379,16 @@ function onFocusOut(event: FocusEvent): void {
   color: var(--text-4);
 }
 
+/* Teleportada para o `body`: `fixed` + posição calculada no JS. `absolute` aqui
+   dependeria do primeiro ancestral posicionado, que é justamente o cartão que
+   recorta. O z-index passa do AppDialog (5000) porque o campo também aparece
+   dentro do formulário de nova atividade. */
 .taginput__list {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  max-height: 260px;
+  position: fixed;
+  z-index: 5200;
+  min-width: 180px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   background: var(--surface);
   border: 1px solid var(--border);

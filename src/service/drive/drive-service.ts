@@ -7,9 +7,9 @@ import api from '../api'
  * preenchido = da empresa. O `x-company-id` da empresa ativa é injetado pelo
  * interceptor do axios e define a empresa da área "company".
  *
- * O storage é PRIVADO: nenhuma URL persistida chega ao front. Preview de
- * imagem vem assinado na listagem (`previewUrl`, ~1h); abrir/baixar pede URL
- * fresca em `fileUrl()` (~5min).
+ * O storage é PRIVADO: nenhuma URL persistida chega ao front. A listagem já
+ * traz `previewUrl` assinada (~1h) para os tipos cuja capa é derivada dos
+ * bytes; abrir/baixar pede uma URL fresca em `fileUrl()`.
  */
 
 export type DriveScope = 'personal' | 'company'
@@ -50,7 +50,13 @@ export interface DriveFile {
   createdAt: string
   updatedAt: string
   owner: DriveOwner | null
-  /** Assinada (~1h), só para imagens; null para os demais tipos. */
+  /**
+   * URL assinada (~1h) da FONTE do arquivo, para o cliente derivar a capa.
+   * Vem preenchida para imagem e, até 12 MB, para PDF, vídeo, texto, JSON e
+   * XML (`needsCoverSource` no backend); `null` nos demais, que usam capa
+   * tipográfica. Não é só de imagem: passar isto adiante concede leitura do
+   * arquivo pelo prazo da assinatura.
+   */
   previewUrl: string | null
 }
 
@@ -66,6 +72,18 @@ export interface DriveFilesPage {
   }
 }
 
+export interface DriveShareLink {
+  id: string
+  token: string
+  revoked: boolean
+  expiresAt: string | null
+  downloadCount: number
+  lastAccessAt: string | null
+  createdAt: string
+  /** Caminho relativo (`/f/<token>`); a origem é a do próprio front. */
+  path: string
+}
+
 export interface ListDriveFilesParams {
   scope: DriveScope
   /** Empresa alvo quando scope=company (modelo QR: independe da ativa). */
@@ -73,9 +91,12 @@ export interface ListDriveFilesParams {
   /** Pasta atual; null/ausente = raiz do espaço. Ignorado quando há busca. */
   folderId?: string | null
   search?: string
+  sort?: DriveSort
   page?: number
   pageSize?: number
 }
+
+export type DriveSort = 'recent' | 'name' | 'size'
 
 const driveService = {
   // ─── Pastas ─────────────────────────────────────────────────────────────────
@@ -122,6 +143,7 @@ const driveService = {
         companyId: params.companyId ?? undefined,
         folderId: params.folderId ?? undefined,
         search: params.search || undefined,
+        sort: params.sort,
         page: params.page,
         pageSize: params.pageSize,
       },
@@ -156,6 +178,30 @@ const driveService = {
   },
 
   /** URL assinada fresca (~5min) para abrir/baixar. */
+  // ─── Links públicos ────────────────────────────────────────────────────────
+
+  async createShare(
+    fileId: string,
+    payload: { expiresAt?: string | null },
+  ): Promise<DriveShareLink> {
+    const { data } = await api.post<DriveShareLink>(
+      `/drive/files/${fileId}/share`,
+      payload,
+    )
+    return data
+  },
+
+  async listShares(fileId: string): Promise<DriveShareLink[]> {
+    const { data } = await api.get<DriveShareLink[]>(
+      `/drive/files/${fileId}/share`,
+    )
+    return data
+  },
+
+  async revokeShare(fileId: string, linkId: string): Promise<void> {
+    await api.delete(`/drive/files/${fileId}/share/${linkId}`)
+  },
+
   async fileUrl(id: string): Promise<string> {
     const { data } = await api.get<{ url: string }>(`/drive/files/${id}/url`)
     return data.url

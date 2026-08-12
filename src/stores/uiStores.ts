@@ -20,6 +20,11 @@ const STORAGE = {
   xp: 'ui.xp',
   notesViewMode: 'ui.notesViewMode',
   driveViewMode: 'ui.driveViewMode',
+  idleGuard: 'ui.idleGuard',
+  idleWarnMin: 'ui.idleWarnMin',
+  idlePermissionPrompt: 'ui.idlePermissionPrompt',
+  timerSounds: 'ui.timerSounds',
+  pickerShowDone: 'ui.pickerShowDone',
 } as const
 
 /** Grade ou lista na listagem de notas. */
@@ -64,6 +69,27 @@ const readNotesViewMode = (): NotesViewMode =>
 const readDriveViewMode = (): DriveViewMode =>
   localStorage.getItem(STORAGE.driveViewMode) === 'list' ? 'list' : 'grid'
 
+/** Aviso de ociosidade do timer: ligado por padrão (spec timer-ociosidade). */
+const readIdleGuard = (): boolean => localStorage.getItem(STORAGE.idleGuard) !== 'false'
+
+/** Minutos parados até o aviso. A carência antes do corte é sempre 1/3 disso. */
+const readIdleWarnMin = (): number => {
+  const v = Number(localStorage.getItem(STORAGE.idleWarnMin))
+  const allowed = [5, 10, 15, 30]
+  return allowed.includes(v) ? v : 15
+}
+
+/** O card de permissão só aparece enquanto o usuário não decidiu. */
+const readIdlePermissionPrompt = (): boolean =>
+  localStorage.getItem(STORAGE.idlePermissionPrompt) !== 'done'
+
+/** Som ao iniciar/parar o cronômetro: ligado por padrão, discreto. */
+const readTimerSounds = (): boolean => localStorage.getItem(STORAGE.timerSounds) !== 'false'
+
+/** Tarefas concluídas no seletor do Meu tempo: escondidas por padrão. */
+const readPickerShowDone = (): boolean =>
+  localStorage.getItem(STORAGE.pickerShowDone) === 'true'
+
 export const useUiStore = defineStore('ui', () => {
   const theme = ref<ThemeName>(readTheme())
   const accent = ref<AccentName>(readAccent())
@@ -73,6 +99,11 @@ export const useUiStore = defineStore('ui', () => {
   const xp = ref<boolean>(readXp())
   const notesViewMode = ref<NotesViewMode>(readNotesViewMode())
   const driveViewMode = ref<DriveViewMode>(readDriveViewMode())
+  const idleGuard = ref<boolean>(readIdleGuard())
+  const idleWarnMin = ref<number>(readIdleWarnMin())
+  const idlePermissionPrompt = ref<boolean>(readIdlePermissionPrompt())
+  const timerSounds = ref<boolean>(readTimerSounds())
+  const pickerShowDone = ref<boolean>(readPickerShowDone())
 
   watch(theme, (v) => {
     localStorage.setItem(STORAGE.theme, v)
@@ -111,9 +142,43 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(STORAGE.driveViewMode, v)
   })
 
+  watch(idleGuard, (v) => {
+    localStorage.setItem(STORAGE.idleGuard, String(v))
+  })
+
+  watch(idleWarnMin, (v) => {
+    localStorage.setItem(STORAGE.idleWarnMin, String(v))
+  })
+
+  watch(idlePermissionPrompt, (v) => {
+    localStorage.setItem(STORAGE.idlePermissionPrompt, v ? 'pending' : 'done')
+  })
+
+  watch(timerSounds, (v) => {
+    localStorage.setItem(STORAGE.timerSounds, String(v))
+  })
+
+  watch(pickerShowDone, (v) => {
+    localStorage.setItem(STORAGE.pickerShowDone, String(v))
+  })
+
   // Aplica a escala salva já no boot (antes de qualquer watch disparar).
   applyFontScale(fontScale.value)
   applyXpMode(xp.value)
 
-  return { theme, accent, density, shell, fontScale, xp, notesViewMode, driveViewMode }
+  return {
+    theme,
+    accent,
+    density,
+    shell,
+    fontScale,
+    xp,
+    notesViewMode,
+    driveViewMode,
+    idleGuard,
+    idleWarnMin,
+    idlePermissionPrompt,
+    timerSounds,
+    pickerShowDone,
+  }
 })

@@ -930,8 +930,10 @@ const onSubtaskFilePick = (e: Event) => {
       <aside class="side-col">
         <section class="panel meta-panel">
           <header class="panel-head panel-head--compact">
-            <Info :size="15" />
-            <h2 class="panel-title">Informações</h2>
+            <div class="panel-head-left">
+              <Info :size="15" />
+              <h2 class="panel-title">Informações</h2>
+            </div>
           </header>
 
           <dl class="meta-list">
@@ -1030,24 +1032,30 @@ const onSubtaskFilePick = (e: Event) => {
              tarefa; a tag continua no catálogo. -->
         <section class="panel">
           <header class="panel-head panel-head--compact">
-            <TagIcon :size="15" />
-            <h2 class="panel-title">Tags</h2>
+            <div class="panel-head-left">
+              <TagIcon :size="15" />
+              <h2 class="panel-title">Tags</h2>
+            </div>
           </header>
-          <TagInput
-            :model-value="activityTags"
-            :company-id="companyId"
-            @update:model-value="onTagsChange"
-          />
+          <div class="panel-body">
+            <TagInput
+              :model-value="activityTags"
+              :company-id="companyId"
+              @update:model-value="onTagsChange"
+            />
+          </div>
         </section>
 
         <!-- Arquivos: markup vive só no TaskAttachments -->
         <section class="panel">
-          <TaskAttachments
-            :activity-id="taskId"
-            :attachments="activityInfo.attachments ?? []"
-            :company-id="companyId"
-            @changed="reloadActivity"
-          />
+          <div class="panel-body">
+            <TaskAttachments
+              :activity-id="taskId"
+              :attachments="activityInfo.attachments ?? []"
+              :company-id="companyId"
+              @changed="reloadActivity"
+            />
+          </div>
         </section>
 
       </aside>
@@ -1591,10 +1599,14 @@ const onSubtaskFilePick = (e: Event) => {
 </template>
 
 <style scoped>
+/* Sem cap de largura nem centralização: esta era a página MAIS estreita do app
+   (1200px, contra 1600px do board) e é justamente a que carrega o editor de
+   documento em duas colunas. Com a sobra da tela desperdiçada nas laterais,
+   markdown e preview ficavam com ~430px cada e a leitura da spec era péssima.
+   O que precisa de cap é o texto corrido, e esse cap vive no bloco de texto. */
 .detail-page {
   padding: 24px 28px;
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .detail-page--center {
@@ -1668,6 +1680,14 @@ const onSubtaskFilePick = (e: Event) => {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+}
+
+/* O `.panel` não tem padding porque nem todo conteúdo quer um: abas de
+   documento e listas com divisória precisam ir de ponta a ponta. Quem é bloco
+   comum (tags, arquivos) entra por aqui e ganha o respiro. Sem isto, um campo
+   com borda própria encostava na borda do cartão e virava linha dupla. */
+.panel-body {
+  padding: 12px 14px 14px;
 }
 
 .panel-head {
@@ -1749,6 +1769,10 @@ const onSubtaskFilePick = (e: Event) => {
 .task-prose.desc-body {
   padding: 0 16px 16px;
   font-size: 14px;
+  /* Cap de LEITURA, não de layout: a página é full-bleed, mas linha de prosa
+     com 200 caracteres cansa a vista. O painel continua ocupando a largura
+     toda; só o texto para de esticar. */
+  max-width: 88ch;
 }
 
 .desc-empty {

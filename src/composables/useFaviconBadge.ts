@@ -1,30 +1,40 @@
-import { watch } from 'vue'
+import { watch, watchEffect } from 'vue'
 import { useTimeTracking } from '@/composables/useTimeTracking'
+import { idlePhase } from '@/composables/idle-state'
 
 /**
  * T1 (spec time-tracking-v2) — badge de "gravando" no favicon.
+ * Ampliado pela spec timer-ociosidade com um terceiro estado.
  *
- * Enquanto o timer roda, o favicon (a carinha da marca) ganha um ponto vermelho
- * no canto — sinal inequívoco de captura em andamento, no lugar do antigo emoji
- * de relógio no título. É reforço, não sinal único (título e widget também
- * indicam), então acessibilidade não depende só da cor do badge.
+ * Três estados, na ordem de urgência:
+ *
+ * - **parado:** favicon original do `index.html`.
+ * - **gravando:** carinha com ponto vermelho (`--err`) no canto.
+ * - **ocioso:** carinha piscando entre ponto âmbar (`--warn`) e sem ponto. É o
+ *   sinal que PERSISTE enquanto a pessoa não responde: no Windows a notificação
+ *   do sistema recolhe sozinha para a Central de Ações em segundos, e sem isto
+ *   quem volta ao computador não veria nada.
  *
  * Deve ser montado UMA vez, num ponto sempre presente (AppShell), junto de
  * `useTimerDocumentTitle`. Consome o singleton `useTimeTracking` — sem interval
  * nem subscription extra.
- *
- * O badge é estático (favicon não anima sem trocar frames num interval, o que não
- * agrega): presente = gravando, ausente = parado.
  */
 
 // PNG rasterizado (512²) é fonte confiável para o canvas; o SVG sem width/height
 // intrínseco desenha em tamanho 0 em alguns browsers.
 const BRAND_FAVICON_PNG = '/brand/marca.png'
 const SIZE = 64
+const BLINK_MS = 900
+
+type BadgeVariant = 'recording' | 'idle' | 'plain'
 
 function cssVar(name: string, fallback: string): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
   return v || fallback
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 }
 
 export function useFaviconBadge() {
@@ -36,10 +46,14 @@ export function useFaviconBadge() {
     document.querySelectorAll<HTMLLinkElement>("link[rel~='icon']"),
   )
   let dynamicLink: HTMLLinkElement | null = null
-  let recordingDataUrl: string | null = null
+  let brandImage: HTMLImageElement | null = null
+  let brandLoaded = false
+  const cache = new Map<BadgeVariant, string>()
+  let blinkTimer: number | null = null
+  let blinkOn = true
 
-  // Ponto vermelho (--err) com anel branco para destacar sobre a carinha creme.
-  function drawBadge(ctx: CanvasRenderingContext2D) {
+  // Ponto colorido com anel branco para destacar sobre a carinha creme.
+  function drawBadge(ctx: CanvasRenderingContext2D, color: string) {
     const r = SIZE * 0.22
     const cx = SIZE - r - 2
     const cy = SIZE - r - 2
@@ -49,32 +63,53 @@ export function useFaviconBadge() {
     ctx.fill()
     ctx.beginPath()
     ctx.arc(cx, cy, r, 0, Math.PI * 2)
-    ctx.fillStyle = cssVar('--err', '#F04438')
+    ctx.fillStyle = color
     ctx.fill()
   }
 
-  // Fallback sem o PNG: disco creme da marca + badge. Nunca fica sem ícone.
-  function buildFallbackDataUrl(): string {
+  function badgeColor(variant: BadgeVariant): string | null {
+    if (variant === 'recording') return cssVar('--err', '#F04438')
+    if (variant === 'idle') return cssVar('--warn', '#F79009')
+    return null
+  }
+
+  /** Desenha (e memoriza) a carinha com o ponto pedido. */
+  function buildDataUrl(variant: BadgeVariant): string {
+    const cached = cache.get(variant)
+    if (cached) return cached
+
     const canvas = document.createElement('canvas')
     canvas.width = canvas.height = SIZE
     const ctx = canvas.getContext('2d')
     if (!ctx) return ''
-    ctx.fillStyle = cssVar('--brand-body', '#FFDCB6')
-    ctx.beginPath()
-    ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2)
-    ctx.fill()
-    drawBadge(ctx)
-    return canvas.toDataURL('image/png')
+
+    if (brandLoaded && brandImage) {
+      ctx.drawImage(brandImage, 0, 0, SIZE, SIZE)
+    } else {
+      // Fallback sem o PNG: disco creme da marca. Nunca fica sem ícone.
+      ctx.fillStyle = cssVar('--brand-body', '#FFDCB6')
+      ctx.beginPath()
+      ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    const color = badgeColor(variant)
+    if (color) drawBadge(ctx, color)
+
+    const url = canvas.toDataURL('image/png')
+    cache.set(variant, url)
+    return url
   }
 
-  function apply() {
-    if (!recordingDataUrl) return
+  function apply(variant: BadgeVariant) {
+    const href = buildDataUrl(variant)
+    if (!href) return
     if (!dynamicLink) {
       dynamicLink = document.createElement('link')
       dynamicLink.rel = 'icon'
       dynamicLink.type = 'image/png'
     }
-    dynamicLink.href = recordingDataUrl
+    dynamicLink.href = href
     // Remove os originais e injeta o dinâmico para garantir precedência.
     originals.forEach((l) => l.parentNode?.removeChild(l))
     if (!dynamicLink.parentNode) document.head.appendChild(dynamicLink)
@@ -87,30 +122,58 @@ export function useFaviconBadge() {
     })
   }
 
-  // Pré-carrega a carinha e gera o dataURL de "gravando" uma vez (cacheado).
+  function stopBlink() {
+    if (blinkTimer !== null) {
+      window.clearInterval(blinkTimer)
+      blinkTimer = null
+    }
+    blinkOn = true
+  }
+
+  function startBlink() {
+    if (blinkTimer !== null) return
+    blinkTimer = window.setInterval(() => {
+      blinkOn = !blinkOn
+      apply(blinkOn ? 'idle' : 'plain')
+    }, BLINK_MS)
+  }
+
+  function render() {
+    if (!isRunning.value) {
+      stopBlink()
+      clear()
+      return
+    }
+    if (idlePhase.value === 'warning') {
+      // Quem pediu menos movimento recebe o âmbar fixo: o sinal continua, a
+      // piscada não.
+      if (prefersReducedMotion()) {
+        stopBlink()
+        apply('idle')
+        return
+      }
+      apply('idle')
+      startBlink()
+      return
+    }
+    stopBlink()
+    apply('recording')
+  }
+
+  // Pré-carrega a carinha; enquanto não chega, o fallback já funciona.
   const img = new Image()
   img.onload = () => {
-    try {
-      const canvas = document.createElement('canvas')
-      canvas.width = canvas.height = SIZE
-      const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('no 2d context')
-      ctx.drawImage(img, 0, 0, SIZE, SIZE)
-      drawBadge(ctx)
-      recordingDataUrl = canvas.toDataURL('image/png')
-    } catch {
-      recordingDataUrl = buildFallbackDataUrl()
-    }
-    if (isRunning.value) apply()
+    brandImage = img
+    brandLoaded = true
+    cache.clear()
+    render()
   }
   img.onerror = () => {
-    recordingDataUrl = buildFallbackDataUrl()
-    if (isRunning.value) apply()
+    brandLoaded = false
+    render()
   }
   img.src = BRAND_FAVICON_PNG
 
-  watch(isRunning, (running) => {
-    if (running) apply()
-    else clear()
-  })
+  watchEffect(render)
+  watch(idlePhase, render)
 }
