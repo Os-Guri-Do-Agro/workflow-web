@@ -172,25 +172,84 @@ const TEXT_VIEW_MAX_BYTES = 2 * 1024 * 1024
 const textHtml = ref('')
 const textLoading = ref(false)
 const textFailed = ref(false)
+/** Falhou por TAMANHO (e não por rede): o fallback explica em vez de só cair. */
+const textTooLarge = ref(false)
 let textToken = 0
 
 function isTextViewable(item: ViewerFile): boolean {
   if (!TEXT_KINDS.has(kindOf(item))) return false
   // Planilha de verdade (xlsx) é binária; só o CSV cai aqui como texto.
   if (kindOf(item) === 'sheet' && !/\.csv$/i.test(item.filename)) return false
-  return (item.size ?? 0) <= TEXT_VIEW_MAX_BYTES
+  // Sem `size` conhecido (anexo antigo) o teto ainda vale: o tamanho real é
+  // conferido depois do download, em `loadText`. Antes, `?? 0` deixava passar
+  // justamente o arquivo de tamanho desconhecido, que é o que costuma ser
+  // enorme.
+  return item.size === undefined || item.size === null || item.size <= TEXT_VIEW_MAX_BYTES
+}
+
+/**
+ * Teto do REALCE (não da leitura). Acima disso o arquivo continua abrindo, só
+ * que sem cores: realçar é trabalho síncrono na thread principal, e passar de
+ * algumas centenas de KB congela a aba por segundos. Ler um log de 1 MB sem
+ * cor é aceitável; esperar a aba destravar não é.
+ */
+const HIGHLIGHT_MAX_BYTES = 256 * 1024
+
+/** Detecção automática de linguagem é cara: só vale em arquivo pequeno. */
+const AUTO_DETECT_MAX_BYTES = 64 * 1024
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/**
+ * Realça quando compensa e escapa quando não. `highlightAuto` roda dezenas de
+ * gramáticas sobre o arquivo inteiro — é o caminho mais caro e o que menos
+ * agrega em prosa (um .txt não tem sintaxe para colorir).
+ */
+function highlightOrEscape(raw: string, extension: string): string {
+  if (raw.length > HIGHLIGHT_MAX_BYTES) return escapeHtml(raw)
+
+  if (hljs.getLanguage(extension)) {
+    try {
+      return hljs.highlight(raw, { language: extension, ignoreIllegals: true }).value
+    } catch {
+      return escapeHtml(raw)
+    }
+  }
+
+  if (raw.length > AUTO_DETECT_MAX_BYTES) return escapeHtml(raw)
+  try {
+    return hljs.highlightAuto(raw).value
+  } catch {
+    return escapeHtml(raw)
+  }
 }
 
 async function loadText(url: string, item: ViewerFile): Promise<void> {
   const token = ++textToken
   textHtml.value = ''
   textFailed.value = false
+  textTooLarge.value = false
   textLoading.value = true
   try {
     const response = await fetch(url)
     if (!response.ok) throw new Error(String(response.status))
     let raw = await response.text()
     if (token !== textToken) return
+
+    // Segunda barreira, agora com o tamanho REAL: o metadado pode não existir
+    // (anexo antigo) ou mentir. Sem ela, um .log de dezenas de MB chega aqui e
+    // o realce trava a aba.
+    if (raw.length > TEXT_VIEW_MAX_BYTES) {
+      textTooLarge.value = true
+      textFailed.value = true
+      return
+    }
 
     const extension = item.filename.split('.').pop()?.toLowerCase() ?? ''
     if (extension === 'json') {
@@ -201,10 +260,7 @@ async function loadText(url: string, item: ViewerFile): Promise<void> {
       }
     }
 
-    const language = hljs.getLanguage(extension) ? extension : ''
-    textHtml.value = language
-      ? hljs.highlight(raw, { language, ignoreIllegals: true }).value
-      : hljs.highlightAuto(raw).value
+    textHtml.value = highlightOrEscape(raw, extension)
   } catch {
     if (token !== textToken) return
     textFailed.value = true
@@ -224,6 +280,7 @@ watch(
     textHtml.value = ''
     textLoading.value = false
     textFailed.value = false
+    textTooLarge.value = false
   },
   { immediate: true },
 )
@@ -483,6 +540,9 @@ onBeforeUnmount(() => {
               <template v-if="formatBytes(current.size)">
                 · {{ formatBytes(current.size) }}
               </template>
+            </p>
+            <p v-if="textTooLarge" class="viewer__fallback-hint">
+              Grande demais para pré-visualizar aqui. Baixe para abrir no seu editor.
             </p>
             <a
               v-if="downloadUrl"

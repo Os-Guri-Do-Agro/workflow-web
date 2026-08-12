@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertTriangle, Coffee, Play, RotateCcw, X } from 'lucide-vue-next'
+import { Play, RotateCcw, X } from 'lucide-vue-next'
+import MascotCard from '@/components/ui/MascotCard.vue'
 import { useTimeTracking } from '@/composables/useTimeTracking'
 import { useTimerIdleGuard } from '@/composables/useTimerIdleGuard'
 import { useToast } from '@/composables/useToast'
 import { formatTimer } from '@/utils/duration'
 
 /**
- * Card do aviso de ociosidade (spec timer-ociosidade).
+ * Aviso de ociosidade do timer (spec timer-ociosidade), no formato de recado do
+ * Nevo.
  *
  * Fica FORA do popover do timer de propósito: as ações precisam estar na tela
  * quando a pessoa volta ao computador, sem depender de ela abrir o widget. Foi
@@ -62,159 +64,120 @@ async function handleRecover() {
 </script>
 
 <template>
-  <Transition name="idle-alert">
-    <aside
+  <Transition name="nevo-card">
+    <MascotCard
       v-if="visible"
-      class="idle-alert"
-      :class="{ 'idle-alert--warn': warning }"
-      role="alert"
-      aria-live="assertive"
+      from="Nevo"
+      :tone="warning ? 'warn' : 'default'"
+      live="assertive"
     >
+      <template #meta>
+        <span v-if="warning" class="alert-countdown">para em {{ countdown }}</span>
+      </template>
+
       <!-- Estado 1: ainda dá para continuar -->
       <template v-if="warning">
-        <span class="idle-alert-icon idle-alert-icon--warn"><AlertTriangle :size="16" /></span>
-        <div class="idle-alert-body">
-          <p class="idle-alert-title">Sem atividade há {{ idleMinutes }} min</p>
-          <p class="idle-alert-desc">
-            O tempo para em {{ countdown }} e volta para o último momento em que você
-            estava ativo.
-          </p>
-          <div class="idle-alert-actions">
-            <button
-              class="idle-alert-btn idle-alert-btn--primary"
-              type="button"
-              @click="idle.continueCounting()"
-            >
-              Continuar contando
-            </button>
-            <button
-              class="idle-alert-btn"
-              type="button"
-              :disabled="idle.cutting.value"
-              @click="handleStop"
-            >
-              Parar agora
-            </button>
-          </div>
-        </div>
+        <p class="alert-title">Você ainda está por aí?</p>
+        <p class="alert-desc">
+          Não vejo atividade há {{ idleMinutes }} min e seu cronômetro continua correndo. Se
+          ninguém responder, eu paro o tempo no último momento em que você estava ativo.
+        </p>
       </template>
 
       <!-- Estado 2: já parou, com as saídas -->
       <template v-else-if="cut">
-        <span class="idle-alert-icon"><Coffee :size="16" /></span>
-        <div class="idle-alert-body">
-          <p class="idle-alert-title">Seu tempo parou às {{ cutAtLabel }}</p>
-          <p class="idle-alert-desc">
-            Encerramos por inatividade, no último momento ativo, então o tempo parado não
-            foi contado.
-          </p>
-          <div class="idle-alert-actions">
-            <button
-              v-if="!isRunning"
-              class="idle-alert-btn idle-alert-btn--primary"
-              type="button"
-              @click="handleResume"
-            >
-              <Play :size="13" />
-              <span>Retomar</span>
-            </button>
-            <button
-              v-if="idle.recoverableMin.value > 0"
-              class="idle-alert-btn"
-              type="button"
-              @click="handleRecover"
-            >
-              <RotateCcw :size="13" />
-              <span>Recuperar os {{ idle.recoverableMin.value }} min</span>
-            </button>
-          </div>
-        </div>
+        <p class="alert-title">Parei seu tempo às {{ cutAtLabel }}</p>
+        <p class="alert-desc">
+          Foi por inatividade, e voltei até o último momento ativo — o tempo parado não entrou
+          na sua conta.
+        </p>
+      </template>
+
+      <template #actions>
+        <template v-if="warning">
+          <button class="alert-btn alert-btn--primary" type="button" @click="idle.continueCounting()">
+            Continuar contando
+          </button>
+          <button
+            class="alert-btn"
+            type="button"
+            :disabled="idle.cutting.value"
+            @click="handleStop"
+          >
+            Parar agora
+          </button>
+        </template>
+        <template v-else>
+          <button
+            v-if="!isRunning"
+            class="alert-btn alert-btn--primary"
+            type="button"
+            @click="handleResume"
+          >
+            <Play :size="12" />
+            <span>Retomar</span>
+          </button>
+          <button
+            v-if="idle.recoverableMin.value > 0"
+            class="alert-btn"
+            type="button"
+            @click="handleRecover"
+          >
+            <RotateCcw :size="12" />
+            <span>Recuperar os {{ idle.recoverableMin.value }} min</span>
+          </button>
+        </template>
+      </template>
+
+      <template v-if="!warning" #dismiss>
         <button
-          class="idle-alert-close"
+          class="alert-close"
           type="button"
           aria-label="Dispensar aviso"
           @click="idle.dismissCut()"
         >
-          <X :size="15" />
+          <X :size="13" />
         </button>
       </template>
-    </aside>
+    </MascotCard>
   </Transition>
 </template>
 
 <style scoped>
-.idle-alert {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 95;
-  width: min(380px, calc(100vw - 32px));
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  padding: 13px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-overlay);
-}
-
-.idle-alert--warn {
-  border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
-  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
-}
-
-.idle-alert-icon {
-  width: 30px;
-  height: 30px;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  color: var(--text-2);
-}
-
-.idle-alert-icon--warn {
-  background: color-mix(in srgb, var(--warn) 20%, transparent);
-  color: var(--warn);
-}
-
-.idle-alert-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.idle-alert-title {
-  margin: 0 0 3px;
+.alert-title {
+  margin: 0 0 4px;
   color: var(--text);
   font-size: 13px;
   font-weight: 700;
+  line-height: 1.35;
 }
 
-.idle-alert-desc {
-  margin: 0 0 10px;
+.alert-desc {
+  margin: 0;
   color: var(--text-3);
   font-size: 11.5px;
   line-height: 1.45;
+}
+
+.alert-countdown {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 22%, transparent);
+  color: var(--warn);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
 }
 
-.idle-alert-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.idle-alert-btn {
-  min-height: 34px;
+.alert-btn {
+  min-height: 32px;
   padding: 0 12px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-2);
   font-family: inherit;
@@ -223,61 +186,61 @@ async function handleRecover() {
   cursor: pointer;
   transition:
     background var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease);
 }
 
-.idle-alert-btn:hover:not(:disabled) {
+.alert-btn:hover:not(:disabled) {
   background: var(--surface-3);
-  border-color: var(--border-strong);
   color: var(--text);
 }
 
-.idle-alert-btn:disabled {
+.alert-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.idle-alert-btn--primary {
+.alert-btn--primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
 }
 
-.idle-alert-btn--primary:hover:not(:disabled) {
+.alert-btn--primary:hover:not(:disabled) {
   filter: brightness(1.05);
   color: var(--accent-fg);
 }
 
-.idle-alert-close {
-  width: 28px;
-  height: 28px;
-  flex: none;
+.alert-close {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-4);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-3);
   cursor: pointer;
 }
 
-.idle-alert-close:hover {
-  background: var(--surface-2);
-  color: var(--text-2);
+.alert-close:hover {
+  background: var(--surface-3);
+  color: var(--text);
 }
 
-.idle-alert-enter-active,
-.idle-alert-leave-active {
+.nevo-card-enter-active,
+.nevo-card-leave-active {
   transition:
     opacity var(--motion) var(--motion-ease),
     transform var(--motion) var(--motion-ease);
 }
 
-.idle-alert-enter-from,
-.idle-alert-leave-to {
+.nevo-card-enter-from,
+.nevo-card-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(8px);
 }
 </style>

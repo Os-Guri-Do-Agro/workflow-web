@@ -112,6 +112,7 @@ Em [`components/ui/`](./components/ui/):
 | `CountUp.vue` + `useCountUp` | Número que conta até o valor (gsap, pt-BR, reduced-motion salta direto). O componente existe p/ uso em `v-for`. |
 | `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. **Não é mais usado no time tracking** (ver `TaskPicker`); segue disponível para lista plana. |
 | `TaskPicker.vue`       | Seletor de tarefa do Meu tempo: menu navegável trimestre → mês → tarefa, busca global sem acento, atalhos (Recentes / Minhas), concluídas ocultas por padrão e teclado completo. Props `modelValue` + `companyId` (ele mesmo busca a árvore, via `useTaskPicker`). Inclui **subtarefas**. |
+| `MascotCard.vue`       | Aviso do Nevo no formato de mensagem recebida: carinha da marca como avatar à esquerda e balão com bico. Slots `meta` / `actions` / `dismiss`; prop `tone` (`warn` tinge de âmbar) e `live` (`assertive` para o que pede ação). Posicionamento é do container, não dele. |
 | `TagChip.vue` + `tag-palette.ts` | Chip de tag. Cor vem de `var(--tag-<chave>)` (definido em `tokens.ts`, por tema), nunca hex. Tag sem cor recebe uma determinística pelo slug. |
 | `TagInput.vue`         | Campo de tags estilo Azure Boards: chips na caixa, Enter cria a que não existe, Backspace remove a última. Combobox ARIA à mão (não reka) — ver o comentário no arquivo. |
 
@@ -183,6 +184,14 @@ Navegação, busca e contagens são 100% locais (a árvore vem inteira numa
 requisição, só com títulos). Ordem da raiz: Sem tarefa → Recentes (por empresa,
 em `localStorage`) → Minhas tarefas → Trimestres.
 
+**Constância (heatmap)** (`features/time/components/TimeHeatmap.vue`): grade estilo
+GitHub, uma coluna por semana. Aparece no rail do Meu tempo (26 semanas, query
+própria com `staleTime` de 5 min) e na Equipe em dois lugares: o mapa do escopo
+no rail e uma faixa de 13 semanas por pessoa no ranking, herdando a cor do avatar
+(`--accent` local). A escala é sempre do **máximo da janela desenhada**, nunca do
+mapa inteiro — quem recebe 6 meses e desenha 13 semanas teria tudo achatado por
+um pico antigo. O backend ganhou `byUserDay` no `company-report` só para isso.
+
 **Sons** (`composables/useTimerSounds.ts`): sintetizados com Web Audio no mesmo
 molde do `useXpSounds` (sem arquivo binário, volume baixo). Arpejo ascendente ao
 iniciar, o mesmo descendo com um toque seco ao parar, com variação de ±5 cents
@@ -230,6 +239,15 @@ Cinco coisas que não são óbvias:
 5. **As ações do alerta vivem fora do popover do timer** (`IdleAlert.vue`, montado
    no AppShell). Foi o que a verificação de ponta a ponta mostrou: com os botões
    dentro do painel fechado, quem voltava ao computador não via nada na tela.
+
+Os avisos vivem na pilha `.nevo-stack` (AppShell), fixa no canto inferior direito
+ACIMA do botão do assistente — os dois disputavam o mesmo canto. O container tem
+`pointer-events: none` e os cards `auto`, senão a área vazia roubaria cliques.
+
+**Teste de notificação** (`/settings`): dispara o aviso real com os dois botões.
+O `data.kind` (`idle-warning` / `idle-cut` / `idle-test`) viaja pelo canal de
+ações e é o que impede o botão "Parar agora" de um TESTE de parar o timer de
+verdade — o guard ignora tudo que não for aviso real.
 
 Para exercitar sem esperar 20 minutos: `?idleDebug=1` (só em dev) usa 30s de
 aviso e 15s de carência, e ignora o sinal da `IdleDetector` (a API só informa

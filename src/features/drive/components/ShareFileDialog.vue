@@ -92,8 +92,12 @@ async function createLink() {
       expiresAt: expiresAtIso(),
     })
     links.value = [link, ...links.value]
-    await copy(link)
-    success('Link criado e copiado')
+    // O toast segue o que REALMENTE aconteceu: `copy` falha em Safari/Firefox
+    // quando a permissão de área de transferência não sobrevive ao await da
+    // criação, e anunciar "copiado" ali fazia a pessoa colar o link anterior.
+    const copiado = await copy(link, { silencioso: true })
+    if (copiado) success('Link criado e copiado')
+    else success('Link criado. Use o botão de copiar ao lado dele para levar o endereço.')
   } catch (error) {
     showError(getApiErrorMessage(error, 'Não foi possível criar o link'))
   } finally {
@@ -101,15 +105,25 @@ async function createLink() {
   }
 }
 
-async function copy(link: DriveShareLink) {
+/** Devolve se a cópia deu certo, para o chamador não prometer o que não houve. */
+async function copy(
+  link: DriveShareLink,
+  opts: { silencioso?: boolean } = {},
+): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(absoluteUrl(link))
     copiedId.value = link.id
     window.setTimeout(() => {
       if (copiedId.value === link.id) copiedId.value = null
     }, 2000)
+    return true
   } catch {
-    showError('Não foi possível copiar. Selecione o endereço e copie à mão.')
+    // Na criação quem avisa é o chamador, com uma mensagem só: dois toques
+    // (erro + sucesso) para o mesmo clique é ruído.
+    if (!opts.silencioso) {
+      showError('Não foi possível copiar. Selecione o endereço e copie à mão.')
+    }
+    return false
   }
 }
 

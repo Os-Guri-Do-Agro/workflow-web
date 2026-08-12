@@ -4,7 +4,7 @@
 **Autor:** Nicolas (com Claude)
 **Criado em:** 2026-08-11
 **Última atualização:** 2026-08-11
-**Versão:** 1.0
+**Versão:** 1.1
 
 ---
 
@@ -196,4 +196,5 @@ a conferência de timbre no fone é sua, não dá para julgar áudio em headless
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-08-11 | 0.1 | Criação | Nicolas + Claude |
+| 2026-08-11 | 1.1 | Rodada 2 (pedido do Nicolas): heatmap de constância estilo GitHub no rail do Meu tempo e na Equipe (mapa do escopo + faixa por pessoa no ranking), com `byUserDay` novo no `company-report`. Escala por janela desenhada, nota quando o filtro de empresa não se aplica | Nicolas + Claude |
 | 2026-08-11 | 1.0 | Implementada e verificada. Ajustes durante a execução: estado vazio com ação "Mostrar N concluídas"; teto de 2h na recuperação e listener global liberado no unmount (achados do code-review) | Nicolas + Claude |

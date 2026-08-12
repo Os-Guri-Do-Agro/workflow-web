@@ -8,6 +8,8 @@ import { computed } from 'vue'
 import RailCard from '@/features/time/components/RailCard.vue'
 import MiniBars from '@/features/time/components/MiniBars.vue'
 import BreakdownList from '@/features/time/components/BreakdownList.vue'
+import TimeHeatmap from '@/features/time/components/TimeHeatmap.vue'
+import { HEATMAP_WEEKS } from '@/features/time/composables/useTeamTime'
 import { formatDurationLong } from '@/utils/duration'
 import type { PulseBar } from '@/features/time/composables/useTimePeriod'
 
@@ -29,8 +31,10 @@ const props = withDefaults(
     byActivity: { title: string; sec: number; pct: number }[]
     /** Quebra por empresa: só faz sentido (e só vem preenchida) no grupo. */
     byCompany?: { name: string; sec: number; pct: number }[]
+    /** Segundos por dia do escopo nos últimos 6 meses (heatmap de constância). */
+    constancyByDay?: Map<string, number>
   }>(),
-  { scopeLabel: 'Equipe', byCompany: () => [] },
+  { scopeLabel: 'Equipe', byCompany: () => [], constancyByDay: () => new Map<string, number>() },
 )
 
 const activityItems = computed(() =>
@@ -86,6 +90,13 @@ const activityItems = computed(() =>
 
     <RailCard :title="pulseTitle">
       <MiniBars :days="pulse" :max="pulseMax" :dense="pulseDense" />
+    </RailCard>
+
+    <RailCard v-if="constancyByDay.size" title="Constância da equipe">
+      <template #aside>
+        <span class="trail-scope">últimos 6 meses</span>
+      </template>
+      <TimeHeatmap :days="constancyByDay" :weeks="HEATMAP_WEEKS" />
     </RailCard>
 
     <RailCard v-if="activityItems.length" title="Onde o tempo foi">

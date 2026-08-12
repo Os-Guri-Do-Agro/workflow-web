@@ -14,6 +14,7 @@ import { AlertTriangle, DollarSign, Lock } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import TeamInsightsRail from '@/features/time/components/TeamInsightsRail.vue'
+import TimeHeatmap from '@/features/time/components/TimeHeatmap.vue'
 import PeriodPicker from '@/features/time/components/PeriodPicker.vue'
 import RankMedal from '@/features/time/components/RankMedal.vue'
 import { useTeamTime, type TeamScope } from '@/features/time/composables/useTeamTime'
@@ -32,6 +33,8 @@ const scope = ref<TeamScope>('group')
 const {
   companies,
   rows,
+  constancyByDay,
+  constancyByUser,
   podium,
   activeCount,
   contributorCount,
@@ -53,6 +56,12 @@ const {
 const pulseTitle = computed(() => `Ritmo (${period.shortLabel.value})`)
 
 const hasScore = computed(() => rows.value.some((r) => r.totalSec > 0))
+
+/** Mapa dia→segundos daquela pessoa (vazio quando ela não registrou nada). */
+const EMPTY_CONSTANCY = new Map<string, number>()
+function constancyOf(userId: string): Map<string, number> {
+  return constancyByUser.value.get(userId) ?? EMPTY_CONSTANCY
+}
 const isGroup = computed(() => scope.value === 'group')
 /** O seletor só faz sentido com mais de uma empresa no grupo. */
 const showScope = computed(() => companies.value.length > 1)
@@ -238,6 +247,17 @@ const scopeLabel = computed(() =>
               <div v-if="hasScore" class="team-track" :aria-label="`${row.pct}% do tempo do escopo`">
                 <div class="team-track-fill" :style="{ width: row.pct + '%' }" />
               </div>
+
+              <!-- Constância dos últimos 3 meses: quem aparece todo dia fica
+                   visível mesmo sem estar no topo do placar por total. -->
+              <TimeHeatmap
+                v-if="constancyOf(row.userId).size"
+                class="team-heat"
+                :days="constancyOf(row.userId)"
+                :weeks="13"
+                :cell="7"
+                bare
+              />
             </div>
 
             <div class="team-metrics">
@@ -266,6 +286,7 @@ const scopeLabel = computed(() =>
         :pulse-dense="pulseDense"
         :by-activity="byActivity"
         :by-company="isGroup ? byCompany : []"
+        :constancy-by-day="constancyByDay"
       />
     </div>
   </div>
@@ -742,6 +763,23 @@ const scopeLabel = computed(() =>
   border-radius: 999px;
   background: var(--surface-3);
   overflow: hidden;
+}
+
+/*
+ * Faixa de constância da pessoa (3 meses). Herda a cor do avatar dela (`--pc`),
+ * então a linha do ranking inteira fala a mesma cor e dá para comparar de
+ * relance quem mantém o hábito, não só quem somou mais horas.
+ */
+.team-heat {
+  margin-top: 7px;
+  max-width: 420px;
+  --accent: var(--pc);
+}
+
+@media (max-width: 900px) {
+  .team-heat {
+    display: none;
+  }
 }
 
 .team-track-fill {

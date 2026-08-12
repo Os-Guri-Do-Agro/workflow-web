@@ -74,6 +74,61 @@ const rootRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLButtonElement | null>(null)
 const searchRef = ref<HTMLInputElement | null>(null)
 const listRef = ref<HTMLElement | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
+
+/**
+ * O menu vai para o `body` por `Teleport`, posicionado em `fixed` — mesma
+ * solução do `TagInput`, pelo mesmo motivo: os seletores vivem dentro de
+ * cartões com `overflow: hidden` (a linha de edição de entrada em `.tv-group` é
+ * um deles), e ali um menu `absolute` era recortado pela metade. Posicionar
+ * contra a viewport tira o menu de qualquer contexto de recorte, ao custo de
+ * reposicionar no scroll.
+ */
+const menuStyle = ref<Record<string, string>>({})
+
+const MENU_HEIGHT = 420
+
+function placeMenu(): void {
+  const anchor = rootRef.value
+  if (!anchor) return
+  const rect = anchor.getBoundingClientRect()
+  const vh = window.innerHeight
+  const MARGEM = 12
+
+  // O gatilho pode estar fora da tela (linha lá embaixo na lista de entradas, ou
+  // scroll depois de abrir). Sem prender o cálculo à área visível, o menu era
+  // ancorado num ponto invisível e saía inteiro pelo rodapé.
+  const topo = Math.min(Math.max(rect.top, MARGEM), vh - MARGEM)
+  const base = Math.min(Math.max(rect.bottom, MARGEM), vh - MARGEM)
+
+  const abaixo = vh - base - 8
+  const acima = topo - 8
+  // Só abre para cima quando não cabe embaixo E cabe melhor em cima: campo no
+  // rodapé abriria um menu de dois itens.
+  const paraCima = abaixo < Math.min(MENU_HEIGHT, 260) && acima > abaixo
+  const espaco = Math.max(160, paraCima ? acima : abaixo)
+
+  const largura = Math.max(rect.width, 320)
+  // Não deixa vazar pela direita em campo estreito colado na borda.
+  const left = Math.min(Math.round(rect.left), window.innerWidth - largura - MARGEM)
+
+  menuStyle.value = {
+    left: `${Math.max(MARGEM, left)}px`,
+    width: `${Math.round(largura)}px`,
+    maxHeight: `${Math.round(Math.min(MENU_HEIGHT, espaco))}px`,
+    ...(paraCima
+      ? { bottom: `${Math.round(Math.max(MARGEM, vh - topo + 6))}px` }
+      : { top: `${Math.round(Math.min(base + 6, vh - MARGEM))}px` }),
+  }
+}
+
+// `capture: true`: o scroll costuma acontecer num container interno (a lista de
+// entradas), e scroll não sobe por bubbling.
+function watchViewport(ligar: boolean): void {
+  const metodo = ligar ? 'addEventListener' : 'removeEventListener'
+  window[metodo]('scroll', placeMenu, true)
+  window[metodo]('resize', placeMenu)
+}
 
 /** Nível aberto: raiz (atalhos + trimestres) → trimestre → mês. */
 const openQuarterId = ref<string | null>(null)
@@ -245,6 +300,11 @@ function show() {
   open.value = true
   query.value = ''
   activeIndex.value = 0
+  // Traz o gatilho para a área visível antes de medir: é o que um select nativo
+  // faz, e evita abrir o menu preso a uma âncora fora da tela.
+  triggerRef.value?.scrollIntoView({ block: 'nearest' })
+  void nextTick(placeMenu)
+  watchViewport(true)
   // Reabrir já no mês da tarefa escolhida: continuar de onde parou vale mais do
   // que voltar à raiz toda vez.
   openQuarterId.value = selected.value?.quarterId ?? null
@@ -257,6 +317,7 @@ function show() {
 function close(focusTrigger = false) {
   open.value = false
   query.value = ''
+  watchViewport(false)
   if (focusTrigger) void nextTick(() => triggerRef.value?.focus())
 }
 
@@ -356,6 +417,12 @@ function onKeydown(event: KeyboardEvent) {
 // Busca reposiciona a seleção do teclado no primeiro resultado.
 watch(query, () => (activeIndex.value = 0))
 
+// Trocar de nível muda a altura do menu; sem recolocar, o modo "abre para cima"
+// fica preso na altura de um instante anterior.
+watch([rows, openQuarterId, openMonthId], () => {
+  if (open.value) void nextTick(placeMenu)
+})
+
 // Trocar de empresa invalida o caminho aberto.
 watch(
   () => props.companyId,
@@ -368,7 +435,10 @@ watch(
 function onDocumentPointerDown(event: PointerEvent) {
   if (!open.value) return
   const target = event.target as Node | null
-  if (rootRef.value && target && !rootRef.value.contains(target)) close()
+  if (!target) return
+  // O menu está teleportado: não basta olhar o root.
+  if (rootRef.value?.contains(target) || menuRef.value?.contains(target)) return
+  close()
 }
 
 watch(open, (isOpen) => {
@@ -380,6 +450,7 @@ watch(open, (isOpen) => {
 // salvar): sem isto sobraria um listener global por ciclo.
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onDocumentPointerDown, true)
+  watchViewport(false)
 })
 
 // ─── Aparência ────────────────────────────────────────────────────────────────
@@ -413,8 +484,17 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
       <ChevronDown :size="15" class="tp-chevron" />
     </button>
 
-    <Transition name="tp-pop">
-      <div v-if="open" class="tp-menu" role="dialog" :aria-label="label" @keydown="onKeydown">
+    <Teleport to="body">
+      <Transition name="tp-pop">
+        <div
+          v-if="open"
+          ref="menuRef"
+          class="tp-menu"
+          :style="menuStyle"
+          role="dialog"
+          :aria-label="label"
+          @keydown="onKeydown"
+        >
         <!-- Busca: sempre no topo, sempre global -->
         <div class="tp-search">
           <Search :size="14" class="tp-search-icon" />
@@ -552,16 +632,17 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
           </template>
         </div>
 
-        <div class="tp-footer">
-          <label class="tp-toggle">
-            <input v-model="showDone" type="checkbox" class="tp-toggle-input" />
-            <span class="tp-toggle-box"><Check :size="11" /></span>
-            <span>Mostrar concluídas</span>
-          </label>
-          <span v-if="picker.isFetching.value" class="tp-footer-hint">atualizando…</span>
+          <div class="tp-footer">
+            <label class="tp-toggle">
+              <input v-model="showDone" type="checkbox" class="tp-toggle-input" />
+              <span class="tp-toggle-box"><Check :size="11" /></span>
+              <span>Mostrar concluídas</span>
+            </label>
+            <span v-if="picker.isFetching.value" class="tp-footer-hint">atualizando…</span>
+          </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -642,11 +723,10 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 }
 
 .tp-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 120;
-  width: min(360px, calc(100vw - 32px));
+  /* Teleportado para o `body`: `fixed` + posição calculada no JS (ver placeMenu). */
+  position: fixed;
+  z-index: 220;
+  max-width: calc(100vw - 24px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border-strong);
@@ -657,6 +737,7 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 }
 
 .tp-search {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -704,6 +785,7 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 }
 
 .tp-crumbs {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 3px;
@@ -756,7 +838,11 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 }
 
 .tp-list {
-  max-height: 300px;
+  /* `min-height: 0` é o que faz o `max-height` do menu valer: item flex não
+     encolhe abaixo do próprio conteúdo por padrão, e sem isto a lista estourava
+     o rodapé da tela em viewport baixa. */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 5px;
 }
@@ -896,6 +982,7 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 }
 
 .tp-footer {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;

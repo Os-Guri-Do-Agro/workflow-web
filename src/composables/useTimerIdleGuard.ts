@@ -146,7 +146,7 @@ export function useTimerIdleGuard() {
         { action: 'continue', title: 'Continuar contando' },
         { action: 'stop', title: 'Parar agora' },
       ],
-      data: { kind: 'idle-warning' },
+      data: { kind: 'idle-warning' as const },
     })
   }
 
@@ -204,7 +204,7 @@ export function useTimerIdleGuard() {
         tag: CUT_TAG,
         title: 'Timer parado por inatividade',
         body: 'Seu tempo foi encerrado agora. O período parado ficou registrado.',
-        data: { kind: 'idle-cut' },
+        data: { kind: 'idle-cut' as const },
       })
       return
     }
@@ -232,7 +232,7 @@ export function useTimerIdleGuard() {
       title: 'Timer parado por inatividade',
       body: `Seu tempo parou às ${hhmm}, no último momento em que você estava ativo.`,
       actions: [{ action: 'recover', title: 'Recuperar o tempo' }],
-      data: { kind: 'idle-cut' },
+      data: { kind: 'idle-cut' as const },
     })
   }
 
@@ -350,7 +350,13 @@ export function useTimerIdleGuard() {
     // o alerta de pé por segundos depois da pessoa já ter voltado.
     const stopWatch = watch([lastActivityAt, screenLocked, isRunning, enabled], evaluate)
 
-    const offAction = notification.onAction((action) => {
+    const offAction = notification.onAction((action, kind) => {
+      // Ignora SÓ o teste: ele usa os mesmos botões, e sem esta guarda "Parar
+      // agora" de um teste pararia o timer de verdade. A guarda é pela negativa
+      // de propósito — um service worker ANTIGO, ainda instalado no navegador,
+      // manda `unknown` no caminho de app fechado, e recusar o desconhecido
+      // transformaria o clique real da pessoa em nada.
+      if (kind === 'idle-test') return
       if (action === 'continue') continueCounting()
       else if (action === 'stop') void cut('manual').catch(() => {})
       else if (action === 'recover') void recover().catch(() => {})

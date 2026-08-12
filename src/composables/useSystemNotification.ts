@@ -19,6 +19,13 @@ const ICON = '/brand/marca.png'
 
 export type IdleNotificationAction = 'continue' | 'stop' | 'recover' | 'open'
 
+/**
+ * De qual notificação veio a ação. Sem isto, o botão "Parar agora" de uma
+ * notificação de TESTE pararia o timer de verdade: quem escuta o canal só via o
+ * nome da ação e não tinha como distinguir a origem.
+ */
+export type NotificationKind = 'idle-warning' | 'idle-cut' | 'idle-test' | 'unknown'
+
 /** Notificação de service worker aceita botões; o lib.dom ainda não descreve isso. */
 interface NotificationOptionsWithActions extends NotificationOptions {
   actions?: Array<{ action: string; title: string }>
@@ -29,8 +36,12 @@ interface NotifyOptions {
   title: string
   body: string
   actions?: Array<{ action: IdleNotificationAction; title: string }>
-  data?: Record<string, unknown>
+  /** `kind` identifica a origem e é o que separa aviso real de teste. */
+  data: { kind: NotificationKind } & Record<string, unknown>
 }
+
+/** O que aconteceu ao tentar notificar (o chamador decide o que dizer). */
+export type NotifyResult = 'sent-with-actions' | 'sent-without-actions' | 'blocked' | 'failed'
 
 const supported = typeof window !== 'undefined' && 'Notification' in window
 
@@ -40,10 +51,11 @@ export const notificationPermission = ref<NotificationPermission>(
 
 let registration: ServiceWorkerRegistration | null = null
 let messageBound = false
-const actionHandlers = new Set<(action: IdleNotificationAction) => void>()
+type ActionHandler = (action: IdleNotificationAction, kind: NotificationKind) => void
+const actionHandlers = new Set<ActionHandler>()
 
-function emitAction(action: IdleNotificationAction) {
-  for (const handler of actionHandlers) handler(action)
+function emitAction(action: IdleNotificationAction, kind: NotificationKind) {
+  for (const handler of actionHandlers) handler(action, kind)
 }
 
 /** Ações vindas do service worker (clique na notificação) e da URL de abertura. */
@@ -52,18 +64,26 @@ function bindActionChannel() {
   messageBound = true
 
   navigator.serviceWorker?.addEventListener('message', (event: MessageEvent) => {
-    const payload = event.data as { type?: string; action?: IdleNotificationAction }
-    if (payload?.type === 'nevo-idle-action' && payload.action) emitAction(payload.action)
+    const payload = event.data as {
+      type?: string
+      action?: IdleNotificationAction
+      data?: { kind?: NotificationKind }
+    }
+    if (payload?.type === 'nevo-idle-action' && payload.action) {
+      emitAction(payload.action, payload.data?.kind ?? 'unknown')
+    }
   })
 
   // Janela aberta pelo clique na notificação com o app fechado.
   const url = new URL(window.location.href)
   const fromUrl = url.searchParams.get('idleAction') as IdleNotificationAction | null
+  const kindFromUrl = (url.searchParams.get('idleKind') as NotificationKind | null) ?? 'unknown'
   if (fromUrl) {
     url.searchParams.delete('idleAction')
+    url.searchParams.delete('idleKind')
     window.history.replaceState({}, '', url.toString())
     // Depois do boot: os consumidores ainda estão sendo montados.
-    setTimeout(() => emitAction(fromUrl), 0)
+    setTimeout(() => emitAction(fromUrl, kindFromUrl), 0)
   }
 }
 
@@ -107,9 +127,9 @@ export function useSystemNotification() {
     }
   }
 
-  /** Envia (ou substitui, pela `tag`) uma notificação. Silencioso sem permissão. */
-  async function notify(options: NotifyOptions): Promise<void> {
-    if (!supported || Notification.permission !== 'granted') return
+  /** Envia (ou substitui, pela `tag`) uma notificação e diz como ela saiu. */
+  async function notify(options: NotifyOptions): Promise<NotifyResult> {
+    if (!supported || Notification.permission !== 'granted') return 'blocked'
     const reg = await ensureRegistration()
     const common = {
       body: options.body,
@@ -126,18 +146,24 @@ export function useSystemNotification() {
         ...common,
         actions: options.actions,
       }
-      await reg.showNotification(options.title, withActions)
-      return
+      try {
+        await reg.showNotification(options.title, withActions)
+        return 'sent-with-actions'
+      } catch {
+        return 'failed'
+      }
     }
     try {
       const notification = new Notification(options.title, common)
       notification.onclick = () => {
         window.focus()
         notification.close()
-        emitAction('open')
+        emitAction('open', options.data.kind)
       }
+      return 'sent-without-actions'
     } catch {
       // Alguns browsers proíbem o construtor quando há SW; já tentamos o SW antes.
+      return 'failed'
     }
   }
 
@@ -150,7 +176,7 @@ export function useSystemNotification() {
   }
 
   /** Assina os cliques da notificação. Devolve a função de desinscrição. */
-  function onAction(handler: (action: IdleNotificationAction) => void): () => void {
+  function onAction(handler: ActionHandler): () => void {
     actionHandlers.add(handler)
     return () => actionHandlers.delete(handler)
   }

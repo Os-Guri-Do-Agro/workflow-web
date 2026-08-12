@@ -42,6 +42,11 @@ async function routeAction(action, data) {
   }
 
   // Nenhuma janela aberta: postMessage não sobreviveria ao boot, então a ação
-  // viaja na URL e o app a consome ao iniciar.
-  await self.clients.openWindow(`/?idleAction=${encodeURIComponent(action)}`)
+  // viaja na URL e o app a consome ao iniciar. O `kind` vai junto porque é ele
+  // que distingue um aviso real de uma notificação de teste — sem isso, "Parar
+  // agora" de um teste pararia o timer de verdade.
+  const kind = encodeURIComponent(data.kind || 'unknown')
+  await self.clients.openWindow(
+    `/?idleAction=${encodeURIComponent(action)}&idleKind=${kind}`,
+  )
 }

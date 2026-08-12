@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import {
   Check,
   Sun,
@@ -21,6 +21,7 @@ import {
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
 import { useTimerSounds } from '@/composables/useTimerSounds'
+import { useSystemNotification } from '@/composables/useSystemNotification'
 import { idleDetectionPermission, idleDetectionState } from '@/composables/useIdleDetection'
 import { useToast } from '@/composables/useToast'
 import importService from '@/service/import/import-service'
@@ -102,6 +103,53 @@ const {
 
 // ── Som do cronômetro ────────────────────────────────────────────────────
 const { playStart, playStop } = useTimerSounds()
+
+// ── Teste de notificação ─────────────────────────────────────────────────
+const notification = useSystemNotification()
+
+/**
+ * Dispara a MESMA notificação do aviso de ociosidade, com os dois botões, para
+ * a pessoa ver como o sistema dela apresenta o aviso (no Windows o toast
+ * aparece no canto e depois recolhe para a Central de Ações). A ação clicada
+ * volta como toast — é o que prova que o botão realmente chega no app.
+ */
+async function testNotification() {
+  const result = await notification.notify({
+    tag: 'nevo-idle-test',
+    title: 'Teste do aviso do Nevo',
+    body: 'É assim que o aviso aparece quando o timer fica sozinho. Clique num botão para ver a resposta chegar no app.',
+    actions: [
+      { action: 'continue', title: 'Continuar contando' },
+      { action: 'stop', title: 'Parar agora' },
+    ],
+    // `idle-test` é o que impede o guard de tratar estes botões como reais e
+    // parar o timer de verdade.
+    data: { kind: 'idle-test' },
+  })
+
+  if (result === 'sent-with-actions') {
+    toastSuccess('Notificação enviada. Se não apareceu na tela, veja a Central de Ações')
+  } else if (result === 'sent-without-actions') {
+    toastSuccess('Notificação enviada, mas sem botões neste navegador')
+  } else if (result === 'blocked') {
+    toastError('Notificações bloqueadas: libere no cadeado da barra de endereço')
+  } else {
+    toastError('Não foi possível enviar a notificação')
+  }
+}
+
+/** Resposta do TESTE (o aviso real é tratado pelo guard, não aqui). */
+const stopListeningAction = notification.onAction((action, kind) => {
+  if (kind !== 'idle-test') return
+  const labels: Record<string, string> = {
+    continue: 'Continuar contando',
+    stop: 'Parar agora',
+    recover: 'Recuperar o tempo',
+    open: 'abriu a notificação',
+  }
+  toastSuccess(`Chegou aqui: ${labels[action] ?? action}`)
+})
+onUnmounted(() => stopListeningAction())
 
 /**
  * Prévia: toca o par completo (início e, logo depois, parada) mesmo com a
@@ -567,18 +615,29 @@ const shellOptions: {
             <span class="setting-label">Aviso fora do navegador</span>
             <span class="setting-desc">{{ idleStatusText }}</span>
           </div>
-          <button
-            v-if="idleAlerts.nextStep.value"
-            type="button"
-            class="idle-perm-btn"
-            :disabled="idleAlerts.requesting.value"
-            @click="idleAlerts.requestNext()"
-          >
-            {{ idleAlerts.stepLabel.value }}
-          </button>
-          <span v-else-if="idleAlerts.granted.value" class="idle-perm-ok">
-            <Check :size="13" /> Ativo
-          </span>
+          <div class="setting-actions">
+            <button
+              v-if="idleAlerts.granted.value"
+              type="button"
+              class="sound-preview"
+              @click="testNotification"
+            >
+              <Bell :size="12" />
+              Testar
+            </button>
+            <button
+              v-if="idleAlerts.nextStep.value"
+              type="button"
+              class="idle-perm-btn"
+              :disabled="idleAlerts.requesting.value"
+              @click="idleAlerts.requestNext()"
+            >
+              {{ idleAlerts.stepLabel.value }}
+            </button>
+            <span v-else-if="idleAlerts.granted.value" class="idle-perm-ok">
+              <Check :size="13" /> Ativo
+            </span>
+          </div>
         </div>
       </div>
 

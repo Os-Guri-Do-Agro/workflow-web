@@ -227,6 +227,31 @@ function onFocusOut(event: FocusEvent): void {
   if (next && (rootRef.value?.contains(next) || listRef.value?.contains(next))) return
   closeList()
 }
+
+/**
+ * Rede de segurança do fechamento.
+ *
+ * `focusout` sozinho não basta: com a lista teleportada, um clique que deixa o
+ * foco DENTRO dela (o botão "Criar tag" que falhou, por exemplo) nunca dispara
+ * o fechamento, e o dropdown `fixed` fica preso na tela por cima de tudo. Este
+ * ponteiro pega o clique em qualquer lugar fora do campo E da lista.
+ */
+function onDocumentPointerDown(event: PointerEvent): void {
+  if (!open.value) return
+  const target = event.target as Node | null
+  if (!target) return
+  if (rootRef.value?.contains(target) || listRef.value?.contains(target)) return
+  closeList()
+}
+
+watch(open, (aberta) => {
+  const metodo = aberta ? 'addEventListener' : 'removeEventListener'
+  document[metodo]('pointerdown', onDocumentPointerDown as EventListener, true)
+})
+
+onBeforeUnmount(() =>
+  document.removeEventListener('pointerdown', onDocumentPointerDown as EventListener, true),
+)
 </script>
 
 <template>

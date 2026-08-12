@@ -4,7 +4,7 @@
 **Autor:** Nicolas (com Claude)
 **Criado em:** 2026-08-11
 **Última atualização:** 2026-08-11
-**Versão:** 1.0
+**Versão:** 1.1
 
 > **Verificação:** o ciclo inteiro foi exercitado de ponta a ponta em Edge
 > headless via CDP, com toda a API interceptada localmente (ver *Verificação
@@ -377,4 +377,5 @@ Assistente de Foco ligado.
 |---|---|---|---|
 | 2026-08-11 | 0.1 | Criação | Nicolas + Claude |
 | 2026-08-11 | 0.2 | Notificação nativa do Windows elevada a peça central (comportamento da Central de Ações, Assistente de Foco, ícone da marca, `tag` única, notificação de corte); permissão pedida também no clique de "Iniciar" do timer; riscos e roteiro manual atualizados | Nicolas + Claude |
+| 2026-08-11 | 1.1 | Rodada 2: avisos redesenhados como mensagem do Nevo (`MascotCard`, carinha à esquerda) e empilhados acima do botão do assistente, que eles cobriam; botão "Testar notificação" em /settings; `data.kind` no canal de ações, sem o qual o teste pararia o timer real | Nicolas + Claude |
 | 2026-08-11 | 1.0 | Implementada e verificada de ponta a ponta. Correções durante a execução: card fixo `IdleAlert` no lugar dos banners dentro do popover; permissões resolvidas um passo por clique (o mesmo gesto não abre dois prompts); sem oferta de recuperação quando o fallback fecha em agora; "Retomar" deixa de apagar o registro do corte; modo `?idleDebug=1` ignora a `IdleDetector` | Nicolas + Claude |

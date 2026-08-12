@@ -70,6 +70,11 @@ export interface CompanyReport {
   byUser: Array<{ userId: string; name: string; totalSec: number }>
   byActivity: Array<{ activityId: string | null; title: string; totalSec: number }>
   byDay: Array<{ day: string; totalSec: number }>
+  /**
+   * Tempo por pessoa E por dia — base do heatmap de constância do ranking. Só
+   * dias com registro entram. Ausente em backend anterior a ago/2026.
+   */
+  byUserDay?: Array<{ userId: string; day: string; totalSec: number }>
 }
 
 /** Filtros dos relatórios. `tzOffset` (minutos, getTimezoneOffset) agrupa byDay no fuso local. */

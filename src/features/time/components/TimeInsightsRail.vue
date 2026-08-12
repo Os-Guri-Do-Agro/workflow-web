@@ -15,6 +15,7 @@ import { CalendarCheck, Flame, Hourglass } from 'lucide-vue-next'
 import RailCard from '@/features/time/components/RailCard.vue'
 import MiniBars from '@/features/time/components/MiniBars.vue'
 import BreakdownList from '@/features/time/components/BreakdownList.vue'
+import TimeHeatmap from '@/features/time/components/TimeHeatmap.vue'
 import { formatDurationLong } from '@/utils/duration'
 
 const props = defineProps<{
@@ -33,6 +34,11 @@ const props = defineProps<{
   longestSessionSec: number
   /** Ex.: "nas 50 entradas carregadas". Vazio quando a lista não está truncada. */
   sampleNote: string
+  /** Segundos por dia da janela longa do heatmap (independe do período). */
+  constancyByDay: Map<string, number>
+  constancyWeeks: number
+  /** true quando há filtro de empresa: o mapa vem do resumo, que soma todas. */
+  constancyIsAllCompanies: boolean
 }>()
 
 const streakLabel = computed(() =>
@@ -70,6 +76,22 @@ const hasRealTasks = computed(() => props.byTask.some((t) => t.name !== 'Sem tar
 
     <RailCard :title="pulseTitle">
       <MiniBars :days="pulse" :max="pulseMax" :dense="pulseDense" />
+    </RailCard>
+
+    <!-- Constância: janela fixa de 6 meses, independente do período do resto da
+         tela. Responde "com que regularidade", que barra nenhuma responde. -->
+    <!-- Só afirma quando tem dado: em carregamento (ou falha) o card sumia menos
+         do que mentir "0 dias com registro" em 6 meses de trabalho. -->
+    <RailCard v-if="constancyByDay.size" title="Constância">
+      <template #aside>
+        <span class="rail-constancy-scope">últimos 6 meses</span>
+      </template>
+      <TimeHeatmap :days="constancyByDay" :weeks="constancyWeeks" />
+      <!-- O resumo do servidor não aceita filtro de empresa; dizer isso é
+           melhor do que deixar o mapa contradizer o resto da tela em silêncio. -->
+      <p v-if="constancyIsAllCompanies" class="rail-note">
+        Conta todas as empresas, mesmo com o filtro aplicado.
+      </p>
     </RailCard>
 
     <RailCard title="Destaques">
@@ -200,6 +222,13 @@ const hasRealTasks = computed(() => props.byTask.some((t) => t.name !== 'Sem tar
   margin-top: 7px;
   font-size: 11.5px;
   color: var(--text-3);
+}
+
+/* Constância */
+.rail-constancy-scope {
+  color: var(--text-4);
+  font-size: 10px;
+  font-weight: 650;
 }
 
 /* Destaques */

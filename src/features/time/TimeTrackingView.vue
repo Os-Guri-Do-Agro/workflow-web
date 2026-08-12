@@ -17,6 +17,7 @@ import PeriodPicker from '@/features/time/components/PeriodPicker.vue'
 import { useCompanyActivities } from '@/composables/useCompanyActivities'
 import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
+import { HEATMAP_WEEKS, constancyWindow } from '@/features/time/composables/useTeamTime'
 import { useTimerSounds } from '@/composables/useTimerSounds'
 import { getApiErrorMessage } from '@/service/api'
 import type { TimeEntry } from '@/service/time/time-service'
@@ -327,6 +328,21 @@ const pulseMax = computed(() => Math.max(1, ...pulse.value.map((d) => d.sec)))
 const pulseDense = computed(() => pulse.value.length > 12)
 
 const pulseTitle = computed(() => `Ritmo (${period.shortLabel.value})`)
+
+/**
+ * Constância: janela FIXA de 26 semanas, independente do período escolhido.
+ * Regularidade só aparece em janela longa — com "Hoje" selecionado o mapa teria
+ * uma coluna. Cache de 5 min: passado fechado não muda.
+ */
+// Ancorada no dia (ver `constancyWindow`): chave de cache estável entre
+// montagens, senão cada visita à tela refazia o resumo de 26 semanas.
+const constancyRange = computed(() => constancyWindow())
+
+const constancySummary = useTimeSummary(constancyRange, 1000 * 60 * 5)
+
+const constancyByDay = computed<Map<string, number>>(
+  () => new Map((constancySummary.data.value?.byDay ?? []).map((d) => [d.day, d.totalSec])),
+)
 
 /**
  * Agrupa as entradas visíveis por um rótulo e devolve o top N com percentual.
@@ -976,6 +992,9 @@ async function submitManual() {
           :streak-days="streakDays"
           :longest-session-sec="longestSessionSec"
           :sample-note="sampleNote"
+          :constancy-by-day="constancyByDay"
+          :constancy-weeks="HEATMAP_WEEKS"
+          :constancy-is-all-companies="isCompanyFiltered"
         />
       </div>
     </template>

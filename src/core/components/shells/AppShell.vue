@@ -203,11 +203,14 @@ const openPalette = () => paletteRef.value?.open()
     <AssistantLauncher />
     <AssistantPanel />
     <WelcomeGuide />
-    <!-- Convite de permissão do aviso de ociosidade (some assim que decidido). -->
-    <IdlePermissionPrompt />
-    <!-- Aviso de ociosidade com as ações: fica fora do popover do timer para
-         estar na tela quando a pessoa volta ao computador. -->
-    <IdleAlert />
+    <!-- Recados do Nevo (canto inferior direito). O container empilha e fica
+         ACIMA do botão do assistente, que ocupa o mesmo canto: sem isto o
+         aviso cobria a logo flutuante da IA. `pointer-events: none` aqui e
+         `auto` nos cards, para a área vazia não roubar cliques da tela. -->
+    <div class="nevo-stack">
+      <IdleAlert />
+      <IdlePermissionPrompt />
+    </div>
     <!-- Easter egg Windows XP (só quando o modo XP está ligado): ícones de área
          de trabalho, title bar da "janela" de conteúdo e barra de tarefas. -->
     <template v-if="xp">
@@ -222,5 +225,31 @@ const openPalette = () => paletteRef.value?.open()
 .app-shell-root,
 .app-shell-bare {
   display: contents;
+}
+
+/*
+ * Pilha de recados do Nevo. `bottom` deixa livre a faixa do AssistantLauncher
+ * (56px + respiro); `column-reverse` faz o aviso mais novo nascer embaixo,
+ * perto do avatar, como numa conversa.
+ */
+.nevo-stack {
+  position: fixed;
+  right: 22px;
+  bottom: 90px;
+  z-index: 95;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .nevo-stack {
+    right: 16px;
+    left: 16px;
+    bottom: 84px;
+    align-items: stretch;
+  }
 }
 </style>

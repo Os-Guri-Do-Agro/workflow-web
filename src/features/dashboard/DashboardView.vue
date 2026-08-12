@@ -115,9 +115,16 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
 @import './components/dashboard-shared.css';
 
 .dash-page {
+  /*
+   * Ancorado à esquerda e com o MESMO gabarito das outras telas densas (o
+   * `.time-view` do Meu tempo usa estes números). Centralizado, o Dashboard
+   * saía do lugar em monitor largo: a sidebar terminava e o conteúdo começava
+   * depois de um vazio, enquanto Meu tempo, Tarefas e Drive começavam colados.
+   * Trocar de aba parecia mover a página inteira.
+   */
   padding: 24px 28px 40px;
-  max-width: 1440px;
-  margin: 0 auto;
+  max-width: 1480px;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;

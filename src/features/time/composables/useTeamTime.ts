@@ -72,6 +72,22 @@ function retryUnlessClientError(failureCount: number, error: unknown): boolean {
   return failureCount < 2
 }
 
+/** Semanas do heatmap de constância (o mesmo valor usado no Meu tempo). */
+export const HEATMAP_WEEKS = 26
+
+/**
+ * Intervalo do heatmap, estável dentro do mesmo dia: é o que torna a chave de
+ * cache reaproveitável entre montagens (e entre o Meu tempo e a Equipe).
+ */
+export function constancyWindow(): { from: string; to: string } {
+  const to = new Date()
+  to.setHours(23, 59, 59, 999)
+  const from = new Date(to)
+  from.setDate(from.getDate() - HEATMAP_WEEKS * 7)
+  from.setHours(0, 0, 0, 0)
+  return { from: from.toISOString(), to: to.toISOString() }
+}
+
 
 /**
  * T5 (spec time-tracking-v2) — dados da aba Equipe.
@@ -169,6 +185,33 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
             id,
           ),
         staleTime: staleTime.value,
+        retry: retryUnlessClientError,
+      })),
+    ),
+  })
+
+  /**
+   * Constância (heatmap): janela FIXA de 26 semanas, independente do período
+   * escolhido. Regularidade só se enxerga em janela longa — com "Hoje"
+   * selecionado o mapa teria uma coluna e não diria nada. Cache mais longo:
+   * histórico fechado praticamente não muda.
+   */
+  // A janela é ancorada no DIA, não no instante: com `toISOString()` cheio, a
+  // queryKey mudava a cada montagem (milissegundo diferente) e o cache de 5 min
+  // nunca acertava — toda ida à aba refazia o relatório de 26 semanas de todas
+  // as empresas.
+  const constancyRange = computed(() => constancyWindow())
+
+  const constancyQueries = useQueries({
+    queries: computed(() =>
+      targetIds.value.map((id) => ({
+        queryKey: ['time', 'company-report', id, constancyRange.value] as const,
+        queryFn: () =>
+          timeService.companyReport(
+            { ...constancyRange.value, tzOffset: new Date().getTimezoneOffset() },
+            id,
+          ),
+        staleTime: 1000 * 60 * 5,
         retry: retryUnlessClientError,
       })),
     ),
@@ -386,6 +429,36 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
 
   const pulseMax = computed(() => Math.max(1, ...pulse.value.map((d) => d.sec)))
 
+  /** Constância do escopo inteiro: segundos por dia nas últimas 26 semanas. */
+  const constancyByDay = computed<Map<string, number>>(() => {
+    const map = new Map<string, number>()
+    for (const q of constancyQueries.value) {
+      for (const d of (q.data as CompanyReport | undefined)?.byDay ?? []) {
+        const key = d.day.slice(0, 10)
+        map.set(key, (map.get(key) ?? 0) + d.totalSec)
+      }
+    }
+    return map
+  })
+
+  /**
+   * Constância por pessoa, para a faixa no ranking. Vem de `byUserDay`, campo
+   * criado para isto: o `byUser` só tem o total, e sem o recorte por dia não dá
+   * para desenhar regularidade.
+   */
+  const constancyByUser = computed<Map<string, Map<string, number>>>(() => {
+    const map = new Map<string, Map<string, number>>()
+    for (const q of constancyQueries.value) {
+      for (const d of (q.data as CompanyReport | undefined)?.byUserDay ?? []) {
+        const key = d.day.slice(0, 10)
+        const perDay = map.get(d.userId) ?? new Map<string, number>()
+        perDay.set(key, (perDay.get(key) ?? 0) + d.totalSec)
+        map.set(d.userId, perDay)
+      }
+    }
+    return map
+  })
+
   /** Acima de 12 colunas o gráfico precisa do modo denso do MiniBars. */
   const pulseDense = computed(() => pulse.value.length > 12)
 
@@ -396,7 +469,7 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
    * aviso aparece já no primeiro 403.
    */
   const isForbidden = computed(() =>
-    [...liveQueries.value, ...reportQueries.value].some((q) => {
+    [...liveQueries.value, ...reportQueries.value, ...constancyQueries.value].some((q) => {
       const code = statusOf(q.error)
       return code === 403 || code === 404
     }),
@@ -405,7 +478,9 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
   const isError = computed(
     () =>
       !isForbidden.value &&
-      [...liveQueries.value, ...reportQueries.value].some((q) => q.isError),
+      [...liveQueries.value, ...reportQueries.value, ...constancyQueries.value].some(
+        (q) => q.isError,
+      ),
   )
 
   // Falhou é falhou: sem esta guarda, uma query que segue "pending" depois do
@@ -421,9 +496,14 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
   )
 
   function refetch() {
-    ;[...memberQueries.value, ...liveQueries.value, ...reportQueries.value, ...pulseQueries.value].forEach(
-      (q) => void q.refetch(),
-    )
+    ;[
+      ...memberQueries.value,
+      ...liveQueries.value,
+      ...reportQueries.value,
+      ...pulseQueries.value,
+      // Sem esta linha, "tentar de novo" deixava os heatmaps quebrados para sempre.
+      ...constancyQueries.value,
+    ].forEach((q) => void q.refetch())
   }
 
   return {
@@ -442,6 +522,8 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
     pulse,
     pulseMax,
     pulseDense,
+    constancyByDay,
+    constancyByUser,
     isLoading,
     isError,
     isForbidden,

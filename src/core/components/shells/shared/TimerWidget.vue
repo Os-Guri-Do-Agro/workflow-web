@@ -154,7 +154,7 @@ async function handleStop() {
  * conteúdo teleportado é interação dentro do widget.
  */
 const PORTAL_SELECTOR =
-  '[data-reka-popper-content-wrapper], [data-dismissable-layer], [role="listbox"]'
+  '[data-reka-popper-content-wrapper], [data-dismissable-layer], [role="listbox"], .tp-menu'
 
 function onDocumentClick(event: MouseEvent) {
   if (!isOpen.value) return
