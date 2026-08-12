@@ -62,6 +62,15 @@ const EMPTY_CONSTANCY = new Map<string, number>()
 function constancyOf(userId: string): Map<string, number> {
   return constancyByUser.value.get(userId) ?? EMPTY_CONSTANCY
 }
+
+/**
+ * Abaixo de três dias registrados a faixa não conta história nenhuma: vira um
+ * retângulo cinza na linha de quem está começando. Melhor não desenhar.
+ */
+const MIN_DIAS_CONSTANCIA = 3
+function hasConstancy(userId: string): boolean {
+  return constancyOf(userId).size >= MIN_DIAS_CONSTANCIA
+}
 const isGroup = computed(() => scope.value === 'group')
 /** O seletor só faz sentido com mais de uma empresa no grupo. */
 const showScope = computed(() => companies.value.length > 1)
@@ -251,7 +260,7 @@ const scopeLabel = computed(() =>
               <!-- Constância dos últimos 3 meses: quem aparece todo dia fica
                    visível mesmo sem estar no topo do placar por total. -->
               <TimeHeatmap
-                v-if="constancyOf(row.userId).size"
+                v-if="hasConstancy(row.userId)"
                 class="team-heat"
                 :days="constancyOf(row.userId)"
                 :weeks="13"

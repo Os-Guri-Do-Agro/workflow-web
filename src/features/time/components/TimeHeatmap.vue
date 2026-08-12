@@ -140,9 +140,10 @@ const daysWithTime = computed(
 )
 
 /** Resumo textual: quem usa leitor de tela não perde a informação da grade. */
-const summary = computed(
-  () => `Constância: ${daysWithTime.value} dias com tempo registrado nas últimas ${props.weeks} semanas`,
-)
+const summary = computed(() => {
+  const dias = daysWithTime.value === 1 ? '1 dia' : `${daysWithTime.value} dias`
+  return `Constância: ${dias} com tempo registrado nas últimas ${props.weeks} semanas`
+})
 </script>
 
 <template>
@@ -177,7 +178,9 @@ const summary = computed(
     </div>
 
     <div v-if="!bare" class="hm-legend">
-      <span class="hm-legend-text">{{ daysWithTime }} dias com registro</span>
+      <span class="hm-legend-text">
+        {{ daysWithTime }} {{ daysWithTime === 1 ? 'dia' : 'dias' }} com registro
+      </span>
       <span class="hm-legend-scale">
         <span class="hm-legend-label">menos</span>
         <span v-for="l in [0, 1, 2, 3, 4]" :key="l" class="hm-cell" :class="`hm-cell--l${l}`" />
@@ -268,7 +271,9 @@ const summary = computed(
 
 /* Escala do acento: mesma cor do produto, quatro intensidades. */
 .hm-cell--l0 {
-  background: color-mix(in srgb, var(--text) 7%, transparent);
+  /* 10%, não 7%: no tema claro a célula vazia sumia no fundo e a grade deixava
+     de existir como desenho. */
+  background: color-mix(in srgb, var(--text) 10%, transparent);
 }
 .hm-cell--l1 {
   background: color-mix(in srgb, var(--accent) 28%, transparent);
