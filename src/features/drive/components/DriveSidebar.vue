@@ -9,16 +9,17 @@
  * do projeto). Ações de pasta no hover/foco, gateadas por permissão do espaço:
  * pessoal = sempre; empresa = só ADMIN daquela empresa.
  */
-import { ref } from 'vue'
-import { Building2, ChevronRight, FolderPlus, User } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { ChevronRight, FolderPlus, User } from 'lucide-vue-next'
 import DriveSidebarRow from './DriveSidebarRow.vue'
+import { avatarTone, initials } from '@/utils/avatar'
 import type {
   DriveCompanySection,
   DriveFolderNode,
   DriveScope,
 } from '@/features/drive/types'
 
-defineProps<{
+const props = defineProps<{
   /** 'personal' ou o id da empresa selecionada. */
   activeKey: string
   activeFolderId: string | null
@@ -38,6 +39,22 @@ const emit = defineEmits<{
 
 /** Pastas recolhidas (default é aberto: árvore rasa na prática). */
 const collapsed = ref(new Set<string>())
+
+/** Empresas sem arquivo ficam escondidas até o usuário pedir. */
+const showEmpty = ref(false)
+
+const visibleCompanies = computed(() => {
+  if (showEmpty.value) return props.companies
+  return props.companies.filter(
+    // A selecionada nunca some, senão a tela mostra arquivos de um espaço que
+    // não aparece em lugar nenhum da navegação.
+    (c) => c.count > 0 || c.id === props.activeKey,
+  )
+})
+
+const hiddenCount = computed(
+  () => props.companies.length - visibleCompanies.value.length,
+)
 
 function toggle(id: string) {
   const next = new Set(collapsed.value)
@@ -95,13 +112,16 @@ function toggle(id: string) {
     </div>
 
     <!-- ─── Uma seção por empresa do usuário ────────────────────────────── -->
-    <div v-for="company in companies" :key="company.id" class="ds-group">
+    <p v-if="companies.length" class="ds-eyebrow">Empresas</p>
+
+    <div v-for="company in visibleCompanies" :key="company.id" class="ds-group">
       <div class="ds-rootline">
         <button
           type="button"
           class="ds-item ds-item--root"
           :class="{
             'ds-item--active': activeKey === company.id && activeFolderId === null,
+            'ds-item--muted': company.count === 0,
           }"
           :aria-expanded="activeKey === company.id"
           @click="emit('select', 'company', company.id, null)"
@@ -112,9 +132,13 @@ function toggle(id: string) {
             :class="{ 'ds-chevron--open': activeKey === company.id }"
             aria-hidden="true"
           />
-          <Building2 :size="14" class="ds-item-icon" />
+          <span
+            class="ds-avatar"
+            :style="{ '--tone': avatarTone(company.name) }"
+            aria-hidden="true"
+          >{{ initials(company.name) }}</span>
           <span class="ds-item-label">{{ company.name }}</span>
-          <span class="ds-count">{{ company.count }}</span>
+          <span v-if="company.count > 0" class="ds-count">{{ company.count }}</span>
         </button>
         <button
           v-if="company.canManage"
@@ -145,6 +169,27 @@ function toggle(id: string) {
         />
       </template>
     </div>
+
+    <!--
+      Empresas sem NENHUM arquivo ficam atrás de um "mostrar mais".
+      Com dez empresas, listar todas com "0" ao lado transforma a coluna numa
+      parede de zeros onde os espaços que têm conteúdo somem no meio. Elas
+      continuam a um clique, e a que estiver selecionada nunca é escondida.
+    -->
+    <button
+      v-if="hiddenCount > 0"
+      type="button"
+      class="ds-more press"
+      @click="showEmpty = !showEmpty"
+    >
+      <ChevronRight
+        :size="12"
+        class="ds-chevron"
+        :class="{ 'ds-chevron--open': showEmpty }"
+        aria-hidden="true"
+      />
+      {{ showEmpty ? 'Ocultar vazias' : `${hiddenCount} sem arquivos` }}
+    </button>
   </aside>
 </template>
 
@@ -222,6 +267,57 @@ function toggle(id: string) {
   background: var(--surface-2);
   border-radius: 999px;
   padding: 1px 7px;
+}
+
+.ds-eyebrow {
+  margin: 4px 0 -4px 10px;
+  color: var(--text-4);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* Avatar tonal por empresa: dá identidade e faz a lista virar reconhecível. */
+.ds-avatar {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--tone) 20%, transparent);
+  color: var(--tone);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Empresa sem arquivo pesa menos, mas continua legível e clicável. */
+.ds-item--muted .ds-item-label {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.ds-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  margin-left: 8px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.ds-more:hover {
+  background: var(--surface-2);
+  color: var(--text-2);
 }
 
 .ds-chevron {

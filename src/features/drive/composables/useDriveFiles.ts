@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, unref, type MaybeRef } from 'vue'
 import driveService, {
   type DriveFilesPage,
+  type DriveKind,
+  type DriveOverview,
   type DriveScope,
   type DriveSort,
 } from '@/service/drive/drive-service'
@@ -15,6 +17,7 @@ export function useDriveFiles(params: {
   companyId: MaybeRef<string | null>
   folderId: MaybeRef<string | null>
   search: MaybeRef<string>
+  kind: MaybeRef<DriveKind | null>
   sort: MaybeRef<DriveSort>
   page: MaybeRef<number>
 }) {
@@ -25,6 +28,7 @@ export function useDriveFiles(params: {
         unref(params.scope),
         unref(params.folderId),
         unref(params.search).trim(),
+        unref(params.kind),
         unref(params.sort),
         unref(params.page),
       ),
@@ -35,12 +39,33 @@ export function useDriveFiles(params: {
         companyId: unref(params.companyId),
         folderId: unref(params.folderId),
         search: unref(params.search).trim() || undefined,
+        kind: unref(params.kind),
         sort: unref(params.sort),
         page: unref(params.page),
       }),
     // Página anterior visível enquanto a próxima carrega (sem "piscar" skeleton).
     placeholderData: (previous) => previous,
     staleTime: 1000 * 15,
+  })
+}
+
+/**
+ * Visão geral do espaço (bytes, famílias, recentes). Query separada da
+ * listagem de propósito: ela NÃO depende de pasta, busca, filtro nem página,
+ * então navegar entre pastas não refaz a agregação nem faz o hero piscar.
+ */
+export function useDriveOverview(params: {
+  scope: MaybeRef<DriveScope>
+  companyId: MaybeRef<string | null>
+}) {
+  return useQuery<DriveOverview>({
+    queryKey: computed(() =>
+      driveKeys.overview(unref(params.companyId), unref(params.scope)),
+    ),
+    queryFn: () =>
+      driveService.overview(unref(params.scope), unref(params.companyId)),
+    placeholderData: (previous) => previous,
+    staleTime: 1000 * 30,
   })
 }
 

@@ -10,6 +10,7 @@ import {
   type ShellVariant,
   type ThemeName,
 } from '@/plugins/tokens'
+import { isTimerSoundId } from '@/composables/timer-sound-ids'
 
 const STORAGE = {
   theme: 'ui.theme',
@@ -24,6 +25,8 @@ const STORAGE = {
   idleWarnMin: 'ui.idleWarnMin',
   idlePermissionPrompt: 'ui.idlePermissionPrompt',
   timerSounds: 'ui.timerSounds',
+  timerSoundPack: 'ui.timerSoundPack',
+  timerVolume: 'ui.timerVolume',
   pickerShowDone: 'ui.pickerShowDone',
 } as const
 
@@ -86,6 +89,22 @@ const readIdlePermissionPrompt = (): boolean =>
 /** Som ao iniciar/parar o cronômetro: ligado por padrão, discreto. */
 const readTimerSounds = (): boolean => localStorage.getItem(STORAGE.timerSounds) !== 'false'
 
+/**
+ * Timbre escolhido na galeria de `/settings` (ver `useTimerSounds`). Valor
+ * desconhecido volta ao padrão: sem validar, o timer tocava o fallback "Nevo"
+ * enquanto a galeria não marcava card nenhum como escolhido.
+ */
+const readTimerSoundPack = (): string => {
+  const v = localStorage.getItem(STORAGE.timerSoundPack) ?? ''
+  return isTimerSoundId(v) ? v : 'nevo'
+}
+
+/** Volume do som do timer: 0.35 | 0.6 | 1 (o teto já é discreto). */
+const readTimerVolume = (): number => {
+  const v = Number(localStorage.getItem(STORAGE.timerVolume))
+  return [0.35, 0.6, 1].includes(v) ? v : 0.6
+}
+
 /** Tarefas concluídas no seletor do Meu tempo: escondidas por padrão. */
 const readPickerShowDone = (): boolean =>
   localStorage.getItem(STORAGE.pickerShowDone) === 'true'
@@ -103,6 +122,8 @@ export const useUiStore = defineStore('ui', () => {
   const idleWarnMin = ref<number>(readIdleWarnMin())
   const idlePermissionPrompt = ref<boolean>(readIdlePermissionPrompt())
   const timerSounds = ref<boolean>(readTimerSounds())
+  const timerSoundPack = ref<string>(readTimerSoundPack())
+  const timerVolume = ref<number>(readTimerVolume())
   const pickerShowDone = ref<boolean>(readPickerShowDone())
 
   watch(theme, (v) => {
@@ -158,6 +179,14 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(STORAGE.timerSounds, String(v))
   })
 
+  watch(timerSoundPack, (v) => {
+    localStorage.setItem(STORAGE.timerSoundPack, v)
+  })
+
+  watch(timerVolume, (v) => {
+    localStorage.setItem(STORAGE.timerVolume, String(v))
+  })
+
   watch(pickerShowDone, (v) => {
     localStorage.setItem(STORAGE.pickerShowDone, String(v))
   })
@@ -179,6 +208,8 @@ export const useUiStore = defineStore('ui', () => {
     idleWarnMin,
     idlePermissionPrompt,
     timerSounds,
+    timerSoundPack,
+    timerVolume,
     pickerShowDone,
   }
 })

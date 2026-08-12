@@ -23,6 +23,8 @@ export function useUiPreferences() {
     idleGuard,
     idleWarnMin,
     timerSounds,
+    timerSoundPack,
+    timerVolume,
     pickerShowDone,
   } = storeToRefs(store)
   const vuetifyTheme = useTheme()
@@ -76,6 +78,14 @@ export function useUiPreferences() {
     store.pickerShowDone = value
   }
 
+  const setTimerSoundPack = (value: string) => {
+    store.timerSoundPack = value
+  }
+
+  const setTimerVolume = (value: number) => {
+    store.timerVolume = value
+  }
+
   return {
     theme,
     accent,
@@ -88,8 +98,12 @@ export function useUiPreferences() {
     setIdleGuard,
     setIdleWarnMin,
     timerSounds,
+    timerSoundPack,
+    timerVolume,
     pickerShowDone,
     setTimerSounds,
+    setTimerSoundPack,
+    setTimerVolume,
     setPickerShowDone,
     setTheme,
     toggleTheme,

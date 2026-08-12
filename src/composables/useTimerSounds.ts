@@ -1,28 +1,41 @@
 import { useUiStore } from '@/stores/uiStores'
+import { onScopeDispose } from 'vue'
+import type { TimerSoundId } from '@/composables/timer-sound-ids'
 
 /**
  * Sons do cronômetro (spec time-selecao-de-tarefa-e-som).
  *
  * Mesmo molde dos sons do modo XP (`useXpSounds`): sintetizados na hora com Web
- * Audio, sem arquivo binário, volume baixo. A diferença é o propósito — aqui o
- * som marca os dois gestos que valem no Meu tempo, começar e terminar, e é
- * desenhado para dar vontade de repetir:
+ * Audio, sem arquivo binário. A diferença é o propósito — aqui o som marca os
+ * dois gestos que valem no Meu tempo, começar e terminar.
  *
- * - **Início:** arpejo ASCENDENTE resolvendo na oitava, com um sopro curto por
- *   baixo. Lê-se como impulso, "vai".
- * - **Parada:** a mesma tríade DESCENDO até a tônica, fechada por um toque seco.
- *   Lê-se como fecho, "feito" — é a metade que dá a sensação de recompensa.
+ * São SEIS timbres à escolha (`ui.timerSoundPack`), porque som é gosto: o que
+ * um acha satisfatório o outro acha irritante depois da vigésima vez. Todos
+ * seguem a mesma gramática, e é ela que faz o par soar como par:
  *
- * Cada execução varia o afinamento em ±5 cents. Repetição idêntica é o que
- * transforma um som agradável em irritante depois da vigésima vez; a variação
- * mínima mantém o som "vivo" sem que ninguém perceba o truque.
+ *   - **início** sobe (movimento, "vai");
+ *   - **parada** desce e resolve na tônica (fecho, "feito").
  *
- * Toca só em gesto do usuário (o corte por ociosidade é silencioso de
- * propósito: não há ninguém na frente do computador) e obedece
- * `ui.timerSounds`.
+ * Duas regras valem para todos: duração abaixo de meio segundo e afinação
+ * variando ±5 cents por execução. Repetição idêntica é o que transforma um som
+ * agradável em irritante; a variação mínima mantém o som vivo sem que ninguém
+ * perceba o truque.
  */
 
+export type { TimerSoundId } from '@/composables/timer-sound-ids'
+
+export interface TimerSoundPack {
+  id: TimerSoundId
+  label: string
+  /** Uma linha na galeria de `/settings`. */
+  hint: string
+  start: (audio: AudioContext, out: GainNode) => void
+  stop: (audio: AudioContext, out: GainNode) => void
+}
+
 let ctx: AudioContext | null = null
+/** Segunda metade da prévia agendada (ver `preview`). */
+let previewTimer: number | null = null
 
 function getCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null
@@ -49,25 +62,85 @@ function detuned(freq: number): number {
 }
 
 interface NoteOptions {
-  at: number
-  duration: number
-  peak: number
+  at?: number
+  duration?: number
+  peak?: number
   type?: OscillatorType
+  /** Ataque em segundos: 0.01 = percussivo, 0.08 = suave. */
+  attack?: number
 }
 
-function note(audio: AudioContext, dest: AudioNode, freq: number, opts: NoteOptions): void {
+/** Nota com envelope exponencial (o decaimento natural de corpo que vibra). */
+function note(
+  audio: AudioContext,
+  dest: AudioNode,
+  freq: number,
+  { at = 0, duration = 0.2, peak = 0.05, type = 'triangle', attack = 0.012 }: NoteOptions = {},
+): void {
   const osc = audio.createOscillator()
   const gain = audio.createGain()
-  osc.type = opts.type ?? 'triangle'
+  osc.type = type
   osc.frequency.value = detuned(freq)
-  const t0 = audio.currentTime + opts.at
+  const t0 = audio.currentTime + at
   gain.gain.setValueAtTime(0.0001, t0)
-  gain.gain.exponentialRampToValueAtTime(opts.peak, t0 + 0.012)
-  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + opts.duration)
+  gain.gain.exponentialRampToValueAtTime(peak, t0 + attack)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration)
   osc.connect(gain)
   gain.connect(dest)
   osc.start(t0)
-  osc.stop(t0 + opts.duration + 0.04)
+  osc.stop(t0 + duration + 0.04)
+}
+
+/** Deslize de altura: a base do "pop" e dos sopros. */
+function sweep(
+  audio: AudioContext,
+  dest: AudioNode,
+  from: number,
+  to: number,
+  { at = 0, duration = 0.14, peak = 0.06, type = 'sine' }: NoteOptions = {},
+): void {
+  const osc = audio.createOscillator()
+  const gain = audio.createGain()
+  const t0 = audio.currentTime + at
+  osc.type = type
+  osc.frequency.setValueAtTime(detuned(from), t0)
+  osc.frequency.exponentialRampToValueAtTime(detuned(to), t0 + duration)
+  gain.gain.setValueAtTime(peak, t0)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration + 0.02)
+  osc.connect(gain)
+  gain.connect(dest)
+  osc.start(t0)
+  osc.stop(t0 + duration + 0.05)
+}
+
+/**
+ * Parciais inarmônicas: é o que separa "sino" de "flauta". Um sino real vibra
+ * em razões que não são múltiplos inteiros da fundamental, e é justamente isso
+ * que o ouvido reconhece como metal.
+ */
+function bell(audio: AudioContext, dest: AudioNode, freq: number, at: number, peak: number): void {
+  const partials: Array<[number, number, number]> = [
+    [1, peak, 1.1],
+    [2.76, peak * 0.45, 0.7],
+    [5.4, peak * 0.22, 0.45],
+    [8.9, peak * 0.1, 0.3],
+  ]
+  for (const [ratio, level, decay] of partials) {
+    note(audio, dest, freq * ratio, {
+      at,
+      duration: decay,
+      peak: level,
+      type: 'sine',
+      attack: 0.005,
+    })
+  }
+}
+
+/** Madeira: fundamental curta + oitava e décima segunda ainda mais curtas. */
+function wood(audio: AudioContext, dest: AudioNode, freq: number, at: number, peak: number): void {
+  note(audio, dest, freq, { at, duration: 0.34, peak, type: 'sine', attack: 0.004 })
+  note(audio, dest, freq * 4, { at, duration: 0.1, peak: peak * 0.3, type: 'sine', attack: 0.003 })
+  note(audio, dest, freq * 9.2, { at, duration: 0.05, peak: peak * 0.12, type: 'sine', attack: 0.002 })
 }
 
 /** Sopro curto de ruído filtrado: dá corpo ao ataque sem virar percussão. */
@@ -97,58 +170,166 @@ function breath(audio: AudioContext, dest: AudioNode, from: number, to: number):
   src.stop(t0 + 0.24)
 }
 
-/** Toque seco que fecha a parada (o "clique" de coisa concluída). */
+/** Toque seco que fecha uma parada (o "clique" de coisa concluída). */
 function thock(audio: AudioContext, dest: AudioNode, at: number): void {
-  const osc = audio.createOscillator()
-  const gain = audio.createGain()
-  const t0 = audio.currentTime + at
-  osc.type = 'sine'
-  osc.frequency.setValueAtTime(320, t0)
-  osc.frequency.exponentialRampToValueAtTime(120, t0 + 0.09)
-  gain.gain.setValueAtTime(0.05, t0)
-  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.11)
-  osc.connect(gain)
-  gain.connect(dest)
-  osc.start(t0)
-  osc.stop(t0 + 0.13)
+  sweep(audio, dest, 320, 120, { at, duration: 0.09, peak: 0.05 })
 }
 
-function master(audio: AudioContext, peak: number): GainNode {
-  const gain = audio.createGain()
-  gain.gain.value = peak
-  gain.connect(audio.destination)
-  return gain
+// ─── Os seis timbres ──────────────────────────────────────────────────────────
+
+export const TIMER_SOUND_PACKS: TimerSoundPack[] = [
+  {
+    id: 'nevo',
+    label: 'Nevo',
+    hint: 'Arpejo limpo com um sopro por baixo. O padrão da casa.',
+    start(audio, out) {
+      note(audio, out, 523.25, { at: 0, duration: 0.16, peak: 0.05 })
+      note(audio, out, 783.99, { at: 0.075, duration: 0.17, peak: 0.05 })
+      note(audio, out, 1046.5, { at: 0.15, duration: 0.3, peak: 0.055 })
+      note(audio, out, 2093, { at: 0.15, duration: 0.22, peak: 0.012, type: 'sine' })
+      breath(audio, out, 700, 2400)
+    },
+    stop(audio, out) {
+      note(audio, out, 1046.5, { at: 0, duration: 0.14, peak: 0.045 })
+      note(audio, out, 783.99, { at: 0.07, duration: 0.16, peak: 0.045 })
+      note(audio, out, 523.25, { at: 0.14, duration: 0.34, peak: 0.055 })
+      note(audio, out, 261.63, { at: 0.14, duration: 0.36, peak: 0.02, type: 'sine' })
+      thock(audio, out, 0.14)
+    },
+  },
+  {
+    id: 'sino',
+    label: 'Sino',
+    hint: 'Cristalino, com cauda longa. Some no ambiente, mas você ouve.',
+    start(audio, out) {
+      bell(audio, out, 659.25, 0, 0.045)
+      bell(audio, out, 987.77, 0.11, 0.05)
+    },
+    stop(audio, out) {
+      bell(audio, out, 987.77, 0, 0.042)
+      bell(audio, out, 493.88, 0.1, 0.05)
+    },
+  },
+  {
+    id: 'marimba',
+    label: 'Marimba',
+    hint: 'Madeira quente e curta. O mais discreto para usar de fone o dia todo.',
+    start(audio, out) {
+      wood(audio, out, 587.33, 0, 0.055)
+      wood(audio, out, 880, 0.085, 0.06)
+    },
+    stop(audio, out) {
+      wood(audio, out, 880, 0, 0.05)
+      wood(audio, out, 440, 0.085, 0.06)
+    },
+  },
+  {
+    id: 'bolha',
+    label: 'Bolha',
+    hint: 'Um "plop" curtinho, tipo aplicativo de mensagem. O mais divertido.',
+    start(audio, out) {
+      sweep(audio, out, 420, 1180, { duration: 0.11, peak: 0.07 })
+      note(audio, out, 1318.51, { at: 0.09, duration: 0.12, peak: 0.03, type: 'sine' })
+    },
+    stop(audio, out) {
+      sweep(audio, out, 1180, 380, { duration: 0.13, peak: 0.07 })
+      note(audio, out, 329.63, { at: 0.1, duration: 0.16, peak: 0.03, type: 'sine' })
+    },
+  },
+  {
+    id: 'retro',
+    label: 'Retrô',
+    hint: 'Onda quadrada de videogame antigo. Combina com o modo XP.',
+    start(audio, out) {
+      const notes = [523.25, 659.25, 783.99, 1046.5]
+      notes.forEach((f, i) =>
+        note(audio, out, f, { at: i * 0.05, duration: 0.07, peak: 0.035, type: 'square', attack: 0.003 }),
+      )
+    },
+    stop(audio, out) {
+      const notes = [1046.5, 783.99, 659.25, 523.25]
+      notes.forEach((f, i) =>
+        note(audio, out, f, { at: i * 0.05, duration: 0.07, peak: 0.035, type: 'square', attack: 0.003 }),
+      )
+      note(audio, out, 261.63, { at: 0.2, duration: 0.2, peak: 0.03, type: 'square', attack: 0.004 })
+    },
+  },
+  {
+    id: 'suave',
+    label: 'Suave',
+    hint: 'Quase um respiro: entra e sai devagar, sem ataque.',
+    start(audio, out) {
+      note(audio, out, 440, { duration: 0.5, peak: 0.035, type: 'sine', attack: 0.09 })
+      note(audio, out, 659.25, { at: 0.06, duration: 0.5, peak: 0.028, type: 'sine', attack: 0.11 })
+    },
+    stop(audio, out) {
+      note(audio, out, 659.25, { duration: 0.5, peak: 0.03, type: 'sine', attack: 0.09 })
+      note(audio, out, 329.63, { at: 0.06, duration: 0.55, peak: 0.035, type: 'sine', attack: 0.11 })
+    },
+  },
+]
+
+const PACK_BY_ID = new Map(TIMER_SOUND_PACKS.map((pack) => [pack.id, pack]))
+
+export function timerSoundPack(id: string): TimerSoundPack {
+  return PACK_BY_ID.get(id as TimerSoundId) ?? TIMER_SOUND_PACKS[0]!
 }
+
+/** Volume em três degraus; o teto máximo continua discreto de propósito. */
+export const TIMER_VOLUMES = [
+  { value: 0.35, label: 'Baixo' },
+  { value: 0.6, label: 'Médio' },
+  { value: 1, label: 'Alto' },
+] as const
 
 export function useTimerSounds() {
   const ui = useUiStore()
 
-  /** Arpejo ascendente: C5 → G5 → C6, com sopro subindo por baixo. */
-  function playStart(): void {
-    if (!ui.timerSounds) return
-    const audio = getCtx()
-    if (!audio) return
-    const out = master(audio, 0.55)
-    note(audio, out, 523.25, { at: 0, duration: 0.16, peak: 0.05 })
-    note(audio, out, 783.99, { at: 0.075, duration: 0.17, peak: 0.05 })
-    note(audio, out, 1046.5, { at: 0.15, duration: 0.3, peak: 0.055 })
-    // Brilho discreto uma oitava acima só na última, para "abrir" o final.
-    note(audio, out, 2093, { at: 0.15, duration: 0.22, peak: 0.012, type: 'sine' })
-    breath(audio, out, 700, 2400)
+  function master(audio: AudioContext, level: number): GainNode {
+    const gain = audio.createGain()
+    gain.gain.value = level
+    gain.connect(audio.destination)
+    return gain
   }
 
-  /** A mesma tríade descendo (C6 → G5 → C5) e o toque seco de fecho. */
-  function playStop(): void {
-    if (!ui.timerSounds) return
+  /**
+   * Toca um lado do par. `forcePack`/`force` existem para a prévia da galeria:
+   * ela precisa tocar um timbre que ainda não é o escolhido, e com o som
+   * desligado (quem está decidindo tem que ouvir antes de ligar).
+   */
+  function play(
+    side: 'start' | 'stop',
+    opts: { packId?: string; force?: boolean } = {},
+  ): void {
+    if (!ui.timerSounds && !opts.force) return
     const audio = getCtx()
     if (!audio) return
-    const out = master(audio, 0.55)
-    note(audio, out, 1046.5, { at: 0, duration: 0.14, peak: 0.045 })
-    note(audio, out, 783.99, { at: 0.07, duration: 0.16, peak: 0.045 })
-    note(audio, out, 523.25, { at: 0.14, duration: 0.34, peak: 0.055 })
-    note(audio, out, 261.63, { at: 0.14, duration: 0.36, peak: 0.02, type: 'sine' })
-    thock(audio, out, 0.14)
+    const pack = timerSoundPack(opts.packId ?? ui.timerSoundPack)
+    const out = master(audio, 0.55 * ui.timerVolume)
+    pack[side](audio, out)
   }
 
-  return { playStart, playStop }
+  const playStart = () => play('start')
+  const playStop = () => play('stop')
+
+  /**
+   * Prévia da galeria: início e, logo depois, a parada correspondente. O handle
+   * é guardado e cancelado a cada nova prévia — clicar rápido pelos seis cards
+   * empilhava seis paradas, e sair da tela no meio fazia o som tocar em outra.
+   */
+  function preview(packId: string): void {
+    if (previewTimer !== null) window.clearTimeout(previewTimer)
+    play('start', { packId, force: true })
+    previewTimer = window.setTimeout(() => {
+      previewTimer = null
+      play('stop', { packId, force: true })
+    }, 620)
+  }
+
+  onScopeDispose(() => {
+    if (previewTimer !== null) window.clearTimeout(previewTimer)
+    previewTimer = null
+  })
+
+  return { playStart, playStop, preview, packs: TIMER_SOUND_PACKS }
 }

@@ -20,7 +20,7 @@ import {
 } from 'lucide-vue-next'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
-import { useTimerSounds } from '@/composables/useTimerSounds'
+import { TIMER_VOLUMES, useTimerSounds } from '@/composables/useTimerSounds'
 import { useSystemNotification } from '@/composables/useSystemNotification'
 import { idleDetectionPermission, idleDetectionState } from '@/composables/useIdleDetection'
 import { useToast } from '@/composables/useToast'
@@ -96,13 +96,20 @@ const {
   setIdleGuard,
   setIdleWarnMin,
   timerSounds,
+  timerSoundPack,
+  timerVolume,
   pickerShowDone,
   setTimerSounds,
+  setTimerSoundPack,
+  setTimerVolume,
   setPickerShowDone,
 } = useUiPreferences()
 
+/** Três degraus de volume (ver `TIMER_VOLUMES`). */
+const volumes = TIMER_VOLUMES
+
 // ── Som do cronômetro ────────────────────────────────────────────────────
-const { playStart, playStop } = useTimerSounds()
+const { preview, packs } = useTimerSounds()
 
 // ── Teste de notificação ─────────────────────────────────────────────────
 const notification = useSystemNotification()
@@ -152,17 +159,13 @@ const stopListeningAction = notification.onAction((action, kind) => {
 onUnmounted(() => stopListeningAction())
 
 /**
- * Prévia: toca o par completo (início e, logo depois, parada) mesmo com a
- * preferência desligada — quem está decidendo precisa ouvir antes de ligar.
+ * Escolher já toca: som é gosto, e ninguém decide por descrição escrita. A
+ * prévia funciona com a preferência desligada de propósito (quem está
+ * decidindo precisa ouvir antes de ligar).
  */
-function previewSound() {
-  const wasOn = timerSounds.value
-  if (!wasOn) setTimerSounds(true)
-  playStart()
-  window.setTimeout(() => {
-    playStop()
-    if (!wasOn) window.setTimeout(() => setTimerSounds(false), 600)
-  }, 700)
+function chooseSound(id: string) {
+  setTimerSoundPack(id)
+  preview(id)
 }
 
 // ── Aviso de ociosidade (spec timer-ociosidade) ──────────────────────────
@@ -524,22 +527,66 @@ const shellOptions: {
           <div class="setting-info">
             <span class="setting-label">Som ao iniciar e parar o cronômetro</span>
             <span class="setting-desc">
-              Um toque curto e discreto quando você começa e quando termina. Clique em ouvir
-              para experimentar.
+              Um toque curto quando você começa e o correspondente, descendo, quando termina.
             </span>
           </div>
-          <div class="setting-actions">
-            <button type="button" class="sound-preview" @click="previewSound">
-              <Play :size="12" />
-              Ouvir
-            </button>
+          <button
+            type="button"
+            class="toggle"
+            :class="{ 'toggle--on': timerSounds }"
+            @click="setTimerSounds(!timerSounds)"
+          >
+            <span class="toggle-knob" />
+          </button>
+        </div>
+
+        <!-- Sem `v-if` de propósito: com o som desligado, esconder a galeria
+             tirava a única forma de ouvir antes de decidir ligar. -->
+        <div class="setting-row setting-row--column">
+          <div class="setting-info">
+            <span class="setting-label">Timbre</span>
+            <span class="setting-desc">
+              Clique para ouvir.
+              {{
+                timerSounds
+                  ? 'O escolhido toca no timer.'
+                  : 'A prévia toca mesmo com o som desligado.'
+              }}
+            </span>
+          </div>
+          <div class="sound-grid">
             <button
+              v-for="pack in packs"
+              :key="pack.id"
               type="button"
-              class="toggle"
-              :class="{ 'toggle--on': timerSounds }"
-              @click="setTimerSounds(!timerSounds)"
+              class="sound-card"
+              :class="{ 'sound-card--active': timerSoundPack === pack.id }"
+              @click="chooseSound(pack.id)"
             >
-              <span class="toggle-knob" />
+              <span class="sound-card-head">
+                <span class="sound-card-name">{{ pack.label }}</span>
+                <Check v-if="timerSoundPack === pack.id" :size="13" class="sound-card-check" />
+                <Play v-else :size="11" class="sound-card-play" />
+              </span>
+              <span class="sound-card-hint">{{ pack.hint }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Volume</span>
+            <span class="setting-desc">Mesmo no alto ele continua discreto.</span>
+          </div>
+          <div class="segmented">
+            <button
+              v-for="vol in volumes"
+              :key="vol.label"
+              class="segmented-btn"
+              :class="{ 'segmented-btn--active': timerVolume === vol.value }"
+              @click="(setTimerVolume(vol.value), preview(timerSoundPack))"
+            >
+              {{ vol.label }}
             </button>
           </div>
         </div>
@@ -922,6 +969,76 @@ const shellOptions: {
 }
 
 /* ── Meu tempo ───────────────────────────────────────────────────────── */
+
+.sound-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.sound-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.sound-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.sound-card:active {
+  transform: scale(0.985);
+}
+
+.sound-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sound-card--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+
+.sound-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sound-card-name {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.sound-card-check {
+  color: var(--accent);
+}
+
+.sound-card-play {
+  color: var(--text-4);
+}
+
+.sound-card-hint {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.35;
+}
 
 .setting-actions {
   display: inline-flex;

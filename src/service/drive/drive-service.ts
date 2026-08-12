@@ -84,6 +84,24 @@ export interface DriveShareLink {
   path: string
 }
 
+/** Famílias do filtro por tipo (espelha `drive-kind.ts` da API). */
+export type DriveKind =
+  | 'image'
+  | 'document'
+  | 'video'
+  | 'audio'
+  | 'archive'
+  | 'other'
+
+export interface DriveOverview {
+  files: number
+  bytes: number
+  /** Teto só para a barra de uso; não é cota que bloqueia upload. */
+  quotaBytes: number
+  byKind: Record<DriveKind, number>
+  recent: DriveFile[]
+}
+
 export interface ListDriveFilesParams {
   scope: DriveScope
   /** Empresa alvo quando scope=company (modelo QR: independe da ativa). */
@@ -91,6 +109,8 @@ export interface ListDriveFilesParams {
   /** Pasta atual; null/ausente = raiz do espaço. Ignorado quando há busca. */
   folderId?: string | null
   search?: string
+  /** Família de arquivo; como a busca, varre o espaço e ignora a pasta. */
+  kind?: DriveKind | null
   sort?: DriveSort
   page?: number
   pageSize?: number
@@ -100,6 +120,16 @@ export type DriveSort = 'recent' | 'name' | 'size'
 
 const driveService = {
   // ─── Pastas ─────────────────────────────────────────────────────────────────
+
+  async overview(
+    scope: DriveScope,
+    companyId: string | null,
+  ): Promise<DriveOverview> {
+    const { data } = await api.get<DriveOverview>('/drive/overview', {
+      params: { scope, companyId: companyId ?? undefined },
+    })
+    return data
+  },
 
   /** TODAS as pastas visíveis (pessoais + de cada empresa) numa resposta só. */
   async listFolders(): Promise<DriveFolder[]> {
@@ -143,6 +173,7 @@ const driveService = {
         companyId: params.companyId ?? undefined,
         folderId: params.folderId ?? undefined,
         search: params.search || undefined,
+        kind: params.kind ?? undefined,
         sort: params.sort,
         page: params.page,
         pageSize: params.pageSize,

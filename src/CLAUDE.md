@@ -193,11 +193,22 @@ mapa inteiro — quem recebe 6 meses e desenha 13 semanas teria tudo achatado po
 um pico antigo. O backend ganhou `byUserDay` no `company-report` só para isso.
 
 **Sons** (`composables/useTimerSounds.ts`): sintetizados com Web Audio no mesmo
-molde do `useXpSounds` (sem arquivo binário, volume baixo). Arpejo ascendente ao
-iniciar, o mesmo descendo com um toque seco ao parar, com variação de ±5 cents
-por execução para não cansar. Tocam DEPOIS da confirmação do servidor e só em
-gesto do usuário: o corte por ociosidade é silencioso de propósito. Preferência
-`ui.timerSounds`, com prévia em `/settings`.
+molde do `useXpSounds` (sem arquivo binário, volume baixo). São SEIS timbres à
+escolha (`TIMER_SOUND_PACKS`: nevo, sino, marimba, bolha, retrô, suave), todos
+obedecendo a mesma gramática — **início sobe, parada desce e resolve** —, com
+variação de ±5 cents por execução para a repetição não cansar. Tocam DEPOIS da
+confirmação do servidor e só em gesto do usuário: o corte por ociosidade é
+silencioso de propósito.
+
+Preferências: `ui.timerSounds` (liga/desliga), `ui.timerSoundPack` (timbre) e
+`ui.timerVolume` (0.35 | 0.6 | 1). A galeria de `/settings` toca ao escolher, e
+a prévia funciona mesmo com o som desligado — quem está decidindo precisa ouvir
+antes de ligar.
+
+Para timbre novo, acrescente um item em `TIMER_SOUND_PACKS` com `start`/`stop`:
+a UI é derivada da lista. Os auxiliares de síntese já cobrem os casos comuns
+(`note` com envelope, `sweep` para deslize, `bell` com parciais inarmônicas,
+`wood` para percussão de madeira, `breath` para ruído filtrado).
 
 ### Aviso de ociosidade do timer
 

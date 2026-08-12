@@ -526,6 +526,47 @@ valem registro porque a causa não é óbvia:
    `encodeURIComponent` no token da página pública; cache de capas com teto de
    150 entradas.
 
+### Rodada "workspace vivo" (segunda revisão visual do Nicolas)
+
+O veredito foi que a tela estava "morta" e perdia "de 100 a 0" para qualquer
+drive de nuvem. Estava certo, e a causa raiz foi de VERIFICAÇÃO: todos os
+screenshots anteriores eram tema escuro com um mock cheio de arquivos
+coloridos. No cenário real (tema claro, um arquivo, dez empresas vazias) a
+tela vira um retângulo branco com uma coluna de zeros ao lado.
+
+A segunda causa é de linguagem: o Drive nasceu FORA do overhaul visual premium
+(spec `overhaul-visual-premium`, ago/2026). Dashboard e Roadmap usam
+`bento-cell` (elevação com `--elev-1`), `v-reveal` (stagger de entrada) e
+`CountUp`; o Drive não usava nada disso, e por isso parecia de outro produto.
+
+O que entrou:
+
+1. **`GET /drive/overview`** — a listagem é paginada e por isso não sabe o
+   total de bytes nem quantas imagens existem no espaço. A visão geral resolve
+   isso com UMA agregação por `mimeType` (o número de mimes distintos é
+   pequeno; classificar em família no Node é mais barato e mais legível que
+   seis COUNTs) e devolve também os recentes do espaço.
+2. **`DriveHero`** — identidade do espaço (avatar tonal por empresa), contagem
+   com `CountUp` e barra de armazenamento. `DRIVE_QUOTA_BYTES` é teto de
+   REFERÊNCIA para a barra, não cota: nenhum caminho de upload o consulta.
+3. **`DriveRecents`** — faixa dos últimos arquivos, vinda da visão geral (não
+   da listagem), então continua correta dentro de pasta ou com filtro ativo.
+   Abrir um recente monta sessão de um item só, porque eles não estão
+   necessariamente na página listada.
+4. **`DriveKindFilter`** — facetas por família (`drive-kind.ts`, espelhado no
+   back). Contagens não reagem ao filtro ativo (chip que zera a si mesmo é beco
+   sem saída) e família vazia não aparece. O filtro varre o espaço e ignora a
+   pasta, como a busca.
+5. **Sidebar** — avatar tonal por empresa (`avatarTone`/`initials`) e empresas
+   sem arquivo atrás de um "N sem arquivos"; a selecionada nunca é escondida.
+6. **Empty state** — deixou de ser ícone + frase e virou convite: zona de
+   soltar com tinta de acento, o que dá para fazer, e os limites reais ditos
+   antes do erro 400.
+
+**Regra de verificação que fica:** toda tela do Drive é conferida nos DOIS
+temas e em DOIS cenários (espaço esparso e espaço cheio). Screenshot só de
+tema escuro com mock cheio esconde exatamente o caso que o usuário vive.
+
 ### Rodada de acabamento (revisão visual do Nicolas)
 
 1. **Dois `<select>` nativos** eram os únicos do projeto inteiro (toolbar de
@@ -567,6 +608,7 @@ valem registro porque a causa não é óbvia:
 |---|---|---|---|
 | 2026-08-11 | 0.1 | Criação (research consolidado dos dois repos) | Nicolas (via spec-driven) |
 | 2026-08-11 | 0.2 | Implementação da P1 (tudo menos T7). Ajustes pós-review: upload em escrita única (storage antes do banco, id gerado na aplicação; elimina a janela de linha com `storagePath` vazio), campo `sha256` removido (hash síncrono de até 25 MB sem consumidor), `requireScope` unifica a validação de membership das listagens, dropzone emite invalidação por lote, viewer referencia arquivo por id, sync bidirecional da URL, `refDebounced` na busca, fronteira `components/ui` → `features` zerada (`file-kind.ts` + `markdown-doc.css` promovidos) | Claude (via spec-driven) |
+| 2026-08-11 | 0.5 | "Workspace vivo": `GET /drive/overview` (bytes, famílias, recentes) + filtro por família (`drive-kind.ts`), hero com armazenamento e `CountUp`, faixa de Recentes, facetas por tipo, sidebar com avatar tonal e empresas vazias recolhidas, empty state como convite. Linguagem premium do produto (`bento-cell`, `v-reveal`) finalmente aplicada. Nova regra de verificação: dois temas × dois cenários | Claude (via spec-driven) |
 | 2026-08-11 | 0.4.1 | Acabamento após revisão visual: `<select>` nativos trocados por `AppSelect`, `ShareFileDialog` com cabeçalho e padding do padrão, visualizador de texto/código/JSON com realce (o que caía em "baixar" agora abre), menu único nas pastas da sidebar | Claude (via spec-driven) |
 | 2026-08-11 | 0.4 | Capas ricas por tipo (pdf.js, frame de vídeo, snippet, capa tipográfica), redesign do card e do menu de ações, painel de detalhes, ordenação, vídeo/áudio no viewer, e link público de download (`DriveShareLink` + migration `20260811150000` + rota `/f/:token`). Verificado contra o Supabase real: bucket privado, signed URL 200, URL pública 400. Decisão divergente do plano: tabela própria em vez de `ShareLink` ganhando `FILE`, porque `ShareLink.companyId` é NOT NULL e arquivo pessoal não tem empresa | Claude (via spec-driven) |
 | 2026-08-11 | 0.3 | Sidebar multi-empresa (modelo QR), decisão revisada pelo Nicolas: `GET /drive/folders` devolve todas as pastas visíveis, `GET /drive/files` aceita `companyId` explícito com counts por empresa (`groupBy` único), seleção local em `?scope=personal\|<companyId>` sem tocar na empresa ativa, permissões por role NA empresa selecionada. AC2/AC16/AC20 atualizados; 28 testes na API (3 novos de multi-empresa) | Claude (via spec-driven) |

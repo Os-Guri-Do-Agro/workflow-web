@@ -15,11 +15,14 @@ import { getApiErrorMessage } from '@/service/api'
 export const driveKeys = {
   all: ['drive'] as const,
   folders: ['drive', 'folders'] as const,
+  overview: (companyId: string | null, scope: DriveScope) =>
+    ['drive', 'overview', companyId ?? 'personal', scope] as const,
   files: (
     companyId: string | null,
     scope: DriveScope,
     folderId: string | null,
     search: string,
+    kind: string | null,
     sort: string,
     page: number,
   ) =>
@@ -30,6 +33,7 @@ export const driveKeys = {
       scope,
       folderId ?? 'root',
       search,
+      kind ?? 'all',
       sort,
       page,
     ] as const,

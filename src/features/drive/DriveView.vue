@@ -16,6 +16,7 @@ import { refDebounced } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import {
   CloudUpload,
+  Filter,
   FolderPlus,
   HardDrive,
   House,
@@ -26,6 +27,9 @@ import {
 } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import DriveHero from './components/DriveHero.vue'
+import DriveRecents from './components/DriveRecents.vue'
+import DriveKindFilter from './components/DriveKindFilter.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import FileViewer, {
@@ -46,11 +50,17 @@ import {
   useDriveFolderMutations,
   useDriveFolders,
 } from './composables/useDriveFolders'
-import { useDriveFileMutations, useDriveFiles } from './composables/useDriveFiles'
+import {
+  useDriveFileMutations,
+  useDriveFiles,
+  useDriveOverview,
+} from './composables/useDriveFiles'
 import driveService, {
   DRIVE_MAX_FILE_BYTES_CLIENT,
+  type DriveKind,
   type DriveSort,
 } from '@/service/drive/drive-service'
+import { formatBytes } from '@/utils/file-kind'
 import type {
   DriveCompanySection,
   DriveFile,
@@ -177,11 +187,56 @@ watch(sort, () => {
   page.value = 1
 })
 
+/** Faceta de tipo ativa (null = todos). Some ao trocar de espaço ou buscar. */
+const kind = ref<DriveKind | null>(null)
+
+function selectKind(next: DriveKind | null) {
+  kind.value = next
+  page.value = 1
+}
+
+const overviewQuery = useDriveOverview({
+  scope,
+  companyId: selectedCompanyId,
+})
+const overview = computed(() => overviewQuery.data.value)
+
+/** Recentes e facetas: só na raiz, sem busca e sem filtro (ver template). */
+const showOverviewSections = computed(
+  () =>
+    !isSearching.value &&
+    !kind.value &&
+    folderId.value === null &&
+    (overview.value?.recent.length ?? 0) > 0,
+)
+
+/**
+ * Abrir um recente monta uma sessão de UM item: os recentes vêm da visão geral
+ * e não estão necessariamente na página listada, então navegar por setas ali
+ * levaria a arquivos que não têm relação com o que foi clicado.
+ */
+function openRecent(file: DriveFile) {
+  viewerSession.value = {
+    byId: new Map([[file.id, file]]),
+    items: [
+      {
+        id: file.id,
+        filename: file.name,
+        mimeType: file.mimeType,
+        size: file.size,
+        uploadedBy: file.owner ? { name: file.owner.name } : null,
+      },
+    ],
+  }
+  viewerIndex.value = 0
+}
+
 const filesQuery = useDriveFiles({
   scope,
   companyId: selectedCompanyId,
   folderId,
   search: debouncedSearch,
+  kind,
   sort,
   page,
 })
@@ -516,6 +571,9 @@ function selectScope(
   selectedKey.value = companyId ?? 'personal'
   folderId.value = nextFolderId
   search.value = ''
+  // A faceta é do espaço anterior: manter "Vídeos" ao entrar numa empresa que
+  // não tem vídeo nenhum abriria o novo espaço num vazio enganoso.
+  kind.value = null
 }
 
 const isSearching = computed(() => debouncedSearch.value.trim().length > 0)
@@ -630,6 +688,34 @@ const loading = computed(() => filesQuery.isLoading.value)
         :max-bytes="DRIVE_MAX_FILE_BYTES_CLIENT"
         @uploaded="fileMut.invalidate()"
       >
+        <DriveHero
+          :space-name="selectedCompany?.name ?? 'Pessoal'"
+          :is-personal="selectedCompanyId === null"
+          :files="overview?.files ?? 0"
+          :bytes="overview?.bytes ?? 0"
+          :quota-bytes="overview?.quotaBytes ?? 0"
+          :loading="overviewQuery.isPending.value"
+        />
+
+        <!--
+          Recentes e facetas só aparecem na RAIZ, sem busca e sem filtro: dentro
+          de uma pasta o assunto é a pasta, e repetir os recentes do espaço ali
+          rouba a atenção do conteúdo que o usuário foi ver.
+        -->
+        <DriveRecents
+          v-if="showOverviewSections"
+          :files="overview?.recent ?? []"
+          @open="openRecent"
+        />
+
+        <DriveKindFilter
+          v-if="overview && !isSearching"
+          :counts="overview.byKind"
+          :total="overview.files"
+          :active="kind"
+          @select="selectKind"
+        />
+
         <!-- Breadcrumb (fora de busca) / rótulo de resultados -->
         <nav v-if="!isSearching" class="drive-crumbs" aria-label="Caminho da pasta">
           <button type="button" class="drive-crumb" @click="folderId = null">
@@ -665,12 +751,36 @@ const loading = computed(() => filesQuery.isLoading.value)
         />
 
         <EmptyState
-          v-else-if="files.length === 0"
-          :icon="CloudUpload"
-          title="Nenhum arquivo aqui"
-          description="Arraste arquivos para esta área ou use o botão Enviar."
+          v-else-if="files.length === 0 && kind"
+          :icon="Filter"
+          title="Nenhum arquivo deste tipo"
+          :description="`Este espaço não tem arquivos na categoria escolhida.`"
         >
           <template #action>
+            <button type="button" class="drive-btn press" @click="selectKind(null)">
+              Ver todos os arquivos
+            </button>
+          </template>
+        </EmptyState>
+
+        <!--
+          Vazio não é erro: é o começo. Em vez de um ícone e uma frase seca num
+          retângulo branco, a área vira a própria zona de soltar, com o que dá
+          para fazer e os limites reais (tamanho e tipos) ditos na hora, e não
+          depois do erro 400.
+        -->
+        <div v-else-if="files.length === 0" v-reveal="3" class="drive-blank">
+          <span class="drive-blank-art" aria-hidden="true">
+            <CloudUpload :size="30" />
+          </span>
+          <h2 class="drive-blank-title">
+            {{ folderId ? 'Esta pasta está vazia' : 'Comece seu Drive' }}
+          </h2>
+          <p class="drive-blank-text">
+            Arraste arquivos para qualquer lugar desta área ou envie pelo botão.
+            Imagens, PDFs, vídeos e documentos ganham pré-visualização.
+          </p>
+          <div class="drive-blank-actions">
             <button
               type="button"
               class="drive-btn drive-btn--primary press"
@@ -679,8 +789,20 @@ const loading = computed(() => filesQuery.isLoading.value)
               <CloudUpload :size="14" />
               Enviar arquivos
             </button>
-          </template>
-        </EmptyState>
+            <button
+              v-if="canManageFolderHere"
+              type="button"
+              class="drive-btn press"
+              @click="nameDialog = { mode: 'create-folder', companyId: selectedCompanyId, parentId: folderId }"
+            >
+              <FolderPlus :size="14" />
+              Criar pasta
+            </button>
+          </div>
+          <p class="drive-blank-hint">
+            Até {{ formatBytes(DRIVE_MAX_FILE_BYTES_CLIENT) }} por arquivo
+          </p>
+        </div>
 
         <DriveFileGrid
           v-else-if="driveViewMode === 'grid'"
@@ -948,6 +1070,68 @@ const loading = computed(() => filesQuery.isLoading.value)
   align-items: flex-start;
   min-height: 0;
   flex: 1;
+}
+
+/* ─── Estado vazio: convite, não aviso ─────────────────────────────────── */
+
+.drive-blank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 54px 24px 60px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-xl);
+  /* Tinta de acento MUITO baixa: sinaliza a zona de soltar sem virar cartaz. */
+  background:
+    radial-gradient(
+      120% 90% at 50% 0%,
+      color-mix(in srgb, var(--accent) 7%, transparent) 0%,
+      transparent 70%
+    ),
+    var(--surface);
+}
+
+.drive-blank-art {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface-2));
+  color: var(--accent);
+}
+
+.drive-blank-title {
+  margin: 0 0 7px;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.drive-blank-text {
+  margin: 0 0 20px;
+  max-width: 430px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.drive-blank-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.drive-blank-hint {
+  margin: 16px 0 0;
+  color: var(--text-4);
+  font-size: 11px;
 }
 
 .drive-main {
