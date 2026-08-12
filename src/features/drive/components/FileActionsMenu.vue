@@ -43,33 +43,33 @@ const emit = defineEmits<{
       <slot name="trigger" />
     </DropdownMenuTrigger>
     <DropdownMenuPortal>
-      <DropdownMenuContent class="fam" :side-offset="6" align="end">
-        <DropdownMenuItem class="fam-item" @select="emit('details')">
+      <DropdownMenuContent class="dd-menu fam" :side-offset="6" align="end">
+        <DropdownMenuItem class="dd-item" @select="emit('details')">
           <Info :size="15" />
           <span>Detalhes</span>
         </DropdownMenuItem>
-        <DropdownMenuItem class="fam-item" @select="emit('download')">
+        <DropdownMenuItem class="dd-item" @select="emit('download')">
           <Download :size="15" />
           <span>Baixar</span>
         </DropdownMenuItem>
 
         <template v-if="canManage">
-          <DropdownMenuItem class="fam-item" @select="emit('share')">
+          <DropdownMenuItem class="dd-item" @select="emit('share')">
             <Share2 :size="15" />
             <span>Compartilhar por link</span>
           </DropdownMenuItem>
-          <DropdownMenuSeparator class="fam-sep" />
-          <DropdownMenuItem class="fam-item" @select="emit('rename')">
+          <DropdownMenuSeparator class="dd-sep" />
+          <DropdownMenuItem class="dd-item" @select="emit('rename')">
             <Pencil :size="15" />
             <span>Renomear</span>
           </DropdownMenuItem>
-          <DropdownMenuItem class="fam-item" @select="emit('move')">
+          <DropdownMenuItem class="dd-item" @select="emit('move')">
             <FolderInput :size="15" />
             <span>Mover para pasta</span>
           </DropdownMenuItem>
-          <DropdownMenuSeparator class="fam-sep" />
+          <DropdownMenuSeparator class="dd-sep" />
           <DropdownMenuItem
-            class="fam-item fam-item--danger"
+            class="dd-item dd-item--danger"
             @select="emit('remove')"
           >
             <Trash2 :size="15" />
@@ -81,43 +81,13 @@ const emit = defineEmits<{
   </DropdownMenuRoot>
 </template>
 
-<style scoped>
+<!--
+  Bloco GLOBAL, não scoped: o portal teleporta o conteúdo pro <body> e o
+  data-v-* do scoped não viaja com ele. O skin do menu vem de
+  styles/menus.css (.dd-menu/.dd-item); aqui só a largura própria.
+-->
+<style>
 .fam {
   min-width: 208px;
-  padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-lg);
-  z-index: 3000;
-}
-
-.fam-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  color: var(--text-2);
-  font-size: 12.5px;
-  cursor: pointer;
-  outline: none;
-  user-select: none;
-}
-
-.fam-item[data-highlighted] {
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.fam-item--danger[data-highlighted] {
-  background: color-mix(in srgb, var(--err) 12%, transparent);
-  color: var(--err);
-}
-
-.fam-sep {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--border);
 }
 </style>

@@ -37,6 +37,9 @@ import {
   ZoomOut,
 } from 'lucide-vue-next'
 import { useBoard, useBoardMutations } from '@/composables/useBoards'
+// Resolução token→cor canônica (cacheada e invalidada na troca de tema);
+// substitui a antiga cópia local sem cache deste arquivo.
+import { resolveCssColor } from '@/plugins/echarts-theme'
 import { useToast } from '@/composables/useToast'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import boardsService from '@/service/boards/boards-service'
@@ -1394,13 +1397,6 @@ function exportElementSvg(element: BoardElement) {
   }
 
   return `<ellipse cx="${normalized.cx}" cy="${normalized.cy}" rx="${normalized.rx}" ry="${normalized.ry}" fill="${escapeAttr(resolvedElementFill(element))}" stroke="${stroke}" stroke-width="${element.width}" stroke-linecap="round" stroke-linejoin="round" opacity="${element.opacity}"/>`
-}
-
-function resolveCssColor(value: string) {
-  const match = value.match(/^var\((--[^)]+)\)$/)
-  if (!match) return value
-
-  return getComputedStyle(document.documentElement).getPropertyValue(match[1] ?? '').trim() || value
 }
 
 function escapeAttr(value: string) {

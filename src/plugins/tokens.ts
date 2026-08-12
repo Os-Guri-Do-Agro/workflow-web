@@ -1,3 +1,5 @@
+import { ref } from 'vue'
+
 export type ThemeName = 'dark' | 'light'
 export type AccentName = 'teal' | 'neutral' | 'blue' | 'violet' | 'green' | 'orange' | 'pink'
 export type Density = 'compact' | 'comfortable'
@@ -293,6 +295,16 @@ export function applyXpMode(on: boolean): void {
  */
 const cacheDeTokens = new Map<string, string>()
 
+/**
+ * Versão reativa do tema/acento: incrementa a cada `applyThemeTokens`.
+ *
+ * Existe para quem resolve token→cor em runtime (canvas do ECharts) dentro de
+ * `computed`: ler esta ref torna a repintura na troca de tema automática, em
+ * vez de cada componente ter que lembrar do ritual `void theme.value`.
+ * Consumida via `chartThemeDep()` de `plugins/echarts-theme.ts`.
+ */
+export const themeVersion = ref(0)
+
 export function readToken(name: string, fallback = ''): string {
   if (typeof document === 'undefined') return fallback
   const hit = cacheDeTokens.get(name)
@@ -307,6 +319,7 @@ export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral
   // cacheia o valor, porque ler custom property força recálculo de estilo do
   // documento. Este é o único momento em que esses valores mudam.
   cacheDeTokens.clear()
+  themeVersion.value++
   const root = document.documentElement
   const tokens = themeTokens[theme]
   for (const [key, value] of Object.entries(tokens)) {

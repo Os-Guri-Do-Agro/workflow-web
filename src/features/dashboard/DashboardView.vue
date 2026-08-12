@@ -24,6 +24,7 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
   <div class="dash-page">
     <!-- Caminho crítico: renderiza primeiro -->
     <HeroSection
+      v-reveal="0"
       :greeting="dash.greeting.value"
       :today-label="dash.todayLabel.value"
       :mode="dash.mode.value"
@@ -37,6 +38,9 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
 
     <StatsRow :stats="dash.stats.value" :loading="dash.loading.value" />
 
+    <!-- Sem v-reveal no painel: os itens da lista já fazem o próprio stagger,
+         e reveal aninhado (pai + filhos) roda a coreografia dos filhos dentro
+         de um ancestral ainda invisível. -->
     <ActivityPanel
       :company-id="dash.companyId"
       :metrics="dash.metrics.value"
@@ -45,13 +49,14 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
 
     <!-- Lazy: Agenda -->
     <div ref="agendaTarget" class="lazy-slot">
-      <AgendaSection v-if="agendaVisible" @open-calendar="dash.openCalendar" />
+      <AgendaSection v-if="agendaVisible" v-reveal @open-calendar="dash.openCalendar" />
     </div>
 
     <!-- Lazy: Copilot -->
     <div ref="copilotTarget" class="lazy-slot">
       <CopilotSection
         v-if="copilotVisible"
+        v-reveal
         :search-status="dash.searchStatus.value"
         :workspace-answer="dash.workspaceAnswer.value"
         :digest-summary="dash.digestSummary.value"
@@ -65,6 +70,7 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
     <div ref="feedTarget" class="lazy-slot">
       <FeedSection
         v-if="feedVisible"
+        v-reveal
         :digest-summary="dash.digestSummary.value"
         :digest-loading="dash.digestLoading.value"
         :format-feed-date="dash.formatFeedDate"
@@ -76,6 +82,7 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
     <div ref="projectsTarget" class="lazy-slot">
       <ProjectsSection
         v-if="projectsVisible"
+        v-reveal
         :projects="dash.projects.value"
         :loading="dash.loadingCompanies.value"
         @load="dash.findCompanies"

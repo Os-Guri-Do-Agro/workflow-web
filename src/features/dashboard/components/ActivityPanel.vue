@@ -3,6 +3,7 @@ import { computed, type ComputedRef } from 'vue'
 import { CircleDot } from 'lucide-vue-next'
 import OverviewChart from '@/components/dashboard/OverviewChart.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import { avatarTone, initials } from '@/utils/avatar'
 import { useBacklog } from '@/composables/useBacklog'
 import {
   statusMeta,
@@ -27,12 +28,9 @@ const recentActivities = computed(() => {
   return backlog.value.slice(0, 10).map((item) => ({
     title: item.activityTitle,
     author: item.changedBy?.name || 'Sistema',
-    initials: (item.changedBy?.name || 'S S')
-      .split(' ')
-      .map((w: string) => w[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2),
+    // Identidade tokenizada por pessoa (mesma função do board e do ranking).
+    tone: avatarTone(item.changedBy?.name || 'Sistema'),
+    initials: initials(item.changedBy?.name || 'Sistema'),
     time: new Date(item.changedAt).toLocaleString('pt-BR', {
       day: '2-digit',
       month: 'short',
@@ -60,9 +58,14 @@ const recentActivities = computed(() => {
           <span>Nenhuma atividade recente</span>
         </div>
         <ul v-else class="activity-list">
-          <li v-for="(a, idx) in recentActivities" :key="idx" class="activity-item">
+          <li
+            v-for="(a, idx) in recentActivities"
+            :key="idx"
+            v-reveal="idx"
+            class="activity-item"
+          >
             <span class="activity-rail" :style="{ background: statusMeta[a.status]?.color }" />
-            <div class="activity-avatar">{{ a.initials }}</div>
+            <div class="activity-avatar" :style="{ '--tone': a.tone }">{{ a.initials }}</div>
             <div class="activity-info">
               <span class="activity-title">{{ a.title }}</span>
               <span class="activity-meta">{{ a.author }}</span>
@@ -191,18 +194,19 @@ const recentActivities = computed(() => {
   flex-shrink: 0;
 }
 
+/* Tinta e texto derivados do tom da pessoa (--avatar-1..6), padrão do board. */
 .activity-avatar {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--tone) 22%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--tone) 38%, transparent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 10px;
   font-weight: 700;
-  color: var(--text);
+  color: color-mix(in srgb, var(--tone) 72%, var(--text));
   flex-shrink: 0;
 }
 

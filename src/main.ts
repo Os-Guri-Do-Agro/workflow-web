@@ -4,6 +4,7 @@ import '@/styles/reset.css'
 import '@/styles/typography.css'
 import '@/styles/xp.css'
 import '@/styles/overlays.css'
+import '@/styles/menus.css'
 import 'vue-sonner/style.css'
 
 import { createApp } from 'vue'
@@ -13,6 +14,7 @@ import vuetify from './plugins/vuetify'
 import { createPinia } from 'pinia'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import { applyThemeTokens, type AccentName, type ThemeName } from '@/plugins/tokens'
+import reveal from '@/plugins/reveal'
 import { queryClient } from '@/service/query-client'
 import { startRealtimeQuerySync } from '@/composables/useRealtimeQuerySync'
 
@@ -50,6 +52,10 @@ app.use(router)
 // A instância vem de service/query-client para que logout, troca de empresa e a
 // sincronização por socket possam mexer no mesmo cache que os componentes usam.
 app.use(VueQueryPlugin, { queryClient })
+// `v-reveal` (entrada com stagger; spec overhaul-visual-premium). O plugin só
+// registra a diretiva — o gsap em si entra por import dinâmico no primeiro uso,
+// então nada disso pesa no chunk de entrada.
+app.use(reveal)
 
 // Liga os eventos de socket no cache (invalidação por empresa, catch-up na
 // reconexão e ao voltar pra aba). Fora de componente porque a view que precisa

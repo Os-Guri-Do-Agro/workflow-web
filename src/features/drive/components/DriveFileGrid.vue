@@ -142,7 +142,7 @@ const emit = defineEmits<{
 .dg-card:focus-within {
   transform: translateY(-2px);
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -225,8 +225,14 @@ const emit = defineEmits<{
     transform var(--motion-fast) var(--motion-ease);
 }
 
+/*
+ * O menu de ações é portalado e modal: ao abrir, o body perde pointer-events e
+ * o card perde :hover/:focus-within — sem a regra do data-state, a barra de
+ * ações some com o menu ainda aberto (mesma razão da lista e da sidebar).
+ */
 .dg-card:hover .dg-acts,
-.dg-card:focus-within .dg-acts {
+.dg-card:focus-within .dg-acts,
+.dg-acts:has([data-state='open']) {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;

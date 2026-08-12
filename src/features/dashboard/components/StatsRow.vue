@@ -6,6 +6,8 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import CountUp from '@/components/ui/CountUp.vue'
+import { chartThemeDep } from '@/plugins/echarts-theme'
 import { sparkOption } from './spark'
 import type { StatCard } from '@/composables/useDashboardOrchestration'
 
@@ -31,7 +33,10 @@ const props = defineProps<{
  *
  * Com `computed`, só recalcula quando `stats` muda de verdade.
  */
-const options = computed(() => props.stats.map((s) => (s.noData ? null : sparkOption(s.spark, s.color))))
+const options = computed(() => {
+  chartThemeDep() // repinta os canvas na troca de tema/acento
+  return props.stats.map((s) => (s.noData ? null : sparkOption(s.spark, s.color)))
+})
 </script>
 
 <template>
@@ -39,6 +44,7 @@ const options = computed(() => props.stats.map((s) => (s.noData ? null : sparkOp
     <div
       v-for="(s, i) in stats"
       :key="s.title"
+      v-reveal="i"
       class="stat-card"
       :style="{ '--stat-c': s.color }"
     >
@@ -50,7 +56,7 @@ const options = computed(() => props.stats.map((s) => (s.noData ? null : sparkOp
           </div>
           <span class="stat-trend">{{ s.trend }}</span>
         </div>
-        <div class="stat-value">{{ s.value }}</div>
+        <CountUp class="stat-value" :value="s.value" />
         <div class="stat-footer">
           <span class="stat-label">{{ s.title }}</span>
           <div class="stat-spark">

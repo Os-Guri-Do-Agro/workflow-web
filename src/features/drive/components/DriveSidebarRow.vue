@@ -54,26 +54,31 @@ function isCollapsed(): boolean {
         <span class="dsr-count">{{ node._count?.files ?? 0 }}</span>
       </button>
 
-      <FolderActionsMenu
-        v-if="canManage"
-        class="dsr-acts"
-        :folder-name="node.name"
-        @create="emit('create', node.id)"
-        @rename="emit('rename', node)"
-        @move="emit('move', node)"
-        @remove="emit('remove', node)"
-      >
-        <template #trigger>
-          <button
-            type="button"
-            class="dsr-act press"
-            :aria-label="`Ações da pasta ${node.name}`"
-            @click.stop
-          >
-            <MoreVertical :size="14" />
-          </button>
-        </template>
-      </FolderActionsMenu>
+      <!--
+        O span existe porque a raiz do FolderActionsMenu (DropdownMenuRoot) é
+        renderless com dois filhos: classe passada ao componente é descartada
+        pelo Vue, então `dsr-acts` precisa de um elemento real.
+      -->
+      <span v-if="canManage" class="dsr-acts">
+        <FolderActionsMenu
+          :folder-name="node.name"
+          @create="emit('create', node.id)"
+          @rename="emit('rename', node)"
+          @move="emit('move', node)"
+          @remove="emit('remove', node)"
+        >
+          <template #trigger>
+            <button
+              type="button"
+              class="dsr-act press"
+              :aria-label="`Ações da pasta ${node.name}`"
+              @click.stop
+            >
+              <MoreVertical :size="14" />
+            </button>
+          </template>
+        </FolderActionsMenu>
+      </span>
     </div>
 
     <template v-if="!isCollapsed()">

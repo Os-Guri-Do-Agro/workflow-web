@@ -46,6 +46,8 @@ import { dateOnlyDiffDays, todayDateOnly } from '@/utils/date'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import CountUp from '@/components/ui/CountUp.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
 import aiService from '@/service/ai/ai-service'
 // Rótulo e cor de status vêm do mesmo lugar que o board e o detalhe da tarefa:
 // duplicar aqui deixaria o roadmap divergir quando alguém renomear um status.
@@ -513,6 +515,19 @@ function dueLabel(item: RoadmapItem): string {
   return `Faltam ${diff} dias`
 }
 
+/** Rótulo único de barra para aria-label E title: as duas cópias não divergem. */
+function annualItemLabel(item: RoadmapItem): string {
+  return item.kind === 'month'
+    ? `${item.title}: ${item.progress}% concluído`
+    : `${item.title} · ${dueLabel(item)}`
+}
+
+/** Idem para marcos/reviews (usado nas duas faixas: por lane e flutuante). */
+function annualMilestoneLabel(milestone: RoadmapMilestone): string {
+  const kind = milestone.type === 'review' ? 'Review' : 'Marco'
+  return `${kind}: ${milestone.title} · ${formatDate(milestone.date)}`
+}
+
 function milestonePassesFilters(milestone: RoadmapMilestone): boolean {
   return (
     (activeStatus.value === 'all' || milestone.status === activeStatus.value) &&
@@ -918,18 +933,6 @@ function fallbackLaneIcon(index: number): LucideIcon {
   const icons = [Target, Flag, Rocket, BarChart3, Activity]
   return icons[index % icons.length] ?? Target
 }
-
-const monthlySummary = computed(() => {
-  const entries = monthlyPlans.value.flatMap((month) => month.entries)
-  const uniqueDates = new Set(entries.map((entry) => entry.date))
-
-  return {
-    months: monthlyPlans.value.length,
-    dates: uniqueDates.size,
-    entries: entries.length,
-    notes: entries.filter((entry) => entry.category === 'note').length,
-  }
-})
 
 const hasMonthlyPlans = computed(() => monthlyPlans.value.length > 0)
 
@@ -1990,6 +1993,7 @@ const focusPhotosFor = memoPorArg(
         <article
           v-for="(month, index) in visibleMonthlyPlans"
           :key="month.key"
+          v-reveal="index"
           class="month-card"
         >
           <header class="month-head">
@@ -2482,19 +2486,19 @@ const focusPhotosFor = memoPorArg(
 
         <div class="annual-summary" aria-label="Resumo das entregas do ano">
           <span>
-            <strong>{{ annualTotals.scheduled }}</strong>
+            <strong><CountUp :value="annualTotals.scheduled" /></strong>
             <small>com data</small>
           </span>
           <span :class="{ 'annual-summary--warn': annualTotals.undated > 0 }">
-            <strong>{{ annualTotals.undated }}</strong>
+            <strong><CountUp :value="annualTotals.undated" /></strong>
             <small>sem data</small>
           </span>
           <span :class="{ 'annual-summary--danger': annualTotals.overdue > 0 }">
-            <strong>{{ annualTotals.overdue }}</strong>
+            <strong><CountUp :value="annualTotals.overdue" /></strong>
             <small>atrasadas</small>
           </span>
           <span>
-            <strong>{{ annualTotals.completed }}</strong>
+            <strong><CountUp :value="annualTotals.completed" /></strong>
             <small>concluídas</small>
           </span>
         </div>
@@ -2709,12 +2713,16 @@ const focusPhotosFor = memoPorArg(
       </aside>
     </section>
 
-    <section v-if="roadmapMode === 'timeline' && annualRoadmapLoading" class="monthly-empty-state">
-      <CalendarClock :size="22" />
-      <div>
-        <span class="text-eyebrow">Sincronizando timeline</span>
-        <h2>Carregando roadmap anual</h2>
-        <p>Buscando os dados reais da API para montar a timeline anual.</p>
+    <!-- Skeleton com a forma do board (colunas laterais + faixa da timeline),
+         não texto: quem carrega vê a estrutura que vai receber. -->
+    <section
+      v-if="roadmapMode === 'timeline' && annualRoadmapLoading"
+      class="timeline-skeleton"
+      aria-label="Carregando roadmap anual"
+    >
+      <div v-for="n in 4" :key="n" class="timeline-skeleton-row">
+        <Skeleton type="row" height="20px" />
+        <Skeleton type="block" height="88px" />
       </div>
     </section>
 
@@ -2759,8 +2767,9 @@ const focusPhotosFor = memoPorArg(
           </div>
 
           <div
-            v-for="lane in visibleLanes"
+            v-for="(lane, laneIdx) in visibleLanes"
             :key="lane.id"
+            v-reveal="laneIdx"
             class="lane-row"
             :style="{ '--lane-color': lane.color }"
           >
@@ -2798,11 +2807,8 @@ const focusPhotosFor = memoPorArg(
                   { 'roadmap-bar--selected': isSelected('item', item.id) },
                 ]"
                 :style="laneItemStyle(item, lane.id)"
-                :aria-label="
-                  item.kind === 'month'
-                    ? `${item.title}: ${item.progress}% concluído`
-                    : `${item.title}. ${dueLabel(item)}`
-                "
+                :aria-label="annualItemLabel(item)"
+                :title="annualItemLabel(item)"
                 role="button"
                 tabindex="0"
                 @click="selectItem(item)"
@@ -2827,7 +2833,8 @@ const focusPhotosFor = memoPorArg(
                 :style="laneMilestoneStyle(milestone, lane.id)"
                 role="button"
                 tabindex="0"
-                :aria-label="`${milestone.type === 'review' ? 'Review' : 'Marco'}: ${milestone.title} (${formatDate(milestone.date)})`"
+                :aria-label="annualMilestoneLabel(milestone)"
+                :title="annualMilestoneLabel(milestone)"
                 @click="selectMilestone(milestone)"
                 @keydown.enter.prevent="selectMilestone(milestone)"
                 @keydown.space.prevent="selectMilestone(milestone)"
@@ -2873,7 +2880,8 @@ const focusPhotosFor = memoPorArg(
                 :style="floatingMilestoneStyle(milestone)"
                 role="button"
                 tabindex="0"
-                :aria-label="`${milestone.type === 'review' ? 'Review' : 'Marco'}: ${milestone.title} (${formatDate(milestone.date)})`"
+                :aria-label="annualMilestoneLabel(milestone)"
+                :title="annualMilestoneLabel(milestone)"
                 @click="selectMilestone(milestone)"
                 @keydown.enter.prevent="selectMilestone(milestone)"
                 @keydown.space.prevent="selectMilestone(milestone)"
@@ -2913,123 +2921,17 @@ const focusPhotosFor = memoPorArg(
   color: var(--text);
 }
 
-.roadmap-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 20px;
-  align-items: stretch;
-  margin-bottom: 18px;
-}
-
-.hero-copy,
-.hero-card,
+/* (CSS do antigo hero/summary removido na spec overhaul-visual-premium — o
+   template não referenciava mais nenhuma dessas classes.) */
 .roadmap-shell,
-.roadmap-note,
-.summary-card {
+.roadmap-note {
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
 
-.hero-copy {
-  border-radius: var(--radius-xl);
-  padding: 24px;
-  position: relative;
-  overflow: hidden;
-}
-
-.hero-copy::after {
-  content: '';
-  position: absolute;
-  inset: auto 24px -70px auto;
-  width: 210px;
-  height: 210px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  filter: blur(40px);
-  pointer-events: none;
-}
-
-.hero-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--accent);
-}
-
-.hero-title {
-  margin: 10px 0 8px;
-  letter-spacing: -0.04em;
-}
-
-.hero-description {
-  max-width: 680px;
-  color: var(--text-2);
-  margin: 0;
-}
-
-.hero-card {
-  border-radius: var(--radius-xl);
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 10px;
-}
-
-.hero-card-label,
-.summary-card span,
 .roadmap-note {
   color: var(--text-3);
-}
-
-.hero-card strong {
-  font-size: 38px;
-  line-height: 1;
-  letter-spacing: -0.06em;
-}
-
-.hero-progress {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  overflow: hidden;
-}
-
-.hero-progress span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 30%, var(--text)));
-}
-
-.hero-card small {
-  color: var(--text-4);
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.summary-card {
-  border-radius: var(--radius-lg);
-  padding: 14px 16px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
-}
-
-.summary-card svg {
-  color: var(--accent);
-}
-
-.summary-card strong {
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
 }
 
 .interaction-grid {
@@ -3439,15 +3341,27 @@ const focusPhotosFor = memoPorArg(
   transition:
     transform var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    background var(--motion-fast) var(--motion-ease);
+    background var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion) var(--motion-ease);
 }
 
+/* Hover com presença de verdade: a barra levanta, ganha brilho da própria
+   lane e passa por cima das vizinhas enquanto está sob o cursor. */
 .roadmap-bar:hover,
 .roadmap-bar:focus-visible {
-  transform: translateY(-1px);
-  background: color-mix(in srgb, var(--lane-color) 78%, var(--surface));
+  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--lane-color) 80%, var(--surface));
   border-color: color-mix(in srgb, var(--text) 38%, var(--lane-color));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--lane-color) 45%, transparent);
+  z-index: 3;
   outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roadmap-bar:hover,
+  .roadmap-bar:focus-visible {
+    transform: none;
+  }
 }
 
 .roadmap-bar--event {
@@ -3568,6 +3482,7 @@ const focusPhotosFor = memoPorArg(
 .milestone-pin:focus-visible::after,
 .milestone-pin--selected::after {
   transform: rotate(45deg) scale(1.18);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--lane-color) 55%, transparent);
 }
 
 /* Tipo: marco normal usa o acento; review usa um marcador distinto (info/warn). */
@@ -3800,92 +3715,13 @@ const focusPhotosFor = memoPorArg(
   line-height: 1.55;
 }
 
-.monthly-overview,
+/* (CSS do antigo overview/howto/stat removido na spec overhaul-visual-premium
+   — o template não referenciava mais nenhuma dessas classes.) */
 .monthly-workbench,
 .month-card {
   background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
-}
-
-.monthly-overview {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
-  gap: 18px;
-  align-items: stretch;
-  margin-bottom: 16px;
-  padding: 18px;
-  border-radius: var(--radius-xl);
-}
-
-.monthly-overview-copy h2 {
-  max-width: 720px;
-  margin: 6px 0 8px;
-  color: var(--text);
-  font-size: clamp(22px, 3vw, 34px);
-  line-height: 1.04;
-  letter-spacing: -0.06em;
-}
-
-.monthly-overview-copy p {
-  max-width: 720px;
-  margin: 0;
-  color: var(--text-2);
-  font-size: 13.5px;
-  line-height: 1.65;
-}
-
-.monthly-howto {
-  display: grid;
-  gap: 10px;
-}
-
-.monthly-howto article {
-  display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 4px 10px;
-  align-items: center;
-  padding: 12px;
-  border-radius: var(--radius-lg);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-
-.monthly-howto span {
-  grid-row: span 2;
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.monthly-howto strong {
-  color: var(--text);
-  font-size: 13px;
-}
-
-.monthly-howto small,
-.monthly-stat small {
-  color: var(--text-3);
-  font-size: 11.5px;
-  line-height: 1.4;
-}
-
-.monthly-summary-grid {
-  margin-bottom: 16px;
-}
-
-.monthly-stat {
-  min-height: 126px;
-}
-
-.monthly-stat strong {
-  margin-bottom: 2px;
 }
 
 .monthly-workbench {
@@ -4280,6 +4116,25 @@ const focusPhotosFor = memoPorArg(
 .month-card {
   overflow: hidden;
   border-radius: var(--radius-xl);
+  transition:
+    transform var(--motion) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion) var(--motion-ease);
+}
+
+/* Mesma elevação de hover dos cards do Drive: levanta, borda firma, sombra. */
+.month-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .month-card,
+  .month-card:hover {
+    transition: border-color var(--motion-fast) var(--motion-ease);
+    transform: none;
+  }
 }
 
 .month-head {
@@ -5080,22 +4935,14 @@ const focusPhotosFor = memoPorArg(
   display: none;
 }
 
-:global(:root[data-theme='light']) .hero-copy,
-:global(:root[data-theme='light']) .hero-card,
-:global(:root[data-theme='light']) .summary-card,
 :global(:root[data-theme='light']) .controls-card,
 :global(:root[data-theme='light']) .detail-card,
 :global(:root[data-theme='light']) .roadmap-shell,
 :global(:root[data-theme='light']) .roadmap-note,
-:global(:root[data-theme='light']) .monthly-overview,
 :global(:root[data-theme='light']) .monthly-workbench,
 :global(:root[data-theme='light']) .month-card {
   background: var(--surface);
   border-color: color-mix(in srgb, var(--border) 86%, var(--text));
-}
-
-:global(:root[data-theme='light']) .hero-copy::after {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 :global(:root[data-theme='light']) .quarter-cell {
@@ -5162,15 +5009,10 @@ const focusPhotosFor = memoPorArg(
     padding: 18px;
   }
 
-  .roadmap-hero {
-    grid-template-columns: 1fr;
-  }
-
   .interaction-grid {
     grid-template-columns: 1fr;
   }
 
-  .monthly-overview,
   .monthly-workbench,
   .month-card-body {
     grid-template-columns: 1fr;
@@ -5186,10 +5028,6 @@ const focusPhotosFor = memoPorArg(
     grid-column: 1 / -1;
   }
 
-  .summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .monthly-note-panel,
   .monthly-action-context,
   .months-grid {
@@ -5202,10 +5040,6 @@ const focusPhotosFor = memoPorArg(
 }
 
 @media (max-width: 640px) {
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
-
   .detail-list {
     grid-template-columns: 1fr;
   }
@@ -5263,9 +5097,7 @@ const focusPhotosFor = memoPorArg(
   }
 
   .no-print,
-  .roadmap-hero,
   .roadmap-mode-switch,
-  .monthly-summary-grid,
   .monthly-workbench,
   .monthly-note-panel,
   .monthly-legend,
@@ -5582,6 +5414,44 @@ const focusPhotosFor = memoPorArg(
   opacity: 0.75;
   pointer-events: none;
   z-index: 1;
+  /* Presença viva: a linha do "hoje" respira com um glow discreto. */
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: today-breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes today-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-today {
+    animation: none;
+  }
+}
+
+/* Skeleton do carregamento da timeline: colunas laterais + faixa (a forma do
+   board que vai aparecer), no lugar do antigo texto de "carregando". */
+.timeline-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.timeline-skeleton-row {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 12px;
+  align-items: center;
 }
 
 .timeline-today-flag {

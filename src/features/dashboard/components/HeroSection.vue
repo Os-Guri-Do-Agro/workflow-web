@@ -7,6 +7,9 @@ import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { Sparkles, Plus, ArrowUpRight, Building2, Globe2, CheckCircle2, Activity } from 'lucide-vue-next'
 import { sparkOption } from './spark'
+import { chartThemeDep } from '@/plugins/echarts-theme'
+import ProgressRing from '@/components/ui/ProgressRing.vue'
+import CountUp from '@/components/ui/CountUp.vue'
 import type { DashboardMode } from '@/composables/useDashboardOrchestration'
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
@@ -32,7 +35,10 @@ const emit = defineEmits<{
  * compara `option` por identidade. Chamado no template, redesenhava o canvas a
  * cada render e forçava três `getComputedStyle(documentElement)` junto.
  */
-const heroSparkOption = computed(() => sparkOption(props.weeklyCreated, 'var(--accent)'))
+const heroSparkOption = computed(() => {
+  chartThemeDep() // repinta o canvas na troca de tema/acento
+  return sparkOption(props.weeklyCreated, 'var(--accent)')
+})
 
 const hasTrend = computed(() => props.weeklyCreated.some((v) => v > 0))
 const trendDelta = computed(() => props.weeklyCreated.reduce((a, b) => a + b, 0))
@@ -88,18 +94,33 @@ const trendDelta = computed(() => props.weeklyCreated.reduce((a, b) => a + b, 0)
       </div>
 
       <div class="hero-grid">
+        <!--
+          Anel em vez de barra: é a linguagem de progresso que o board já usa
+          (SubtaskProgress) — mesma informação (`hero.progress`), forma
+          consistente entre telas. Número com count-up dentro do anel.
+        -->
         <div class="hero-stat hero-stat--primary">
-          <div class="hero-stat-label">Progresso geral</div>
-          <div class="hero-stat-bignumber">
-            <span class="bignumber">{{ hero.progress }}</span>
-            <span class="bigunit">%</span>
-          </div>
-          <div class="progress-track">
-            <div class="progress-fill" :style="{ width: hero.progress + '%' }" />
-          </div>
-          <div class="hero-stat-foot">
-            <CheckCircle2 :size="12" />
-            <span>{{ hero.done }} de {{ hero.total }} tarefas concluídas</span>
+          <ProgressRing
+            :value="hero.progress"
+            :size="118"
+            :stroke="9"
+            glow
+            :aria-label="`Progresso geral: ${hero.progress}%`"
+          >
+            <span class="hero-ring-number">
+              <CountUp class="bignumber bignumber--ring" :value="hero.progress" />
+              <span class="bigunit bigunit--ring">%</span>
+            </span>
+          </ProgressRing>
+          <div class="hero-stat-copy">
+            <div class="hero-stat-label">Progresso geral</div>
+            <div class="hero-stat-foot">
+              <CheckCircle2 :size="12" />
+              <span>{{ hero.done }} de {{ hero.total }} tarefas concluídas</span>
+            </div>
+            <div v-if="hero.overdue > 0" class="hero-stat-overdue">
+              {{ hero.overdue }} atrasada{{ hero.overdue > 1 ? 's' : '' }}
+            </div>
           </div>
         </div>
 
@@ -228,6 +249,35 @@ const trendDelta = computed(() => props.weeklyCreated.reduce((a, b) => a + b, 0)
   gap: 10px;
 }
 
+.hero-stat--primary {
+  flex-direction: row;
+  align-items: center;
+  gap: 18px;
+}
+
+.hero-stat-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.hero-ring-number {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+}
+
+.hero-stat-overdue {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
 .hero-stat-label {
   font-size: 12px;
   font-weight: 700;
@@ -261,19 +311,13 @@ const trendDelta = computed(() => props.weeklyCreated.reduce((a, b) => a + b, 0)
   color: var(--text-3);
 }
 
-.progress-track {
-  height: 6px;
-  background: var(--surface-3);
-  border-radius: 999px;
-  overflow: hidden;
+/* Dentro do anel o número precisa caber no miolo de 118px. */
+.bignumber--ring {
+  font-size: 34px;
 }
 
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 45%, var(--success)));
-  border-radius: 999px;
-  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 45%, transparent);
-  transition: width 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+.bigunit--ring {
+  font-size: 15px;
 }
 
 .hero-stat-foot {
@@ -358,8 +402,8 @@ const trendDelta = computed(() => props.weeklyCreated.reduce((a, b) => a + b, 0)
   .hero-actions {
     width: 100%;
   }
-  .bignumber {
-    font-size: 44px;
+  .bignumber--ring {
+    font-size: 30px;
   }
 }
 </style>

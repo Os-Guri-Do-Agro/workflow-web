@@ -1,0 +1,47 @@
+/*
+ * Skin ÚNICO dos dropdown menus (reka-ui) portalados para o <body>.
+ *
+ * Global de propósito: o DropdownMenuPortal teleporta o conteúdo pra fora do
+ * componente e o data-v-* do <style scoped> não viaja junto — era isso que
+ * deixava o card do menu invisível (mesma lição do AppSelect). Antes cada menu
+ * duplicava estas regras com um prefixo próprio (.fam-/.fom-); agora todos
+ * consomem .dd-menu/.dd-item e só definem o próprio min-width.
+ */
+
+.dd-menu {
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+  z-index: 3000;
+}
+
+.dd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: 12.5px;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.dd-item[data-highlighted] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.dd-item--danger[data-highlighted] {
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  color: var(--err);
+}
+
+.dd-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}

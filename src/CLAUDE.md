@@ -7,6 +7,7 @@ Guia interno para navegar e evoluir o código.
 - [design-system-evolution.md](../docs/specs/design-system-evolution.md) — spec-mãe (F1-F4 + Fase P)
 - [shell-nav-unification.md](../docs/specs/shell-nav-unification.md) — Q1-Q4 em todos os shells + dead buttons + modais (entregue `0d1ea7c`)
 - [legacy-views-migration.md](../docs/specs/legacy-views-migration.md) — migração mdi→lucide + tokens das views legadas (L1-L4, planejada)
+- [overhaul-visual-premium.md](../docs/specs/2026/q3/q3-2/overhaul-visual-premium.md) — F0 fundações (gsap, `v-reveal`, `useCountUp`, `ProgressRing`, `echarts-theme`) + F1 Dashboard + F2 Roadmap (entregue ago/2026)
 
 ## Stack
 
@@ -15,9 +16,9 @@ Guia interno para navegar e evoluir o código.
 - TypeScript 5.9, Vite 7
 - Ícones: **lucide-vue-next** (padrão) + `mdi` via fonte (legado, em migração)
 - Fonte: **Geist** (Vercel, OFL 1.1; self-host VARIÁVEL 100–900 + itálico em `assets/fonts/geist/`, importada no `main.ts`; Inter fica de fallback). Trocar em `tokens.ts` (`--font-family`). Não ligar stylistic sets no reset: o corte padrão é o desenho do produto
-- Motion: **@vueuse/motion** (instalado via `MotionPlugin`) + `motion-v` (disponível para uso)
+- Motion: `motion-v` (springs de estado, ex.: anéis de progresso) + **gsap** (coreografia de entrada e count-up; spec overhaul-visual-premium). O gsap NUNCA entra no chunk de entrada: a diretiva `v-reveal` (`plugins/reveal.ts`, registrada no `main.ts`) importa a lib dinamicamente, e `useCountUp` só é importado por views lazy. Toda animação decorativa respeita `prefers-reduced-motion`
 - Toast: **vue-sonner** (consumido via `useToast()` bridge)
-- Charts: `vue-echarts` (line, bar, pie)
+- Charts: `vue-echarts` (line, bar, pie). **Proibido usar as cores default do ECharts**: todo gráfico resolve tokens via `plugins/echarts-theme.ts` (paleta de status, tooltip, textStyle) e monta o `option` num `computed` que depende de `uiStore.theme`/`accent` pra repintar na troca de tema. Ver `components/dashboard/OverviewChart.vue` como referência
 - Headless primitives: `reka-ui` — em uso em `components/ui/AppSelect.vue`. Preferir para menus/popovers/selects novos.
 - Editor de texto rico: **TipTap 3.28** (MIT). Configuração de notas centralizada em `features/notes/composables/useNoteEditor.ts`. Toolbar compartilhada em `components/ui/TipTapToolbar.vue`. **Link e Underline vêm dentro do StarterKit no v3** — declarar por fora derruba o editor com "duplicate extension names".
 
@@ -107,6 +108,8 @@ Em [`components/ui/`](./components/ui/):
 | `TipTapToolbar.vue`    | Toolbar tokenizada de editor. Prop `groups` escolhe o que aparece; `bare` para uso dentro de popover.                |
 | `FileViewer.vue`       | Visualizador de arquivo em tela cheia (Teleport, imagem/PDF/markdown/vídeo/áudio, setas, foco preso). Promovido do antigo `AttachmentViewer` das tarefas. `item.url` pronto OU `resolveUrl` assíncrono (Drive: URL assinada fresca). |
 | `AppSelect.vue`        | Select padrão (reka-ui Select). Single/multiple. Sem busca.                                                          |
+| `ProgressRing.vue`     | Anel de progresso genérico (linguagem do `SubtaskProgress`: 12h, spring motion-v, done = `--status-done`). Slot no centro p/ número/label. |
+| `CountUp.vue` + `useCountUp` | Número que conta até o valor (gsap, pt-BR, reduced-motion salta direto). O componente existe p/ uso em `v-for`. |
 | `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. **Não é mais usado no time tracking** (ver `TaskPicker`); segue disponível para lista plana. |
 | `TaskPicker.vue`       | Seletor de tarefa do Meu tempo: menu navegável trimestre → mês → tarefa, busca global sem acento, atalhos (Recentes / Minhas), concluídas ocultas por padrão e teclado completo. Props `modelValue` + `companyId` (ele mesmo busca a árvore, via `useTaskPicker`). Inclui **subtarefas**. |
 | `TagChip.vue` + `tag-palette.ts` | Chip de tag. Cor vem de `var(--tag-<chave>)` (definido em `tokens.ts`, por tema), nunca hex. Tag sem cor recebe uma determinística pelo slug. |
@@ -132,6 +135,8 @@ Classes utilitárias premium que qualquer componente pode usar:
 
 View Transitions API registrado via `::view-transition-*` no reset — ativo se o browser suportar e for usado via `document.startViewTransition`. Atualmente usamos `<Transition name="route">` em `AppShell.vue` (fade + translate + blur) como fallback universal.
 
+**Diretiva `v-reveal`** (global, `plugins/reveal.ts`): entrada opacity+translateY quando o elemento entra no viewport. `v-reveal` simples, `v-reveal="indice"` pra stagger entre irmãos, `v-reveal="{ index, y }"`. O elemento nunca nasce invisível (só esconde depois do gsap carregar) e reduced-motion desliga tudo. Em uso no Dashboard e no Roadmap (spec `docs/specs/2026/q3/q3-2/overhaul-visual-premium.md`).
+
 ## Features registradas
 
 | Feature         | View principal                                                                                 | Rota               | Observações                                                           |
@@ -141,7 +146,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Canvas          | [`features/boards/BoardsListView.vue`](./features/boards/BoardsListView.vue)                   | `/boards`          | **Desabilitado (feature flag)** — `CANVAS_ENABLED` (`config/feature-flags.ts`); reativar com `VITE_CANVAS_ENABLED=true`. Ver [docs/CANVAS_DEACTIVATION.md](../docs/CANVAS_DEACTIVATION.md). Arquivos preservados, nada deletado |
 | Público         | [`features/public/PublicBoardView.vue`](./features/public/PublicBoardView.vue)                 | `/public/board/:token` | Board read-only por token                                         |
 | Público         | [`features/public/PublicRoadmapView.vue`](./features/public/PublicRoadmapView.vue)             | `/public/roadmap/:token` | Roadmap read-only por token                                   |
-| Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais mockados                         |
+| Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais, **100% API real** (a nota antiga de "mockados" está obsoleta desde o contrato `GET /company/:id/roadmap`) |
 | Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês. Tags, arquivos e documentos `.md` na tarefa (ver abaixo). Filtro por tag em `?tags=slug1,slug2` |
 | Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         | Rota registrada na navegação                                           |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |

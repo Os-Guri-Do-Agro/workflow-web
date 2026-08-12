@@ -85,7 +85,8 @@ export type UpcomingEvent = Pick<CalendarEvent, 'id' | 'title' | 'startDate' | '
 
 export type StatCard = {
   title: string
-  value: string
+  /** Numérico: o card renderiza via CountUp (string formatada viraria NaN→0). */
+  value: number
   icon: LucideIcon
   color: string
   spark: number[]
@@ -216,7 +217,7 @@ export function useDashboardOrchestration() {
     return [
       {
         title: 'Total',
-        value: String(total),
+        value: total,
         icon: FolderOpen,
         color: 'var(--info)',
         spark: hasCreated ? createdSeries : [],
@@ -225,7 +226,7 @@ export function useDashboardOrchestration() {
       },
       {
         title: 'Concluídas',
-        value: String(completed),
+        value: completed,
         icon: CheckCircle2,
         color: 'var(--success)',
         spark: hasCompleted ? completedSeries : [],
@@ -237,7 +238,7 @@ export function useDashboardOrchestration() {
       },
       {
         title: 'Em progresso',
-        value: String(inProgress),
+        value: inProgress,
         icon: Clock3,
         color: 'var(--warn)',
         spark: hasCreated ? createdSeries : [],
@@ -248,7 +249,7 @@ export function useDashboardOrchestration() {
       {
         title: 'Atrasadas',
         // Atrasadas não têm série temporal própria; sem sparkline honesto.
-        value: String(overdue),
+        value: overdue,
         icon: AlertTriangle,
         color: 'var(--err)',
         spark: [],

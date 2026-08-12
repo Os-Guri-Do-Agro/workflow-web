@@ -138,7 +138,7 @@ const description = computed(() => {
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background: var(--surface);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow);
   text-align: center;
 }
 
