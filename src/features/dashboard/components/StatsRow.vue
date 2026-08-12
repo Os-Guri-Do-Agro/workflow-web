@@ -1,202 +1,132 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import VChart from 'vue-echarts'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent } from 'echarts/components'
+/**
+ * Tiles de estatística do bento.
+ *
+ * O root usa `display: contents`: cada tile é filho DIRETO do grid bento do
+ * DashboardView e ocupa a própria área (t1..t4) — um wrapper aqui quebraria o
+ * layout por áreas. Os quatro deixaram de ser cards gêmeos: são células
+ * compactas, e a de Atrasadas muda de temperamento quando o número é > 0.
+ */
 import Skeleton from '@/components/ui/Skeleton.vue'
 import CountUp from '@/components/ui/CountUp.vue'
-import { chartThemeDep } from '@/plugins/echarts-theme'
-import { sparkOption } from './spark'
 import type { StatCard } from '@/composables/useDashboardOrchestration'
 
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
-
-const props = defineProps<{
+defineProps<{
   stats: StatCard[]
   loading: boolean
 }>()
-
-/**
- * Opções dos sparklines, memoizadas por card.
- *
- * Antes o template chamava `sparkOption(...)` direto. Duas consequências, as duas
- * ruins e nenhuma visível no código:
- *
- * 1. A função devolve um OBJETO NOVO a cada chamada. O `vue-echarts` compara a
- *    prop `option` por identidade, então cada render reaplicava `setOption` e
- *    redesenhava o canvas dos quatro gráficos, mesmo sem nenhum dado ter mudado.
- * 2. `sparkOption` resolve cor via `getComputedStyle(document.documentElement)`,
- *    três vezes por chamada. Isso força recálculo de estilo do documento inteiro,
- *    doze vezes por render aqui.
- *
- * Com `computed`, só recalcula quando `stats` muda de verdade.
- */
-const options = computed(() => {
-  chartThemeDep() // repinta os canvas na troca de tema/acento
-  return props.stats.map((s) => (s.noData ? null : sparkOption(s.spark, s.color)))
-})
 </script>
 
 <template>
-  <section class="stats-row">
+  <div class="tiles">
     <div
       v-for="(s, i) in stats"
       :key="s.title"
-      v-reveal="i"
-      class="stat-card"
+      v-reveal="i + 2"
+      class="bento-cell tile"
+      :class="[`tile--t${i + 1}`, { 'tile--alert': s.title === 'Atrasadas' && s.value > 0 }]"
       :style="{ '--stat-c': s.color }"
     >
-      <div v-if="loading" class="stat-skel"><Skeleton type="row" /></div>
+      <div v-if="loading" class="tile-skel"><Skeleton type="row" /></div>
       <template v-else>
-        <div class="stat-card-head">
-          <div class="stat-chip">
-            <component :is="s.icon" :size="14" />
-          </div>
-          <span class="stat-trend">{{ s.trend }}</span>
+        <div class="tile-chip">
+          <component :is="s.icon" :size="14" />
         </div>
-        <CountUp class="stat-value" :value="s.value" />
-        <div class="stat-footer">
-          <span class="stat-label">{{ s.title }}</span>
-          <div class="stat-spark">
-            <VChart v-if="options[i]" :option="options[i]" :autoresize="true" />
-            <span v-else class="stat-spark-empty" title="Sem atividade registrada">sem atividade</span>
-          </div>
-        </div>
+        <CountUp class="tile-value" :value="s.value" />
+        <div class="tile-label">{{ s.title }}</div>
+        <div class="tile-trend">{{ s.trend }}</div>
       </template>
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+@import './dashboard-shared.css';
+
+/* Cada tile vira item do grid bento pai. */
+.tiles {
+  display: contents;
 }
 
-.stat-card {
-  /* Mesma elevação dos cards do board: cor de base, gradiente de luz e fio
-     claro no topo, para o cartão não ficar chapado no tema escuro. */
-  background-color: var(--surface);
-  background-image: var(--elev-1);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 var(--elev-hi);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 14px 16px 12px;
+.tile--t1 { grid-area: t1; }
+.tile--t2 { grid-area: t2; }
+.tile--t3 { grid-area: t3; }
+.tile--t4 { grid-area: t4; }
+
+.tile {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 112px;
-  position: relative;
+  gap: 3px;
+  padding: 14px 16px;
   overflow: hidden;
-  transition:
-    border-color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+  transition: border-color var(--motion-fast) var(--motion-ease);
 }
 
-.stat-card::before {
+.tile::before {
   content: '';
   position: absolute;
-  top: 0;
-  right: 0;
+  top: -30px;
+  right: -30px;
   width: 100px;
   height: 100px;
   border-radius: 50%;
   background: radial-gradient(closest-side, var(--stat-c), transparent 70%);
-  opacity: 0.12;
-  filter: blur(20px);
+  opacity: 0.1;
+  filter: blur(16px);
   pointer-events: none;
 }
 
-.stat-card:hover {
+.tile:hover {
   border-color: var(--border-strong);
-  transform: translateY(-1px);
 }
 
-.stat-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+.tile--alert {
+  border-color: color-mix(in srgb, var(--err) 35%, var(--border));
+  background:
+    radial-gradient(
+      120% 120% at 100% 0%,
+      color-mix(in srgb, var(--err) 10%, transparent) 0%,
+      transparent 60%
+    ),
+    var(--surface);
 }
 
-.stat-chip {
-  width: 28px;
-  height: 28px;
+.tile-chip {
+  width: 26px;
+  height: 26px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--stat-c) 14%, transparent);
   color: var(--stat-c);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: 3px;
 }
 
-.stat-trend {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-3);
-  background: var(--surface-2);
-  padding: 2px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.stat-value {
-  font-size: 30px;
+.tile-value {
+  font-size: 27px;
   font-weight: 800;
   letter-spacing: -0.035em;
   color: var(--text);
-  font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
-.stat-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.stat-label {
+.tile-label {
   font-size: 12px;
-  color: var(--text-3);
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--text-2);
 }
 
-.stat-spark {
-  width: 76px;
-  height: 26px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.stat-spark-empty {
-  font-size: 10px;
-  font-style: italic;
+.tile-trend {
+  font-size: 11.5px;
   color: var(--text-4);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.stat-skel {
+.tile-skel {
   flex: 1;
-}
-
-/* Degradação escalonada: 4 → 2 → 1 colunas, sem scroll horizontal */
-@media (max-width: 1024px) {
-  .stats-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 768px) {
-  .stats-row {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

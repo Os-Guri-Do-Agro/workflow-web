@@ -1,7 +1,11 @@
 <script setup lang="ts">
+/**
+ * Módulo ATIVIDADE do bento: a coluna alta da direita, feed do backlog em
+ * tempo quase real. (O gráfico de distribuição que dividia painel com ele
+ * virou módulo próprio no DashboardView.)
+ */
 import { computed, type ComputedRef } from 'vue'
 import { CircleDot } from 'lucide-vue-next'
-import OverviewChart from '@/components/dashboard/OverviewChart.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { avatarTone, initials } from '@/utils/avatar'
 import { useBacklog } from '@/composables/useBacklog'
@@ -13,8 +17,6 @@ import {
 
 const props = defineProps<{
   companyId: ComputedRef<string> | string
-  metrics: { metrics?: Record<string, unknown> } | null
-  loading: boolean
 }>()
 
 const companyIdRef = computed(() =>
@@ -25,7 +27,7 @@ const { data: backlogData, isLoading: loadingBacklog } = useBacklog(companyIdRef
 const backlog = computed<BacklogChange[]>(() => backlogData.value ?? [])
 
 const recentActivities = computed(() => {
-  return backlog.value.slice(0, 10).map((item) => ({
+  return backlog.value.slice(0, 12).map((item) => ({
     title: item.activityTitle,
     author: item.changedBy?.name || 'Sistema',
     // Identidade tokenizada por pessoa (mesma função do board e do ranking).
@@ -43,92 +45,71 @@ const recentActivities = computed(() => {
 </script>
 
 <template>
-  <section class="grid-main">
-    <div class="panel panel--activity">
-      <header class="panel-head">
-        <div class="panel-title">Atividade recente</div>
-        <span class="panel-chip">{{ recentActivities.length }}</span>
-      </header>
-      <div class="panel-body">
-        <div v-if="loadingBacklog" class="activity-skel">
-          <Skeleton v-for="i in 5" :key="i" type="row" />
-        </div>
-        <div v-else-if="!recentActivities.length" class="panel-empty">
-          <CircleDot :size="24" />
-          <span>Nenhuma atividade recente</span>
-        </div>
-        <ul v-else class="activity-list">
-          <li
-            v-for="(a, idx) in recentActivities"
-            :key="idx"
-            v-reveal="idx"
-            class="activity-item"
-          >
-            <span class="activity-rail" :style="{ background: statusMeta[a.status]?.color }" />
-            <div class="activity-avatar" :style="{ '--tone': a.tone }">{{ a.initials }}</div>
-            <div class="activity-info">
-              <span class="activity-title">{{ a.title }}</span>
-              <span class="activity-meta">{{ a.author }}</span>
-            </div>
-            <div class="activity-right">
-              <span class="activity-pill" :class="statusPillClass(a.status)">
-                {{ statusMeta[a.status]?.label || 'Atualizado' }}
-              </span>
-              <span class="activity-time">{{ a.time }}</span>
-            </div>
-          </li>
-        </ul>
+  <section class="bento-cell act" aria-label="Atividade recente">
+    <header class="act-head">
+      <span class="eyebrow">Atividade recente</span>
+      <span class="act-chip">{{ recentActivities.length }}</span>
+    </header>
+    <div class="act-body">
+      <div v-if="loadingBacklog" class="act-skel">
+        <Skeleton v-for="i in 6" :key="i" type="row" />
       </div>
-    </div>
-
-    <div class="panel panel--chart">
-      <header class="panel-head">
-        <div class="panel-title">Distribuição</div>
-      </header>
-      <div class="panel-body panel-body--chart">
-        <div v-if="loading" class="chart-skel" />
-        <OverviewChart v-else :metrics="metrics?.metrics" />
+      <div v-else-if="!recentActivities.length" class="act-empty">
+        <CircleDot :size="24" />
+        <span>Nenhuma atividade recente</span>
       </div>
+      <ul v-else class="act-list">
+        <li
+          v-for="(a, idx) in recentActivities"
+          :key="idx"
+          v-reveal="idx"
+          class="act-item"
+        >
+          <span class="act-rail" :style="{ background: statusMeta[a.status]?.color }" />
+          <div class="act-avatar" :style="{ '--tone': a.tone }">{{ a.initials }}</div>
+          <div class="act-info">
+            <span class="act-title">{{ a.title }}</span>
+            <span class="act-meta">
+              {{ a.author }}
+              <span class="act-dot" aria-hidden="true">·</span>
+              {{ a.time }}
+            </span>
+          </div>
+          <span class="act-pill" :class="statusPillClass(a.status)">
+            {{ statusMeta[a.status]?.label || 'Atualizado' }}
+          </span>
+        </li>
+      </ul>
     </div>
   </section>
 </template>
 
 <style scoped>
-.grid-main {
-  display: grid;
-  grid-template-columns: 1fr 520px;
-  gap: 12px;
-}
+@import './dashboard-shared.css';
 
-.panel {
-  background-color: var(--surface);
-  background-image: var(--elev-1);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 var(--elev-hi);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+.act {
+  grid-area: act;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-height: 0;
+  /* A torre da direita: altura vem do grid; a lista rola por dentro. */
+  max-height: 100%;
 }
 
-.panel-head {
+.act-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding: 14px 16px;
+  padding: 16px 16px 10px;
   border-bottom: 1px solid var(--border);
 }
 
-.panel-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
+.act-head .eyebrow {
+  margin-bottom: 0;
 }
 
-.panel-chip {
+.act-chip {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-3);
@@ -138,33 +119,30 @@ const recentActivities = computed(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.panel-body {
+.act-body {
   flex: 1;
-  padding: 8px;
+  padding: 6px;
   overflow: auto;
+  min-height: 0;
 }
 
-.panel-body--chart {
-  padding: 14px;
-  min-height: 340px;
-}
-
-.panel-empty {
+.act-empty {
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: 30px;
   gap: 8px;
   color: var(--text-4);
   font-size: 12.5px;
 }
 
-.activity-skel {
+.act-skel {
   padding: 0 8px;
 }
 
-.activity-list {
+.act-list {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -173,21 +151,21 @@ const recentActivities = computed(() => {
   gap: 2px;
 }
 
-.activity-item {
+.act-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
+  gap: 9px;
+  padding: 8px 8px;
   border-radius: 8px;
   transition: background var(--motion-fast) var(--motion-ease);
 }
 
-.activity-item:hover {
+.act-item:hover {
   background: var(--surface-2);
 }
 
-.activity-rail {
+.act-rail {
   width: 3px;
   align-self: stretch;
   border-radius: 2px;
@@ -195,7 +173,7 @@ const recentActivities = computed(() => {
 }
 
 /* Tinta e texto derivados do tom da pessoa (--avatar-1..6), padrão do board. */
-.activity-avatar {
+.act-avatar {
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -210,7 +188,7 @@ const recentActivities = computed(() => {
   flex-shrink: 0;
 }
 
-.activity-info {
+.act-info {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -218,7 +196,7 @@ const recentActivities = computed(() => {
   gap: 1px;
 }
 
-.activity-title {
+.act-title {
   font-size: 12.5px;
   color: var(--text);
   font-weight: 500;
@@ -227,26 +205,27 @@ const recentActivities = computed(() => {
   text-overflow: ellipsis;
 }
 
-.activity-meta {
-  font-size: 12px;
+.act-meta {
+  font-size: 11.5px;
   color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.activity-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+.act-dot {
+  opacity: 0.6;
 }
 
-/* color-mix() pré-computado por status (antes resolvido em JS inline a cada render) */
-.activity-pill {
-  font-size: 12px;
+.act-pill {
+  font-size: 11.5px;
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 999px;
+  flex-shrink: 0;
 }
 
+/* color-mix() pré-computado por status */
 .pill--todo {
   color: var(--status-todo);
   background: color-mix(in srgb, var(--status-todo) 14%, transparent);
@@ -272,36 +251,5 @@ const recentActivities = computed(() => {
 .pill--blocked {
   color: var(--status-block);
   background: color-mix(in srgb, var(--status-block) 14%, transparent);
-}
-
-.activity-time {
-  font-size: 12px;
-  color: var(--text-4);
-  font-variant-numeric: tabular-nums;
-}
-
-.chart-skel {
-  height: 260px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  animation: shimmer 1.4s ease infinite;
-  background-size: 200% 100%;
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@media (max-width: 1024px) {
-  .grid-main {
-    grid-template-columns: 1fr 400px;
-  }
-}
-
-@media (max-width: 960px) {
-  .grid-main {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

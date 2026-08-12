@@ -2,6 +2,19 @@
    Importado via `@import` nos <style scoped> de cada sub-componente.
    Mantém tokens (var(--...)) — nunca hex. */
 
+/* Célula base do grid bento: elevação padrão dos cards do design system.
+   Cada módulo soma a própria personalidade por cima. */
+.bento-cell {
+  background-color: var(--surface);
+  background-image: var(--elev-1);
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 1px 0 var(--elev-hi);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  min-width: 0;
+}
+
 .ghost-btn {
   display: inline-flex;
   align-items: center;

@@ -174,14 +174,15 @@ const option = computed(() => {
   align-items: center;
   gap: 16px;
   height: 100%;
-  min-height: 280px;
+  min-height: 210px;
 }
 
 .ov-chart {
   position: relative;
   flex: 1;
   min-width: 0;
-  height: 280px;
+  height: 100%;
+  min-height: 210px;
 }
 
 .ov-canvas {
@@ -233,7 +234,7 @@ const option = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: 200px;
+  width: 172px;
   flex: none;
 }
 

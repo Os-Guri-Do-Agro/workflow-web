@@ -4,7 +4,7 @@
 **Autor:** Nicolas + Claude
 **Criado em:** 2026-08-12
 **Última atualização:** 2026-08-12
-**Versão:** 0.2
+**Versão:** 0.3
 
 ---
 
@@ -237,6 +237,29 @@ Não aplicável (mudança visual client-side; sem novos eventos/erros a logar).
 
 - [ ] Ranking/streaks no dashboard (gamificação) entram na próxima fase? —
   responsável: Nicolas
+
+## Iteração 2 — Dashboard bento (2026-08-12)
+
+O dono achou a primeira rodada "meio ble": a pele mudou mas a COMPOSIÇÃO
+continuava a de template (hero + 4 cards gêmeos + 2 painéis). Direção
+escolhida por ele via pergunta com preview: **bento assimétrico** (Linear/
+Raycast), atacando primeiro o Dashboard.
+
+O que mudou (dados intactos, `useDashboardOrchestration` não foi tocado):
+
+- `DashboardView` virou um grid por `grid-template-areas` (12 col, linhas de
+  ~126px): Progresso 5x2 (célula-âncora com tint de acento e anel 148px),
+  Movimento 3x2 (gráfico de área com as DUAS séries criadas × concluídas —
+  antes a série de concluídas era desperdiçada), Atividade 4x4 (a torre da
+  direita), Distribuição 4x2 e 4 tiles 2x1. Breakpoints 1100/720 rearranjam
+  as áreas.
+- `HeroSection` = módulo Progresso (saudação/ações extraídas para
+  `DashboardHeader.vue` novo). `MovementModule.vue` novo. `StatsRow` = tiles
+  com `display: contents` (cada tile é filho direto do grid; tile de
+  Atrasadas muda de temperamento quando > 0). `ActivityPanel` = só o feed
+  (12 itens); a Distribuição virou célula própria no DashboardView.
+- Verificação repetida integralmente: dark/light/reduced-motion, toggle de
+  legenda, repaint por troca de tema (hash de canvas), typecheck e lint.
 
 ## Change Log
 
