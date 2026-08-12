@@ -75,10 +75,16 @@ const readDriveViewMode = (): DriveViewMode =>
 /** Aviso de ociosidade do timer: ligado por padrão (spec timer-ociosidade). */
 const readIdleGuard = (): boolean => localStorage.getItem(STORAGE.idleGuard) !== 'false'
 
-/** Minutos parados até o aviso. A carência antes do corte é sempre 1/3 disso. */
+/**
+ * Minutos parados até o aviso. A carência antes do corte é sempre 1/3 disso.
+ *
+ * O teto é 15: acima disso o aviso perde a graça — meia hora de cronômetro
+ * rodando sozinho já é a hora inflada que este recurso existe para evitar. Quem
+ * tinha 30 salvo volta para 15 na próxima leitura.
+ */
 const readIdleWarnMin = (): number => {
   const v = Number(localStorage.getItem(STORAGE.idleWarnMin))
-  const allowed = [5, 10, 15, 30]
+  const allowed = [5, 10, 15]
   return allowed.includes(v) ? v : 15
 }
 

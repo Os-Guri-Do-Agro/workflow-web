@@ -170,7 +170,7 @@ function chooseSound(id: string) {
 
 // ── Aviso de ociosidade (spec timer-ociosidade) ──────────────────────────
 const idleAlerts = useIdleAlerts()
-const idleWarnOptions = [5, 10, 15, 30]
+const idleWarnOptions = [5, 10, 15]
 
 onMounted(() => {
   // Popula `idleDetectionState` (o estado é compartilhado e reativo).
