@@ -1,3 +1,10 @@
+// PRIMEIRO de todos, e é obrigatório que continue sendo: navegador com
+// armazenamento bloqueado (Opera/Brave com escudo, Firefox com proteção rígida,
+// janela privada) faz o simples acesso a `localStorage` lançar, e o boot lê
+// storage em vários pontos. Sem o shim, o resultado é tela branca só para essas
+// pessoas. Ver utils/storage-shim.ts.
+import '@/utils/storage-shim'
+
 import '@/assets/fonts/geist/geist.css'
 import '@fontsource-variable/inter'
 import '@/styles/reset.css'

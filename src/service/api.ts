@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type AxiosResponseHeaders, type RawAxiosResponseHeaders } from 'axios'
 import { toast } from 'vue-sonner'
+import { safeSessionStorage, safeStorage } from '@/utils/safe-storage'
 
 export interface ApiErrorEnvelope {
   statusCode: number
@@ -71,8 +72,14 @@ export const publicApi = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  const companyId = localStorage.getItem('activeCompany')
+  // `safeStorage` e não `localStorage` direto: o acesso ao storage LANÇA em
+  // navegador com bloqueio de armazenamento para o site (Firefox com proteção
+  // rígida, Opera/Brave com escudo, janela privada, política corporativa). Se
+  // lançasse aqui, toda chamada de API morreria antes de sair e a tela ficaria
+  // inacessível — só para quem tem aquela configuração, o que faz o problema
+  // parecer específico de um navegador.
+  const token = safeStorage.getItem('token')
+  const companyId = safeStorage.getItem('activeCompany')
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -97,8 +104,8 @@ api.interceptors.request.use((config) => {
  * estático entre os três.
  */
 export function clearSession() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('activeCompany')
+  safeStorage.removeItem('token')
+  safeStorage.removeItem('activeCompany')
   void import('@/service/realtime/session-reset').then((m) => m.resetSessionState())
 }
 
@@ -112,13 +119,13 @@ let handlingSessionExpiry = false
  */
 function handleSessionExpired() {
   if (handlingSessionExpiry) return
-  if (!localStorage.getItem('token')) return
+  if (!safeStorage.getItem('token')) return
   handlingSessionExpiry = true
   clearSession()
   if (!window.location.pathname.startsWith('/login')) {
     toast.error('Sua sessão expirou. Faça login novamente.')
     // O toast morre com o assign; a LoginView lê essa flag e reexibe o aviso.
-    sessionStorage.setItem('loginReason', 'expired')
+    safeSessionStorage.setItem('loginReason', 'expired')
     // Preserva a rota atual para voltar exatamente aonde estava após relogar.
     const current = window.location.pathname + window.location.search
     const redirect = current && current !== '/' ? `?redirect=${encodeURIComponent(current)}` : ''

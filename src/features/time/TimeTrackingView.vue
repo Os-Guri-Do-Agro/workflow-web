@@ -21,6 +21,7 @@ import BalanceReport from '@/features/time/components/BalanceReport.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
 import SaveStatus from '@/components/ui/SaveStatus.vue'
 import TeamView from '@/features/time/components/TeamView.vue'
 import { useToast } from '@/composables/useToast'
@@ -215,6 +216,18 @@ async function handleResume() {
 function entryTitle(entry: TimeEntry): string {
   return entry.activity?.title || entry.description || 'Sem descrição'
 }
+
+/**
+ * Motivo real da falha ao listar. Mostrar o texto do servidor é o que separa
+ * "não funciona" de "o servidor recusou por X" — e é o que permite alguém
+ * resolver sem abrir o console.
+ */
+const entriesErrorMessage = computed(() =>
+  getApiErrorMessage(
+    entries.error.value,
+    'Não consegui falar com o servidor. Verifique sua conexão e tente de novo.',
+  ),
+)
 
 /** Subtítulo: só quando há tarefa E descrição (entradas anteriores à mudança). */
 function entrySubtitle(entry: TimeEntry): string | null {
@@ -1000,11 +1013,13 @@ async function submitManual() {
         <Skeleton v-for="i in 4" :key="i" type="row" height="18px" />
       </div>
 
+      <!-- A mensagem do servidor aparece de propósito: "ocorreu um erro" sozinho
+           não deixa ninguém agir, nem quem usa nem quem vai investigar. -->
       <EmptyState
         v-else-if="entries.isError.value"
         :icon="AlertTriangle"
-        title="Não foi possível carregar"
-        description="Ocorreu um erro ao buscar suas entradas de tempo."
+        title="Não foi possível carregar suas entradas"
+        :description="entriesErrorMessage"
       >
         <template #action>
           <button class="tv-btn tv-btn--ghost" type="button" @click="() => entries.refetch()">
@@ -1158,8 +1173,14 @@ async function submitManual() {
         <div class="tv-rail">
           <!-- Banco de horas primeiro: é a resposta que a pessoa vem buscar
                ("estou devendo?"), e independe de haver entrada na lista do
-               período filtrado. -->
-          <BalanceCard />
+               período filtrado.
+
+               Isolado numa fronteira de erro porque é acessório: se o saldo
+               falhar (backend antigo, rota ainda não publicada), a pessoa
+               precisa continuar conseguindo registrar o próprio tempo. -->
+          <ErrorBoundary label="o banco de horas">
+            <BalanceCard />
+          </ErrorBoundary>
         <TimeInsightsRail
           v-if="visibleEntries.length"
           class="tv-rail-inner"
@@ -1187,10 +1208,14 @@ async function submitManual() {
 
     <!-- ═══════════════ ABA: FECHAMENTO (banco de horas) ═══════════════ -->
     <div v-else-if="activeTab === 'report'" class="tv-report">
-      <BalanceReport scope="me" />
+      <ErrorBoundary label="o fechamento">
+        <BalanceReport scope="me" />
+      </ErrorBoundary>
       <!-- O componente trata o 403 com mensagem própria, então quem não
            administra vê a explicação em vez de um erro. -->
-      <BalanceReport v-if="hasCompany" scope="team" />
+      <ErrorBoundary v-if="hasCompany" label="o fechamento da equipe">
+        <BalanceReport scope="team" />
+      </ErrorBoundary>
     </div>
 
     <!-- ═══════════════ ABA: EQUIPE (ranking da empresa) ═══════════════ -->
