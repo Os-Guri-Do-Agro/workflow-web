@@ -17,6 +17,7 @@ import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
 import { useTimerIdleGuard } from '@/composables/useTimerIdleGuard'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
 import { useTimerSounds } from '@/composables/useTimerSounds'
+import { openProtectionDialog } from '@/composables/idle-protection-dialog'
 import { useToast } from '@/composables/useToast'
 import { useCurrentUser } from '@/composables/useCurrentUser'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
@@ -70,12 +71,19 @@ async function handleEnableAlerts() {
   await alerts.requestNext()
 }
 
-/** Texto da linha muda conforme o passo que falta. */
-const permissionText = computed(() =>
-  alerts.nextStep.value === 'detection'
-    ? 'Permita a detecção de atividade para não parar seu tempo à toa'
-    : 'Ative as notificações para ser avisado fora do navegador',
-)
+/**
+ * Texto da linha de proteção. Em modo limitado ela explica a consequência (o
+ * Nevo não vai parar o tempo sozinho), porque é isso que muda para a pessoa —
+ * "falta uma permissão" não diz nada a quem não sabe o que a permissão faz.
+ */
+const permissionText = computed(() => {
+  if (alerts.limited.value) {
+    return alerts.nextStep.value === 'detection'
+      ? 'Proteção limitada: sem a detecção de atividade eu não paro seu tempo sozinho'
+      : 'Proteção limitada: o navegador bloqueou a detecção de atividade'
+  }
+  return 'Ative as notificações para ser avisado fora do navegador'
+})
 
 // "Pessoal" + empresas do usuário.
 const companyOptions = computed(() => [
@@ -114,9 +122,11 @@ function close() {
 }
 
 async function handleStart() {
-  // Antes do await: a ativação do gesto expira e o prompt de permissão seria
-  // recusado se pedíssemos depois da resposta da rede.
-  alerts.askOnStart()
+  // Proteção limitada: interrompe com o diálogo em vez de pedir em silêncio.
+  // O pedido antigo, colado no clique de iniciar, passava despercebido — e
+  // quem não concedia ficava sem saber que o app não conseguia distinguir
+  // "saiu do computador" de "minimizou o navegador".
+  if (alerts.needsAttention.value) openProtectionDialog()
   try {
     await start.mutateAsync({
       description: description.value.trim() || undefined,
@@ -282,10 +292,11 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
           <!-- Sem permissão, o aviso não alcança quem está fora do navegador,
                que é justamente o caso que importa. -->
           <button
-            v-if="alerts.needsPermission.value"
+            v-if="alerts.limited.value || alerts.needsPermission.value"
             class="timer-perm"
+            :class="{ 'timer-perm--warn': alerts.limited.value }"
             type="button"
-            @click="handleEnableAlerts"
+            @click="openProtectionDialog()"
           >
             <BellRing :size="13" />
             <span>{{ permissionText }}</span>
@@ -591,6 +602,14 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 .timer-perm:hover {
   color: var(--text);
   border-color: var(--accent);
+}
+
+/* Proteção limitada não é convite: é aviso de que o produto está capado. */
+.timer-perm--warn {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--warn);
 }
 
 /* F3 — banner de timer esquecido (âmbar). */

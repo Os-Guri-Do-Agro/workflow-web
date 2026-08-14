@@ -7,10 +7,11 @@ import {
   IDLE_DEBUG,
   IDLE_KEYS,
   TAB_ID,
+  effectiveActivityAt,
   idlePhase,
-  lastActivityAt,
   lastCut,
   markActivity,
+  protectionLevel,
   screenLocked,
   setLastCut,
   type IdleCutRecord,
@@ -115,13 +116,22 @@ export function useTimerIdleGuard() {
   // voltar de uma ida ao banheiro, curto o bastante para não inflar o registro.
   const graceMs = computed(() => (debug ? DEBUG_GRACE_MS : Math.round(warnMs.value / 3)))
 
-  /** Há quanto tempo a pessoa está parada, em segundos. */
-  const idleSec = computed(() => Math.max(0, Math.floor((now.value - lastActivityAt.value) / 1000)))
+  /**
+   * Há quanto tempo a pessoa está parada, em segundos — considerando TODOS os
+   * dispositivos dela (ver `effectiveActivityAt`). Olhar só esta máquina faria
+   * o notebook parado cortar o tempo que o desktop está produzindo.
+   */
+  const idleSec = computed(() =>
+    Math.max(0, Math.floor((now.value - effectiveActivityAt.value) / 1000)),
+  )
 
-  /** Segundos restantes até o corte, enquanto o aviso está de pé. */
+  /**
+   * Segundos restantes até o corte, enquanto o aviso está de pé. Zero em modo
+   * limitado: lá não existe corte, e mostrar contagem regressiva seria mentira.
+   */
   const secondsToCut = computed(() => {
-    if (idlePhase.value !== 'warning') return 0
-    const deadline = lastActivityAt.value + warnMs.value + graceMs.value
+    if (idlePhase.value !== 'warning' || protectionLevel.value !== 'full') return 0
+    const deadline = effectiveActivityAt.value + warnMs.value + graceMs.value
     return Math.max(0, Math.round((deadline - now.value) / 1000))
   })
 
@@ -134,14 +144,20 @@ export function useTimerIdleGuard() {
 
   async function enterWarning() {
     idlePhase.value = 'warning'
-    idleSince.value = lastActivityAt.value
+    idleSince.value = effectiveActivityAt.value
     const minutes = Math.round(warnMs.value / 60_000)
+    const limitado = protectionLevel.value !== 'full'
     await notification.notify({
       tag: WARN_TAG,
       title: 'Seu tempo continua correndo',
+      // Em modo limitado o texto NÃO promete corte: nesse modo o Nevo não sabe
+      // se você saiu ou só minimizou, e prometer o que não vai fazer é pior do
+      // que não prometer.
       body: debug
         ? `Sem atividade há ${idleSec.value}s. "${describe()}" segue gravando.`
-        : `Sem atividade há ${minutes} min. "${describe()}" segue gravando.`,
+        : limitado
+          ? `Sem atividade no Nevo há ${minutes} min. "${describe()}" segue gravando — se estiver em outro programa, tudo certo.`
+          : `Sem atividade há ${minutes} min. "${describe()}" segue gravando.`,
       actions: [
         { action: 'continue', title: 'Continuar contando' },
         { action: 'stop', title: 'Parar agora' },
@@ -163,6 +179,11 @@ export function useTimerIdleGuard() {
    */
   async function cut(reason: 'auto' | 'manual') {
     if (cutting.value || !running.value) return
+    // REGRA CENTRAL: corte automático exige fonte que enxergue o computador
+    // inteiro. Sem ela, "sem eventos na aba" significa apenas que o Nevo está
+    // minimizado — foi assim que o cronômetro parou de quem só tinha ido
+    // trabalhar em outro programa. O aviso continua; o corte, não.
+    if (reason === 'auto' && protectionLevel.value !== 'full') return
     if (reason === 'auto' && !claimCut()) return
 
     cutting.value = true
@@ -170,7 +191,7 @@ export function useTimerIdleGuard() {
     // `idleSince` (congelado no aviso) e não `lastActivityAt`: clicar em "Parar
     // agora" é, ele próprio, atividade, e usar o valor vivo devolveria o
     // instante do clique — gravando todo o tempo ocioso.
-    const cutAt = idleSince.value ?? lastActivityAt.value
+    const cutAt = idleSince.value ?? effectiveActivityAt.value
     // Quando o instante retroativo é recusado, a entrada fecha em AGORA: o
     // tempo ocioso acabou contado e não existe período nenhum para recuperar.
     let closedAtCutAt = true
@@ -243,7 +264,7 @@ export function useTimerIdleGuard() {
       return
     }
 
-    const idleMs = now.value - lastActivityAt.value
+    const idleMs = now.value - effectiveActivityAt.value
     // Tela bloqueada é ausência inequívoca: vale o aviso na hora.
     const effective = screenLocked.value ? Math.max(idleMs, warnMs.value) : idleMs
 
@@ -348,7 +369,7 @@ export function useTimerIdleGuard() {
 
     // Atividade e bloqueio de tela reavaliam na hora: esperar o tique deixaria
     // o alerta de pé por segundos depois da pessoa já ter voltado.
-    const stopWatch = watch([lastActivityAt, screenLocked, isRunning, enabled], evaluate)
+    const stopWatch = watch([effectiveActivityAt, screenLocked, isRunning, enabled], evaluate)
 
     const offAction = notification.onAction((action, kind) => {
       // Ignora SÓ o teste: ele usa os mesmos botões, e sem esta guarda "Parar
@@ -372,6 +393,8 @@ export function useTimerIdleGuard() {
 
   return {
     phase: idlePhase,
+    /** `full` = corta sozinho · `limited` = só avisa (ver idle-state). */
+    protection: protectionLevel,
     idleSec,
     secondsToCut,
     lastCut,

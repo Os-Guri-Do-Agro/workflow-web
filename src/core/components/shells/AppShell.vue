@@ -30,8 +30,11 @@ import { useToast } from '@/composables/useToast'
 import { useTimerDocumentTitle } from '@/composables/useTimerDocumentTitle'
 import { useFaviconBadge } from '@/composables/useFaviconBadge'
 import { useTimerIdleGuard } from '@/composables/useTimerIdleGuard'
+import { useTimerHeartbeat } from '@/composables/useTimerHeartbeat'
 import IdlePermissionPrompt from '@/components/onboarding/IdlePermissionPrompt.vue'
 import IdleAlert from '@/components/onboarding/IdleAlert.vue'
+import IdleProtectionDialog from '@/components/onboarding/IdleProtectionDialog.vue'
+import AbandonedTimerDialog from '@/components/onboarding/AbandonedTimerDialog.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 const route = useRoute()
@@ -76,6 +79,10 @@ useFaviconBadge()
 // ocioso se ninguém responder. Mora aqui porque precisa valer com qualquer
 // shell e em qualquer rota, não só onde o widget do timer está montado.
 useTimerIdleGuard()
+// Sinal de vida da entrada aberta: é o que permite reconstruir o que houve
+// quando este cliente some (reboot, sleep, navegador morto) e impede que um
+// aparelho encerre tempo que outro ainda está usando.
+useTimerHeartbeat()
 
 // Redirects do guard chegam com ?reason=... — traduz em toast e limpa a query
 // (router.replace) para o aviso não repetir em refresh/navegação.
@@ -211,6 +218,11 @@ const openPalette = () => paletteRef.value?.open()
       <IdleAlert />
       <IdlePermissionPrompt />
     </div>
+    <!-- Cobrança que interrompe quando a proteção do cronômetro está limitada. -->
+    <IdleProtectionDialog />
+    <!-- Cronômetro que ficou aberto sem cliente vivo (reboot, sleep, navegador
+         morto): quem decide o que fazer com o tempo é a pessoa. -->
+    <AbandonedTimerDialog />
     <!-- Easter egg Windows XP (só quando o modo XP está ligado): ícones de área
          de trabalho, title bar da "janela" de conteúdo e barra de tarefas. -->
     <template v-if="xp">

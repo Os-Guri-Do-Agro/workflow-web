@@ -17,6 +17,7 @@ import PeriodPicker from '@/features/time/components/PeriodPicker.vue'
 import { useCompanyActivities } from '@/composables/useCompanyActivities'
 import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
+import { openProtectionDialog } from '@/composables/idle-protection-dialog'
 import { HEATMAP_WEEKS, constancyWindow } from '@/features/time/composables/useTeamTime'
 import { useTimerSounds } from '@/composables/useTimerSounds'
 import { getApiErrorMessage } from '@/service/api'
@@ -97,8 +98,8 @@ const forgotten = computed(() => isRunning.value && elapsedSec.value > FORGOTTEN
 const runningHours = computed(() => Math.floor(elapsedSec.value / 3600))
 
 async function handleStart() {
-  // Antes do await: o pedido de permissão precisa do gesto vivo (ver useIdleAlerts).
-  alerts.askOnStart()
+  // Ver TimerWidget: proteção limitada interrompe com diálogo, não sussurro.
+  if (alerts.needsAttention.value) openProtectionDialog()
   try {
     await start.mutateAsync({
       description: timerForm.description.trim() || undefined,
@@ -127,7 +128,7 @@ async function handleStop() {
 
 // F6 — "Continuar": reinicia um timer com a mesma descrição/empresa/tarefa.
 async function handleContinue(entry: TimeEntry) {
-  alerts.askOnStart()
+  if (alerts.needsAttention.value) openProtectionDialog()
   try {
     await start.mutateAsync({
       description: entry.description || undefined,

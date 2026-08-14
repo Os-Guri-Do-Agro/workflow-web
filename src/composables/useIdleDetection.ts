@@ -1,8 +1,9 @@
 import { onScopeDispose, ref } from 'vue'
+import { useExtensionBridge } from '@/composables/useExtensionBridge'
 import {
   IDLE_DEBUG,
   IDLE_KEYS,
-  adoptRemoteActivity,
+  adoptTabActivity,
   detectionSource,
   lastActivityAt,
   markActivity,
@@ -197,9 +198,13 @@ export function useIdleDetection() {
   const onStorage = (e: StorageEvent) => {
     if (e.key !== IDLE_KEYS.lastActivity || !e.newValue) return
     const ts = Number(e.newValue)
-    if (Number.isFinite(ts)) adoptRemoteActivity(ts)
+    if (Number.isFinite(ts)) adoptTabActivity(ts)
   }
   window.addEventListener('storage', onStorage)
+
+  // Extensão do Nevo: quando instalada, é a melhor fonte (vê o sistema sem
+  // permissão web e sobrevive à aba fechada).
+  useExtensionBridge()
 
   // Consulta o estado (também popula `idleDetectionState` para a UI) e liga o
   // detector se a permissão já estiver concedida de uma sessão anterior.

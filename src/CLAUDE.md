@@ -212,7 +212,22 @@ a UI é derivada da lista. Os auxiliares de síntese já cobrem os casos comuns
 
 ### Aviso de ociosidade do timer
 
-Spec: [timer-ociosidade.md](../docs/specs/2026/q3/q3-2/timer-ociosidade.md).
+Specs: [timer-ociosidade.md](../docs/specs/2026/q3/q3-2/timer-ociosidade.md) (o
+recurso) · [timer-confiavel.md](../docs/specs/2026/q3/q3-2/timer-confiavel.md)
+(a política de corte, que corrigiu o cronômetro parando ao minimizar).
+
+**A regra que manda em tudo:** corte automático só acontece com fonte de sinal
+que enxergue o computador inteiro (`protectionLevel === 'full'`). Em modo `tab`
+— só eventos da própria aba — "não vejo eventos" é indistinguível de "minimizou
+o navegador", então o Nevo **avisa e nunca corta**. Foi a falta dessa regra que
+parou o cronômetro de quem só tinha ido trabalhar em outro programa.
+
+As duas permissões são **independentes**: a de detecção (que muda o
+comportamento) vem primeiro, a de notificação (que muda o alcance do aviso)
+depois. Encadear as duas fazia a detecção nunca ser pedida em máquina com
+"silenciar solicitações de notificação" ligado. Quando a proteção está limitada,
+`IdleProtectionDialog` interrompe no início do cronômetro (adia 24h no "agora
+não") — o card discreto no canto não estava sendo visto por ninguém.
 
 Sem atividade por 15 min com o timer rodando, o Nevo avisa (notificação do
 sistema com botões + favicon e título piscando); se ninguém responder em mais 5,

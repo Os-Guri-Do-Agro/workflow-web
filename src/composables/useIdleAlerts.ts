@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/uiStores'
 import { useSystemNotification } from '@/composables/useSystemNotification'
+import { protectionLevel } from '@/composables/idle-state'
 import {
   idleDetectionState,
   idleDetectorSupported,
@@ -9,32 +10,45 @@ import {
 } from '@/composables/useIdleDetection'
 
 /**
- * Permissões do aviso de ociosidade, sempre ancoradas num gesto (spec
- * timer-ociosidade).
+ * Permissões do aviso de ociosidade, sempre ancoradas num gesto.
  *
- * São DUAS, e o navegador mostra um prompt para cada: notificação (a peça
- * central, é o que alcança quem está com o navegador minimizado) e detecção de
- * ociosidade do sistema (o que diferencia "saiu do computador" de "está
- * trabalhando em outro app").
+ * São DUAS, e elas são INDEPENDENTES — foi a dependência entre elas que fez
+ * gente nunca ver o pedido: antes a detecção só era oferecida depois que a
+ * notificação fosse resolvida, e o Chrome com "silenciar solicitações de
+ * notificação" (ligado em muita máquina) resolve para negado sem mostrar nada.
+ * Resultado: a detecção jamais era pedida, o app ficava em modo limitado e o
+ * cronômetro parava de quem só havia minimizado o navegador.
  *
- * **Um pedido por clique.** A ativação transitória do gesto é consumida pelo
- * primeiro prompt; encadear o segundo logo depois faz o navegador recusá-lo sem
- * mostrar nada. Por isso `requestNext()` resolve UM passo por vez, e o convite
- * continua visível enquanto sobrar passo — notificação primeiro, porque sem ela
- * o aviso não sai do navegador.
+ * Ordem de importância, e por quê:
  *
- * O pedido acontece no card do primeiro acesso e no clique de "Iniciar" do
- * timer, que é quando a pessoa demonstra que vai usar o recurso. Nunca no boot:
- * o navegador recusa (ou pune) prompt sem interação.
+ * 1. **Detecção de atividade** (`IdleDetector`): é ela que distingue "saiu do
+ *    computador" de "está no VS Code". Sem ela não existe corte automático.
+ * 2. **Notificação**: faz o aviso alcançar quem está com o navegador
+ *    minimizado. Importante, mas não muda o que o app FAZ com o tempo.
+ *
+ * Um pedido por clique: a ativação transitória do gesto é consumida pelo
+ * primeiro prompt, e o segundo, disparado depois do `await`, seria recusado sem
+ * aparecer.
  */
 
-/** Qual passo falta agora (ou nenhum). */
-export type IdlePermissionStep = 'notification' | 'detection' | null
+export type IdlePermissionStep = 'detection' | 'notification' | null
 
-// "Uma vez por sessão" POR PASSO: pedir a cada start viraria perseguição.
-const askedThisSession = new Set<string>()
+/** Adiamento do lembrete de proteção limitada (o "agora não" do diálogo). */
+const SNOOZE_KEY = 'nevo.idle.protectionSnoozedUntil'
+const SNOOZE_MS = 24 * 60 * 60 * 1000
 
 const requesting = ref(false)
+/** Reativo para o diálogo fechar/reabrir sem depender de reload. */
+const snoozedUntil = ref(readSnooze())
+
+function readSnooze(): number {
+  try {
+    const raw = Number(localStorage.getItem(SNOOZE_KEY))
+    return Number.isFinite(raw) ? raw : 0
+  } catch {
+    return 0
+  }
+}
 
 export function useIdleAlerts() {
   const store = useUiStore()
@@ -44,7 +58,7 @@ export function useIdleAlerts() {
   const granted = computed(() => permission.value === 'granted')
   const blocked = computed(() => permission.value === 'denied')
 
-  /** Detecção de sistema: concedida, ou inexistente neste navegador. */
+  /** Detecção de sistema resolvida (concedida, negada ou inexistente aqui). */
   const detectionResolved = computed(
     () =>
       !idleDetectorSupported() ||
@@ -53,56 +67,83 @@ export function useIdleAlerts() {
       idleDetectionState.value === 'unsupported',
   )
 
-  /** Próximo passo pendente, na ordem de importância. */
+  /** A detecção do sistema está ativa? É o que autoriza o corte automático. */
+  const detectionActive = computed(() => idleDetectionState.value === 'granted')
+
+  /** Detecção pedida e NEGADA: só o cadeado do navegador reverte. */
+  const detectionBlocked = computed(() => idleDetectionState.value === 'denied')
+
+  /**
+   * Próximo passo pendente. Detecção primeiro: ela muda o comportamento do
+   * produto, a notificação só muda o alcance do aviso.
+   */
   const nextStep = computed<IdlePermissionStep>(() => {
-    if (supported && permission.value === 'default') return 'notification'
     if (!detectionResolved.value) return 'detection'
+    if (supported && permission.value === 'default') return 'notification'
     return null
   })
 
-  /** Deve aparecer o convite (card / linha no widget)? */
-  const needsPermission = computed(() => idleGuard.value && nextStep.value !== null)
-
-  /** Card do primeiro acesso: só enquanto a pessoa não dispensou. */
-  const shouldShowPrompt = computed(() => needsPermission.value && idlePermissionPrompt.value)
-
-  /** Texto do passo atual, para o convite não mentir sobre o que vai abrir. */
   const stepLabel = computed(() =>
-    nextStep.value === 'detection' ? 'Permitir detecção de atividade' : 'Ativar avisos',
+    nextStep.value === 'detection' ? 'Permitir detecção' : 'Ativar avisos',
   )
 
+  /** Proteção limitada: o app avisa, mas não encerra a entrada sozinho. */
+  const limited = computed(() => protectionLevel.value === 'limited')
+
+  const snoozed = computed(() => snoozedUntil.value > Date.now())
+
   /**
-   * Resolve UM passo de permissão. DEVE ser chamada direto do handler do clique:
-   * a ativação do gesto expira e não sobrevive a um `await` de rede.
+   * Deve cobrar a permissão AGORA? Diferente do card de boas-vindas, isto não
+   * é dispensável para sempre: enquanto a proteção estiver limitada e o recurso
+   * ligado, o Nevo volta a pedir (respeitando o adiamento de 24h).
+   *
+   * Inclui o caso BLOQUEADO de propósito. Ele parecia "resolvido" (não há o que
+   * pedir, o prompt não reabre), mas é o pior estado possível: proteção
+   * limitada para sempre, sem ninguém saber por quê. O diálogo é o único lugar
+   * que ensina o caminho do cadeado.
+   *
+   * Já navegador SEM a API (Firefox, Safari) não entra: ali não existe ação
+   * possível, e interromper alguém com um problema insolúvel é só ruído.
+   */
+  const needsAttention = computed(() => {
+    if (!idleGuard.value || !limited.value || snoozed.value) return false
+    return nextStep.value !== null || detectionBlocked.value
+  })
+
+  /** Convite discreto (widget, /settings): aparece enquanto faltar algum passo. */
+  const needsPermission = computed(() => idleGuard.value && nextStep.value !== null)
+
+  /** Card de boas-vindas do primeiro acesso (dispensável). */
+  const shouldShowPrompt = computed(() => needsPermission.value && idlePermissionPrompt.value)
+
+  /**
+   * Resolve UM passo. DEVE ser chamada direto do handler do clique: a ativação
+   * do gesto expira e não sobrevive a um `await` de rede.
    */
   async function requestNext(): Promise<void> {
     const step = nextStep.value
     if (requesting.value || !step) return
     requesting.value = true
-    askedThisSession.add(step)
     try {
-      if (step === 'notification') await requestPermission()
-      else await requestIdleDetectionPermission()
+      if (step === 'detection') await requestIdleDetectionPermission()
+      else await requestPermission()
     } finally {
       requesting.value = false
-      // O card do primeiro acesso some quando não sobra passo; enquanto sobrar,
-      // o convite continua no widget e em /settings.
       if (!nextStep.value) store.idlePermissionPrompt = false
     }
   }
 
-  /**
-   * Chamado no clique de "Iniciar" do timer. Silencioso quando não há passo
-   * pendente, quando esse passo já foi pedido nesta sessão ou com o recurso
-   * desligado.
-   */
-  function askOnStart(): void {
-    const step = nextStep.value
-    if (!step || !idleGuard.value || askedThisSession.has(step)) return
-    void requestNext()
+  /** Adia a cobrança por 24h (o "agora não" do diálogo). */
+  function snooze(): void {
+    const until = Date.now() + SNOOZE_MS
+    snoozedUntil.value = until
+    try {
+      localStorage.setItem(SNOOZE_KEY, String(until))
+    } catch {
+      // Sem persistência o adiamento vale só nesta sessão.
+    }
   }
 
-  /** Dispensa o card sem pedir nada. */
   function dismissPrompt(): void {
     store.idlePermissionPrompt = false
   }
@@ -112,13 +153,18 @@ export function useIdleAlerts() {
     permission,
     granted,
     blocked,
+    detectionActive,
+    detectionBlocked,
+    detectionSupported: idleDetectorSupported(),
+    limited,
     requesting,
     nextStep,
     stepLabel,
+    needsAttention,
     needsPermission,
     shouldShowPrompt,
     requestNext,
-    askOnStart,
+    snooze,
     dismissPrompt,
   }
 }

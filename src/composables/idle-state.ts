@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 /**
  * Estado compartilhado da ociosidade (spec timer-ociosidade).
@@ -15,8 +15,26 @@ import { ref } from 'vue'
 /** `active` = trabalhando · `warning` = avisado, contando a carência · `stopped` = timer cortado. */
 export type IdlePhase = 'active' | 'warning' | 'stopped'
 
-/** De onde vem o sinal: sistema operacional (IdleDetector) ou só a aba. */
-export type IdleSource = 'system' | 'tab'
+/**
+ * De onde vem o sinal de atividade, em ordem de confiança:
+ *
+ * - `system`: a `IdleDetector` do navegador enxerga o computador inteiro. É a
+ *   ÚNICA fonte que distingue "saiu da máquina" de "minimizou o Nevo e foi
+ *   trabalhar no VS Code".
+ * - `extension`: a extensão do Nevo (`chrome.idle`), que enxerga o mesmo e
+ *   ainda funciona com a aba fechada.
+ * - `tab`: só eventos dentro da aba. Aqui minimizar o navegador é
+ *   indistinguível de sair do computador — e é por isso que este modo NUNCA
+ *   autoriza corte automático.
+ */
+export type IdleSource = 'system' | 'extension' | 'tab'
+
+/**
+ * O corte automático exige fonte que enxergue o sistema. Foi a falta desta
+ * regra que fez o cronômetro parar de gente que só tinha minimizado o
+ * navegador: o guard cortava sem olhar de onde vinha o sinal.
+ */
+export const TRUSTED_SOURCES: readonly IdleSource[] = ['system', 'extension']
 
 export const IDLE_KEYS = {
   /** Última atividade da ORIGEM (todas as abas), em ms. */
@@ -88,12 +106,48 @@ function readLastCut(): IdleCutRecord | null {
   }
 }
 
-/** Última atividade conhecida (máximo entre todas as abas), em ms. */
+/**
+ * Última atividade vista NESTE dispositivo, em ms (todas as abas somadas).
+ *
+ * Pode andar para trás: a extensão e o detector do sistema corrigem quando
+ * descobrem que a máquina está parada há mais tempo do que a aba supunha.
+ */
 export const lastActivityAt = ref(readNumber(IDLE_KEYS.lastActivity) ?? Date.now())
+
+/**
+ * Última atividade conhecida em OUTRO dispositivo da pessoa, vinda do servidor
+ * pelo heartbeat.
+ *
+ * Vive separada de propósito, e a distinção resolve um conflito real: a
+ * extensão diz "este computador está parado há 5 minutos" e o servidor diz "o
+ * outro computador está ativo agora". As duas afirmações são verdadeiras — a
+ * pessoa trocou de máquina. Guardando tudo num campo só, a correção para trás
+ * do sinal local apagava a atividade remota e o timer era cortado enquanto a
+ * pessoa trabalhava no outro aparelho.
+ *
+ * É um PISO: só cresce, e nenhum sinal local pode rebaixá-lo.
+ */
+export const remoteActivityAt = ref(0)
+
+/**
+ * O que a política de ociosidade deve olhar: o mais recente entre o que esta
+ * máquina viu e o que o servidor sabe das outras.
+ */
+export const effectiveActivityAt = computed(() =>
+  Math.max(lastActivityAt.value, remoteActivityAt.value),
+)
 /** Tela do computador bloqueada: ocioso na hora, sem esperar o limiar. */
 export const screenLocked = ref(false)
-/** Qualidade do sinal disponível agora (mostrada em /settings). */
+/** Qualidade do sinal disponível agora (mostrada na UI e usada pela política). */
 export const detectionSource = ref<IdleSource>('tab')
+
+/**
+ * A proteção está completa? Só aqui o corte automático é permitido; em
+ * `limited` o Nevo avisa e insiste, mas nunca encerra a entrada sozinho.
+ */
+export const protectionLevel = computed<'full' | 'limited'>(() =>
+  TRUSTED_SOURCES.includes(detectionSource.value) ? 'full' : 'limited',
+)
 export const idlePhase = ref<IdlePhase>('active')
 export const lastCut = ref<IdleCutRecord | null>(readLastCut())
 
@@ -124,11 +178,21 @@ export function markActivity(ts: number = Date.now()): void {
 }
 
 /**
- * Atividade vinda de OUTRA aba (evento `storage`). Não repersiste: quem escreveu
- * já gravou, e reescrever aqui só criaria eco entre abas.
+ * Atividade vinda de OUTRA ABA da mesma máquina (evento `storage`). É sinal
+ * LOCAL: a extensão e o detector do sistema continuam podendo corrigi-lo para
+ * trás, porque eles enxergam a máquina inteira e uma aba não. Não repersiste —
+ * quem escreveu já gravou, e reescrever aqui só criaria eco entre abas.
+ */
+export function adoptTabActivity(ts: number): void {
+  if (ts > lastActivityAt.value) lastActivityAt.value = ts
+}
+
+/**
+ * Atividade vinda do SERVIDOR (outro dispositivo da pessoa). Piso monotônico:
+ * nenhum sinal local a rebaixa. Ver `remoteActivityAt`.
  */
 export function adoptRemoteActivity(ts: number): void {
-  if (ts > lastActivityAt.value) lastActivityAt.value = ts
+  if (ts > remoteActivityAt.value) remoteActivityAt.value = ts
 }
 
 /**

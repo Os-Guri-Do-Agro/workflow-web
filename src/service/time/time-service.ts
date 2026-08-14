@@ -21,6 +21,29 @@ export interface TimeEntry {
   activity?: { id: string; title: string } | null
 }
 
+/** Resposta do heartbeat: o servidor é o árbitro do que é atividade. */
+export type HeartbeatResult =
+  | { running: false }
+  | {
+      running: true
+      entryId: string
+      startedAt: string
+      /** Maior atividade conhecida somando TODOS os dispositivos da pessoa. */
+      lastActivityAt: string
+      serverTime: string
+    }
+
+/** O que a tela de reconciliação precisa saber sobre a entrada largada. */
+export interface AbandonedEntry {
+  entry: TimeEntry
+  lastActivityAt: string
+  lastSeenAt: string
+  /** Segundos entre a última atividade e agora — o que está em jogo. */
+  pendingSec: number
+}
+
+export type ResolveAction = 'activity' | 'now' | 'custom' | 'discard'
+
 export interface StartTimerInput {
   description?: string
   companyId?: string | null
@@ -123,6 +146,34 @@ const timeService = {
     const response = await api.post<TimeEntry>(
       '/time/stop',
       endedAt ? { endedAt } : undefined,
+    )
+    return response.data
+  },
+
+  /**
+   * Sinal de vida do cronômetro (spec timer-confiavel). Diz ATÉ QUANDO este
+   * cliente viu atividade e recebe de volta a verdade do servidor — que pode
+   * ser mais recente, se outro dispositivo da pessoa estiver ativo.
+   */
+  async heartbeat(lastActivityAt: string, source: 'system' | 'extension' | 'tab') {
+    const response = await api.post<HeartbeatResult>('/time/heartbeat', {
+      lastActivityAt,
+      source,
+    })
+    return response.data
+  },
+
+  /** Entrada aberta cujo cliente sumiu (reboot, sleep, navegador morto). */
+  async abandoned() {
+    const response = await api.get<AbandonedEntry | null>('/time/abandoned')
+    return response.data
+  },
+
+  /** Aplica a decisão da pessoa sobre a entrada abandonada. */
+  async resolveEntry(id: string, action: ResolveAction, endedAt?: string) {
+    const response = await api.post<TimeEntry | { id: string; discarded: true }>(
+      `/time/entries/${id}/resolve`,
+      { action, ...(endedAt ? { endedAt } : {}) },
     )
     return response.data
   },

@@ -24,6 +24,8 @@ const idle = useTimerIdleGuard()
 const { error: showError } = useToast()
 
 const warning = computed(() => isRunning.value && idle.phase.value === 'warning')
+/** Em modo limitado o Nevo não corta — e o texto não pode prometer que corta. */
+const limited = computed(() => idle.protection.value === 'limited')
 const cut = computed(() => idle.lastCut.value)
 const visible = computed(() => warning.value || !!cut.value)
 
@@ -72,13 +74,21 @@ async function handleRecover() {
       live="assertive"
     >
       <template #meta>
-        <span v-if="warning" class="alert-countdown">para em {{ countdown }}</span>
+        <span v-if="warning && !limited" class="alert-countdown">para em {{ countdown }}</span>
+        <span v-else-if="warning" class="alert-countdown alert-countdown--soft">
+          não vou parar sozinho
+        </span>
       </template>
 
       <!-- Estado 1: ainda dá para continuar -->
       <template v-if="warning">
         <p class="alert-title">Você ainda está por aí?</p>
-        <p class="alert-desc">
+        <p v-if="limited" class="alert-desc">
+          Não vejo atividade no Nevo há {{ idleMinutes }} min e seu cronômetro continua
+          correndo. Como não consigo enxergar o que você faz fora do navegador, não vou parar
+          nada sozinho — se você saiu mesmo, use "Parar agora".
+        </p>
+        <p v-else class="alert-desc">
           Não vejo atividade há {{ idleMinutes }} min e seu cronômetro continua correndo. Se
           ninguém responder, eu paro o tempo no último momento em que você estava ativo.
         </p>
@@ -157,6 +167,11 @@ async function handleRecover() {
   color: var(--text-3);
   font-size: 11.5px;
   line-height: 1.45;
+}
+
+.alert-countdown--soft {
+  background: var(--surface-3);
+  color: var(--text-3);
 }
 
 .alert-countdown {
