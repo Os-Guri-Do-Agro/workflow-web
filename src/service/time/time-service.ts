@@ -42,7 +42,7 @@ export interface AbandonedEntry {
   pendingSec: number
 }
 
-export type ResolveAction = 'activity' | 'now' | 'custom' | 'discard'
+export type ResolveAction = 'activity' | 'now' | 'custom' | 'discard' | 'continue'
 
 export interface StartTimerInput {
   description?: string

@@ -13,7 +13,7 @@
  * Montado uma vez no AppShell.
  */
 import { computed, ref } from 'vue'
-import { AlarmClockOff, Check, Clock, Trash2 } from 'lucide-vue-next'
+import { AlarmClockOff, Check, Clock, Play, Trash2 } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import { useAbandonedEntry } from '@/composables/useAbandonedEntry'
 import { useToast } from '@/composables/useToast'
@@ -44,7 +44,7 @@ const emJogo = computed(() =>
   pending.value ? formatDurationLong(pending.value.pendingSec) : '',
 )
 
-async function apply(action: 'activity' | 'now' | 'discard' | 'custom') {
+async function apply(action: 'activity' | 'now' | 'discard' | 'custom' | 'continue') {
   try {
     await resolve(action, action === 'custom' ? new Date(custom.value).toISOString() : undefined)
   } catch {
@@ -77,6 +77,16 @@ async function apply(action: 'activity' | 'now' | 'discard' | 'custom') {
           <span class="ab-opt-title">Registrar até a última atividade</span>
           <span class="ab-opt-desc">
             Fecha em {{ hora(pending.lastActivityAt) }}. É o mais seguro se você parou por aí.
+          </span>
+        </span>
+      </button>
+
+      <button class="ab-opt" type="button" :disabled="resolving" @click="apply('continue')">
+        <Play :size="15" />
+        <span class="ab-opt-text">
+          <span class="ab-opt-title">Continuo trabalhando nisto</span>
+          <span class="ab-opt-desc">
+            Nada é encerrado: o cronômetro segue contando de onde estava.
           </span>
         </span>
       </button>

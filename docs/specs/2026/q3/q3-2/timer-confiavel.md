@@ -4,7 +4,7 @@
 **Autor:** Nicolas (com Claude)
 **Criado em:** 2026-08-13
 **Última atualização:** 2026-08-13
-**Versão:** 2.0
+**Versão:** 2.1
 
 > Sucessora operacional de [timer-ociosidade.md](./timer-ociosidade.md), que
 > entregou o aviso e o corte. Esta trata do que aquela errou.
@@ -48,7 +48,7 @@ no canto sumia para sempre depois de um "agora não".
 | Fonte | Enxerga | Corta sozinho? |
 |---|---|---|
 | `system` (`IdleDetector`) | O computador inteiro, mesmo com o Nevo minimizado | Sim |
-| `extension` (planejada) | O mesmo, e ainda com a aba fechada | Sim |
+| `extension` | O mesmo, e ainda com a aba fechada | Sim |
 | `tab` (eventos de DOM) | Só a própria aba | **Nunca** |
 
 Em modo `tab` o produto continua avisando — favicon, título, notificação e card
@@ -129,6 +129,32 @@ ninguém via.
 **Pendente:** empacotar/distribuir (carregar sem compactação já funciona) e
 trocar `host_permissions` pelo domínio definitivo.
 
+### P2.1 — O que a auditoria depois da entrega achou
+
+Defeitos que passariam batido até virarem reclamação:
+
+- [x] **A pergunta da reconciliação era um sorteio.** Na volta, o app dispara
+      heartbeat e consulta de abandono quase juntos; o heartbeat renova
+      `lastSeenAt`, e se chegasse primeiro a lacuna sumia sem ninguém decidir
+      nada. Fechar o diálogo sem responder enterrava o caso do mesmo jeito.
+      Agora a lacuna é **gravada** (`staleSince`) no instante em que é
+      percebida, pelos dois caminhos, e só o resolve limpa.
+- [x] **Enxurrada de falso positivo no dia do deploy.** `lastSeenAt` nulo caía
+      no `startedAt`, então toda pessoa com o cronômetro rodando seria
+      interrogada sobre o trabalho que estava fazendo naquele instante. Entrada
+      sem batimento nenhum não é lacuna; ela entra no regime no primeiro
+      heartbeat.
+- [x] **Faltava a saída "continuo trabalhando nisto".** As quatro opções todas
+      encerravam a entrada: quem só fechou o navegador um instante tinha de
+      encerrar e abrir outra para dizer que ficou.
+- [x] `STALE_CLIENT_SEC` de 10 para **30 min**. Celular com a tela bloqueada,
+      notebook fechado numa reunião e aba congelada pelo navegador produzem o
+      mesmo silêncio de um reboot, e dez minutos transformavam isso em
+      interrogatório — em telefone, toda vez.
+- [x] **`host_permissions` da extensão** era `https://*.vercel.app/*`: o content
+      script seria injetado em todo site hospedado na plataforma. Agora é o
+      domínio do produto (marcador no manifesto + `extension/README.md`).
+
 ### Verificação (P2/P3)
 
 | Cenário | Resultado |
@@ -140,9 +166,31 @@ trocar `host_permissions` pelo domínio definitivo.
 | Entrada abandonada | Diálogo abre com o que está em jogo; "última atividade" chega como `{"action":"activity"}` |
 | Detecção bloqueada no navegador | Diálogo interrompe explicando o cadeado |
 
-34 testes no backend (15 novos de heartbeat, arbitragem e reconciliação).
+39 testes no backend (20 de heartbeat, arbitragem e reconciliação).
 
 ---
+
+## Alcance por plataforma
+
+| Onde | Conta o tempo | Corta sozinho | Como chegar lá |
+|---|---|---|---|
+| Windows/Mac/Linux + Chrome, Edge, Brave | Sim | Sim | `IdleDetector` ou a extensão |
+| **Safari (Mac)** | Sim | **Não** | Só com uma Safari Web Extension (Xcode + conta Apple) |
+| Firefox | Sim | **Não** | Sem API equivalente |
+| **iPhone / iPad** | Sim | **Não** | Estruturalmente impossível na web |
+
+O tempo nunca depende da plataforma: quem conta é o `startedAt` no banco, e o
+cliente só desenha. O que varia é a **proteção** contra esquecimento. Onde ela
+não existe, o Nevo avisa e deixa parar com um toque, e nunca corta.
+
+## Buraco conhecido, ainda aberto
+
+**Reunião não gera input.** Uma hora de call ouvindo, sem tocar em teclado ou
+mouse, é lida como ociosidade por qualquer detector de sistema — inclusive o
+nosso. Hoje isso corta tempo de trabalho real de quem está em modo `full`, que é
+justamente o modo que o produto está empurrando. Duas saídas, nenhuma
+implementada: cruzar com o Google Calendar (já integrado) ou olhar
+`tab.audible` pela extensão. Decisão pendente.
 
 ## Fora do escopo
 
@@ -155,5 +203,6 @@ trocar `host_permissions` pelo domínio definitivo.
 
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
+| 2026-08-13 | 2.1 | Auditoria: lacuna persistida (fim da corrida e do diálogo que sumia), entradas legadas fora do interrogatório, saída "continuo trabalhando", limiar para 30 min, `host_permissions` restrito. Alcance por plataforma e o buraco das reuniões documentados | Nicolas + Claude |
 | 2026-08-13 | 2.0 | P2 (heartbeat, arbitragem, reconciliação, sleep) e P3 (extensão MV3) implementadas e verificadas; sinal local separado do remoto | Nicolas + Claude |
 | 2026-08-13 | 1.0 | Criação + P1 implementada e verificada | Nicolas + Claude |
