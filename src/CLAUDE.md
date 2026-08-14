@@ -210,6 +210,56 @@ a UI é derivada da lista. Os auxiliares de síntese já cobrem os casos comuns
 (`note` com envelope, `sweep` para deslize, `bell` com parciais inarmônicas,
 `wood` para percussão de madeira, `breath` para ruído filtrado).
 
+### Banco de horas, fechamento e o player do Meu tempo
+
+Spec: [banco-de-horas.md](../docs/specs/2026/q3/q3-2/banco-de-horas.md).
+
+**O saldo é sempre derivado, nunca armazenado.** Quem calcula é o servidor
+(`balance.service.ts`), a partir das entradas mais a jornada — saldo
+materializado desincroniza na primeira edição retroativa, e aqui um número
+errado não é bug de tela, é discussão sobre horas trabalhadas.
+
+Quatro regras que o cálculo carrega:
+
+1. **Padrão de 8h48 por dia útil** (`DEFAULT_DAY_TARGET_SEC`), que fecha 44h
+   semanais com sábado livre. Ninguém precisa configurar nada.
+2. **A jornada é do usuário e versionada** (`WorkSchedule.validFrom`): o dia 10
+   usa a jornada vigente no dia 10. Alterar a meta não reescreve mês fechado.
+3. **Feriado nacional zera a meta**, e trabalho em dia sem meta (fim de semana,
+   feriado) entra inteiro como crédito. Os feriados são calculados em
+   `holidays.ts` (Páscoa por Meeus, sem dependência externa) e testados ano a
+   ano de 2024 a 2035 — lista errada = 8h48 de dívida falsa para o time todo.
+4. **Dia futuro não cobra meta.** Senão o mês nasce todo devedor no dia 1. Por
+   isso a UI mostra `businessDaysElapsed` (dias já cobrados) ao lado da meta, e
+   não `businessDays` do período: usar o segundo faz a conta não fechar na tela.
+
+A projeção só aparece com 3+ dias úteis registrados e sempre declara a premissa
+("no seu ritmo de Xh por dia"). Projeção sem premissa vira promessa.
+
+```
+features/time/
+  components/BalanceCard.vue      saldo + conta aberta + projeção (rail do Meu tempo)
+  components/BalanceReport.vue    fechamento semanal/mensal, individual e equipe, CSV
+  composables/useBalance.ts       Vue Query + currentWeek/currentMonth (semana começa segunda)
+composables/useTimerPause.ts      contexto da pausa (localStorage, expira em 12h)
+features/settings/components/WorkScheduleCard.vue   jornada por dia da semana
+```
+
+Três coisas que não são óbvias:
+
+1. **Pausar encerra a entrada** e guarda o contexto; retomar abre uma entrada
+   nova com os mesmos vínculos. `durationSec` continua significando o que
+   sempre significou, então nada muda no heartbeat nem na reconciliação. A
+   pausa expira em 12h: retomar de ontem criaria entrada com contexto de um dia
+   já fechado.
+2. **A tarefa é o título da entrada.** Com tarefa escolhida, o campo de texto
+   some e o próprio `TaskPicker` (`variant="hero"`) vira o título da barra.
+   Passe `fallbackTitle` quando você já souber o nome: a árvore do picker não
+   contém tarefa concluída nem de outra empresa, e sem isso o título do
+   trabalho em andamento aparece como "Tarefa indisponível".
+3. **`timeKeys.balance` entra em todo `invalidateAll`**: parar o cronômetro
+   precisa mexer o saldo na hora, senão vira relatório em vez de acompanhamento.
+
 ### Aviso de ociosidade do timer
 
 Specs: [timer-ociosidade.md](../docs/specs/2026/q3/q3-2/timer-ociosidade.md) (o

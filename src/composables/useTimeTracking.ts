@@ -19,6 +19,9 @@ export const timeKeys = {
   summary: ['time', 'summary'] as const,
   summaryFor: (filters?: { from?: string; to?: string; tzOffset?: number }) =>
     ['time', 'summary', filters ?? {}] as const,
+  /** Banco de horas (spec banco-de-horas): saldo, ritmo e projeção. */
+  balance: ['time', 'balance'] as const,
+  companyBalance: ['time', 'company-balance'] as const,
 }
 
 // ─── Singleton compartilhado (F7) ─────────────────────────────────────────────
@@ -93,6 +96,10 @@ export function useTimeTracking() {
       queryClient.invalidateQueries({ queryKey: timeKeys.current }),
       queryClient.invalidateQueries({ queryKey: timeKeys.entries }),
       queryClient.invalidateQueries({ queryKey: timeKeys.summary }),
+      // Parar o cronômetro precisa mexer o saldo NA HORA: um banco de horas que
+      // só atualiza no refresh não é acompanhamento, é relatório.
+      queryClient.invalidateQueries({ queryKey: timeKeys.balance }),
+      queryClient.invalidateQueries({ queryKey: timeKeys.companyBalance }),
     ])
 
   const start = useMutation({

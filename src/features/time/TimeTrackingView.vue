@@ -1,9 +1,23 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { AlertTriangle, DollarSign, Pencil, Play, Plus, Square, Trash2, Users, X } from 'lucide-vue-next'
+import {
+  AlertTriangle,
+  DollarSign,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Scale,
+  Square,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import TaskPicker from '@/components/ui/TaskPicker.vue'
 import TimeInsightsRail from '@/features/time/components/TimeInsightsRail.vue'
+import BalanceCard from '@/features/time/components/BalanceCard.vue'
+import BalanceReport from '@/features/time/components/BalanceReport.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -17,6 +31,7 @@ import PeriodPicker from '@/features/time/components/PeriodPicker.vue'
 import { useCompanyActivities } from '@/composables/useCompanyActivities'
 import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
+import { useTimerPause } from '@/composables/useTimerPause'
 import { openProtectionDialog } from '@/composables/idle-protection-dialog'
 import { HEATMAP_WEEKS, constancyWindow } from '@/features/time/composables/useTeamTime'
 import { useTimerSounds } from '@/composables/useTimerSounds'
@@ -35,8 +50,18 @@ const FORGOTTEN_SEC = 8 * 60 * 60
 
 const { error: showError, success } = useToast()
 const workspace = useWorkspaceStore()
-const { isRunning, elapsedSec, start, stop, createManual, updateEntry, deleteEntry } =
-  useTimeTracking()
+const {
+  isRunning,
+  running,
+  elapsedSec,
+  start,
+  stop,
+  createManual,
+  updateEntry,
+  deleteEntry,
+} = useTimeTracking()
+// Pausa do almoço: parar guardando o contexto para retomar num clique.
+const pause = useTimerPause()
 const { companyOf } = useCompanyActivities()
 const { playStart, playStop } = useTimerSounds()
 // Ociosidade: a view é um dos pontos de início do timer, então também é onde o
@@ -47,9 +72,20 @@ const alerts = useIdleAlerts()
 // A aba Equipe era exclusiva de ADMIN; virou o ranking da empresa, aberto a
 // qualquer membro (o servidor segue exigindo membership na empresa ativa). Sem
 // empresa ativa não há equipe para ranquear, então aí ela some.
-type Tab = 'me' | 'team'
+type Tab = 'me' | 'team' | 'report'
 const activeTab = ref<Tab>('me')
 const hasCompany = computed(() => !!workspace.activeCompanyId)
+
+const headEyebrow = computed(() =>
+  activeTab.value === 'team' ? 'Equipe' : activeTab.value === 'report' ? 'Banco de horas' : 'Pessoal',
+)
+const headTitle = computed(() =>
+  activeTab.value === 'team'
+    ? 'Ranking da equipe'
+    : activeTab.value === 'report'
+      ? 'Fechamento'
+      : 'Meu tempo',
+)
 
 // ─── Opções de empresa / tarefa (compartilhadas por vários formulários) ───────
 const companyOptions = computed(() => [
@@ -120,10 +156,69 @@ async function handleStop() {
   try {
     editor.flush() // garante que a última edição pendente foi salva antes de parar
     await stop.mutateAsync()
+    // Parar de vez descarta qualquer pausa pendente: oferecer "retomar o
+    // almoço" depois de encerrar o expediente seria contraditório.
+    pause.clear()
     playStop()
   } catch {
     showError('Não foi possível parar o timer')
   }
+}
+
+/**
+ * Pausar: encerra a entrada e guarda o contexto. É o almoço, a reunião, o café.
+ * A volta é um clique em Retomar, sem procurar nada na lista.
+ */
+async function handlePause() {
+  const atual = running.value
+  if (!atual) return
+  try {
+    editor.flush()
+    await stop.mutateAsync()
+    // O formulário da tela vence o que o servidor devolveu: o autosave da
+    // edição ao vivo é debounced, e trocar a tarefa e pausar logo em seguida
+    // salvaria o contexto com a tarefa anterior.
+    pause.capture(atual, {
+      description: editor.form.description,
+      companyId: editor.form.companyId,
+      activityId: editor.form.activityId,
+      billable: editor.form.billable,
+      activityTitle: atual.activity?.title ?? null,
+    })
+    playStop()
+  } catch {
+    showError('Não foi possível pausar o timer')
+  }
+}
+
+/** Retomar o que estava pausado, com os mesmos vínculos e sem escolher nada. */
+async function handleResume() {
+  const payload = pause.resumePayload()
+  if (!payload) return
+  if (alerts.needsAttention.value) openProtectionDialog()
+  try {
+    await start.mutateAsync(payload)
+    pause.clear()
+    playStart()
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível retomar o timer'))
+  }
+}
+
+/**
+ * Título da entrada na lista: a TAREFA manda (spec banco-de-horas).
+ *
+ * Antes o título era a descrição e a tarefa virava um chip ao lado, o que
+ * produzia uma coluna de "Sem descrição" — porque com a tarefa já escolhida
+ * ninguém digita um título de novo.
+ */
+function entryTitle(entry: TimeEntry): string {
+  return entry.activity?.title || entry.description || 'Sem descrição'
+}
+
+/** Subtítulo: só quando há tarefa E descrição (entradas anteriores à mudança). */
+function entrySubtitle(entry: TimeEntry): string | null {
+  return entry.activity?.title && entry.description ? entry.description : null
 }
 
 // F6 — "Continuar": reinicia um timer com a mesma descrição/empresa/tarefa.
@@ -560,11 +655,11 @@ async function submitManual() {
     <header class="tv-head">
       <!-- O cabeçalho acompanha a aba: a Equipe é um placar, não "o meu tempo". -->
       <div>
-        <p class="tv-eyebrow">{{ activeTab === 'team' ? 'Equipe' : 'Pessoal' }}</p>
-        <h1 class="tv-title">{{ activeTab === 'team' ? 'Ranking da equipe' : 'Meu tempo' }}</h1>
+        <p class="tv-eyebrow">{{ headEyebrow }}</p>
+        <h1 class="tv-title">{{ headTitle }}</h1>
       </div>
 
-      <nav v-if="hasCompany" class="tv-tabs" aria-label="Seções do tempo">
+      <nav class="tv-tabs" aria-label="Seções do tempo">
         <button
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'me' }"
@@ -573,7 +668,19 @@ async function submitManual() {
         >
           Meu tempo
         </button>
+        <!-- Fechamento vale mesmo sem empresa: quem só registra tempo pessoal
+             também tem jornada e banco de horas. -->
         <button
+          class="tv-tab"
+          :class="{ 'tv-tab--on': activeTab === 'report' }"
+          type="button"
+          @click="activeTab = 'report'"
+        >
+          <Scale :size="14" />
+          Fechamento
+        </button>
+        <button
+          v-if="hasCompany"
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'team' }"
           type="button"
@@ -591,13 +698,34 @@ async function submitManual() {
       <section class="tv-timer" :class="{ 'tv-timer--running': isRunning }">
         <!-- Estado PARADO: formulário de início -->
         <template v-if="!isRunning">
+          <!--
+            Um campo de texto SÓ quando não há tarefa escolhida. Com tarefa, o
+            título da entrada é o dela: obrigar a digitar um título ao lado de
+            uma tarefa já nomeada é pedir trabalho que ninguém faz, e o
+            resultado era uma coluna de "Sem descrição" na lista.
+          -->
           <input
+            v-if="!timerForm.activityId"
             v-model="timerForm.description"
             class="tv-timer-input"
             type="text"
             placeholder="No que você está trabalhando?"
             maxlength="500"
             @keyup.enter="handleStart"
+          />
+          <!--
+            Com tarefa escolhida, o próprio seletor VIRA o título: mostrar o
+            nome da tarefa num rótulo e repeti-lo no seletor ao lado seria a
+            mesma informação duas vezes na mesma barra.
+          -->
+          <TaskPicker
+            v-else
+            :model-value="timerForm.activityId"
+            :company-id="timerForm.companyId"
+            variant="hero"
+            placeholder="Sem tarefa"
+            label="Tarefa"
+            @update:model-value="applyActivityChange(timerForm, $event)"
           />
           <div class="tv-timer-selects">
             <AppSelect
@@ -609,7 +737,7 @@ async function submitManual() {
               @update:model-value="applyCompanyChange(timerForm, $event)"
             />
             <TaskPicker
-              v-if="timerForm.companyId"
+              v-if="timerForm.companyId && !timerForm.activityId"
               :model-value="timerForm.activityId"
               :company-id="timerForm.companyId"
               placeholder="Sem tarefa"
@@ -617,7 +745,9 @@ async function submitManual() {
               density="compact"
               @update:model-value="applyActivityChange(timerForm, $event)"
             />
-            <span v-else class="tv-task-hint">Escolha uma empresa para atribuir tarefa</span>
+            <span v-else-if="!timerForm.companyId" class="tv-task-hint">
+              Escolha uma empresa para atribuir tarefa
+            </span>
           </div>
           <label class="tv-toggle" title="Marcar como faturável">
             <input v-model="timerForm.billable" type="checkbox" class="tv-toggle-input" />
@@ -625,6 +755,21 @@ async function submitManual() {
             <span class="tv-toggle-text">Faturável</span>
           </label>
           <div class="tv-timer-clock">{{ liveClock }}</div>
+          <!--
+            Retomar aparece ao lado de Iniciar quando há trabalho pausado: a
+            volta do almoço não pode exigir procurar a entrada certa na lista.
+          -->
+          <button
+            v-if="pause.isPaused.value"
+            class="tv-btn tv-btn--resume"
+            type="button"
+            :disabled="start.isPending.value"
+            :title="`Retomar ${pause.pausedLabel.value}`"
+            @click="handleResume"
+          >
+            <Play :size="16" />
+            <span>Retomar</span>
+          </button>
           <button
             class="tv-btn tv-btn--start"
             type="button"
@@ -639,12 +784,23 @@ async function submitManual() {
         <!-- Estado RODANDO: edição ao vivo (T2) -->
         <template v-else>
           <input
+            v-if="!editor.form.activityId"
             v-model="editor.form.description"
             class="tv-timer-input"
             type="text"
             placeholder="No que você está trabalhando?"
             maxlength="500"
             @input="editor.touch()"
+          />
+          <TaskPicker
+            v-else
+            :model-value="editor.form.activityId"
+            :company-id="editor.form.companyId"
+            variant="hero"
+            placeholder="Sem tarefa"
+            label="Tarefa"
+            :fallback-title="running?.activity?.title ?? null"
+            @update:model-value="editor.setActivity($event)"
           />
           <div class="tv-timer-selects">
             <AppSelect
@@ -656,7 +812,7 @@ async function submitManual() {
               @update:model-value="editor.setCompany($event)"
             />
             <TaskPicker
-              v-if="editor.form.companyId"
+              v-if="editor.form.companyId && !editor.form.activityId"
               :model-value="editor.form.activityId"
               :company-id="editor.form.companyId"
               placeholder="Sem tarefa"
@@ -664,7 +820,9 @@ async function submitManual() {
               density="compact"
               @update:model-value="editor.setActivity($event)"
             />
-            <span v-else class="tv-task-hint">Escolha uma empresa para atribuir tarefa</span>
+            <span v-else-if="!editor.form.companyId" class="tv-task-hint">
+              Escolha uma empresa para atribuir tarefa
+            </span>
           </div>
           <label class="tv-toggle" title="Marcar como faturável">
             <input
@@ -677,6 +835,16 @@ async function submitManual() {
             <span class="tv-toggle-text">Faturável</span>
           </label>
           <div class="tv-timer-clock tv-timer-clock--live">{{ liveClock }}</div>
+          <button
+            class="tv-btn tv-btn--pause"
+            type="button"
+            :disabled="stop.isPending.value"
+            title="Pausar e retomar depois no mesmo trabalho"
+            @click="handlePause"
+          >
+            <Pause :size="16" />
+            <span>Pausar</span>
+          </button>
           <button
             class="tv-btn tv-btn--stop"
             type="button"
@@ -707,8 +875,13 @@ async function submitManual() {
         </button>
       </div>
 
-      <!-- Abaixo do timer: lista (principal) + rail de insights (lateral). -->
-      <div class="tv-below" :class="{ 'tv-below--solo': !visibleEntries.length }">
+      <!--
+        Abaixo do timer: lista (principal) + rail (lateral). O rail existe
+        SEMPRE desde que ele passou a carregar o banco de horas, que não depende
+        de haver entrada no período filtrado — colapsar para uma coluna aqui
+        esticaria o card de saldo de ponta a ponta embaixo do estado vazio.
+      -->
+      <div class="tv-below">
         <div class="tv-below-main">
       <!-- ─── Filtros + totais ───────────────────────────────────────────── -->
       <section class="tv-controls">
@@ -857,13 +1030,19 @@ async function submitManual() {
             <li v-for="entry in group.entries" :key="entry.id" class="tv-row">
               <template v-if="editingId !== entry.id">
                 <div class="tv-row-main">
-                  <span class="tv-row-desc">{{ entry.description || 'Sem descrição' }}</span>
+                  <!--
+                    O título é a TAREFA quando existe. A descrição vira
+                    subtítulo, e só aparece quando as duas coisas existem —
+                    caso das entradas anteriores a esta mudança, que não são
+                    migradas.
+                  -->
+                  <span class="tv-row-desc">{{ entryTitle(entry) }}</span>
+                  <span v-if="entrySubtitle(entry)" class="tv-row-sub">
+                    {{ entrySubtitle(entry) }}
+                  </span>
                   <div class="tv-row-chips">
                     <span v-if="entry.company" class="tv-tag">{{ entry.company.name }}</span>
                     <span v-else class="tv-tag tv-tag--muted">Pessoal</span>
-                    <span v-if="entry.activity" class="tv-tag tv-tag--task">
-                      {{ entry.activity.title }}
-                    </span>
                     <span v-if="entry.billable" class="tv-tag tv-tag--bill">
                       <DollarSign :size="11" /> Faturável
                     </span>
@@ -976,9 +1155,14 @@ async function submitManual() {
         </div>
 
         <!-- ─── Rail de insights ─────────────────────────────────────────── -->
+        <div class="tv-rail">
+          <!-- Banco de horas primeiro: é a resposta que a pessoa vem buscar
+               ("estou devendo?"), e independe de haver entrada na lista do
+               período filtrado. -->
+          <BalanceCard />
         <TimeInsightsRail
           v-if="visibleEntries.length"
-          class="tv-rail"
+          class="tv-rail-inner"
           :range-total-sec="rangeTotalSec"
           :range-billable-sec="rangeBillableSec"
           :avg-per-day-sec="avgPerDaySec"
@@ -997,8 +1181,17 @@ async function submitManual() {
           :constancy-weeks="HEATMAP_WEEKS"
           :constancy-is-all-companies="isCompanyFiltered"
         />
+        </div>
       </div>
     </template>
+
+    <!-- ═══════════════ ABA: FECHAMENTO (banco de horas) ═══════════════ -->
+    <div v-else-if="activeTab === 'report'" class="tv-report">
+      <BalanceReport scope="me" />
+      <!-- O componente trata o 403 com mensagem própria, então quem não
+           administra vê a explicação em vez de um erro. -->
+      <BalanceReport v-if="hasCompany" scope="team" />
+    </div>
 
     <!-- ═══════════════ ABA: EQUIPE (ranking da empresa) ═══════════════ -->
     <TeamView v-else-if="activeTab === 'team' && hasCompany" />
@@ -1036,9 +1229,6 @@ async function submitManual() {
   align-items: start;
 }
 
-.tv-below--solo {
-  grid-template-columns: minmax(0, 1fr);
-}
 
 .tv-below-main {
   min-width: 0;
@@ -1051,6 +1241,21 @@ async function submitManual() {
   position: sticky;
   top: 8px;
   align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Fechamento: individual e equipe empilhados, com respiro entre eles. */
+.tv-report {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* O rail agora empilha o banco de horas + os insights; o interno não repete o
+   sticky (dois contextos grudados brigariam pelo topo). */
+.tv-rail-inner {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1303,6 +1508,32 @@ async function submitManual() {
   border-color: var(--err);
 }
 
+/*
+ * Pausar é ação NEUTRA de propósito: parar de vez é vermelho porque encerra o
+ * trabalho, e pausar não encerra nada do ponto de vista de quem clica.
+ */
+.tv-btn--pause {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.tv-btn--pause:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+/* Retomar tem o peso do Iniciar, em âmbar: é continuação, não começo. */
+.tv-btn--resume {
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface-2));
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+}
+
+.tv-btn--resume:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 24%, var(--surface-2));
+  border-color: var(--warn);
+}
+
 .tv-btn--ghost {
   background: var(--surface-2);
   color: var(--text-2);
@@ -1488,6 +1719,16 @@ async function submitManual() {
   color: var(--text);
   font-size: 13.5px;
   font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Descrição que acompanha uma tarefa: contexto, não título. */
+.tv-row-sub {
+  margin-top: -2px;
+  color: var(--text-3);
+  font-size: 11.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

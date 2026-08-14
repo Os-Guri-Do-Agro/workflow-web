@@ -53,12 +53,26 @@ const props = withDefaults(
     label?: string
     density?: 'compact' | 'comfortable'
     disabled?: boolean
+    /**
+     * `hero` transforma o gatilho no TÍTULO da barra do timer: texto grande,
+     * sem moldura de campo, ocupando a largura. Existe porque a tarefa passou a
+     * ser o título da entrada (spec banco-de-horas) — manter o seletor pequeno
+     * ao lado de um título repetido seria mostrar a mesma informação duas vezes.
+     */
+    variant?: 'field' | 'hero'
+    /**
+     * Nome já conhecido da tarefa selecionada, usado quando a árvore não a
+     * contém (carregando, concluída, de outra empresa). Ver `triggerLabel`.
+     */
+    fallbackTitle?: string | null
   }>(),
   {
     placeholder: 'Sem tarefa',
     label: 'Tarefa',
     density: 'comfortable',
     disabled: false,
+    variant: 'field',
+    fallbackTitle: null,
   },
 )
 
@@ -151,7 +165,12 @@ const selected = computed(() =>
 const triggerLabel = computed(() => {
   if (!props.modelValue) return props.placeholder
   if (selected.value) return selected.value.title
-  // Ainda carregando, ou tarefa de uma empresa que não é mais a atual.
+  // A árvore do seletor pode não conter a tarefa: ela ainda está carregando, foi
+  // concluída (ficam ocultas), ou pertence a outra empresa. Quando quem chama
+  // sabe o nome — a própria entrada de tempo traz `activity.title` do servidor —
+  // ele vale mais que qualquer aviso. Sem isso, o título do trabalho em
+  // andamento aparecia como "Tarefa indisponível" na barra do timer.
+  if (props.fallbackTitle) return props.fallbackTitle
   return picker.isLoading.value ? 'Carregando…' : 'Tarefa indisponível'
 })
 
@@ -464,7 +483,11 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 </script>
 
 <template>
-  <div ref="rootRef" class="tp" :class="{ 'tp--compact': density === 'compact' }">
+  <div
+    ref="rootRef"
+    class="tp"
+    :class="{ 'tp--compact': density === 'compact', 'tp--hero': variant === 'hero' }"
+  >
     <button
       ref="triggerRef"
       type="button"
@@ -674,6 +697,36 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 
 .tp--compact .tp-trigger {
   min-height: 38px;
+}
+
+/*
+ * Variante do título da barra do timer: o gatilho VIRA o campo principal.
+ * Sem moldura e sem fundo, para ler como texto e não como select — mas continua
+ * sendo um botão, então ganha realce no hover e no foco.
+ */
+.tp--hero .tp-trigger {
+  min-height: 44px;
+  padding: 6px 10px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.tp--hero .tp-trigger:hover:not(:disabled),
+.tp--hero .tp-trigger--open {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
+.tp--hero .tp-trigger-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.tp--hero .tp-trigger-path {
+  font-size: 11.5px;
 }
 
 .tp-trigger:hover:not(:disabled),

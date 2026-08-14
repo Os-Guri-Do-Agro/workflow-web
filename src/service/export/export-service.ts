@@ -1,6 +1,13 @@
 import api from '../api'
 
-function downloadBlob(blob: Blob, fileName: string) {
+/**
+ * Baixa um blob como arquivo.
+ *
+ * A âncora é anexada ao DOM antes do clique de propósito: em parte dos
+ * navegadores o clique programático em elemento solto é ignorado, e o download
+ * simplesmente não acontece.
+ */
+export function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url

@@ -31,6 +31,7 @@ import type { AccentName, Density, FontScale, ShellVariant } from '@/plugins/tok
 import { accents } from '@/plugins/tokens'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 import IdleDiagnostics from '@/features/settings/components/IdleDiagnostics.vue'
+import WorkScheduleCard from '@/features/settings/components/WorkScheduleCard.vue'
 
 const { success: toastSuccess, error: toastError } = useToast()
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -609,6 +610,15 @@ const shellOptions: {
             <span class="toggle-knob" />
           </button>
         </div>
+      </div>
+
+      <!-- Jornada e banco de horas (spec banco-de-horas) -->
+      <div class="settings-card">
+        <div class="card-section-title">
+          <Timer :size="13" style="vertical-align: -2px; margin-right: 4px" />
+          Jornada e banco de horas
+        </div>
+        <WorkScheduleCard />
       </div>
 
       <!-- Aviso de ociosidade do timer (spec timer-ociosidade) -->

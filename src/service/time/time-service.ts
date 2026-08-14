@@ -44,6 +44,74 @@ export interface AbandonedEntry {
 
 export type ResolveAction = 'activity' | 'now' | 'custom' | 'discard' | 'continue'
 
+// ─── Banco de horas (spec banco-de-horas) ─────────────────────────────────────
+
+export interface BalanceDay {
+  day: string
+  workedSec: number
+  /** Meta daquele dia. Zero em fim de semana e feriado nacional. */
+  targetSec: number
+  /** Nome do feriado nacional, quando houver. */
+  holiday: string | null
+}
+
+export interface TimeBalance {
+  from: string
+  to: string
+  workedSec: number
+  targetSec: number
+  /** Positivo = crédito, negativo = dívida. */
+  balanceSec: number
+  businessDays: number
+  /** Dias úteis já cobrados (é o número que corresponde a `targetSec`). */
+  businessDaysElapsed: number
+  /** Dias úteis que ainda faltam, contando hoje. */
+  daysLeft: number
+  /** Média por dia útil COM registro. Null quando não há amostra. */
+  paceSec: number | null
+  /** Saldo estimado no fim do período no ritmo atual. Null sem amostra. */
+  projectedBalanceSec: number | null
+  byDay: BalanceDay[]
+}
+
+export interface CompanyBalancePerson {
+  userId: string
+  name: string
+  email: string
+  workedSec: number
+  targetSec: number
+  balanceSec: number
+  paceSec: number | null
+  projectedBalanceSec: number | null
+  /** Quanto do tempo dela foi NESTA empresa (a jornada é da pessoa, não daqui). */
+  companySec: number
+}
+
+export interface CompanyBalance {
+  companyId: string
+  from: string
+  to: string
+  people: CompanyBalancePerson[]
+}
+
+export interface WorkScheduleInput {
+  validFrom?: string
+  monSec: number
+  tueSec: number
+  wedSec: number
+  thuSec: number
+  friSec: number
+  satSec: number
+  sunSec: number
+}
+
+export interface WorkScheduleInfo {
+  /** Null = usando o padrão da casa. */
+  current: (WorkScheduleInput & { validFrom: string }) | null
+  defaultDaySec: number
+  history: { validFrom: string; weekSec: number }[]
+}
+
 export interface StartTimerInput {
   description?: string
   companyId?: string | null
@@ -217,6 +285,45 @@ const timeService = {
     const response = await api.get<CompanyReport>('/time/company-report', {
       params: filters,
       ...(companyId ? { headers: { 'x-company-id': companyId } } : {}),
+    })
+    return response.data
+  },
+
+  // ─── Banco de horas (spec banco-de-horas) ───────────────────────────────────
+
+  /**
+   * Saldo do período. `from`/`to` são datas civis (YYYY-MM-DD), e não instantes:
+   * banco de horas trabalha com dias, e um ISO completo criaria períodos com
+   * meio dia de sobra numa ponta.
+   */
+  async balance(from: string, to: string) {
+    const response = await api.get<TimeBalance>('/time/balance', {
+      params: { from, to, tzOffset: new Date().getTimezoneOffset() },
+    })
+    return response.data
+  },
+
+  /** Fechamento da equipe (ADMIN da empresa ativa). */
+  async companyBalance(from: string, to: string, companyId?: string) {
+    const response = await api.get<CompanyBalance>('/time/company-balance', {
+      params: { from, to, tzOffset: new Date().getTimezoneOffset() },
+      ...(companyId ? { headers: { 'x-company-id': companyId } } : {}),
+    })
+    return response.data
+  },
+
+  async getSchedule() {
+    const response = await api.get<WorkScheduleInfo>('/time/schedule')
+    return response.data
+  },
+
+  /**
+   * O `tzOffset` vai junto porque, sem `validFrom` explícito, o servidor usa
+   * "hoje" — e hoje em UTC não é hoje aqui depois das 21h.
+   */
+  async setSchedule(input: WorkScheduleInput) {
+    const response = await api.patch('/time/schedule', input, {
+      params: { tzOffset: new Date().getTimezoneOffset() },
     })
     return response.data
   },

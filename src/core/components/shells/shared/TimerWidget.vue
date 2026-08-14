@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BellRing,
   DollarSign,
+  Pause,
   Play,
   Square,
   Timer as TimerIcon,
@@ -17,6 +18,7 @@ import { useRunningEntryEditor } from '@/composables/useRunningEntryEditor'
 import { useTimerIdleGuard } from '@/composables/useTimerIdleGuard'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
 import { useTimerSounds } from '@/composables/useTimerSounds'
+import { useTimerPause } from '@/composables/useTimerPause'
 import { openProtectionDialog } from '@/composables/idle-protection-dialog'
 import { useToast } from '@/composables/useToast'
 import { useCurrentUser } from '@/composables/useCurrentUser'
@@ -27,7 +29,9 @@ import { formatTimer } from '@/utils/duration'
 const { me } = useCurrentUser()
 const { error: showError } = useToast()
 const workspace = useWorkspaceStore()
-const { isRunning, elapsedSec, start, stop } = useTimeTracking()
+const { isRunning, running, elapsedSec, start, stop } = useTimeTracking()
+// Pausa do almoço: o widget é onde a maioria das pessoas está quando volta.
+const pause = useTimerPause()
 const { companyOf } = useCompanyActivities()
 const { playStart, playStop } = useTimerSounds()
 
@@ -150,10 +154,51 @@ async function handleStop() {
   try {
     editor.flush() // salva a última edição pendente antes de parar
     await stop.mutateAsync()
+    // Encerrar de vez descarta a pausa pendente: seria contraditório oferecer
+    // "retomar o almoço" depois de fechar o expediente.
+    pause.clear()
     playStop()
     close()
   } catch {
     showError('Não foi possível parar o timer')
+  }
+}
+
+/** Pausa guardando o contexto; a volta é um clique, sem procurar na lista. */
+async function handlePause() {
+  const atual = running.value
+  if (!atual) return
+  try {
+    editor.flush()
+    await stop.mutateAsync()
+    // Ver TimeTrackingView: o autosave é debounced, então o formulário da tela
+    // é mais recente que o que o servidor devolveu.
+    pause.capture(atual, {
+      description: editor.form.description,
+      companyId: editor.form.companyId,
+      activityId: editor.form.activityId,
+      billable: editor.form.billable,
+      activityTitle: atual.activity?.title ?? null,
+    })
+    playStop()
+    close()
+  } catch {
+    showError('Não foi possível pausar o timer')
+  }
+}
+
+/** Retoma o trabalho pausado com os mesmos vínculos. */
+async function handleResume() {
+  const payload = pause.resumePayload()
+  if (!payload) return
+  if (alerts.needsAttention.value) openProtectionDialog()
+  try {
+    await start.mutateAsync(payload)
+    pause.clear()
+    playStart()
+    close()
+  } catch {
+    showError('Não foi possível retomar o timer')
   }
 }
 
@@ -302,19 +347,43 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
             <span>{{ permissionText }}</span>
           </button>
 
-          <button
-            class="timer-btn timer-btn--stop"
-            type="button"
-            :disabled="stop.isPending.value"
-            @click="handleStop"
-          >
-            <Square :size="15" />
-            <span>Parar</span>
-          </button>
+          <div class="timer-actions">
+            <button
+              class="timer-btn timer-btn--pause"
+              type="button"
+              :disabled="stop.isPending.value"
+              title="Pausar e retomar depois no mesmo trabalho"
+              @click="handlePause"
+            >
+              <Pause :size="15" />
+              <span>Pausar</span>
+            </button>
+            <button
+              class="timer-btn timer-btn--stop"
+              type="button"
+              :disabled="stop.isPending.value"
+              @click="handleStop"
+            >
+              <Square :size="15" />
+              <span>Parar</span>
+            </button>
+          </div>
         </div>
 
         <!-- Estado: parado (formulário) -->
         <form v-else class="timer-body" @submit.prevent="handleStart">
+          <!-- Trabalho pausado: retomar vem ANTES do formulário, porque quem
+               volta do almoço quer continuar, não começar outra coisa. -->
+          <button
+            v-if="pause.isPaused.value"
+            class="timer-btn timer-btn--resume"
+            type="button"
+            :disabled="start.isPending.value"
+            @click="handleResume"
+          >
+            <Play :size="15" />
+            <span>Retomar {{ pause.pausedLabel.value }}</span>
+          </button>
           <label class="timer-field">
             <span class="timer-label">No que você está trabalhando?</span>
             <input
@@ -751,6 +820,38 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 .timer-btn--stop:hover:not(:disabled) {
   background: var(--surface-3);
   border-color: var(--err);
+}
+
+/* Pausar e Parar dividem a linha: as duas são saídas do estado rodando. */
+.timer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.timer-actions > .timer-btn {
+  flex: 1;
+}
+
+/* Neutro de propósito: pausar não encerra o trabalho, só o relógio. */
+.timer-btn--pause {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.timer-btn--pause:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.timer-btn--resume {
+  background: color-mix(in srgb, var(--warn) 16%, var(--surface-2));
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+}
+
+.timer-btn--resume:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--warn) 24%, var(--surface-2));
+  border-color: var(--warn);
 }
 
 .timer-pop-enter-active,
