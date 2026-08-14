@@ -11,7 +11,10 @@
  * O sinal nunca é comunicado só por cor: crédito e dívida vêm com palavra.
  */
 import { computed, ref } from 'vue'
-import { Scale, TrendingDown, TrendingUp } from 'lucide-vue-next'
+import { RouterLink } from 'vue-router'
+import { useQuery } from '@tanstack/vue-query'
+import { Scale, SlidersHorizontal, TrendingDown, TrendingUp } from 'lucide-vue-next'
+import timeService from '@/service/time/time-service'
 import {
   currentMonth,
   currentWeek,
@@ -56,6 +59,25 @@ const fraseProjecao = computed(() => {
   return projecaoCredito.value
     ? `No seu ritmo de ${ritmo} por dia, você fecha ${fim} com ${abs(p)} de crédito.`
     : `No seu ritmo de ${ritmo} por dia, você fecha ${fim} devendo ${abs(p)}. Dá tempo de ajustar.`
+})
+
+/**
+ * Jornada vigente, só para o rótulo do atalho. Mesma chave de cache da tela de
+ * configuração, então abrir as duas não gera duas requisições.
+ */
+const { data: jornada } = useQuery({
+  queryKey: ['time', 'schedule'],
+  queryFn: () => timeService.getSchedule(),
+  staleTime: 5 * 60_000,
+})
+
+/** Rótulo curto da meta de um dia útil comum (a segunda representa a semana). */
+const metaDiariaLabel = computed(() => {
+  const sec = jornada.value?.current?.monSec ?? jornada.value?.defaultDaySec
+  if (!sec) return 'definir'
+  const h = Math.floor(sec / 3600)
+  const m = Math.round((sec % 3600) / 60)
+  return m === 0 ? `${h}h por dia` : `${h}h${String(m).padStart(2, '0')} por dia`
 })
 
 /** Quanto da meta do período já foi cumprido (limitado a 100% na barra). */
@@ -129,6 +151,16 @@ const progresso = computed(() => {
       <p v-else class="bal-projection bal-projection--muted">
         Registre mais alguns dias para eu projetar como o período termina.
       </p>
+
+      <!--
+        Atalho para a jornada AQUI, e não só em Configurações: a dúvida "de onde
+        saiu essa meta?" nasce olhando o saldo. Quem tem escala diferente do
+        padrão não vai adivinhar sozinho que precisa procurar em outra tela.
+      -->
+      <RouterLink class="bal-schedule" :to="{ name: 'settings' }">
+        <SlidersHorizontal :size="12" />
+        Minha jornada: {{ metaDiariaLabel }}
+      </RouterLink>
     </template>
   </section>
 </template>
@@ -261,5 +293,27 @@ const progresso = computed(() => {
 
 .bal-projection--muted {
   color: var(--text-4);
+}
+
+.bal-schedule {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  margin-top: 1px;
+  padding: 3px 8px 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.bal-schedule:hover {
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 </style>

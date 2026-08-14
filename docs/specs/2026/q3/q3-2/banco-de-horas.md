@@ -85,7 +85,7 @@ nenhuma de feriados.
 | Nível | Risco | Mitigação |
 |---|---|---|
 | **Alto** | Saldo errado vira conflito trabalhista. Um bug aqui não é bug de UI: é a pessoa achando que tem 12h de crédito que o sistema não reconhece. | O saldo **nunca** é armazenado, sempre derivado das entradas + jornada, então não existe estado corrompido a arrastar. Testes unitários com data fixa cobrindo virada de mês, fuso e feriado móvel. A tela mostra a conta aberta (dias úteis × meta − trabalhado), não só o resultado. |
-| **Alto** | Feriado errado deturpa o mês inteiro (um dia a mais de meta = 8h48 de dívida falsa). | Tabela de feriados nacionais derivada por algoritmo (Páscoa por Meeus/Jones/Butcher) com **teste por ano de 2024 a 2035** contra a lista oficial. Sem dependência externa que possa mudar sem aviso. |
+| **Alto** | Feriado errado deturpa o mês inteiro (um dia a mais de meta = uma jornada de dívida falsa). | Tabela de feriados nacionais derivada por algoritmo (Páscoa por Meeus/Jones/Butcher) com **teste por ano de 2024 a 2035** contra a lista oficial. Sem dependência externa que possa mudar sem aviso. |
 | **Médio** | Fuso: entrada às 21h de Brasília cai no dia seguinte em UTC e joga horas para o dia errado. | `tzOffset` já é exigido no agrupamento existente; o cálculo de saldo reusa `dayKey()`. Teste com offset −180 na virada. |
 | **Médio** | Projeção otimista demais vira promessa falsa ("você vai ter 20h de crédito") e frustra. | A projeção declara a premissa na própria frase ("no seu ritmo destes N dias") e some quando há menos de 3 dias úteis com registro no período. |
 | **Médio** | Pessoa em duas empresas com metas diferentes: qual manda? | Resolvido no desenho: **a jornada é da pessoa, não do vínculo**. Uma meta, um saldo. O admin vê o saldo dela e, separado, quanto do tempo foi na empresa dele. |
@@ -130,8 +130,8 @@ nenhuma de feriados.
 ### Jornada e dias úteis
 
 - [ ] **Given** um usuário sem jornada configurada **When** o saldo é calculado
-      **Then** a meta usada é **8h48min (31.680s) por dia útil**, que fecha as
-      44h semanais com sábado livre.
+      **Then** a meta usada é **8h (28.800s) por dia útil**, que fecha as 40h
+      semanais de segunda a sexta.
 - [ ] **Given** um sábado, domingo ou feriado nacional **When** o saldo do
       período é calculado **Then** aquele dia contribui com meta **zero**, e o
       tempo registrado nele entra **inteiro como crédito**.
@@ -143,10 +143,10 @@ nenhuma de feriados.
 
 ### Saldo e projeção
 
-- [ ] **Given** 3 dias úteis com 10h, 10h e 10h e meta de 8h48 **When** abro o
-      Meu tempo **Then** o saldo é **+3h36min** e a conta aparece aberta na tela
-      (30h trabalhadas contra 26h24 de meta).
-- [ ] **Given** 3 dias úteis com 10h, 10h e 6h **Then** o saldo é **−24min**,
+- [ ] **Given** 3 dias úteis com 10h, 10h e 10h e meta de 8h **When** abro o Meu
+      tempo **Then** o saldo é **+6h** e a conta aparece aberta na tela (30h
+      trabalhadas contra 24h de meta).
+- [ ] **Given** 3 dias úteis com 10h, 10h e 3h **Then** o saldo é **−1h**,
       exibido com o sinal e a palavra ("devendo"), nunca só pela cor.
 - [ ] **Given** o dia de hoje ainda em andamento **When** o saldo é exibido
       **Then** hoje entra pelo tempo já registrado, e a meta de hoje **conta**
@@ -379,7 +379,7 @@ regra escrita:
       existente é tocada).
 - [ ] Backend primeiro: o front chama rotas novas e não pode subir antes.
 - [ ] Fase A pode ir sozinha antes de B e C.
-- [ ] Sem jornada configurada, todo mundo cai no padrão de 8h48. Nenhum backfill
+- [ ] Sem jornada configurada, todo mundo cai no padrão de 8h. Nenhum backfill
       é necessário.
 
 ## Plano de Rollback

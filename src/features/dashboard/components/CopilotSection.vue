@@ -115,9 +115,16 @@ const emit = defineEmits<{
   color: var(--text-4);
 }
 
+/*
+ * `auto-fit` com piso de 260px, e não três colunas fixas: desde que o Dashboard
+ * passou a ter duas colunas, esta seção nem sempre tem a largura da página.
+ * Com três colunas forçadas num espaço menor, cada card ficava com ~90px úteis
+ * e o texto quebrava palavra por palavra. Aqui os cards descem para duas linhas
+ * (ou uma) em vez de espremer.
+ */
 .ai-actions-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 10px;
 }
 

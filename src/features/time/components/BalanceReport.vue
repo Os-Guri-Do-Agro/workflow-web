@@ -86,7 +86,7 @@ const sinal = (sec: number) => (sec >= 0 ? '+' : '−')
  * O `targetSec` de `byDay` é a meta REAL do dia, inclusive no futuro (a pessoa
  * precisa ver o que a espera). Mas o saldo do período não cobra dia futuro,
  * então a linha do dia carrega uma marca de `futuro` — sem ela, o relatório
- * exibia "−8h48" em cada dia que ainda nem chegou, e a soma das linhas não
+ * exibia a meta cheia como dívida em cada dia que ainda nem chegou, e a soma das linhas não
  * batia com o Saldo do topo.
  */
 const diasVisiveis = computed(

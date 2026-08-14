@@ -221,14 +221,14 @@ errado não é bug de tela, é discussão sobre horas trabalhadas.
 
 Quatro regras que o cálculo carrega:
 
-1. **Padrão de 8h48 por dia útil** (`DEFAULT_DAY_TARGET_SEC`), que fecha 44h
-   semanais com sábado livre. Ninguém precisa configurar nada.
+1. **Padrão de 8h por dia útil** (`DEFAULT_DAY_TARGET_SEC`), que fecha 40h
+   semanais de segunda a sexta. Ninguém precisa configurar nada.
 2. **A jornada é do usuário e versionada** (`WorkSchedule.validFrom`): o dia 10
    usa a jornada vigente no dia 10. Alterar a meta não reescreve mês fechado.
 3. **Feriado nacional zera a meta**, e trabalho em dia sem meta (fim de semana,
    feriado) entra inteiro como crédito. Os feriados são calculados em
    `holidays.ts` (Páscoa por Meeus, sem dependência externa) e testados ano a
-   ano de 2024 a 2035 — lista errada = 8h48 de dívida falsa para o time todo.
+   ano de 2024 a 2035 — lista errada = uma jornada de dívida falsa para o time.
 4. **Dia futuro não cobra meta.** Senão o mês nasce todo devedor no dia 1. Por
    isso a UI mostra `businessDaysElapsed` (dias já cobrados) ao lado da meta, e
    não `businessDays` do período: usar o segundo faz a conta não fechar na tela.

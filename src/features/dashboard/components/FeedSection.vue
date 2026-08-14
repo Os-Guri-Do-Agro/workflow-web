@@ -90,6 +90,8 @@ const feedActorName = (event: FeedEventPayload) =>
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: 16px;
+  /* Permite encolher dentro da coluna com teto de altura do Dashboard. */
+  min-height: 0;
 }
 
 .feed-section .section-head {
@@ -121,9 +123,21 @@ const feedActorName = (event: FeedEventPayload) =>
   white-space: pre-wrap;
 }
 
+/*
+ * A lista rola por dentro quando o container tem altura limitada (a coluna do
+ * Dashboard). Sem isso, a timeline empurraria a página inteira para baixo, que
+ * é o motivo de ela ter ganhado coluna própria.
+ *
+ * `overflow: auto` só age quando há teto: em container sem altura definida
+ * (mobile, uma coluna) o comportamento continua o de sempre.
+ */
 .feed-list {
   display: grid;
   gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  /* Respiro para a barra de rolagem não colar no conteúdo. */
+  padding-right: 2px;
 }
 
 .feed-item {

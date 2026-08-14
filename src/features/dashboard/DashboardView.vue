@@ -66,47 +66,60 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
       <ActivityPanel :company-id="dash.companyId" />
     </div>
 
-    <!-- Lazy: Agenda -->
-    <div ref="agendaTarget" class="lazy-slot">
-      <AgendaSection v-if="agendaVisible" v-reveal @open-calendar="dash.openCalendar" />
-    </div>
+    <!--
+      Abaixo do bento, DUAS colunas. Antes eram quatro seções em largura cheia,
+      empilhadas: em monitor largo isso desperdiçava a lateral inteira e obrigava
+      a rolar muito para chegar em qualquer coisa — a timeline, que é uma lista
+      longa por natureza, empurrava todo o resto para fora da tela.
 
-    <!-- Lazy: Copilot -->
-    <div ref="copilotTarget" class="lazy-slot">
-      <CopilotSection
-        v-if="copilotVisible"
-        v-reveal
-        :search-status="dash.searchStatus.value"
-        :workspace-answer="dash.workspaceAnswer.value"
-        :digest-summary="dash.digestSummary.value"
-        :format-feed-date="dash.formatFeedDate"
-        @open-ai="dash.openAiTool"
-        @open-search="dash.openWorkspaceSearch"
-      />
-    </div>
+      A timeline vai para a coluna da direita com rolagem PRÓPRIA: ela cresce
+      sozinha e não pode mais definir a altura da página.
+    -->
+    <div class="dash-below">
+      <div class="dash-col">
+        <!-- Lazy: Agenda -->
+        <div ref="agendaTarget" class="lazy-slot">
+          <AgendaSection v-if="agendaVisible" v-reveal @open-calendar="dash.openCalendar" />
+        </div>
 
-    <!-- Lazy: Feed -->
-    <div ref="feedTarget" class="lazy-slot">
-      <FeedSection
-        v-if="feedVisible"
-        v-reveal
-        :digest-summary="dash.digestSummary.value"
-        :digest-loading="dash.digestLoading.value"
-        :format-feed-date="dash.formatFeedDate"
-        @open-ai="dash.openAiTool"
-      />
-    </div>
+        <!-- Lazy: Copilot -->
+        <div ref="copilotTarget" class="lazy-slot">
+          <CopilotSection
+            v-if="copilotVisible"
+            v-reveal
+            :search-status="dash.searchStatus.value"
+            :workspace-answer="dash.workspaceAnswer.value"
+            :digest-summary="dash.digestSummary.value"
+            :format-feed-date="dash.formatFeedDate"
+            @open-ai="dash.openAiTool"
+            @open-search="dash.openWorkspaceSearch"
+          />
+        </div>
 
-    <!-- Lazy: Projects -->
-    <div ref="projectsTarget" class="lazy-slot">
-      <ProjectsSection
-        v-if="projectsVisible"
-        v-reveal
-        :projects="dash.projects.value"
-        :loading="dash.loadingCompanies.value"
-        @load="dash.findCompanies"
-        @select="dash.handleProjectClick"
-      />
+        <!-- Lazy: Projects -->
+        <div ref="projectsTarget" class="lazy-slot">
+          <ProjectsSection
+            v-if="projectsVisible"
+            v-reveal
+            :projects="dash.projects.value"
+            :loading="dash.loadingCompanies.value"
+            @load="dash.findCompanies"
+            @select="dash.handleProjectClick"
+          />
+        </div>
+      </div>
+
+      <!-- Lazy: Feed (coluna própria, com scroll interno) -->
+      <div ref="feedTarget" class="lazy-slot dash-feed-slot">
+        <FeedSection
+          v-if="feedVisible"
+          v-reveal
+          :digest-summary="dash.digestSummary.value"
+          :digest-loading="dash.digestLoading.value"
+          :format-feed-date="dash.formatFeedDate"
+          @open-ai="dash.openAiTool"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -186,6 +199,60 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
    (senão o IntersectionObserver dispararia tudo de uma vez). */
 .lazy-slot {
   min-height: 120px;
+}
+
+/*
+ * Duas colunas abaixo do bento. A da direita é menor porque a timeline é uma
+ * lista estreita por natureza — dar largura cheia a ela produzia linhas de
+ * texto curtas dentro de um bloco enorme, que foi o que ficou feio.
+ */
+.dash-below {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.dash-col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/*
+ * A timeline acompanha a rolagem e tem teto de altura: sem isso ela cresce
+ * indefinidamente e volta a mandar na altura da página, que é exatamente o
+ * problema que esta divisão resolve.
+ */
+.dash-feed-slot {
+  position: sticky;
+  top: 8px;
+  min-width: 0;
+  /*
+   * Teto duplo: nunca passa da tela, e nunca passa de 620px. O segundo limite
+   * existe porque a coluna da esquerda costuma ser mais curta — sem ele, a
+   * timeline esticava sozinha e deixava um vazio enorme ao lado.
+   */
+  max-height: min(calc(100vh - 40px), 620px);
+  display: flex;
+}
+
+.dash-feed-slot > * {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .dash-below {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Sem duas colunas, prender a timeline no topo só atrapalharia. */
+  .dash-feed-slot {
+    position: static;
+    max-height: none;
+  }
 }
 
 @media (max-width: 768px) {

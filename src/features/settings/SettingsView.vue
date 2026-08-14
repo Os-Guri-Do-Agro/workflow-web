@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, type Component } from 'vue'
 import {
   Check,
   Sun,
   Moon,
   Columns3,
+  Keyboard,
   LayoutPanelLeft,
+  Palette,
+  Plug,
+  Search,
   Square,
   Timer,
   Play,
@@ -363,7 +367,90 @@ const shellOptions: {
       ]
     : []),
 ]
-</script>
+
+// ─── Navegação por seções (spec: a tela era uma pilha de 8 cards) ────────────
+//
+// O problema real que isto resolve: as configurações do cronômetro estavam
+// espalhadas em três cards distantes (som, jornada, ociosidade), e quem
+// procurava a escala de trabalho não achava — nem quem pediu a funcionalidade.
+// Rolagem infinita não é organização; agrupamento por assunto é.
+//
+// A busca existe pelo mesmo motivo: quem não sabe em que seção a coisa mora
+// digita a palavra que tem na cabeça ("escala", "jornada", "som") e chega lá.
+
+interface Secao {
+  id: string
+  label: string
+  icon: Component
+  /** Palavras que a pessoa pode digitar procurando o que está aqui dentro. */
+  termos: string
+}
+
+const SECOES: Secao[] = [
+  {
+    id: 'aparencia',
+    label: 'Aparência',
+    icon: Palette,
+    termos: 'tema escuro claro cor destaque acento densidade fonte tamanho layout shell navegação',
+  },
+  {
+    id: 'cronometro',
+    label: 'Cronômetro',
+    icon: Timer,
+    termos:
+      'tempo timer som timbre volume jornada escala horário banco de horas meta diária 40h semanal ociosidade inatividade aviso proteção',
+  },
+  {
+    id: 'notificacoes',
+    label: 'Notificações',
+    icon: Bell,
+    termos: 'discord webhook aviso canal atraso',
+  },
+  {
+    id: 'integracoes',
+    label: 'Integrações',
+    icon: Plug,
+    termos: 'jira importar xml issues',
+  },
+  {
+    id: 'atalhos',
+    label: 'Atalhos',
+    icon: Keyboard,
+    termos: 'teclado atalho tecla comando palette',
+  },
+]
+
+const secaoAtiva = ref('aparencia')
+const busca = ref('')
+
+/** Sem acento e sem caixa: quem digita "aparencia" quer achar "Aparência". */
+const normalizar = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+
+const buscando = computed(() => busca.value.trim().length >= 2)
+
+const secoesEncontradas = computed(() => {
+  if (!buscando.value) return SECOES
+  const termo = normalizar(busca.value.trim())
+  return SECOES.filter((s) => normalizar(`${s.label} ${s.termos}`).includes(termo))
+})
+
+/**
+ * Durante a busca, TODAS as seções que casam aparecem juntas — a pessoa está
+ * procurando algo, não navegando. Fora da busca, uma seção por vez.
+ */
+function mostra(id: string): boolean {
+  if (buscando.value) return secoesEncontradas.value.some((s) => s.id === id)
+  return secaoAtiva.value === id
+}
+
+function irPara(id: string) {
+  secaoAtiva.value = id
+  busca.value = ''
+}</script>
 
 <template>
   <div class="settings-page">
@@ -372,9 +459,43 @@ const shellOptions: {
       <p class="settings-sub">Aparência e preferências</p>
     </div>
 
-    <div class="settings-grid">
+    <div class="settings-shell">
+      <!-- Navegação por assunto + busca. Ver o comentário em SECOES: a pilha
+           de cards escondia coisas de quem sabia que elas existiam. -->
+      <nav class="settings-nav" aria-label="Seções das configurações">
+        <div class="settings-search">
+          <Search :size="13" />
+          <input
+            v-model="busca"
+            type="search"
+            class="settings-search-input"
+            placeholder="Buscar (ex.: escala)"
+            aria-label="Buscar configuração"
+          />
+        </div>
+        <button
+          v-for="secao in SECOES"
+          :key="secao.id"
+          type="button"
+          class="settings-nav-item"
+          :class="{
+            'settings-nav-item--on': !buscando && secaoAtiva === secao.id,
+            'settings-nav-item--hit': buscando && secoesEncontradas.some((s) => s.id === secao.id),
+          }"
+          @click="irPara(secao.id)"
+        >
+          <component :is="secao.icon" :size="14" />
+          {{ secao.label }}
+        </button>
+      </nav>
+
+      <div class="settings-grid">
+        <p v-if="buscando && !secoesEncontradas.length" class="settings-empty">
+          Nada encontrado para "{{ busca }}".
+        </p>
+
       <!-- Appearance: theme + accent + density -->
-      <div class="settings-card">
+      <div v-show="mostra('aparencia')" class="settings-card">
         <div class="card-section-title">Aparência</div>
 
         <div class="setting-row">
@@ -464,7 +585,7 @@ const shellOptions: {
       </div>
 
       <!-- Shell variant -->
-      <div class="settings-card">
+      <div v-show="mostra('aparencia')" class="settings-card">
         <div class="card-section-title">Layout</div>
         <div class="setting-row setting-row--column">
           <div class="setting-info">
@@ -519,7 +640,7 @@ const shellOptions: {
       </div>
 
       <!-- Meu tempo: som e seletor de tarefa -->
-      <div class="settings-card">
+      <div v-show="mostra('cronometro')" class="settings-card">
         <div class="card-section-title">
           <Volume2 :size="13" style="vertical-align: -2px; margin-right: 4px" />
           Meu tempo
@@ -613,7 +734,7 @@ const shellOptions: {
       </div>
 
       <!-- Jornada e banco de horas (spec banco-de-horas) -->
-      <div class="settings-card">
+      <div v-show="mostra('cronometro')" class="settings-card">
         <div class="card-section-title">
           <Timer :size="13" style="vertical-align: -2px; margin-right: 4px" />
           Jornada e banco de horas
@@ -622,7 +743,7 @@ const shellOptions: {
       </div>
 
       <!-- Aviso de ociosidade do timer (spec timer-ociosidade) -->
-      <div class="settings-card">
+      <div v-show="mostra('cronometro')" class="settings-card">
         <div class="card-section-title">
           <Timer :size="13" style="vertical-align: -2px; margin-right: 4px" />
           Aviso de ociosidade
@@ -706,7 +827,7 @@ const shellOptions: {
       </div>
 
       <!-- Notifications Discord -->
-      <div class="settings-card">
+      <div v-show="mostra('notificacoes')" class="settings-card">
         <div class="card-section-title">
           <Bell :size="13" style="vertical-align: -2px; margin-right: 4px" />
           Notificações Discord
@@ -838,7 +959,7 @@ const shellOptions: {
       <!-- <div class="settings-card"><RepositoriesSection /></div> -->
 
       <!-- Integrations -->
-      <div class="settings-card">
+      <div v-show="mostra('integracoes')" class="settings-card">
         <div class="card-section-title">Integrações</div>
         <div class="setting-row setting-row--column">
           <div class="setting-info">
@@ -890,7 +1011,7 @@ const shellOptions: {
       </div>
 
       <!-- Shortcuts -->
-      <div class="settings-card">
+      <div v-show="mostra('atalhos')" class="settings-card">
         <div class="card-section-title">Atalhos de teclado</div>
         <div class="shortcuts-grid">
           <div class="shortcut-row">
@@ -916,6 +1037,7 @@ const shellOptions: {
           </div>
         </div>
       </div>
+      </div>
     </div>
   </div>
 </template>
@@ -923,8 +1045,126 @@ const shellOptions: {
 <style scoped>
 .settings-page {
   padding: 24px;
-  max-width: 820px;
+  max-width: 1040px;
   margin: 0 auto;
+}
+
+/*
+ * Duas colunas: navegação fixa à esquerda, conteúdo à direita. A pilha única
+ * anterior obrigava a rolar oito cards para achar qualquer coisa — e escondia
+ * até o que a pessoa sabia que existia.
+ */
+.settings-shell {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.settings-nav {
+  position: sticky;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 0 9px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-4);
+}
+
+.settings-search:focus-within {
+  border-color: var(--accent);
+  color: var(--text-3);
+}
+
+.settings-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.settings-search-input::placeholder {
+  color: var(--text-4);
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.settings-nav-item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.settings-nav-item--on {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* Durante a busca, as seções que casam ficam marcadas — sem isso a pessoa não
+   entende por que várias apareceram de uma vez. */
+.settings-nav-item--hit {
+  color: var(--accent);
+}
+
+.settings-empty {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-3);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .settings-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Vira uma faixa de abas rolável no topo. */
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .settings-search {
+    width: 100%;
+    margin-bottom: 2px;
+  }
 }
 
 .settings-header {

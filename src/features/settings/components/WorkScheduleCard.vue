@@ -2,8 +2,8 @@
 /**
  * Jornada de trabalho (spec banco-de-horas).
  *
- * Configurar é OPCIONAL: sem nada aqui vale 8h48 por dia útil, que fecha as 44h
- * semanais com sábado livre. A tela existe para quem tem escala diferente, e
+ * Configurar é OPCIONAL: sem nada aqui vale 8h por dia útil, que fecha as 40h
+ * semanais de segunda a sexta. A tela existe para quem tem escala diferente, e
  * por isso ela mostra o padrão em vigor antes de pedir qualquer coisa — quem
  * não precisa mexer descobre isso sem clicar.
  *
@@ -41,11 +41,11 @@ type DiaKey = (typeof DIAS)[number]['key']
 
 /** Os campos são editados em HH:MM, que é como as pessoas pensam jornada. */
 const form = ref<Record<DiaKey, string>>({
-  monSec: '08:48',
-  tueSec: '08:48',
-  wedSec: '08:48',
-  thuSec: '08:48',
-  friSec: '08:48',
+  monSec: '08:00',
+  tueSec: '08:00',
+  wedSec: '08:00',
+  thuSec: '08:00',
+  friSec: '08:00',
   satSec: '00:00',
   sunSec: '00:00',
 })
@@ -141,8 +141,8 @@ function restaurarPadrao() {
         <span class="setting-label">Minha jornada</span>
         <span class="setting-desc">
           <template v-if="usandoPadrao">
-            Você está no padrão: <strong>8h48 por dia útil</strong>, que fecha 44h por semana
-            com o sábado livre. Fim de semana e feriado nacional não cobram meta.
+            Você está no padrão: <strong>8h por dia útil</strong>, que fecha 40h por semana
+            de segunda a sexta. Fim de semana e feriado nacional não cobram meta.
           </template>
           <template v-else>
             Sua jornada é de <strong>{{ semanaLabel }}</strong> por semana. Feriado nacional
