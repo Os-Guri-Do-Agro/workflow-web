@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nevo — detector de atividade</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #12161c;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --ok: #0f9d76;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14181d;
+          --fg: #eef2f6;
+          --muted: #9aa4b2;
+          --line: #262c34;
+        }
+      }
+      body {
+        width: 290px;
+        margin: 0;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      h1 {
+        margin: 0 0 2px;
+        font-size: 14px;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .status {
+        margin: 12px 0;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--ok);
+      }
+      .foot {
+        border-top: 1px solid var(--line);
+        padding-top: 10px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Detector de atividade</h1>
+    <p>Deixa o cronômetro do Nevo saber quando você está trabalhando fora do navegador.</p>
+
+    <div class="status">
+      <span class="dot"></span>
+      <span id="state">Verificando…</span>
+    </div>
+
+    <p class="foot">
+      Só um dado sai daqui: o instante em que você foi visto ativo pela última vez. Nada de
+      sites visitados, janelas abertas ou conteúdo — e nada é enviado para servidor nenhum
+      por esta extensão.
+    </p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

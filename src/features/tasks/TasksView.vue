@@ -74,6 +74,7 @@ interface ActivityFormModel {
   tags: BoardTaskTag[]
   docTitle: string
   docContent: string
+  subtasks: string[]
 }
 
 const EMPTY_FORM = (): ActivityFormModel => ({
@@ -86,6 +87,7 @@ const EMPTY_FORM = (): ActivityFormModel => ({
   tags: [],
   docTitle: '',
   docContent: '',
+  subtasks: [],
 })
 
 interface RawMonth {
@@ -206,6 +208,28 @@ const createActivity = async () => {
         })
       } catch (error: unknown) {
         showError(apiErrorMessage(error, 'A tarefa foi criada, mas o documento falhou'))
+      }
+    }
+
+    // Subtarefas: SEQUENCIAIS de propósito. Cada criação renumera `position`
+    // no servidor, e em paralelo duas disputariam a mesma posição — a ordem em
+    // que a pessoa digitou é justamente a informação que ela quis passar.
+    const subtasks = formActivity.value.subtasks
+      .map((t) => t.trim())
+      .filter(Boolean)
+    for (const title of subtasks) {
+      try {
+        await activityService.postActivity({
+          title,
+          description: '',
+          priorityNumber: normalizePriority(formActivity.value.priorityNumber, 0),
+          dueDate: payload.dueDate,
+          monthId: monthId.value,
+          parentId: created.id,
+          responsibleUserIds: [],
+        })
+      } catch (error: unknown) {
+        showError(apiErrorMessage(error, `Não foi possível criar a subtarefa "${title}"`))
       }
     }
 

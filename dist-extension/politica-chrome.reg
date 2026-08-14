@@ -1,0 +1,8 @@
+Windows Registry Editor Version 5.00
+
+; Instala a extensão do Nevo automaticamente em toda máquina gerenciada.
+; O funcionário não faz nada: na próxima abertura do navegador ela já está lá,
+; e não pode ser removida por engano.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist]
+"1"="<ID-DA-EXTENSAO-NA-LOJA>;https://clients2.google.com/service/update2/crx"

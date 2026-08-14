@@ -1,10 +1,10 @@
 # Spec: Cronômetro confiável (nunca cortar tempo trabalhado)
 
-**Status:** Em Implementação (P1, P2 e P3 entregues; falta aplicar migration e empacotar a extensão)
+**Status:** Em Implementação (P1 a P5 entregues; falta aplicar migration e empacotar a extensão)
 **Autor:** Nicolas (com Claude)
 **Criado em:** 2026-08-13
 **Última atualização:** 2026-08-13
-**Versão:** 2.1
+**Versão:** 2.3
 
 > Sucessora operacional de [timer-ociosidade.md](./timer-ociosidade.md), que
 > entregou o aviso e o corte. Esta trata do que aquela errou.
@@ -126,8 +126,7 @@ ninguém via.
 - [x] Privacidade: trafega só o instante da última atividade. Nada de URL,
       janela, conteúdo ou credencial — quem fala com a API é o app.
 
-**Pendente:** empacotar/distribuir (carregar sem compactação já funciona) e
-trocar `host_permissions` pelo domínio definitivo.
+Empacotamento e distribuição viraram a P5.
 
 ### P2.1 — O que a auditoria depois da entrega achou
 
@@ -154,6 +153,54 @@ Defeitos que passariam batido até virarem reclamação:
 - [x] **`host_permissions` da extensão** era `https://*.vercel.app/*`: o content
       script seria injetado em todo site hospedado na plataforma. Agora é o
       domínio do produto (marcador no manifesto + `extension/README.md`).
+
+### P4 — "Como eu sei que funciona?" (CONCLUÍDA)
+
+A pergunta não tinha resposta: para conferir, era preciso ficar quinze minutos
+parado, ou usar uma flag que só existe em desenvolvimento. Ou seja, ninguém do
+time tinha como saber se estava protegido.
+
+- [x] `IdleDiagnostics` em `/settings`: nível de proteção, fonte do sinal,
+      extensão conectada (com versão) e último batimento aceito pelo servidor,
+      todos ao vivo.
+- [x] **Testar agora**: `simulateAbsence()` empurra a última atividade até o
+      limiar e o ciclo real acontece na hora. Não é ensaio — com proteção
+      completa, encerra de verdade (recuperável em um clique), e a tela diz isso
+      antes de alguém clicar.
+- [x] `extension/README.md` com instalação, o aviso do domínio e o que a
+      extensão consegue e não consegue enxergar.
+
+**Verificado:** o painel mostra os quatro sinais corretos e o clique em "Testar
+agora" faz o aviso subir em segundos, com o texto do modo limitado ("não vou
+parar sozinho") quando é o caso.
+
+### P5 — Distribuição sem passo a passo (CONCLUÍDA)
+
+A entrega anterior terminava em "abra chrome://extensions, ligue o modo do
+desenvolvedor, carregue sem compactação". Isso não se pede a cada pessoa do
+time, e o erro por trás era outro: **a extensão nunca deveria ser o primeiro
+caminho.** A permissão do navegador dá a mesma proteção com um clique e sem
+instalar nada; a extensão serve a quem bloqueou a permissão antes ou quer
+proteção com o Nevo fechado.
+
+- [x] **Tela `/protecao`** com os três caminhos em ordem de esforço: permitir
+      aqui (um clique), instalar da loja (um clique, quando publicada), pedir
+      para a TI (zero passos, com o texto do pedido pronto para copiar). Reage
+      sozinha quando a proteção fica completa.
+- [x] `IdleProtectionDialog` ganhou saída para essa tela: quem bloqueou a
+      permissão não tinha botão nenhum a clicar e ficava preso no modo limitado.
+- [x] **`npm run extension:build`**: injeta o domínio (`--origin` ou
+      `VITE_APP_ORIGIN`), gera o `.zip` da Chrome Web Store, a pasta
+      descompactada e as **políticas de instalação automática** (`.reg` de
+      Chrome e Edge, JSON para MDM). ZIP escrito à mão com `node:zlib`, sem
+      dependência nova. Verificado: o pacote extrai com os seis arquivos e o
+      manifesto sai com o domínio real.
+- [x] `VITE_EXTENSION_STORE_URL` no `.env.example`: preenchida, a tela instala
+      em um clique; vazia, o app nem oferece o caminho manual.
+
+**O que sobra para o dono do produto**, uma vez só e não por funcionário:
+publicar na Chrome Web Store (taxa única de cinco dólares) e, se as máquinas
+forem gerenciadas, aplicar a política gerada.
 
 ### Verificação (P2/P3)
 
@@ -203,6 +250,8 @@ implementada: cruzar com o Google Calendar (já integrado) ou olhar
 
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
+| 2026-08-14 | 2.3 | P5: tela /protecao com os três caminhos, empacotador com políticas de instalação automática, extensão deixa de ser o primeiro caminho | Nicolas + Claude |
+| 2026-08-14 | 2.2 | P4: painel de diagnóstico em /settings e teste do ciclo sem espera | Nicolas + Claude |
 | 2026-08-13 | 2.1 | Auditoria: lacuna persistida (fim da corrida e do diálogo que sumia), entradas legadas fora do interrogatório, saída "continuo trabalhando", limiar para 30 min, `host_permissions` restrito. Alcance por plataforma e o buraco das reuniões documentados | Nicolas + Claude |
 | 2026-08-13 | 2.0 | P2 (heartbeat, arbitragem, reconciliação, sleep) e P3 (extensão MV3) implementadas e verificadas; sinal local separado do remoto | Nicolas + Claude |
 | 2026-08-13 | 1.0 | Criação + P1 implementada e verificada | Nicolas + Claude |

@@ -30,6 +30,7 @@ import notificationsService from '@/service/notifications/notifications-service'
 import type { AccentName, Density, FontScale, ShellVariant } from '@/plugins/tokens'
 import { accents } from '@/plugins/tokens'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import IdleDiagnostics from '@/features/settings/components/IdleDiagnostics.vue'
 
 const { success: toastSuccess, error: toastError } = useToast()
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -686,6 +687,12 @@ const shellOptions: {
             </span>
           </div>
         </div>
+
+        <!-- "Como sei que funciona?": estado real desta máquina + teste do ciclo
+             inteiro sem esperar o limiar. -->
+        <div v-if="idleGuard" class="setting-block">
+          <IdleDiagnostics />
+        </div>
       </div>
 
       <!-- Notifications Discord -->
@@ -957,6 +964,11 @@ const shellOptions: {
   gap: 16px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+}
+
+/* Bloco de largura inteira dentro do card (o diagnóstico não é par rótulo/ação). */
+.setting-block {
+  padding: 10px 0 2px;
 }
 
 .setting-row:last-child {

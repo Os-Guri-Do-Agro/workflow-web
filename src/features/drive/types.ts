@@ -36,4 +36,6 @@ export interface UploadQueueItem {
   percent: number
   error: string | null
   file: File
+  /** Na fila, ainda sem vez na janela de concorrência. */
+  waiting?: boolean
 }

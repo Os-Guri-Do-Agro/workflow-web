@@ -8,9 +8,10 @@
  * inteiro; também expõe `open()` para o botão "Enviar" da toolbar abrir o
  * seletor nativo.
  */
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { CloudUpload, RotateCcw, X } from 'lucide-vue-next'
 import { getApiErrorMessage } from '@/service/api'
+import { usePasteFiles } from '@/composables/usePasteFiles'
 import { formatBytes } from '@/utils/file-kind'
 import type { UploadQueueItem } from '@/features/drive/types'
 
@@ -51,29 +52,61 @@ function onDrop(event: DragEvent) {
   if (event.dataTransfer?.files?.length) void addFiles(event.dataTransfer.files)
 }
 
-async function addFiles(list: FileList) {
+/**
+ * Quantos sobem ao mesmo tempo. Soltar 30 arquivos disparando 30 requisições
+ * juntas divide a banda entre todas, faz cada barra andar em soluços e ainda
+ * enfileira no navegador (que limita conexões por host de qualquer jeito).
+ * Com uma janela pequena, os primeiros TERMINAM cedo e o usuário vê progresso
+ * real em vez de trinta barras paradas em 40%.
+ */
+const UPLOAD_CONCURRENCY = 3
+
+async function addFiles(list: FileList | File[]) {
   const files = Array.from(list)
-  await Promise.all(files.map((file) => uploadOne(file)))
+  if (files.length === 0) return
+
+  // Todos entram na fila JÁ, para a tela mostrar o lote inteiro na hora; a
+  // janela de concorrência controla só quem está subindo.
+  const pending = files.map((file) => enqueue(file))
+
+  let cursor = 0
+  const workers = Array.from(
+    { length: Math.min(UPLOAD_CONCURRENCY, pending.length) },
+    async () => {
+      while (cursor < pending.length) {
+        const item = pending[cursor++]!
+        await uploadOne(item.file, item)
+      }
+    },
+  )
+  await Promise.all(workers)
+
   // Um emit por LOTE, não por arquivo: soltar 20 arquivos gera uma onda de
   // invalidação/refetch no pai, não vinte.
-  if (files.length > 0) emit('uploaded')
+  emit('uploaded')
+}
+
+/** Cria o item da fila (visível imediatamente, ainda sem subir). */
+function enqueue(file: File): UploadQueueItem {
+  const item: UploadQueueItem = {
+    key: `u${nextKey++}`,
+    name: file.name,
+    size: file.size,
+    percent: 0,
+    error: null,
+    file,
+    waiting: true,
+  }
+  queue.value = [...queue.value, item]
+  return item
 }
 
 async function uploadOne(file: File, existing?: UploadQueueItem) {
-  const item: UploadQueueItem =
-    existing ??
-    ({
-      key: `u${nextKey++}`,
-      name: file.name,
-      size: file.size,
-      percent: 0,
-      error: null,
-      file,
-    } satisfies UploadQueueItem)
-
-  if (!existing) queue.value = [...queue.value, item]
+  const item: UploadQueueItem = existing ?? enqueue(file)
   item.error = null
   item.percent = 0
+  item.waiting = false
+  queue.value = [...queue.value]
 
   // Recusa local do óbvio, economizando o request. Conveniência: a regra de
   // verdade (e a env que a configura) mora no servidor.
@@ -109,6 +142,23 @@ function retry(item: UploadQueueItem) {
 function dismiss(item: UploadQueueItem) {
   queue.value = queue.value.filter((q) => q.key !== item.key)
 }
+
+// Ctrl+V com um print na área de transferência sobe direto para a pasta atual,
+// sem passar pelo Paint para virar arquivo antes.
+usePasteFiles(
+  (files) => void addFiles(files),
+  { enabled: computed(() => !props.disabled) },
+)
+
+/** "3 de 12 enviados" só aparece quando o lote é grande o bastante para importar. */
+const queueSummary = computed(() => {
+  const total = queue.value.length
+  if (total < 2) return ''
+  const done = queue.value.filter((q) => !q.error && q.percent === 100).length
+  const failed = queue.value.filter((q) => q.error).length
+  const base = `${done} de ${total} enviados`
+  return failed > 0 ? `${base} · ${failed} com erro` : base
+})
 </script>
 
 <template>
@@ -141,6 +191,8 @@ function dismiss(item: UploadQueueItem) {
 
     <!-- Fila flutuante -->
     <div v-if="queue.length" class="dz-queue" role="status" aria-live="polite">
+      <p v-if="queueSummary" class="dz-queue-head">{{ queueSummary }}</p>
+
       <div v-for="item in queue" :key="item.key" class="dz-item">
         <div class="dz-item-top">
           <span class="dz-item-name" :title="item.name">{{ item.name }}</span>
@@ -164,10 +216,11 @@ function dismiss(item: UploadQueueItem) {
               <X :size="12" />
             </button>
           </template>
+          <span v-else-if="item.waiting" class="dz-item-wait">na fila</span>
           <span v-else class="dz-item-pct">{{ item.percent }}%</span>
         </div>
         <p v-if="item.error" class="dz-item-err">{{ item.error }}</p>
-        <div v-else class="dz-bar">
+        <div v-else class="dz-bar" :class="{ 'dz-bar--waiting': item.waiting }">
           <div class="dz-bar-fill" :style="{ width: `${item.percent}%` }" />
         </div>
       </div>
@@ -247,6 +300,26 @@ function dismiss(item: UploadQueueItem) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dz-queue-head {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.dz-item-wait {
+  flex: none;
+  color: var(--text-4);
+  font-size: 10.5px;
+}
+
+/* Item que ainda não teve vez: trilho sem barra, para não parecer travado. */
+.dz-bar--waiting {
+  opacity: 0.45;
 }
 
 .dz-item-pct {

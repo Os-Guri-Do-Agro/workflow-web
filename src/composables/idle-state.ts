@@ -209,6 +209,30 @@ export function regressActivity(ts: number): void {
   }
 }
 
+/**
+ * Empurra a última atividade para trás para exercitar o ciclo inteiro sem
+ * ficar 15 minutos parado na frente do computador.
+ *
+ * Existe porque "como eu sei que isto funciona?" não pode depender de esperar,
+ * nem de um modo de depuração que só roda em desenvolvimento. Quem instala a
+ * extensão precisa conseguir provar, na própria máquina e em produção, que o
+ * aviso chega e que o corte acontece.
+ *
+ * Não é um ensaio: a partir daqui tudo é o fluxo real, com corte de verdade se
+ * a proteção estiver completa. Vale exatamente por isso, e a tela avisa.
+ *
+ * Mexe também no piso remoto: ele é monotônico de propósito (nenhum sinal local
+ * o rebaixa), então sem isto o servidor sustentaria a simulação e nada
+ * aconteceria.
+ */
+export function simulateAbsence(ms: number): void {
+  const ts = Date.now() - ms
+  lastActivityAt.value = ts
+  remoteActivityAt.value = Math.min(remoteActivityAt.value, ts)
+  lastWrittenAt = 0
+  persistActivity(ts)
+}
+
 export function setLastCut(record: IdleCutRecord | null): void {
   lastCut.value = record
   try {

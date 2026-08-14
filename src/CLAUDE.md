@@ -279,6 +279,32 @@ Para exercitar sem esperar 20 minutos: `?idleDebug=1` (só em dev) usa 30s de
 aviso e 15s de carência, e ignora o sinal da `IdleDetector` (a API só informa
 "parado há pelo menos 60s", o que atropelaria limiares de segundos).
 
+**Diagnóstico na tela** (`features/settings/components/IdleDiagnostics.vue`, em
+`/settings`): mostra os quatro sinais que decidem o comportamento — nível de
+proteção, fonte do sinal, extensão conectada e último batimento aceito pelo
+servidor — e o botão **Testar agora**, que chama `simulateAbsence()` e faz o
+ciclo real acontecer na hora. Existe porque "isso funciona na minha máquina?"
+não podia depender de esperar 15 minutos nem de uma flag que só roda em dev:
+quem instala a extensão precisa conseguir provar em produção. O teste NÃO é
+encenação; com proteção completa ele encerra a entrada de verdade (recuperável
+em um clique, como qualquer corte), e a tela avisa disso antes.
+
+**Extensão do Nevo** (`extension/`, MV3 com `chrome.idle`): fonte de maior
+confiança, enxerga o sistema sem permissão web e sobrevive à aba fechada. Fala
+com o app por `postMessage` (`useExtensionBridge`), trafegando só o instante da
+última atividade. Empacotar com `npm run extension:build -- --origin https://...`: ele injeta o
+domínio (o manifesto versionado guarda um marcador), gera o `.zip` da loja e as
+políticas de instalação automática para Chrome, Edge e MDM. **Nunca** use
+curinga de plataforma (`*.vercel.app` injetaria o content script em todo site
+hospedado lá).
+
+**A extensão não é o primeiro caminho.** A tela `/protecao`
+(`features/settings/ProtectionView.vue`) oferece, nesta ordem: permitir no
+navegador (um clique, nada para instalar, mesma proteção), instalar da loja
+(`VITE_EXTENSION_STORE_URL`) e pedir para a TI (política do navegador, zero
+passos para o funcionário). Mandar cada pessoa carregar extensão sem compactação
+não é distribuição.
+
 ### Estrutura de Notas (P1 do épico de notas colaborativas)
 
 ```

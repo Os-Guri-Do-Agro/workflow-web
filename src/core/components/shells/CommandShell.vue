@@ -36,6 +36,7 @@ const breadcrumbs = computed(() => {
     ...(CANVAS_ENABLED ? { '/boards': 'Canvas' } : {}),
     '/roadmap': 'Roadmap',
     '/settings': 'Configurações',
+    '/protecao': 'Proteção do cronômetro',
     '/variables': 'Variáveis',
     '/company-users': 'Usuários',
     '/notes': 'Notas',

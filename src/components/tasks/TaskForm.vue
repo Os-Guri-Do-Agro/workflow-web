@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   X,
   Plus,
   Type,
   FileText,
   CalendarDays,
+  ChevronRight,
   Flag,
+  ListChecks,
   Users,
   Paperclip,
   Tag as TagIcon,
@@ -63,6 +65,15 @@ interface TaskFormModel {
    */
   docContent: string
   docTitle: string
+  /**
+   * Subtarefas já digitadas na criação (só os títulos).
+   *
+   * Antes, quebrar uma tarefa em passos exigia criar a tarefa, abrir a tarefa e
+   * criar uma subtarefa por vez lá dentro — três telas para uma decisão que a
+   * pessoa já tinha tomado enquanto escrevia o título. Aqui elas são criadas
+   * junto, depois do pai existir (mesmo desenho de documento e anexos).
+   */
+  subtasks: string[]
 }
 
 const emit = defineEmits<{
@@ -96,7 +107,8 @@ const priorities = [
   { value: 5, label: 'P5', tone: 'var(--err)' },
 ]
 
-const MAX_BYTES = 10 * 1024 * 1024
+/** Espelho de `ATTACHMENT_MAX_BYTES` do servidor, que é quem manda. */
+const MAX_BYTES = 25 * 1024 * 1024
 
 /**
  * `.md` escolhido no seletor, com o destino que o usuário deu a ele.
@@ -145,8 +157,8 @@ const onFileChange = async (e: Event) => {
   if (tooBig.length) {
     attachmentError.value =
       tooBig.length === 1
-        ? `"${tooBig[0]!.name}" tem mais de 10 MB`
-        : `${tooBig.length} arquivos têm mais de 10 MB`
+        ? `"${tooBig[0]!.name}" tem mais de 25 MB`
+        : `${tooBig.length} arquivos têm mais de 25 MB`
   }
 
   const ok = picked.filter((f) => f.size <= MAX_BYTES)
@@ -251,6 +263,51 @@ const onTagsChange = (tags: TaskFormTag[]) => {
 const docTitleModel = computed({
   get: () => props.modelValue.docTitle,
   set: (docTitle: string) => emit('update:modelValue', { ...props.modelValue, docTitle }),
+})
+
+// ─── Subtarefas ──────────────────────────────────────────────────────────────
+
+const subtaskDraft = ref('')
+
+function addSubtask(): void {
+  const title = subtaskDraft.value.trim()
+  if (!title) return
+  emit('update:modelValue', {
+    ...props.modelValue,
+    subtasks: [...props.modelValue.subtasks, title],
+  })
+  subtaskDraft.value = ''
+}
+
+function updateSubtask(index: number, value: string): void {
+  const subtasks = [...props.modelValue.subtasks]
+  subtasks[index] = value
+  emit('update:modelValue', { ...props.modelValue, subtasks })
+}
+
+function removeSubtask(index: number): void {
+  emit('update:modelValue', {
+    ...props.modelValue,
+    subtasks: props.modelValue.subtasks.filter((_, i) => i !== index),
+  })
+}
+
+// ─── Seção técnica (markdown) ────────────────────────────────────────────────
+
+const hasDoc = computed(
+  () =>
+    props.modelValue.docContent.trim().length > 0 ||
+    props.modelValue.docTitle.trim().length > 0,
+)
+
+/**
+ * Fechada por padrão, MAS aberta quando já tem conteúdo — senão um `.md`
+ * escolhido nos arquivos preencheria o documento sem nada na tela indicando
+ * isso, e a pessoa não teria como revisar o que vai ser salvo.
+ */
+const devOpen = ref(hasDoc.value)
+watch(hasDoc, (filled) => {
+  if (filled) devOpen.value = true
 })
 
 const docContentModel = computed({
@@ -429,31 +486,103 @@ const submit = () => {
         />
       </div>
 
-      <!-- Documento inicial: vira o principal da tarefa -->
+      <!-- Subtarefas: quebrar em passos na hora de criar, não depois -->
       <div class="field">
         <span class="label">
-          <FileText :size="12" />
-          Documento (markdown)
+          <ListChecks :size="12" />
+          Subtarefas
+          <span v-if="form.subtasks.length" class="label-count">
+            {{ form.subtasks.length }}
+          </span>
         </span>
+
+        <ul v-if="form.subtasks.length" class="sub-list">
+          <li v-for="(step, i) in form.subtasks" :key="i" class="sub-item">
+            <span class="sub-index">{{ i + 1 }}</span>
+            <input
+              class="sub-input"
+              :value="step"
+              :aria-label="`Subtarefa ${i + 1}`"
+              @input="updateSubtask(i, ($event.target as HTMLInputElement).value)"
+            />
+            <button
+              type="button"
+              class="sub-del press"
+              :aria-label="`Remover subtarefa ${i + 1}`"
+              @click="removeSubtask(i)"
+            >
+              <X :size="13" />
+            </button>
+          </li>
+        </ul>
+
+        <!-- Enter adiciona e mantém o foco: quem está listando passos digita
+             vários seguidos, e tirar a mão do teclado a cada item mata o fluxo. -->
         <input
-          v-model="docTitleModel"
+          v-model="subtaskDraft"
           type="text"
           class="input"
-          placeholder="Leia primeiro"
-          aria-label="Título do documento"
-        />
-        <textarea
-          v-model="docContentModel"
-          class="doc-area"
-          rows="5"
-          spellcheck="false"
-          placeholder="# Contexto&#10;&#10;Cole aqui a spec em markdown. Fica como documento principal da tarefa."
-          aria-label="Conteúdo do documento em markdown"
+          placeholder="Digite um passo e tecle Enter"
+          aria-label="Nova subtarefa"
+          @keydown.enter.prevent="addSubtask"
         />
         <p class="field-hint">
-          Um arquivo .md escolhido abaixo pode preencher este campo ou ficar como
-          anexo. Você escolhe.
+          Cada passo vira uma subtarefa desta tarefa, na ordem em que você
+          escrever.
         </p>
+      </div>
+
+      <!--
+        Documento em markdown atrás de um portão técnico.
+        Quem sobe spec em markdown é quem programa; para o resto do time o campo
+        aparecia sempre aberto, sem explicar o que era nem para que servia. O
+        rótulo `<dev>` é o sinal de que a seção é opcional e técnica.
+      -->
+      <div class="field">
+        <button
+          type="button"
+          class="dev-toggle press"
+          :aria-expanded="devOpen"
+          @click="devOpen = !devOpen"
+        >
+          <ChevronRight
+            :size="13"
+            class="dev-chevron"
+            :class="{ 'dev-chevron--open': devOpen }"
+            aria-hidden="true"
+          />
+          <code class="dev-tag">&lt;dev&gt;</code>
+          <span class="dev-label">Documento técnico em markdown</span>
+          <span v-if="hasDoc" class="dev-filled">preenchido</span>
+          <span v-else class="dev-optional">opcional</span>
+        </button>
+
+        <div v-if="devOpen" class="dev-body">
+          <p class="field-hint dev-hint">
+            Vira o documento principal da tarefa, legível dentro dela. Serve para
+            spec, contrato de API ou passo a passo técnico. Se não for o seu
+            caso, pode ignorar.
+          </p>
+          <input
+            v-model="docTitleModel"
+            type="text"
+            class="input"
+            placeholder="Leia primeiro"
+            aria-label="Título do documento"
+          />
+          <textarea
+            v-model="docContentModel"
+            class="doc-area"
+            rows="5"
+            spellcheck="false"
+            placeholder="# Contexto&#10;&#10;Cole aqui a spec em markdown. Fica como documento principal da tarefa."
+            aria-label="Conteúdo do documento em markdown"
+          />
+          <p class="field-hint">
+            Um arquivo .md escolhido abaixo pode preencher este campo ou ficar
+            como anexo. Você escolhe.
+          </p>
+        </div>
       </div>
 
       <!-- Anexos -->
@@ -532,10 +661,10 @@ const submit = () => {
 
         <p v-if="attachmentError" class="field-err">{{ attachmentError }}</p>
         <p v-else-if="mdPicks.length" class="field-hint">
-          Até 10 MB por arquivo. Documento fica legível dentro da tarefa; anexo
+          Até 25 MB por arquivo. Documento fica legível dentro da tarefa; anexo
           fica como arquivo para baixar.
         </p>
-        <p v-else class="field-hint">Até 10 MB por arquivo.</p>
+        <p v-else class="field-hint">Até 25 MB por arquivo.</p>
       </div>
     </div>
 
@@ -1036,6 +1165,161 @@ const submit = () => {
 
 .doc-area::placeholder {
   color: var(--text-4);
+}
+
+/* ─── Subtarefas ─────────────────────────────────────────────────────────── */
+
+.label-count {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.sub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.sub-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sub-index {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sub-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.sub-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.sub-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.sub-del:hover {
+  background: var(--surface-3);
+  color: var(--err);
+}
+
+/* ─── Portão da seção técnica ────────────────────────────────────────────── */
+
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dev-toggle:hover {
+  background: var(--surface-2);
+}
+
+.dev-chevron {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.dev-chevron--open {
+  transform: rotate(90deg);
+}
+
+.dev-tag {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.dev-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-optional,
+.dev-filled {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dev-optional {
+  background: var(--surface-3);
+  color: var(--text-4);
+}
+
+.dev-filled {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+}
+
+.dev-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.dev-hint {
+  margin-top: 0;
 }
 
 .field-hint {

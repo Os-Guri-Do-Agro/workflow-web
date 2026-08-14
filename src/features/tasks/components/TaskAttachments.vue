@@ -34,6 +34,7 @@ import AppDialog from '@/components/ui/AppDialog.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import activityService from '@/service/activities/activity-service'
 import { getApiErrorMessage } from '@/service/api'
+import { usePasteFiles } from '@/composables/usePasteFiles'
 import { useToast } from '@/composables/useToast'
 import {
   formatBytes,
@@ -121,7 +122,16 @@ async function uploadOne(file: File): Promise<void> {
   }
 }
 
-async function handleFiles(files: FileList | null): Promise<void> {
+/**
+ * Colar print direto na tarefa. É o caso mais comum de anexo aqui (evidência
+ * de bug, tela do cliente) e era o mais caro: sem isto, a captura precisa
+ * virar arquivo no Paint antes de existir.
+ */
+usePasteFiles((files) => void handleFiles(files), {
+  enabled: computed(() => props.canEdit),
+})
+
+async function handleFiles(files: FileList | File[] | null): Promise<void> {
   if (!files?.length || !props.canEdit) return
 
   const picked = Array.from(files)
@@ -307,7 +317,7 @@ function openViewer(index: number): void {
         Arraste arquivos aqui ou <strong>clique para escolher</strong>
       </span>
       <span class="files__hint">
-        Até 10 MB por arquivo. Um .md pergunta se vira documento ou anexo.
+        Até 25 MB por arquivo. Um .md pergunta se vira documento ou anexo.
       </span>
     </div>
 

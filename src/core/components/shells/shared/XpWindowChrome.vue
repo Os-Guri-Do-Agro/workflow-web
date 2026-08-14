@@ -36,6 +36,7 @@ const ROUTE_TITLES: Record<string, string> = {
   'task-details': 'Tarefa',
   report: 'Relatório',
   settings: 'Configurações',
+  protection: 'Proteção do cronômetro',
   variables: 'Variáveis',
   'company-users': 'Usuários',
   notes: 'Notas',

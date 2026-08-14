@@ -15,12 +15,20 @@
  * iniciar, onde a ativação se perdia no meio do caminho.
  */
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { BellRing, Radar, ShieldCheck, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
 import { protectionDialogOpen, closeProtectionDialog } from '@/composables/idle-protection-dialog'
 
 const alerts = useIdleAlerts()
+const router = useRouter()
+
+/** Leva à tela que oferece extensão e pedido para a TI, sem adiar a cobrança. */
+function irParaOpcoes() {
+  closeProtectionDialog()
+  void router.push({ name: 'protection' })
+}
 
 /** O AppDialog é v-model; o estado real mora no módulo compartilhado. */
 const open = computed({
@@ -111,6 +119,11 @@ function handleLater() {
     <footer class="prot-foot">
       <button class="prot-btn prot-btn--ghost" type="button" @click="handleLater">
         {{ done ? 'Fechar' : 'Agora não' }}
+      </button>
+      <!-- Saída para quem bloqueou a permissão: aqui não há botão a oferecer, e
+           sem este caminho a pessoa ficaria presa no modo limitado para sempre. -->
+      <button v-if="!done" class="prot-btn prot-btn--ghost" type="button" @click="irParaOpcoes">
+        Outras formas
       </button>
       <button
         v-if="!done"

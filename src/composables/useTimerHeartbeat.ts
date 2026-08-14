@@ -51,13 +51,20 @@ const SLEEP_GAP_MS = 5 * 60_000
 /** Última suspensão detectada, para a UI poder explicar o que houve. */
 export const lastSleepAt = ref<number | null>(null)
 
+/**
+ * Último batimento aceito pelo servidor. É a prova, na tela de diagnóstico, de
+ * que a entrada aberta está sendo acompanhada de verdade — sem isso, "está
+ * sincronizado" seria só uma promessa do código.
+ */
+export const lastBeatAt = ref<number | null>(null)
+
 let installed = false
 
 export function useTimerHeartbeat() {
   const { isRunning, invalidateAll } = useTimeTracking()
 
   if (installed || typeof window === 'undefined') {
-    return { lastSleepAt }
+    return { lastSleepAt, lastBeatAt }
   }
   installed = true
 
@@ -91,6 +98,7 @@ export function useTimerHeartbeat() {
       // A verdade do servidor pode ser MAIS recente que a nossa: outro
       // dispositivo da pessoa está ativo. Adotar é o que impede este cliente de
       // cortar tempo que não é dele.
+      lastBeatAt.value = Date.now()
       const remote = new Date(result.lastActivityAt).getTime()
       if (Number.isFinite(remote)) adoptRemoteActivity(remote)
     } catch {
@@ -127,5 +135,5 @@ export function useTimerHeartbeat() {
     installed = false
   })
 
-  return { lastSleepAt }
+  return { lastSleepAt, lastBeatAt }
 }

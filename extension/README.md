@@ -3,37 +3,63 @@
 Extensão MV3 que dá ao cronômetro do Nevo o sinal de atividade do **computador
 inteiro**, sem depender de permissão do navegador e sobrevivendo à aba fechada.
 
-## Antes de distribuir: troque o domínio
+## Primeiro: quase ninguém precisa dela
 
-O `manifest.json` traz `https://nevo.SEU-DOMINIO.com/*` como marcador. **Troque
-pelo domínio exato do Nevo** nos dois lugares (`host_permissions` e
-`content_scripts.matches`) antes de empacotar.
+A permissão de detecção do próprio navegador dá a **mesma** proteção com um
+clique e sem instalar nada. A tela `/protecao` do app oferece esse caminho
+primeiro, e a extensão só aparece como alternativa para dois casos: quem
+bloqueou a permissão antes (e aí só o cadeado reverteria) e quem quer proteção
+com o Nevo fechado.
 
-Não use curinga de plataforma (`https://*.vercel.app/*`, `https://*.netlify.app/*`
-e afins). O curinga faria o content script ser injetado em **todo site hospedado
-naquela plataforma**, e qualquer um deles poderia conversar com a extensão. O
-alcance precisa ser o domínio do produto, e só ele.
+Não faça o time inteiro instalar extensão. Faça o time inteiro clicar em
+Permitir.
 
-## Instalar sem compactar (teste)
+## Empacotar
 
-1. `chrome://extensions` (ou `edge://extensions`)
-2. Ligue o **Modo do desenvolvedor**
-3. **Carregar sem compactação** e aponte para esta pasta
-4. Abra o Nevo: o selo de proteção do cronômetro passa a "completa"
+```bash
+npm run extension:build -- --origin https://nevo.suaempresa.com
+# com o id da loja já conhecido:
+npm run extension:build -- --origin https://nevo.suaempresa.com --id abcdefghijklmnop
+```
 
-Para conferir o estado, clique no ícone da extensão — o popup mostra a última
-atividade detectada e se a página do Nevo está conectada.
+O domínio pode vir do `.env` (`VITE_APP_ORIGIN`) em vez do argumento. Sai tudo
+em `dist-extension/`:
+
+| Arquivo | Para quê |
+|---|---|
+| `nevo-extension-<versão>.zip` | subir na Chrome Web Store |
+| `nevo-extension/` | carregar sem compactação (teste local) |
+| `politica-chrome.reg` | instalação automática em máquinas com Chrome |
+| `politica-edge.reg` | idem, Edge |
+| `politica-mdm.json` | mesma regra por MDM/Intune/Workspace |
+
+O manifesto versionado no repositório traz um marcador no lugar do domínio, de
+propósito: o empacotador injeta o real. **Nunca** use curinga de plataforma
+(`https://*.vercel.app/*`), que injetaria o content script em todo site
+hospedado lá.
+
+## Distribuir: os três caminhos, do melhor para o pior
+
+**Política do navegador (zero passos para o funcionário).** Se as máquinas são
+gerenciadas, aplique `politica-chrome.reg` / `politica-edge.reg` (ou o JSON no
+MDM). Na próxima abertura do navegador a extensão já está instalada, e ninguém
+precisa saber que ela existe. Requer o id da loja, então publique antes.
+
+**Chrome Web Store (um clique).** Suba o `.zip` no [painel do
+desenvolvedor](https://chrome.google.com/webstore/devconsole). Taxa única de
+cinco dólares, revisão de alguns dias. Publicada, preencha
+`VITE_EXTENSION_STORE_URL` e a tela `/protecao` passa a instalar em um clique,
+com atualização automática dali em diante. Edge e Brave instalam da mesma loja.
+
+**Carregar sem compactação (só para desenvolvimento).** `chrome://extensions` →
+Modo do desenvolvedor → Carregar sem compactação → `dist-extension/nevo-extension`.
+Não distribua assim: o navegador reclama a cada reinício e não atualiza sozinho.
 
 ## O que ela vê, e o que ela não vê
 
-Ela usa `chrome.idle`, que responde uma coisa só: **ativo, ocioso ou tela
+Usa `chrome.idle`, que responde uma coisa só: **ativo, ocioso ou tela
 bloqueada**. Não há acesso a teclas, conteúdo, aba aberta ou histórico, e a
 extensão não fala com a API do Nevo — quem faz isso é o app, autenticado. O
 único dado que atravessa a ponte é um instante (`lastActivityAt`).
 
-## Por que ela existe
-
-O `IdleDetector` da web resolve o mesmo problema, mas exige permissão explícita
-que muita gente nunca chegou a ver (o Chrome silencia solicitações em máquina
-configurada assim), e morre junto com a aba. A extensão não pede nada em tempo
-de uso e continua valendo com o Nevo fechado.
+Isso também é o que responder na ficha de privacidade da loja.

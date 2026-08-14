@@ -96,6 +96,7 @@ const router = createRouter({
     { path: '/tasks/:month/:taskId', name: 'task-details', component: () => import('@/features/tasks/TaskDetailsView.vue') },
     { path: '/relatorio/:quarterId', name: 'report', component: () => import('@/features/reports/ReportView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/features/settings/SettingsView.vue') },
+    { path: '/protecao', name: 'protection', component: () => import('@/features/settings/ProtectionView.vue') },
     { path: '/variables', name: 'variables', component: () => import('@/features/companies/CompanyVariablesView.vue') },
     { path: '/company-users', name: 'company-users', component: () => import('@/features/companies/CompanyUsersView.vue'), meta: { requiredRole: 'ADMIN' } },
     { path: '/bug-reports', name: 'bug-reports-list', component: () => import('@/features/bug-report/BugReportsListView.vue'), meta: { requiredRole: 'WORKER' } },
