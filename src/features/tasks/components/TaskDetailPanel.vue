@@ -245,6 +245,20 @@ function openParent(): void {
   })
 }
 
+/**
+ * Abre a subtarefa como tarefa cheia. É o caminho para dar a ela descrição,
+ * documento `.md` e anexo — coisas que só existem na tela de detalhe e que
+ * ficavam inacessíveis enquanto a subtarefa era um texto sem clique.
+ */
+function openSubtask(subtaskId: string): void {
+  const monthId = activity.value?.monthId
+  if (!monthId) return
+  void router.push({
+    path: `/tasks/${monthId}/${subtaskId}`,
+    query: props.companyId ? { company: props.companyId } : undefined,
+  })
+}
+
 // ── Gravações ────────────────────────────────────────────────────────────────
 function saveTitle(value: string) {
   const title = value.trim()
@@ -676,12 +690,21 @@ onBeforeUnmount(() => {
                   <CheckCircle2 v-if="sub.status === 'DONE'" :size="17" class="subtask__on" />
                   <Circle v-else :size="17" class="subtask__off" />
                 </button>
-                <span
+                <!--
+                  Clicável de propósito. Antes era texto morto, e por isso não
+                  havia como dar descrição, documento ou anexo a uma subtarefa:
+                  ela nascia no formulário só com título e não abria em lugar
+                  nenhum. Abrindo, ela é uma tarefa como qualquer outra.
+                -->
+                <button
+                  type="button"
                   class="subtask__title"
                   :class="{ 'subtask__title--done': sub.status === 'DONE' }"
+                  :title="`Abrir “${sub.title}”`"
+                  @click="openSubtask(sub.id)"
                 >
                   {{ sub.title }}
-                </span>
+                </button>
                 <!-- Quantos documentos a frente tem. O conteúdo não vem aqui:
                      só o número, para o módulo enxergar onde a spec está. -->
                 <span
@@ -1103,11 +1126,29 @@ onBeforeUnmount(() => {
 .subtask__title {
   flex: 1;
   min-width: 0;
+  padding: 2px 4px;
+  margin-left: -4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-family: inherit;
   font-size: 12.5px;
   color: var(--text);
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.subtask__title:hover {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+.subtask__title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .subtask__title--done {

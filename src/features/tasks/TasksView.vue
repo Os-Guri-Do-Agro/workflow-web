@@ -11,7 +11,8 @@ import {
   CloudOff,
   RefreshCw,
 } from 'lucide-vue-next'
-import TaskForm from '@/components/tasks/TaskForm.vue'
+import TaskForm, { type TaskFormSubtask } from '@/components/tasks/TaskForm.vue'
+import { plainToHtml } from '@/features/tasks/description-html'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import KanbanBoard from '@/components/tasks/KanbanBoard.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
@@ -74,7 +75,8 @@ interface ActivityFormModel {
   tags: BoardTaskTag[]
   docTitle: string
   docContent: string
-  subtasks: string[]
+  /** Título + descrição: a subtarefa deixou de nascer obrigatoriamente vazia. */
+  subtasks: TaskFormSubtask[]
 }
 
 const EMPTY_FORM = (): ActivityFormModel => ({
@@ -215,13 +217,17 @@ const createActivity = async () => {
     // no servidor, e em paralelo duas disputariam a mesma posição — a ordem em
     // que a pessoa digitou é justamente a informação que ela quis passar.
     const subtasks = formActivity.value.subtasks
-      .map((t) => t.trim())
-      .filter(Boolean)
-    for (const title of subtasks) {
+      .map((s) => ({ title: s.title.trim(), description: s.description.trim() }))
+      .filter((s) => s.title)
+    for (const { title, description } of subtasks) {
       try {
         await activityService.postActivity({
           title,
-          description: '',
+          // O campo do formulário é texto plano; `plainToHtml` dá a ele a mesma
+          // forma que o editor de descrição produz, para a leitura não ter dois
+          // casos. Antes isto era `''` fixo: a subtarefa nascia sem descrição
+          // por decisão do código, não da pessoa.
+          description: plainToHtml(description),
           priorityNumber: normalizePriority(formActivity.value.priorityNumber, 0),
           dueDate: payload.dueDate,
           monthId: monthId.value,

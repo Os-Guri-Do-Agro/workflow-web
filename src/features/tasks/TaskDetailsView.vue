@@ -27,6 +27,7 @@ import {
   Lightbulb,
   ListChecks,
   Loader2,
+  Maximize2,
   Paperclip,
   Pencil,
   Plus,
@@ -57,7 +58,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import TaskDescriptionEditor from './components/TaskDescriptionEditor.vue'
-import { htmlToPlainText, toEditorHtmlCached } from './description-html'
+import { htmlToPlainText, plainToHtml, toEditorHtmlCached } from './description-html'
 import './styles/task-content.css'
 
 function getActivityMonthId(activity: any): string | undefined {
@@ -164,9 +165,12 @@ const dismissSuggestion = () => {
 
 const showQuickSubtaskModal = ref(false)
 const quickSubtaskTitle = ref('')
+/** Descrição no ato da criação — antes a subtarefa nascia obrigatoriamente vazia. */
+const quickSubtaskDescription = ref('')
 
 const openQuickSubtask = (title: string) => {
   quickSubtaskTitle.value = title
+  quickSubtaskDescription.value = ''
   showQuickSubtaskModal.value = true
 }
 
@@ -176,7 +180,9 @@ const createQuickSubtask = async () => {
   try {
     await activityService.postActivity({
       title: quickSubtaskTitle.value,
-      description: '',
+      // O texto do campo é plano; `plainToHtml` dá a ele a mesma forma que o
+      // editor de descrição produz, para a leitura não precisar de dois casos.
+      description: plainToHtml(quickSubtaskDescription.value),
       priorityNumber: 1,
       dueDate: dateOnlyToUtcNoonIso(todayDateOnly()),
       monthId: activeMonthId.value,
@@ -190,6 +196,7 @@ const createQuickSubtask = async () => {
     showError(error.response?.data?.message || 'Erro ao criar subtarefa')
   } finally {
     quickSubtaskTitle.value = ''
+    quickSubtaskDescription.value = ''
     saving.value = false
   }
 }
@@ -620,6 +627,20 @@ const openSubtaskModal = (task: any) => {
     attachment: null,
   }
   showSubtaskModal.value = true
+}
+
+/**
+ * Leva a subtarefa para a tela de detalhe, que é a mesma da tarefa: lá ela tem
+ * documentos `.md`, anexos, tags e histórico. O modal continua servindo para o
+ * ajuste rápido de título, prazo e responsável.
+ */
+const openSubtaskPage = (task: { id: string } | null) => {
+  if (!task?.id) return
+  showSubtaskModal.value = false
+  void router.push({
+    path: `/tasks/${route.params.month}/${task.id}`,
+    query: route.query.company ? { company: route.query.company } : undefined,
+  })
 }
 
 const updateSubtask = async () => {
@@ -1385,6 +1406,22 @@ const onSubtaskFilePick = (e: Event) => {
           <span class="dialog-title-text">Detalhes da subtarefa</span>
         </div>
         <div class="dialog-head-actions">
+          <!--
+            Abrir em tela cheia. Este modal edita título, descrição e prazo, mas
+            documento `.md` e anexo só existem na tela de detalhe — e sem este
+            caminho a subtarefa ficava sem nenhum: era criada só com título, e
+            não abria em lugar nenhum onde o resto pudesse ser adicionado.
+          -->
+          <button
+            type="button"
+            class="icon-btn press"
+            aria-label="Abrir subtarefa em tela cheia"
+            title="Abrir em tela cheia (documentos, anexos e histórico)"
+            :disabled="saving"
+            @click="openSubtaskPage(selectedSubtask)"
+          >
+            <Maximize2 :size="15" />
+          </button>
           <button
             type="button"
             class="icon-btn press"
@@ -1575,7 +1612,25 @@ const onSubtaskFilePick = (e: Event) => {
           type="text"
           autofocus
         />
-        <p class="field-hint">Você poderá editar mais detalhes após criar.</p>
+      </div>
+
+      <!--
+        Descrição na CRIAÇÃO. Antes a subtarefa nascia só com título e a
+        descrição ia vazia por decisão do código, não da pessoa: quem quisesse
+        explicar o que era a subtarefa tinha que criar, reabrir e editar.
+      -->
+      <div class="field">
+        <label class="view-label" for="quick-subtask-desc">Descrição (opcional)</label>
+        <textarea
+          id="quick-subtask-desc"
+          v-model="quickSubtaskDescription"
+          class="field-input field-input--area"
+          rows="4"
+          placeholder="O que precisa ser feito nesta subtarefa?"
+        />
+        <p class="field-hint">
+          Depois de criar, dá para abrir a subtarefa e acrescentar documentos e anexos.
+        </p>
       </div>
     </div>
 

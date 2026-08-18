@@ -145,10 +145,23 @@ const characterCount = computed(() => {
   return editor.value?.storage.characterCount?.characters() ?? 0
 })
 
-/** Último HTML que ESTE componente aplicou ou gravou, para o watcher comparar. */
-let applied = toEditorHtmlCached(props.modelValue)
+/**
+ * Último HTML que ESTE componente aplicou ou gravou, para o watcher comparar.
+ *
+ * Começa `null`, e isso é a correção de um defeito que apagava a descrição na
+ * tela: o editor monta SEMPRE com conteúdo vazio (`content: ''`), e quem o
+ * preenche é o watcher abaixo. Inicializar estes dois com o `modelValue` do
+ * setup fazia o watcher concluir "já vi esse valor, não há o que aplicar" na
+ * primeira vez que o editor existia — e o conteúdo nunca era escrito.
+ *
+ * O sintoma dependia de QUANDO o valor chegava. Criando a descrição, ela chega
+ * depois do mount (o valor era vazio no setup), então funcionava. Reabrindo
+ * para editar, o valor já vinha do cache junto com o mount, e o campo aparecia
+ * vazio — parecia que o texto tinha sumido.
+ */
+let applied: string | null = null
 /** Último `modelValue` visto, para descartar o eco do servidor sem custo. */
-let lastSeen = props.modelValue ?? ''
+let lastSeen: string | null = null
 
 // Conteúdo inicial: o `useEditor` monta com content vazio e o valor pode chegar
 // depois (a query do painel resolve async).
@@ -170,11 +183,14 @@ watch(
     // vale pagar a conversão e o `setContent`. Antes isto serializava o
     // documento inteiro (`getHTML()`) a cada resposta do servidor.
     const cru = value ?? ''
-    if (cru === lastSeen) return
+    // `lastSeen === null` = ainda não aplicamos nada neste editor. Nesse caso a
+    // comparação é pulada de propósito: o editor está vazio e precisa receber o
+    // conteúdo, mesmo que o valor não tenha "mudado" desde o setup.
+    if (lastSeen !== null && cru === lastSeen) return
     lastSeen = cru
 
     const incoming = toEditorHtmlCached(cru)
-    if (normalizeHtml(incoming) === normalizeHtml(applied)) return
+    if (applied !== null && normalizeHtml(incoming) === normalizeHtml(applied)) return
     applied = incoming
     instance.commands.setContent(incoming, { emitUpdate: false })
   },

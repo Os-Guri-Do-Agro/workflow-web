@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ChevronRight,
   Flag,
+  AlignLeft,
   ListChecks,
   Users,
   Paperclip,
@@ -46,6 +47,13 @@ interface TaskFormTag {
   color: string | null
 }
 
+/** Subtarefa em rascunho, antes de a tarefa pai existir. */
+export interface TaskFormSubtask {
+  title: string
+  /** Texto plano; vira HTML na hora de gravar (`plainToHtml`). */
+  description: string
+}
+
 interface TaskFormModel {
   title: string
   description: string
@@ -66,14 +74,18 @@ interface TaskFormModel {
   docContent: string
   docTitle: string
   /**
-   * Subtarefas já digitadas na criação (só os títulos).
+   * Subtarefas já digitadas na criação, com título e descrição.
    *
    * Antes, quebrar uma tarefa em passos exigia criar a tarefa, abrir a tarefa e
    * criar uma subtarefa por vez lá dentro — três telas para uma decisão que a
    * pessoa já tinha tomado enquanto escrevia o título. Aqui elas são criadas
    * junto, depois do pai existir (mesmo desenho de documento e anexos).
+   *
+   * A descrição entrou depois: eram só títulos, e o código enviava
+   * `description: ''` fixo, então subtarefa nascia obrigatoriamente sem
+   * explicação nenhuma. O campo é opcional e fica recolhido até ser pedido.
    */
-  subtasks: string[]
+  subtasks: TaskFormSubtask[]
 }
 
 const emit = defineEmits<{
@@ -269,23 +281,52 @@ const docTitleModel = computed({
 
 const subtaskDraft = ref('')
 
+/**
+ * Quais subtarefas estão com a descrição aberta.
+ *
+ * Fechada por padrão de propósito: quem está quebrando a tarefa em passos digita
+ * título e Enter, título e Enter. Um textarea sempre visível por item
+ * transformaria uma lista de cinco passos numa página de rolagem.
+ */
+const descricaoAberta = ref<Set<number>>(new Set())
+
+function toggleDescricao(index: number): void {
+  const proximo = new Set(descricaoAberta.value)
+  if (proximo.has(index)) proximo.delete(index)
+  else proximo.add(index)
+  descricaoAberta.value = proximo
+}
+
 function addSubtask(): void {
   const title = subtaskDraft.value.trim()
   if (!title) return
   emit('update:modelValue', {
     ...props.modelValue,
-    subtasks: [...props.modelValue.subtasks, title],
+    subtasks: [...props.modelValue.subtasks, { title, description: '' }],
   })
   subtaskDraft.value = ''
 }
 
-function updateSubtask(index: number, value: string): void {
-  const subtasks = [...props.modelValue.subtasks]
-  subtasks[index] = value
+function updateSubtask(index: number, title: string): void {
+  const subtasks = props.modelValue.subtasks.map((s, i) => (i === index ? { ...s, title } : s))
+  emit('update:modelValue', { ...props.modelValue, subtasks })
+}
+
+/** A descrição que a subtarefa já nasce tendo (antes ela nascia sempre vazia). */
+function updateSubtaskDescription(index: number, description: string): void {
+  const subtasks = props.modelValue.subtasks.map((s, i) =>
+    i === index ? { ...s, description } : s,
+  )
   emit('update:modelValue', { ...props.modelValue, subtasks })
 }
 
 function removeSubtask(index: number): void {
+  // Os índices abertos mudam de dono quando um item some do meio da lista.
+  descricaoAberta.value = new Set(
+    [...descricaoAberta.value]
+      .filter((i) => i !== index)
+      .map((i) => (i > index ? i - 1 : i)),
+  )
   emit('update:modelValue', {
     ...props.modelValue,
     subtasks: props.modelValue.subtasks.filter((_, i) => i !== index),
@@ -501,10 +542,23 @@ const submit = () => {
             <span class="sub-index">{{ i + 1 }}</span>
             <input
               class="sub-input"
-              :value="step"
+              :value="step.title"
               :aria-label="`Subtarefa ${i + 1}`"
               @input="updateSubtask(i, ($event.target as HTMLInputElement).value)"
             />
+            <!-- Descrição opcional, escondida até ser pedida: a lista precisa
+                 continuar rápida para quem só quer enumerar passos. -->
+            <button
+              type="button"
+              class="sub-del press"
+              :class="{ 'sub-del--on': descricaoAberta.has(i) || step.description }"
+              :aria-label="`Descrição da subtarefa ${i + 1}`"
+              :aria-expanded="descricaoAberta.has(i)"
+              title="Escrever uma descrição para esta subtarefa"
+              @click="toggleDescricao(i)"
+            >
+              <AlignLeft :size="13" />
+            </button>
             <button
               type="button"
               class="sub-del press"
@@ -513,6 +567,15 @@ const submit = () => {
             >
               <X :size="13" />
             </button>
+            <textarea
+              v-if="descricaoAberta.has(i) || step.description"
+              class="sub-desc"
+              rows="2"
+              :value="step.description"
+              :aria-label="`Descrição da subtarefa ${i + 1}`"
+              placeholder="O que precisa ser feito neste passo?"
+              @input="updateSubtaskDescription(i, ($event.target as HTMLTextAreaElement).value)"
+            />
           </li>
         </ul>
 
@@ -1192,6 +1255,32 @@ const submit = () => {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* A descrição desce para a linha de baixo, alinhada com o texto do título. */
+  flex-wrap: wrap;
+}
+
+.sub-desc {
+  flex: 1 0 100%;
+  margin: 2px 0 6px 28px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.sub-desc:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Marca que a subtarefa JÁ tem descrição escrita. */
+.sub-del--on {
+  color: var(--accent);
 }
 
 .sub-index {

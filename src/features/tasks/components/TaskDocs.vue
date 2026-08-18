@@ -121,6 +121,16 @@ function titleFromFilename(filename: string): string {
 }
 
 /** Posição da aba aberta: as ações da barra agem sobre ela. */
+/**
+ * Acima deste número, a faixa de abas vira lista lateral.
+ *
+ * Seis é onde a faixa começa a quebrar em várias linhas na largura real do
+ * painel, comendo a altura do editor — que é o que a pessoa veio usar.
+ */
+const MAX_ABAS = 6
+
+const listaLateral = computed(() => props.docs.length > MAX_ABAS)
+
 const selectedIndex = computed(() =>
   props.docs.findIndex((doc) => doc.id === selectedId.value),
 )
@@ -300,11 +310,21 @@ function onDeleteDialog(open: boolean): void {
       </p>
     </div>
 
-    <template v-else-if="!collapsed">
-      <!-- Abas, como num editor de código: o documento aberto é uma aba ligada
-           ao conteúdo abaixo. A lista lateral que existia aqui desperdiçava uma
-           coluna inteira para dois ou três nomes e roubava largura justamente
-           de quem precisa dela (markdown + preview lado a lado). -->
+    <!--
+      DOIS layouts, e a escolha é pelo número de documentos.
+
+      Abas (poucos): o documento aberto fica ligado ao conteúdo abaixo, como num
+      editor de código, e nenhuma coluna é gasta com dois ou três nomes.
+
+      Lista lateral (muitos): acima de meia dúzia, a faixa de abas passava a
+      ocupar várias linhas e roubava a altura do editor. Em coluna, o nome fica
+      inteiro, a ordem é óbvia e chegar no décimo documento é um clique.
+    -->
+    <div
+      v-else-if="!collapsed"
+      class="docs__layout"
+      :class="{ 'docs__layout--aside': listaLateral }"
+    >
       <div class="docs__tabbar">
         <div class="docs__tabs" role="tablist" aria-label="Documentos da tarefa">
           <button
@@ -424,7 +444,7 @@ function onDeleteDialog(open: boolean): void {
           @retry="retry"
         />
       </div>
-    </template>
+    </div>
 
     <ConfirmDialog
       v-if="pendingDelete"
@@ -609,16 +629,88 @@ function onDeleteDialog(open: boolean): void {
   min-width: 0;
 }
 
+/*
+ * As abas QUEBRAM LINHA em vez de rolar para o lado.
+ *
+ * Antes eram uma faixa com `overflow-x: auto` e barra de rolagem escondida: com
+ * poucos documentos parecia elegante, com muitos era uma armadilha. Não dava
+ * para saber que existiam outros, não havia barra para arrastar, e as setas ao
+ * lado (que MOVEM o documento, não navegam) davam a impressão de ser a
+ * navegação que faltava.
+ *
+ * Quebrar linha resolve o essencial: todos ficam visíveis e alcançáveis. Acima
+ * de três linhas a lista rola na vertical, com barra de verdade.
+ */
 .docs__tabs {
   display: flex;
   align-items: stretch;
+  align-content: flex-start;
+  flex-wrap: wrap;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+  /* Até duas linhas de abas; acima disso o layout já virou lista lateral. */
+  max-height: 76px;
+  overflow-y: auto;
 }
 
-.docs__tabs::-webkit-scrollbar {
-  display: none;
+/* ─── Layout com lista lateral (muitos documentos) ────────────────────────── */
+
+.docs__layout--aside {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+/* A faixa de abas vira coluna: nome inteiro, ordem óbvia, um clique por item. */
+.docs__layout--aside .docs__tabbar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+}
+
+.docs__layout--aside .docs__tabs {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  /* Acompanha a altura do editor ao lado, rolando por dentro quando passa. */
+  max-height: 420px;
+  gap: 2px;
+}
+
+.docs__layout--aside .docs__tab {
+  max-width: none;
+  border-radius: var(--radius-sm);
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.docs__layout--aside .docs__tab--on {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* As ações do documento aberto vão para o rodapé da coluna. */
+.docs__layout--aside .docs__tab-actions {
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  /* Sem largura para duas colunas, volta a ser uma pilha. */
+  .docs__layout--aside {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docs__layout--aside .docs__tabbar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .docs__layout--aside .docs__tabs {
+    max-height: 132px;
+  }
 }
 
 .docs__tab {
