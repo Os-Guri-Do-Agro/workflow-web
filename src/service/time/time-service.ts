@@ -14,6 +14,12 @@ export interface TimeEntry {
   billable: boolean
   // true quando o timer foi encerrado automaticamente (esquecido >12h / cap 24h).
   autoStopped: boolean
+  /**
+   * Por que a entrada fechou: `user` | `idle` | `stale` | `cap` | `forgotten` |
+   * `resolved`. É o que separa o corte que ESTA máquina pediu (`idle`, já
+   * anunciado pelo guard) daquele que o servidor decidiu sozinho.
+   */
+  closeReason?: string | null
   source: TimeEntrySource
   createdAt: string
   updatedAt: string

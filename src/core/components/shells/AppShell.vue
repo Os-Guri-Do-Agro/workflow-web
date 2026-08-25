@@ -30,6 +30,9 @@ import { useToast } from '@/composables/useToast'
 import { useTimerDocumentTitle } from '@/composables/useTimerDocumentTitle'
 import { useFaviconBadge } from '@/composables/useFaviconBadge'
 import { useTimerIdleGuard } from '@/composables/useTimerIdleGuard'
+import { useServerCutAlert } from '@/composables/useServerCutAlert'
+import { usePushSubscription } from '@/composables/usePushSubscription'
+import { notificationPermission } from '@/composables/useSystemNotification'
 import { useTimerHeartbeat } from '@/composables/useTimerHeartbeat'
 import IdlePermissionPrompt from '@/components/onboarding/IdlePermissionPrompt.vue'
 import IdleAlert from '@/components/onboarding/IdleAlert.vue'
@@ -79,6 +82,21 @@ useFaviconBadge()
 // ocioso se ninguém responder. Mora aqui porque precisa valer com qualquer
 // shell e em qualquer rota, não só onde o widget do timer está montado.
 useTimerIdleGuard()
+// Corte decidido pelo servidor (timer esquecido, teto de 24h): sem isto a
+// entrada sumia da tela em silêncio.
+useServerCutAlert()
+// Web Push: o único canal que alcança quem fechou a aba, que é justamente o
+// cenário do corte por esquecimento. Reassinar é barato e idempotente, então
+// vale a cada boot com permissão concedida — é o que renova uma assinatura
+// expirada e zera falhas de uma que voltou a viver.
+const { ensureSubscribed } = usePushSubscription()
+watch(
+  notificationPermission,
+  (permissao) => {
+    if (permissao === 'granted') void ensureSubscribed()
+  },
+  { immediate: true },
+)
 // Sinal de vida da entrada aberta: é o que permite reconstruir o que houve
 // quando este cliente some (reboot, sleep, navegador morto) e impede que um
 // aparelho encerre tempo que outro ainda está usando.

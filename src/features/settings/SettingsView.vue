@@ -26,6 +26,7 @@ import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
 import { TIMER_VOLUMES, useTimerSounds } from '@/composables/useTimerSounds'
 import { useSystemNotification } from '@/composables/useSystemNotification'
+import { usePushSubscription } from '@/composables/usePushSubscription'
 import { idleDetectionPermission, idleDetectionState } from '@/composables/useIdleDetection'
 import { useToast } from '@/composables/useToast'
 import importService from '@/service/import/import-service'
@@ -119,6 +120,35 @@ const { preview, packs } = useTimerSounds()
 
 // ── Teste de notificação ─────────────────────────────────────────────────
 const notification = useSystemNotification()
+const pushSub = usePushSubscription()
+
+/**
+ * Teste do caminho de PUSH, que é diferente do teste acima.
+ *
+ * O botão "Testar" ao lado exercita a notificação local: ela nasce nesta aba e
+ * só prova que o sistema operacional exibe o toast. Este aqui sai do servidor e
+ * volta pelo service worker, que é o caminho do aviso quando o navegador está
+ * fechado. É o único jeito de descobrir ANTES que a entrega não funciona nesta
+ * máquina, em vez de descobrir com um timer perdido.
+ */
+async function testPush() {
+  const assinou = await pushSub.ensureSubscribed()
+  if (!assinou) {
+    toastError(
+      pushSub.available.value === false
+        ? 'Push indisponível: o servidor está sem chave configurada'
+        : 'Não foi possível assinar o push neste navegador',
+    )
+    return
+  }
+  try {
+    const { sent } = await pushSub.sendTest()
+    if (sent > 0) toastSuccess('Push enviado. Deve chegar mesmo com esta aba fechada')
+    else toastError('Nenhum navegador assinado recebeu o push')
+  } catch {
+    toastError('Falha ao enviar o push de teste')
+  }
+}
 
 /**
  * Dispara a MESMA notificação do aviso de ociosidade, com os dois botões, para
@@ -803,6 +833,17 @@ function irPara(id: string) {
             >
               <Bell :size="12" />
               Testar
+            </button>
+            <!-- Caminho diferente do de cima: sai do servidor e volta pelo
+                 service worker, que é o que alcança a aba fechada. -->
+            <button
+              v-if="idleAlerts.granted.value && pushSub.supported"
+              type="button"
+              class="sound-preview"
+              @click="testPush"
+            >
+              <Bell :size="12" />
+              Testar com a aba fechada
             </button>
             <button
               v-if="idleAlerts.nextStep.value"

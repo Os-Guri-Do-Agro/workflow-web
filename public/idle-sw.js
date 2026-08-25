@@ -20,6 +20,42 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim())
 })
 
+/**
+ * Web Push (spec timer-avisa-antes-de-parar).
+ *
+ * Este é o único caminho que funciona com a aba fechada, e é por ele que chegam
+ * o aviso "vou encerrar seu timer" e o anúncio do corte por esquecimento. O
+ * payload é o JSON montado pelo PushService do backend.
+ *
+ * O try/catch em volta do parse não é decoração: push sem corpo (ou com corpo
+ * que não é o nosso) chegaria como exceção e o navegador exibiria a notificação
+ * genérica "Este site foi atualizado em segundo plano", que é pior do que uma
+ * mensagem nossa mal formatada.
+ */
+self.addEventListener('push', (event) => {
+  let payload = {}
+  try {
+    payload = event.data ? event.data.json() : {}
+  } catch {
+    payload = {}
+  }
+
+  const title = payload.title || 'Nevo'
+  const options = {
+    body: payload.body || '',
+    icon: '/brand/marca.png',
+    badge: '/brand/marca.png',
+    tag: payload.tag || 'nevo-push',
+    // `kind` é o que distingue aviso real de teste no roteamento das ações; sem
+    // ele o clique num teste poderia mexer no timer de verdade.
+    data: { kind: payload.kind || 'unknown', ...(payload.data || {}) },
+    requireInteraction: true,
+    actions: payload.actions || [],
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
 self.addEventListener('notificationclick', (event) => {
   // Clique no corpo da notificação chega sem `action`.
   const action = event.action || 'open'

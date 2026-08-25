@@ -50,10 +50,26 @@ function getCtx(): AudioContext | null {
       return null
     }
   }
-  // O contexto nasce suspenso até o primeiro gesto; como só tocamos em clique,
-  // o resume sempre acontece dentro de um.
+  // O contexto nasce suspenso até o primeiro gesto. Tentar o resume aqui cobre
+  // o caso do clique; fora de gesto o navegador recusa, e é por isso que existe
+  // `unlockTimerAudio` (chamado ao iniciar o timer). Ver o comentário dele.
   if (ctx.state === 'suspended') void ctx.resume()
   return ctx
+}
+
+/**
+ * Destrava o áudio DENTRO de um gesto do usuário, para que os sons que NÃO
+ * nascem de clique consigam tocar depois.
+ *
+ * Esta função existe por causa de um bug concreto: o aviso e o corte por
+ * ociosidade acontecem sem clique nenhum, às vezes horas depois da última
+ * interação. Nesse instante o `AudioContext` ainda está suspenso, `resume()`
+ * fora de ativação transitória é recusado pelo navegador, e o alerta sai mudo.
+ * Chamada no clique de iniciar o timer, ela deixa o contexto em `running`, e aí
+ * o alerta automático encontra um contexto pronto.
+ */
+export function unlockTimerAudio(): void {
+  getCtx()
 }
 
 /** ±5 cents: o suficiente para o ouvido não catalogar como "o mesmo bipe". */
@@ -168,6 +184,25 @@ function breath(audio: AudioContext, dest: AudioNode, from: number, to: number):
   gain.connect(dest)
   src.start(t0)
   src.stop(t0 + 0.24)
+}
+
+/**
+ * Motivo de atenção do aviso de ociosidade.
+ *
+ * Não é um sétimo pack, e não foi adicionado aos seis existentes, de propósito.
+ * Os packs existem porque som é gosto NO GESTO COTIDIANO de começar e parar.
+ * Um alarme tem outra função: precisa ser reconhecível e cortar o ambiente. Seis
+ * variações de alarme diluiriam justamente o que o torna útil.
+ *
+ * Três repetições curtas subindo: o ouvido lê repetição ascendente como chamado,
+ * e nota única descendente como confirmação. Aqui queremos chamado.
+ */
+function attention(audio: AudioContext, dest: AudioNode): void {
+  for (let i = 0; i < 3; i++) {
+    const at = i * 0.19
+    note(audio, dest, 880, { at, duration: 0.1, peak: 0.075, attack: 0.005 })
+    note(audio, dest, 1174.66, { at: at + 0.065, duration: 0.13, peak: 0.06, attack: 0.005 })
+  }
 }
 
 /** Toque seco que fecha uma parada (o "clique" de coisa concluída). */
@@ -313,6 +348,19 @@ export function useTimerSounds() {
   const playStop = () => play('stop')
 
   /**
+   * Alerta do aviso de ociosidade. Respeita `timerSounds` e `timerVolume` como
+   * qualquer outro som: alarme que ignora a preferência de quem está em reunião
+   * é pior do que alarme nenhum. O ganho é mais alto que o do par start/stop
+   * porque este precisa ser ouvido por cima do que a pessoa estiver fazendo.
+   */
+  function playAlert(): void {
+    if (!ui.timerSounds) return
+    const audio = getCtx()
+    if (!audio) return
+    attention(audio, master(audio, 0.8 * ui.timerVolume))
+  }
+
+  /**
    * Prévia da galeria: início e, logo depois, a parada correspondente. O handle
    * é guardado e cancelado a cada nova prévia — clicar rápido pelos seis cards
    * empilhava seis paradas, e sair da tela no meio fazia o som tocar em outra.
@@ -331,5 +379,5 @@ export function useTimerSounds() {
     previewTimer = null
   })
 
-  return { playStart, playStop, preview, packs: TIMER_SOUND_PACKS }
+  return { playStart, playStop, playAlert, preview, packs: TIMER_SOUND_PACKS }
 }

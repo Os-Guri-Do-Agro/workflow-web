@@ -3,6 +3,7 @@ import { useTimeTracking } from '@/composables/useTimeTracking'
 import { useIdleDetection } from '@/composables/useIdleDetection'
 import { useSystemNotification } from '@/composables/useSystemNotification'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useTimerSounds } from '@/composables/useTimerSounds'
 import {
   IDLE_DEBUG,
   IDLE_KEYS,
@@ -106,6 +107,9 @@ export function useTimerIdleGuard() {
   const { isRunning, running, stopAt, stop, start, createManual } = useTimeTracking()
   const { idleGuard, idleWarnMin } = useUiPreferences()
   const notification = useSystemNotification()
+  // O aviso era só visual: notificação, favicon e título. Quem estava com o
+  // navegador atrás de outra janela não via nada e descobria o corte depois.
+  const { playAlert, playStop } = useTimerSounds()
   useIdleDetection()
 
   const debug = IDLE_DEBUG
@@ -145,6 +149,9 @@ export function useTimerIdleGuard() {
   async function enterWarning() {
     idlePhase.value = 'warning'
     idleSince.value = effectiveActivityAt.value
+    // Antes da notificação: o som é o que alcança quem está de fone em outra
+    // janela, e o toast do sistema pode ir direto para a Central de Ações.
+    playAlert()
     const minutes = Math.round(warnMs.value / 60_000)
     const limitado = protectionLevel.value !== 'full'
     await notification.notify({
@@ -220,6 +227,7 @@ export function useTimerIdleGuard() {
       // Sem oferta de recuperação: recriar [cutAt, agora] sobreporia a entrada
       // que acabou de fechar e levaria 409 do anti-sobreposição.
       idlePhase.value = 'stopped'
+      playStop()
       void notification.close(WARN_TAG)
       await notification.notify({
         tag: CUT_TAG,
@@ -242,6 +250,7 @@ export function useTimerIdleGuard() {
     setLastCut(record)
     idlePhase.value = 'stopped'
     idleSince.value = null
+    playStop()
     void notification.close(WARN_TAG)
 
     const hhmm = new Date(cutAt).toLocaleTimeString('pt-BR', {

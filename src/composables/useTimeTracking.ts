@@ -9,6 +9,7 @@ import timeService, {
 } from '@/service/time/time-service'
 import realtimeService from '@/service/realtime/realtime-service'
 import { elapsedSince } from '@/utils/duration'
+import { unlockTimerAudio } from '@/composables/useTimerSounds'
 import { onTabVisible } from '@/utils/tab-visibility'
 
 export const timeKeys = {
@@ -103,7 +104,14 @@ export function useTimeTracking() {
     ])
 
   const start = useMutation({
-    mutationFn: (input: StartTimerInput) => timeService.start(input),
+    mutationFn: (input: StartTimerInput) => {
+      // DENTRO do gesto, e não no `onSuccess`: a ativação transitória do clique
+      // não sobrevive ao await da rede, e é ela que autoriza o áudio. Sem esta
+      // linha, o alerta de ociosidade (que toca horas depois, sem clique algum)
+      // encontra o AudioContext suspenso e sai mudo.
+      unlockTimerAudio()
+      return timeService.start(input)
+    },
     onSuccess: (entry) => {
       queryClient.setQueryData(timeKeys.current, entry)
       void invalidateAll()
