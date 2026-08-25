@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import pushService from '@/service/push/push-service'
-import { notificationPermission } from '@/composables/useSystemNotification'
+import { notificationPermission, SW_URL } from '@/composables/useSystemNotification'
 
 /**
  * Assinatura de Web Push (spec timer-avisa-antes-de-parar).
@@ -67,6 +67,14 @@ export function usePushSubscription() {
         pushAvailable.value = config.enabled
         if (!config.enabled || !config.publicKey) return false
 
+        // Registrar ANTES de esperar o `ready`, e não confiar que outro
+        // caminho já registrou: `navigator.serviceWorker.ready` é uma promise
+        // que NUNCA resolve enquanto não houver worker ativo. Num boot com a
+        // permissão já concedida, `ensureRegistration` do useSystemNotification
+        // só roda na primeira notificação, então esperar aqui travaria a
+        // assinatura para sempre, em silêncio e sem erro nenhum.
+        // Registrar a mesma URL duas vezes é idempotente.
+        await navigator.serviceWorker.register(SW_URL, { scope: '/' })
         const registration = await navigator.serviceWorker.ready
         const existing = await registration.pushManager.getSubscription()
         const subscription =

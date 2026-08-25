@@ -14,7 +14,8 @@ import { ref } from 'vue'
  * fallback é uma notificação sem botões, cujo clique foca a aba.
  */
 
-const SW_URL = '/idle-sw.js'
+/** Exportado porque o push também precisa garantir ESTE worker registrado. */
+export const SW_URL = '/idle-sw.js'
 const ICON = '/brand/marca.png'
 
 export type IdleNotificationAction = 'continue' | 'stop' | 'recover' | 'open'
