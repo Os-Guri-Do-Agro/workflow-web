@@ -17,6 +17,7 @@ import {
   Paintbrush,
   Bug,
   HardDrive,
+  Link2,
   QrCode,
   ScanText,
   Timer,
@@ -99,6 +100,7 @@ const railItems = computed<RailItem[]>(() => {
     { to: '/calendar', icon: CalendarDays, label: 'Calendário', section: 'Pessoal' },
     // Ferramentas de integração por último, espelhando o NavList do CommandShell.
     { to: '/qr', icon: QrCode, label: 'QR Codes', section: 'Ferramentas' },
+    { to: '/links', icon: Link2, label: 'Encurtador', section: 'Ferramentas' },
     { to: '/ocr', icon: ScanText, label: 'OCR Digital', section: 'Ferramentas' },
   )
   // Tokens das ferramentas: só ADMIN de alguma empresa (página agregada).

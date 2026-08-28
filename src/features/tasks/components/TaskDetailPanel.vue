@@ -30,7 +30,12 @@ import companiesServices from '@/service/companies/companies-services'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { getUserToken } from '@/utils/authContent'
 import { useToast } from '@/composables/useToast'
-import { dueDatePatchValue, formatDateOnly, isoToDateOnly } from '@/utils/date'
+import {
+  dateOnlyInMonth,
+  dueDatePatchValue,
+  formatDateOnly,
+  isoToDateOnly,
+} from '@/utils/date'
 import Pill from '@/components/ui/Pill.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -119,6 +124,8 @@ const memberItems = computed(() =>
 interface PlanningMonth {
   id: string
   name: string
+  /** 1-12. É o que permite o prazo acompanhar a troca de mês (ver `saveMonth`). */
+  number: number
 }
 interface PlanningQuarter {
   id: string
@@ -308,10 +315,30 @@ function saveMonth(monthId: string) {
   if (!monthId || monthId === currentMonthId.value) return
   const quarter = quartersList.value.find((q) => q.months?.some((m) => m.id === monthId))
   const month = quarter?.months?.find((m) => m.id === monthId)
+
+  // O prazo acompanha o mês. Quem realinha de verdade é o backend (regra única,
+  // vale para qualquer cliente); aqui o `dueDate` entra no patch OTIMISTA por
+  // dois motivos, e o segundo é o que conserta o defeito:
+  //
+  // 1. a data nova aparece no mesmo tique, sem esperar a resposta;
+  // 2. declara a chave como TOCADA. O `runSave` aplica da resposta do servidor
+  //    apenas as chaves tocadas — sem isto o prazo realinhado voltaria do
+  //    servidor e seria descartado, e o painel seguiria exibindo a data do mês
+  //    antigo até alguém dar F5.
+  const atual = activity.value?.dueDate
+  const realinhado =
+    atual && month
+      ? dueDatePatchValue(dateOnlyInMonth(isoToDateOnly(atual), month.number))
+      : undefined
+
   void saveFields(
     'month',
     { monthId },
-    { monthId, month: month ? { id: month.id, name: month.name } : null },
+    {
+      monthId,
+      month: month ? { id: month.id, name: month.name } : null,
+      ...(realinhado !== undefined && { dueDate: realinhado }),
+    },
   )
 }
 

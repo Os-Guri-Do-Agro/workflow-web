@@ -72,7 +72,14 @@ function getResponsibleUserIds(activity: any): string[] {
   )
 }
 
-/** Payload da troca de mês: sem `dueDate`, para a API não encostar na data. */
+/**
+ * Payload da troca rápida de mês.
+ *
+ * `dueDate` fica FORA de propósito, e é justamente o que faz o prazo acompanhar
+ * o mês: a API só realinha a data quando o corpo não traz uma. Mandar `dueDate`
+ * aqui significaria "o usuário escolheu este dia", e ele não escolheu nada — ele
+ * trocou o mês.
+ */
 function buildActivityMovePayload(activity: any, monthId: string) {
   return {
     title: activity.title,
@@ -472,8 +479,10 @@ const changeActivityMonth = async (newMonthId: string) => {
   const previousMonthId = activeMonthId.value
   changingMonth.value = true
   try {
-    // Troca rápida de mês pela barra lateral: move só o planejamento. A data de
-    // entrega fica como está, porque o usuário não pediu para mexer nela.
+    // Troca rápida de mês pela barra lateral. O prazo acompanha o mês novo (o
+    // realinhamento é feito pela API), então o aviso diz para onde a data foi:
+    // mexer na entrega da pessoa sem ela ver é pior do que não mexer.
+    const prazoAntes = activityInfo.value.dueDate ?? null
     const updated = await activityService.patchActivity(
       taskId.value,
       buildActivityMovePayload(activityInfo.value, newMonthId),
@@ -482,7 +491,12 @@ const changeActivityMonth = async (newMonthId: string) => {
     await navigateToMonth(newMonthId)
     syncPlacementSelection()
     publishCurrentActivity(previousMonthId)
-    showSuccess('Mês atualizado com sucesso')
+    const prazoDepois = updated?.dueDate ?? null
+    showSuccess(
+      prazoDepois && prazoDepois !== prazoAntes
+        ? `Mês atualizado. Entrega movida para ${formatDateOnly(prazoDepois)}`
+        : 'Mês atualizado com sucesso',
+    )
   } catch (error: any) {
     syncPlacementSelection()
     showError(error.response?.data?.message || 'Erro ao alterar mês')

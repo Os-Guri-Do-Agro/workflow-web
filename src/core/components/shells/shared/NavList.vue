@@ -15,6 +15,7 @@ import {
   HardDrive,
   Milestone,
   Paintbrush,
+  Link2,
   QrCode,
   ScanText,
   type LucideIcon,
@@ -78,6 +79,7 @@ const mainItems = computed<NavItem[]>(() => [
  */
 const toolsItems = computed<NavItem[]>(() => [
   { title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Ferramentas' },
+  { title: 'Encurtador', icon: Link2, to: '/links', section: 'Ferramentas' },
   { title: 'OCR Digital', icon: ScanText, to: '/ocr', section: 'Ferramentas' },
   // Tokens das duas ferramentas acima. Só para quem é ADMIN de alguma empresa
   // (a página é agregada; não depende da empresa ativa).

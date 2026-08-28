@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Paintbrush,
   HardDrive,
+  Link2,
   QrCode,
   ScanText,
   Plug,
@@ -55,6 +56,7 @@ const tabs = computed(() => [
   { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
   // Ferramentas de integração por último (o Canvas não tem seções; a ordem diz).
   { to: '/qr', icon: QrCode, label: 'QR Codes' },
+  { to: '/links', icon: Link2, label: 'Encurtador' },
   { to: '/ocr', icon: ScanText, label: 'OCR Digital' },
   // Tokens das ferramentas: só ADMIN de alguma empresa (página agregada).
   ...(isAdminAnywhere.value

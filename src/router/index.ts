@@ -81,6 +81,13 @@ const router = createRouter({
     { path: '/drive', name: 'drive', component: () => import('@/features/drive/DriveView.vue') },
     // Acesso por membership (login basta). Escopo por empresa é via x-company-id.
     { path: '/qr', name: 'qr', component: () => import('@/features/qr/QrCodesView.vue') },
+    // Encurtador de campanha (spec: workflow-api/docs/specs/2026/q3/q3-2/encurtador-utm.md).
+    // Acesso por login; o escopo pessoal/empresa é escolhido na criação do link.
+    {
+      path: '/links',
+      name: 'short-links',
+      component: () => import('@/features/short-link/ShortLinkView.vue'),
+    },
     // Ferramenta em desenvolvimento: a página apresenta o produto (spec: docs/specs/ocr-digital.md).
     { path: '/ocr', name: 'ocr', component: () => import('@/features/ocr/OcrDigitalView.vue') },
     // Tokens de API das ferramentas (spec: docs/specs/acessos-publicos.md).
