@@ -1,4 +1,5 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
+import { TIMER_AUTO_STOP_ENABLED } from '@/config/feature-flags'
 import { useTimeTracking } from '@/composables/useTimeTracking'
 import { useIdleDetection } from '@/composables/useIdleDetection'
 import { useSystemNotification } from '@/composables/useSystemNotification'
@@ -25,6 +26,11 @@ import {
  * fazer com isso: avisar aos 15 min (notificação do sistema + favicon + título)
  * e, se ninguém responder em mais 5, encerrar a entrada no instante da última
  * atividade real — o tempo ocioso não entra em total nenhum.
+ *
+ * **HOJE O CORTE ESTÁ DESLIGADO** (`TIMER_AUTO_STOP_ENABLED`, ver
+ * `config/feature-flags.ts`): estava encerrando timer de gente que estava
+ * trabalhando. O aviso continua, e o botão "Parar agora" dele também — o que
+ * sumiu foi só o encerramento sem ninguém pedir. Ver `cortaAutomatico`.
  *
  * Nada de ociosidade vai para o servidor: ele recebe só o fim da entrada.
  *
@@ -134,12 +140,31 @@ export function useTimerIdleGuard() {
    * limitado: lá não existe corte, e mostrar contagem regressiva seria mentira.
    */
   const secondsToCut = computed(() => {
-    if (idlePhase.value !== 'warning' || protectionLevel.value !== 'full') return 0
+    if (idlePhase.value !== 'warning' || !cortaAutomatico.value) return 0
     const deadline = effectiveActivityAt.value + warnMs.value + graceMs.value
     return Math.max(0, Math.round((deadline - now.value) / 1000))
   })
 
   const enabled = computed(() => idleGuard.value)
+
+  /**
+   * Existe corte automático nesta sessão?
+   *
+   * Duas condições, e as duas por motivos diferentes:
+   *
+   * - `TIMER_AUTO_STOP_ENABLED`: a chave geral, hoje DESLIGADA (ver
+   *   `config/feature-flags.ts`). Cortava tempo de gente que estava trabalhando.
+   * - `protectionLevel === 'full'`: mesmo com a chave ligada, cortar exige uma
+   *   fonte que enxergue o computador inteiro. Sem ela, "sem eventos na aba" só
+   *   quer dizer que o Nevo está minimizado.
+   *
+   * Tudo que dependia de `protectionLevel === 'full'` passou a depender daqui:
+   * a contagem regressiva, o texto do aviso e o próprio corte precisam contar a
+   * MESMA história, senão o aviso promete um corte que não vem.
+   */
+  const cortaAutomatico = computed(
+    () => TIMER_AUTO_STOP_ENABLED && protectionLevel.value === 'full',
+  )
 
   function describe(): string {
     const desc = running.value?.description?.trim()
@@ -153,7 +178,7 @@ export function useTimerIdleGuard() {
     // janela, e o toast do sistema pode ir direto para a Central de Ações.
     playAlert()
     const minutes = Math.round(warnMs.value / 60_000)
-    const limitado = protectionLevel.value !== 'full'
+    const limitado = !cortaAutomatico.value
     await notification.notify({
       tag: WARN_TAG,
       title: 'Seu tempo continua correndo',
@@ -190,7 +215,7 @@ export function useTimerIdleGuard() {
     // inteiro. Sem ela, "sem eventos na aba" significa apenas que o Nevo está
     // minimizado — foi assim que o cronômetro parou de quem só tinha ido
     // trabalhar em outro programa. O aviso continua; o corte, não.
-    if (reason === 'auto' && protectionLevel.value !== 'full') return
+    if (reason === 'auto' && !cortaAutomatico.value) return
     if (reason === 'auto' && !claimCut()) return
 
     cutting.value = true
