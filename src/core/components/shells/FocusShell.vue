@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Columns3,
   Milestone,
+  Repeat,
   KeyRound,
   Users,
   StickyNote,
@@ -83,6 +84,8 @@ const railItems = computed<RailItem[]>(() => {
     { to: '/roadmap', icon: Milestone, label: 'Roadmap', section: 'Trabalho' },
     { to: '/drive', icon: HardDrive, label: 'Drive', section: 'Trabalho' },
     { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER', section: 'Trabalho' },
+    // Protótipo de tarefas recorrentes (dados fictícios).
+    { to: '/recorrentes', icon: Repeat, label: 'Recorrentes', section: 'Trabalho' },
   ]
   if (firstMonth.value) {
     items.push({

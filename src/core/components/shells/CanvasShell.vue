@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Columns3,
   Milestone,
+  Repeat,
   KeyRound,
   StickyNote,
   CalendarDays,
@@ -50,6 +51,8 @@ const tabs = computed(() => [
   { to: '/board', icon: Columns3, label: 'Board' },
   ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas' }] : []),
   { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
+  // Protótipo de tarefas recorrentes (dados fictícios).
+  { to: '/recorrentes', icon: Repeat, label: 'Recorrentes' },
   { to: '/drive', icon: HardDrive, label: 'Drive' },
   { to: '/variables', icon: KeyRound, label: 'Variáveis' },
   { to: '/notes', icon: StickyNote, label: 'Notas' },

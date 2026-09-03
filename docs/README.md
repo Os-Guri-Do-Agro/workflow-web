@@ -19,6 +19,7 @@ Documentos de especificação e migração em [`specs/`](./specs/):
 - [shell-nav-unification.md](./specs/shell-nav-unification.md) — unificação de navegação nos shells
 - [legacy-views-migration.md](./specs/legacy-views-migration.md) — migração mdi → lucide e tokens
 - [roadmap-backend-contract.md](./specs/roadmap-backend-contract.md) — contrato esperado para backend da tela Roadmap
+- [tarefas-recorrentes-backend-contract.md](./specs/tarefas-recorrentes-backend-contract.md) — contrato para o backend das tarefas recorrentes (protótipo de front pronto em `/recorrentes`)
 
 ## Setup rápido
 

@@ -14,6 +14,7 @@ import {
   Bug,
   HardDrive,
   Milestone,
+  Repeat,
   Paintbrush,
   Link2,
   QrCode,
@@ -66,6 +67,9 @@ const mainItems = computed<NavItem[]>(() => [
   { title: 'Roadmap', icon: Milestone, to: '/roadmap', section: 'Trabalho' },
   { title: 'Drive', icon: HardDrive, to: '/drive', section: 'Trabalho' },
   { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Trabalho' },
+  // Protótipo de tarefas recorrentes (dados fictícios). Fica em Trabalho, ao
+  // lado de Tarefas, porque é onde a pessoa vai procurar por ele.
+  { title: 'Recorrentes', icon: Repeat, to: '/recorrentes', section: 'Trabalho' },
   // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
   { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
   { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },

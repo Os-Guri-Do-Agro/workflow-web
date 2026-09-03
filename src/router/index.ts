@@ -100,6 +100,14 @@ const router = createRouter({
     },
     { path: '/roadmap', name: 'roadmap', component: () => import('@/features/roadmap/RoadmapView.vue') },
     { path: '/tasks/:month', name: 'tasks', component: () => import('@/features/tasks/TasksView.vue') },
+    // Protótipo de tarefas recorrentes: 100% dado fictício, sem chamada de API.
+    // Fora de `/tasks/:month` de propósito — a tela navega pelo mês por conta
+    // própria, e o mês vem do prazo da tarefa, não da URL.
+    {
+      path: '/recorrentes',
+      name: 'recurring-tasks',
+      component: () => import('@/features/tasks/recurring/RecurringTasksView.vue'),
+    },
     { path: '/tasks/:month/:taskId', name: 'task-details', component: () => import('@/features/tasks/TaskDetailsView.vue') },
     { path: '/relatorio/:quarterId', name: 'report', component: () => import('@/features/reports/ReportView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/features/settings/SettingsView.vue') },
