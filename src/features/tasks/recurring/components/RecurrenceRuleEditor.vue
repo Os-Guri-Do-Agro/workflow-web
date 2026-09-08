@@ -18,7 +18,18 @@ import type { LucideIcon } from 'lucide-vue-next'
 import type { MonthDay, RecurrenceFrequency, RecurrenceRule } from '../recurrence-types'
 import { WEEKDAYS, dayLabel, describeRule, monthLabel, monthKeyOf, nextOccurrences } from '../recurrence-engine'
 
-const props = defineProps<{ modelValue: RecurrenceRule }>()
+const props = defineProps<{
+  modelValue: RecurrenceRule
+  /**
+   * Esconde o campo de data de início.
+   *
+   * Ligado quando o editor vive DENTRO do formulário de tarefa: lá o prazo já é
+   * um campo, e ele é o mesmo dado. Dois campos de data na mesma tela são duas
+   * datas para discordarem — a pessoa preenche "Entrega: 12/11" e a primeira
+   * repetição nasce no dia em que ela criou a regra.
+   */
+  hideStart?: boolean
+}>()
 const emit = defineEmits<{ 'update:modelValue': [value: RecurrenceRule] }>()
 
 const rule = computed(() => props.modelValue)
@@ -204,7 +215,7 @@ function toggleEnd(): void {
 
     <!-- Prazo / início -->
     <div class="row">
-      <label class="field flex-1">
+      <label v-if="!hideStart" class="field flex-1">
         <span class="label">
           <CalendarDays :size="12" />
           {{ rule.frequency === 'once' ? 'Prazo' : 'Começa em' }}
@@ -249,8 +260,9 @@ function toggleEnd(): void {
       </div>
     </div>
 
-    <!-- Prévia: a frase + as próximas datas geradas -->
-    <div class="preview">
+    <!-- Prévia: a frase + as próximas datas geradas. Dentro do formulário de
+         tarefa, "Uma vez, em 12/11" só repetiria o campo de prazo logo acima. -->
+    <div v-if="!(hideStart && rule.frequency === 'once')" class="preview">
       <p class="preview-sentence">{{ sentence }}</p>
       <div v-if="rule.frequency !== 'once'" class="preview-dates">
         <span class="preview-caption">Próximas:</span>

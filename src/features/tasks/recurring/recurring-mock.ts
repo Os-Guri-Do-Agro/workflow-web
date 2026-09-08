@@ -1,28 +1,23 @@
 /**
  * Sementes do protótipo — dados fictícios, nenhuma chamada de API.
  *
- * Foram escolhidos para a tela já nascer contando a história dos três
- * problemas que motivaram a feature, em vez de mostrar uma lista genérica:
+ * Só REPETIÇÕES: a tarefa avulsa passou a ir pela API de verdade quando a
+ * recorrência virou um campo do formulário de tarefa, e semear uma avulsa
+ * fictícia aqui só encheria o board de um card que não é de ninguém.
+ *
+ * Foram escolhidas para o board já nascer contando as duas histórias que
+ * motivaram a feature, em vez de mostrar uma lista genérica:
  *
  * - as FIXAS do mês, que hoje vivem paradas na coluna "Em teste" e são
  *   recopiadas na mão a cada virada de mês;
  * - as SEMANAIS por dia da semana, que hoje viram quatro ou cinco cards
- *   duplicados no board;
- * - uma tarefa AVULSA já criada em "Em andamento", porque nem toda tarefa
- *   nasce em "A fazer".
+ *   duplicados no board.
  *
  * As datas são relativas a hoje de propósito: o protótipo não pode envelhecer
  * e virar uma tela de cards atrasados na primeira semana.
  */
 import type { RecurringTag, RecurringTemplate } from './recurrence-types'
 import { addDays, monthKeyOf, today, weekdayOf } from './recurrence-engine'
-
-export const MOCK_MEMBERS = [
-  'Luis Gustavo',
-  'Ana Prado',
-  'Rafael Lima',
-  'Carla Menezes',
-] as const
 
 const tag = (name: string, color: string | null): RecurringTag => ({
   id: `tag-${name.toLowerCase()}`,
@@ -159,26 +154,5 @@ export const MOCK_TEMPLATES: RecurringTemplate[] = [
     },
     active: true,
     createdAt: mondayThisWeek,
-  },
-  {
-    id: 'tpl-migracao',
-    title: 'Migrar o ambiente de homologação',
-    description: 'Tarefa avulsa que já começou: foi criada direto em "Em andamento".',
-    priorityNumber: 1,
-    initialStatus: 'IN_PROGRESS',
-    assignees: ['Luis Gustavo'],
-    tags: [MOCK_TAGS[2]!],
-    subtasks: [{ title: 'Subir o banco novo', description: '' }],
-    rule: {
-      frequency: 'once',
-      interval: 1,
-      weekdays: [],
-      monthDay: 1,
-      skipWeekends: false,
-      startDate: addDays(today(), 3),
-      endDate: null,
-    },
-    active: true,
-    createdAt: today(),
   },
 ]

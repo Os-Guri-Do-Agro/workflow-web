@@ -10,6 +10,8 @@ import {
   Inbox,
   CloudOff,
   RefreshCw,
+  CalendarDays,
+  Repeat,
 } from 'lucide-vue-next'
 import TaskForm, { type TaskFormSubtask } from '@/components/tasks/TaskForm.vue'
 import { plainToHtml } from '@/features/tasks/description-html'
@@ -33,6 +35,27 @@ import { useBacklog } from '@/composables/useBacklog'
 import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import { useQueryClient } from '@tanstack/vue-query'
+// ── Repetição (PROTÓTIPO, dado fictício — ver docs/specs/tarefas-recorrentes-backend-contract.md)
+// Recorrência é um CAMPO da tarefa, então ela vive aqui dentro, no board do mês,
+// e não numa tela paralela: dois lugares para procurar a mesma tarefa seria
+// exatamente o problema que a feature tenta resolver.
+import RecurringAgenda from '@/features/tasks/recurring/components/RecurringAgenda.vue'
+import RecurrenceManagerDialog from '@/features/tasks/recurring/components/RecurrenceManagerDialog.vue'
+import { useRecurringTasks } from '@/features/tasks/recurring/useRecurringTasks'
+import { resolveBoardMonthKey } from '@/features/tasks/recurring/month-key'
+import {
+  describeRule,
+  emptyRule,
+  monthLabel,
+  shiftMonthKey,
+} from '@/features/tasks/recurring/recurrence-engine'
+import {
+  isOccurrenceId,
+  parseOccurrenceId,
+  type RecurrenceRule,
+  type RecurringOccurrence,
+  type RecurringTemplate,
+} from '@/features/tasks/recurring/recurrence-types'
 
 // ── Tipos locais (shape real da API de tarefas/quarters deste módulo) ──
 type BoardStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
@@ -55,6 +78,10 @@ interface BoardTask {
   responsibles?: TaskResponsible[]
   /** Linha da pivot, como a API devolve. O filtro casa por `slug`. */
   tags?: Array<{ tag: BoardTaskTag }>
+  dueDate?: string | null
+  subtasks?: Array<{ id: string; title: string; status: string }>
+  /** Presente só nos cards gerados por uma repetição (protótipo, §recorrência). */
+  recurrence?: string
 }
 
 type BoardColumns = Record<BoardStatus, BoardTask[]>
@@ -77,6 +104,10 @@ interface ActivityFormModel {
   docContent: string
   /** Título + descrição: a subtarefa deixou de nascer obrigatoriamente vazia. */
   subtasks: TaskFormSubtask[]
+  /** Coluna em que a tarefa nasce (antes era sempre `TODO`, imposto pela API). */
+  initialStatus: BoardStatus
+  /** Repetição. `once` = a tarefa avulsa de sempre. */
+  rule: RecurrenceRule
 }
 
 const EMPTY_FORM = (): ActivityFormModel => ({
@@ -90,11 +121,16 @@ const EMPTY_FORM = (): ActivityFormModel => ({
   docTitle: '',
   docContent: '',
   subtasks: [],
+  initialStatus: 'TODO',
+  rule: emptyRule(),
 })
 
 interface RawMonth {
   id: string
   name: string
+  /** Nem toda resposta traz; quando traz, é a fonte mais confiável do mês. */
+  number?: number | null
+  year?: number | null
 }
 
 interface RawQuarter {
@@ -119,7 +155,7 @@ const queryClient = useQueryClient()
 const dialog = ref(false)
 const creating = ref(false)
 const selectedUser = ref<string>('')
-const currentTab = ref<'board' | 'backlog'>('board')
+const currentTab = ref<'board' | 'agenda' | 'backlog'>('board')
 const members = ref<CompanyMember[]>([])
 const isWorkerRole = ref(false)
 const { success: showSuccess, error: showError } = useToast()
@@ -162,6 +198,72 @@ const currentMonthInfo = computed<{ month: RawMonth; quarterName: string | null 
   return null
 })
 
+// ── Repetição: o mês do board em calendário de verdade ──────────────────────
+//
+// `/tasks/:month` navega por `monthId` (uuid) e o contrato atual não devolve o
+// intervalo de datas do mês. `resolveBoardMonthKey` é a costura do protótipo
+// (ela some quando a §8 do contrato de backend existir).
+const monthCalendarKey = computed(() =>
+  resolveBoardMonthKey(
+    currentMonthInfo.value?.month ?? null,
+    STATUSES.flatMap((s) => (tasks.value[s] ?? []).map((t) => t.dueDate)),
+  ),
+)
+
+const {
+  templates: recurrenceTemplates,
+  monthOccurrences,
+  monthlyFixed,
+  scheduled: scheduledOccurrences,
+  createTemplate,
+  updateTemplate,
+  removeTemplate,
+  toggleActive,
+  moveToMonth,
+  setOccurrenceStatus,
+  skipOccurrence,
+  restoreOccurrence,
+  resetOccurrence,
+  templateById,
+  countInMonth,
+} = useRecurringTasks(monthCalendarKey)
+
+const recurringCount = computed(
+  () => recurrenceTemplates.value.filter((t) => t.rule.frequency !== 'once').length,
+)
+
+/** A ocorrência com a cara de card do board. */
+const occurrenceToBoardTask = (occurrence: RecurringOccurrence): BoardTask => ({
+  id: occurrence.id,
+  title: occurrence.title,
+  priorityNumber: occurrence.priorityNumber,
+  dueDate: dateOnlyToUtcNoonIso(occurrence.date),
+  responsibles: occurrence.assignees.map((name) => ({ user: { name } })),
+  tags: occurrence.tags.map((tag) => ({ tag })),
+  subtasks: occurrence.subtasks.map((sub, i) => ({
+    id: `${occurrence.id}#${i}`,
+    title: sub.title,
+    status: 'TODO',
+  })),
+  recurrence: describeRule(templateById(occurrence.templateId)?.rule ?? emptyRule()),
+})
+
+/**
+ * O board do mês: atividades reais + as ocorrências geradas pelas repetições.
+ *
+ * As geradas entram no FIM de cada coluna. Card virtual não tem ordem manual
+ * (não existe linha no servidor para gravá-la), e intercalá-las pela data faria
+ * a ordem que a pessoa arrumou à mão mudar sozinha a cada refetch.
+ */
+const boardTasks = computed<BoardColumns>(() => {
+  const merged = { TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] } as BoardColumns
+  for (const status of STATUSES) merged[status] = [...(tasks.value[status] ?? [])]
+  for (const occurrence of monthOccurrences.value) {
+    merged[occurrence.status].push(occurrenceToBoardTask(occurrence))
+  }
+  return merged
+})
+
 const refreshTasks = () =>
   queryClient.refetchQueries({ queryKey: ['boards', monthId.value] })
 
@@ -178,8 +280,62 @@ const findMembers = async () => {
   }
 }
 
+/**
+ * Cria a REPETIÇÃO (protótipo: nada sai para o servidor).
+ *
+ * Fica separado da criação normal porque o que se grava é outra coisa: um
+ * modelo, não uma tarefa. As ocorrências saem dele a cada render — materializar
+ * doze meses de "toda segunda" na criação seria o trabalho manual da virada de
+ * mês, só que automatizado.
+ */
+const createRecurrence = () => {
+  const form = formActivity.value
+  // Responsáveis viram NOMES: o modelo é do protótipo e o card mostra nome, não
+  // uuid. Some quando `responsibleUserIds` for para a API de verdade.
+  const nameById = new Map(members.value.map((m) => [m.id, m.name]))
+  const template: Omit<RecurringTemplate, 'id' | 'createdAt'> = {
+    title: form.title.trim(),
+    description: form.description || '',
+    priorityNumber: normalizePriority(form.priorityNumber, 0),
+    initialStatus: form.initialStatus,
+    assignees: form.assignees.map((id) => nameById.get(id) ?? id),
+    tags: form.tags,
+    subtasks: form.subtasks
+      .map((s) => ({ title: s.title.trim(), description: s.description.trim() }))
+      .filter((s) => s.title),
+    rule: form.rule,
+    active: true,
+  }
+  if (editingRecurrenceId.value) {
+    updateTemplate(editingRecurrenceId.value, template)
+    showSuccess('Repetição atualizada')
+  } else {
+    createTemplate(template)
+    showSuccess(`Repetição criada — ${describeRule(template.rule).toLowerCase()}`)
+  }
+
+  editingRecurrenceId.value = null
+  formActivity.value = EMPTY_FORM()
+  dialog.value = false
+}
+
 const createActivity = async () => {
   if (!formActivity.value.title) return
+
+  // Recorrente não passa pela API: é o protótipo. Avulsa segue o caminho real.
+  if (formActivity.value.rule.frequency !== 'once') {
+    createRecurrence()
+    return
+  }
+
+  // Repetição editada para "Não repete": o modelo sai de cena e a tarefa vira
+  // uma atividade de verdade. Sem isto, sobrariam as duas — a real recém-criada
+  // e o modelo antigo continuando a gerar cards.
+  if (editingRecurrenceId.value) {
+    removeTemplate(editingRecurrenceId.value)
+    editingRecurrenceId.value = null
+  }
+
   creating.value = true
   try {
     const payload = {
@@ -197,6 +353,21 @@ const createActivity = async () => {
       tagIds: formActivity.value.tags.map((t) => t.id),
     }
     const created = await activityService.postActivity(payload)
+
+    // A API cria sempre em `TODO`. Quando a pessoa escolheu outra coluna, o
+    // segundo passo é o que honra a escolha — sem ele o campo do formulário
+    // seria decorativo. A §10.1 do contrato de backend pede `status` no POST
+    // para isto virar uma requisição só.
+    if (formActivity.value.initialStatus !== 'TODO') {
+      try {
+        await activityService.moveActivity(created.id, {
+          status: formActivity.value.initialStatus,
+          position: 0,
+        })
+      } catch (error: unknown) {
+        showError(apiErrorMessage(error, 'A tarefa foi criada, mas ficou em "A fazer"'))
+      }
+    }
 
     // Documento e anexos são pós-criação: a atividade precisa existir para ter
     // dono. Falha aqui NÃO desfaz a tarefa criada, só avisa qual parte não foi.
@@ -319,9 +490,8 @@ watch(
 /** Todas as tags presentes no board carregado, para os chips do filtro. */
 const boardTags = computed(() => {
   const seen = new Map<string, { id: string; name: string; slug: string; color: string | null }>()
-  if (!tasks.value) return []
   for (const status of STATUSES) {
-    for (const task of tasks.value[status] ?? []) {
+    for (const task of boardTasks.value[status] ?? []) {
       for (const link of task.tags ?? []) {
         if (!seen.has(link.tag.slug)) seen.set(link.tag.slug, link.tag)
       }
@@ -348,11 +518,10 @@ const priorityOptions = [
 
 const filteredTasks = computed<BoardColumns>(() => {
   const result = { TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] } as BoardColumns
-  if (!tasks.value) return result
   // Itera SÓ os status: a resposta do board carrega `monthId` junto das
   // colunas, e um Object.entries cru vazaria essa chave para o board.
   for (const status of STATUSES) {
-    let arr: BoardTask[] = tasks.value[status] || []
+    let arr: BoardTask[] = boardTasks.value[status] || []
     if (selectedUser.value) {
       arr = arr.filter((t) => t.responsibles?.some((r) => r.user.name === selectedUser.value))
     }
@@ -395,9 +564,8 @@ const clearFilters = () => {
 
 const allUsers = computed<string[]>(() => {
   const users = new Set<string>()
-  if (!tasks.value) return []
   for (const status of STATUSES) {
-    for (const task of tasks.value[status] ?? []) {
+    for (const task of boardTasks.value[status] ?? []) {
       task.responsibles?.forEach((r) => users.add(r.user.name))
     }
   }
@@ -412,10 +580,9 @@ const userItems = computed<{ label: string; value: string }[]>(() => [
 
 // Soma SÓ as colunas de status: a resposta do board também carrega `monthId`,
 // e um Object.values cru contava essa chave como "1 atividade" a mais.
-const totalTasks = computed(() => {
-  if (!tasks.value) return 0
-  return STATUSES.reduce((acc, s) => acc + (tasks.value[s]?.length ?? 0), 0)
-})
+const totalTasks = computed(() =>
+  STATUSES.reduce((acc, s) => acc + (boardTasks.value[s]?.length ?? 0), 0),
+)
 
 /**
  * Pulso do mês: distribuição das atividades por status, direto nos tokens de
@@ -428,7 +595,7 @@ const statusPulse = computed(() => {
     { key: 'IN_TESTING', label: 'Em teste', token: 'var(--status-test)' },
     { key: 'DONE', label: 'Concluído', token: 'var(--status-done)' },
   ]
-  return defs.map((d) => ({ ...d, count: tasks.value?.[d.key]?.length ?? 0 }))
+  return defs.map((d) => ({ ...d, count: boardTasks.value[d.key]?.length ?? 0 }))
 })
 
 /** Remove a atividade de todas as colunas locais e devolve o objeto (ou null). */
@@ -446,6 +613,15 @@ const removeFromColumns = (taskId: string): BoardTask | null => {
 // ── Arraste: update otimista (splice na posição) + persistência via /move ──
 const handleMove = async (payload: { taskId: string; status: string; position: number }) => {
   const { taskId, status, position } = payload
+
+  // Card gerado por repetição: a mudança é do DIA, não do modelo. Mover a
+  // segunda-feira para "Concluído" não pode dar a semana inteira como feita.
+  // Nada de API aqui — a ocorrência ainda não existe no servidor.
+  if (isOccurrenceId(taskId)) {
+    setOccurrenceStatus(taskId, status as BoardStatus)
+    return
+  }
+
   const movedTask = removeFromColumns(taskId)
   const target = tasks.value[status as BoardStatus]
   if (movedTask && target) {
@@ -480,6 +656,15 @@ useActivityBoardRealtime(applyRemoteMove, refreshTasks)
 
 // ── Rename task (inline editing) ──
 const handleRenameTask = async (taskId: string, newTitle: string) => {
+  // Renomear um card gerado muda o MODELO: o título é dele, não de uma data.
+  // Vale para todas as repetições, e a pessoa precisa saber disso.
+  const occurrence = parseOccurrenceId(taskId)
+  if (occurrence) {
+    updateTemplate(occurrence.templateId, { title: newTitle })
+    showSuccess('Título alterado na repetição — vale para todas as datas')
+    return
+  }
+
   try {
     await activityService.patchActivity(taskId, { title: newTitle })
   } catch {
@@ -494,6 +679,14 @@ const taskToDelete = ref<BoardTask | null>(null)
 const deleting = ref<string | null>(null)
 
 const openDeleteConfirm = (task: BoardTask) => {
+  // Excluir um card gerado dispensa SÓ aquele dia; a repetição continua. Não
+  // pede confirmação porque não destrói nada: o botão de desfazer é o próprio
+  // calendário da aba Agenda, onde a data dispensada volta em um clique.
+  if (isOccurrenceId(task.id)) {
+    skipOccurrence(task.id)
+    showSuccess('Dispensada só nesta data. A repetição continua valendo.')
+    return
+  }
   taskToDelete.value = task
   confirmDelete.value = true
 }
@@ -515,6 +708,12 @@ const deleteTask = async () => {
 }
 
 const openDetails = (activity: { id: string }) => {
+  // Card gerado não tem página de detalhe: ele não existe no servidor. O que a
+  // pessoa quer ver ao clicar é a REGRA que o criou.
+  if (isOccurrenceId(activity.id)) {
+    recurrenceManager.value = true
+    return
+  }
   router.push(`/tasks/${route.params.month}/${activity.id}`)
 }
 
@@ -538,6 +737,69 @@ const sortedHistory = computed(() =>
 
 const formatDate = (date: string) =>
   new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+// ── Repetição: gerenciador e ações de modelo ────────────────────────────────
+
+const recurrenceManager = ref(false)
+
+/** Editar a regra reabre o formulário de tarefa com o modelo dentro. */
+const editRecurrence = (template: RecurringTemplate) => {
+  const idsByName = new Map(members.value.map((m) => [m.name, m.id]))
+  formActivity.value = {
+    ...EMPTY_FORM(),
+    title: template.title,
+    description: template.description,
+    priorityNumber: template.priorityNumber,
+    initialStatus: template.initialStatus,
+    assignees: template.assignees.map((name) => idsByName.get(name) ?? name),
+    tags: template.tags,
+    subtasks: template.subtasks.map((s) => ({ ...s })),
+    dueDate: template.rule.startDate,
+    rule: { ...template.rule },
+  }
+  // Editar substitui: o formulário atual é de criação, então gravar por cima
+  // significa apagar o modelo antigo. Explícito aqui, e não escondido no store.
+  editingRecurrenceId.value = template.id
+  recurrenceManager.value = false
+  dialog.value = true
+}
+
+const editingRecurrenceId = ref<string | null>(null)
+
+/**
+ * Fechar o formulário no meio de uma edição descarta o vínculo E o rascunho.
+ *
+ * Sem isso, o próximo "Nova Atividade" abriria preenchido com uma tarefa que já
+ * existe e, ao salvar, sobrescreveria a repetição que a pessoa só tinha ido
+ * espiar. Fica num `watch` e não no `@close` porque Esc e clique no scrim
+ * fecham o `AppDialog` sem passar pelo botão.
+ */
+watch(dialog, (open) => {
+  if (open || !editingRecurrenceId.value) return
+  editingRecurrenceId.value = null
+  formActivity.value = EMPTY_FORM()
+})
+
+const removeRecurrence = (template: RecurringTemplate) => {
+  removeTemplate(template.id)
+  showSuccess('Repetição excluída')
+}
+
+const toggleRecurrence = (template: RecurringTemplate) => {
+  toggleActive(template.id)
+  showSuccess(template.active ? 'Repetição pausada' : 'Repetição retomada')
+}
+
+/**
+ * Muda o prazo da repetição para o mês seguinte.
+ *
+ * É a resposta direta ao ritual de recopiar o quadro na virada: em vez de
+ * recriar tudo em novembro, muda-se a data e o mês vem junto.
+ */
+const moveRecurrenceToNextMonth = (template: RecurringTemplate) => {
+  const landed = moveToMonth(template.id, shiftMonthKey(monthCalendarKey.value, 1))
+  if (landed) showSuccess(`Prazo movido — a tarefa foi para ${monthLabel(landed)}`)
+}
 
 const showFilters = ref(false)
 
@@ -594,6 +856,17 @@ const skeletonLanes = [
             <Columns3 :size="14" />
             Board
           </button>
+          <!-- Agenda: o mesmo mês visto por dia. É onde as tarefas geradas por
+               repetição aparecem no calendário, e onde uma data pode ser
+               dispensada sem mexer na regra. -->
+          <button
+            class="view-btn"
+            :class="{ active: currentTab === 'agenda' }"
+            @click="currentTab = 'agenda'"
+          >
+            <CalendarDays :size="14" />
+            Agenda
+          </button>
           <button
             class="view-btn"
             :class="{ active: currentTab === 'backlog' }"
@@ -603,6 +876,20 @@ const skeletonLanes = [
             Backlog
           </button>
         </div>
+
+        <!-- Repetições do mês. Um diálogo, e não uma tela: recorrência é uma
+             propriedade da tarefa, e uma entrada própria na navegação criaria
+             dois lugares para procurar a mesma tarefa. -->
+        <button
+          class="filter-toggle-btn"
+          :class="{ active: recurrenceManager }"
+          title="Tarefas que se repetem sozinhas"
+          @click="recurrenceManager = true"
+        >
+          <Repeat :size="14" />
+          Recorrentes
+          <span v-if="recurringCount > 0" class="filter-badge">{{ recurringCount }}</span>
+        </button>
 
         <!-- Filter toggle -->
         <button
@@ -748,6 +1035,19 @@ const skeletonLanes = [
           />
         </div>
 
+        <!-- Agenda view: o mês por dia, com as ocorrências das repetições -->
+        <div v-show="currentTab === 'agenda'" class="agenda-wrap">
+          <RecurringAgenda
+            :month-key="monthCalendarKey"
+            :scheduled="scheduledOccurrences"
+            :fixed="monthlyFixed"
+            @open="recurrenceManager = true"
+            @skip="skipOccurrence($event.id)"
+            @restore="restoreOccurrence($event.id)"
+            @reset="resetOccurrence($event.id)"
+          />
+        </div>
+
         <!-- Backlog view -->
         <div v-show="currentTab === 'backlog'" class="backlog-panel">
           <div v-if="sortedHistory.length === 0" class="backlog-empty">
@@ -802,18 +1102,35 @@ const skeletonLanes = [
     />
 
     <!-- Create task dialog (casca AppDialog; o TaskForm põe header/corpo/footer) -->
-    <AppDialog v-model="dialog" label="Nova atividade" size="lg" :loading="creating">
+    <AppDialog
+      v-model="dialog"
+      :label="editingRecurrenceId ? 'Editar repetição' : 'Nova atividade'"
+      size="lg"
+      :loading="creating"
+    >
       <TaskForm
         v-if="dialog"
         v-model="formActivity"
         :members="members"
         :company-id="companyId"
         :loading="creating"
+        :editing="!!editingRecurrenceId"
         @close="dialog = false"
         @submit="createActivity"
       />
     </AppDialog>
 
+    <!-- Repetições do mês -->
+    <RecurrenceManagerDialog
+      v-model="recurrenceManager"
+      :templates="recurrenceTemplates"
+      :month-key="monthCalendarKey"
+      :count-in-month="countInMonth"
+      @edit="editRecurrence"
+      @remove="removeRecurrence"
+      @toggle="toggleRecurrence"
+      @move-to-next-month="moveRecurrenceToNextMonth"
+    />
   </div>
 </template>
 
@@ -1185,6 +1502,14 @@ const skeletonLanes = [
 .skel-card {
   margin-bottom: 8px;
   border-radius: 12px;
+}
+
+/* ─── Agenda (mês por dia) ─── */
+.agenda-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 16px;
 }
 
 /* ─── Backlog ─── */

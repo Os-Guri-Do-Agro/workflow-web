@@ -1,6 +1,6 @@
 # Contrato do backend — Tarefas recorrentes
 
-**Status:** protótipo de frontend pronto (`/recorrentes`, dado fictício) · backend a fazer
+**Status:** protótipo de frontend pronto (dentro de `/tasks/:month`, dado fictício) · backend a fazer
 **Criada:** 03/09/2026
 **Protótipo:** [`src/features/tasks/recurring/`](../../src/features/tasks/recurring/)
 **Motor de datas de referência:** [`recurrence-engine.ts`](../../src/features/tasks/recurring/recurrence-engine.ts)
@@ -520,18 +520,35 @@ mês" em "mudar a data". Vale mesmo que a feature de recorrência não saia.
 
 ## 12. O que o frontend já tem pronto
 
-O protótipo em `/recorrentes` implementa a tela inteira contra dado fictício e
-serve como especificação viva da interface:
+**Não existe tela de recorrentes.** O protótipo vive inteiro dentro de
+`/tasks/:month`, contra dado fictício, e serve como especificação viva da
+interface — inclusive da parte que interessa ao backend: os cards gerados já
+dividem o board com as atividades reais, exatamente como a §7.2 descreve.
+
+Onde cada coisa aparece na tela:
+
+| Superfície | O que é |
+|---|---|
+| Campo **Repetição** no `TaskForm` | Onde a regra é criada. Avulsa e recorrente no mesmo formulário |
+| Board do mês | Cards reais + cards gerados, marcados com a etiqueta da regra |
+| Aba **Agenda** | O mês por dia; é onde uma data é dispensada sem mexer na regra (§7.4) |
+| Botão **Recorrentes** no header | Gestão das regras: pausar, editar, mover o prazo de mês |
 
 | Arquivo | Papel |
 |---|---|
-| [`recurrence-types.ts`](../../src/features/tasks/recurring/recurrence-types.ts) | Modelo × ocorrência × exceção, com os nomes de campo já alinhados aos da `Activity` |
+| [`recurrence-types.ts`](../../src/features/tasks/recurring/recurrence-types.ts) | Modelo × ocorrência × exceção, com os nomes de campo já alinhados aos da `Activity`. **O id virtual `rec:<id>:<data>` da §7.2 já é o formato usado aqui** — `isOccurrenceId` é o que decide, a cada escrita, se ela vai para a API ou para o store do protótipo |
 | [`recurrence-engine.ts`](../../src/features/tasks/recurring/recurrence-engine.ts) | O algoritmo da §5, em funções puras |
 | [`useRecurringTasks.ts`](../../src/features/tasks/recurring/useRecurringTasks.ts) | A store mocada. **É este arquivo que vira o composable de Vue Query** — o resto da feature fala só com a API exposta no `return` dele |
-| [`RecurringTasksView.vue`](../../src/features/tasks/recurring/RecurringTasksView.vue) | Agenda (calendário) · Board do mês (o `KanbanBoard` real) · Modelos |
+| [`month-key.ts`](../../src/features/tasks/recurring/month-key.ts) | Costura temporária: adivinha `'YYYY-MM'` a partir do `monthId`. **Existe só porque a §8 ainda não existe** e é o primeiro arquivo a ser apagado quando ela chegar |
 
 Quando os endpoints existirem, a troca é concentrada em `useRecurringTasks.ts` e
-na leitura do board. Os componentes não mudam.
+na leitura do board (`boardTasks` em `TasksView.vue`, que hoje funde reais +
+gerados no cliente e passaria a receber os dois já fundidos do servidor). Os
+componentes não mudam.
+
+**A §10.1 já tem um paliativo no cliente:** o formulário faz `POST /activity`
+seguido de `PATCH /activity/:id/move` quando a coluna escolhida não é `TODO`.
+Funciona, mas é uma requisição a mais e um instante com o card na coluna errada.
 
 ## 13. Ordem sugerida de entrega
 

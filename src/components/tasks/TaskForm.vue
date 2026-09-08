@@ -14,6 +14,7 @@ import {
   Paperclip,
   Tag as TagIcon,
   Check,
+  Sparkles,
   Loader2,
 } from 'lucide-vue-next'
 import TagInput from '@/components/ui/TagInput.vue'
@@ -26,6 +27,13 @@ import { avatarTone, initials as personInitials } from '@/utils/avatar'
 // MESMA superfície que ela tem na edição, senão a pessoa formata depois de criar.
 // Follow-up (R2): mover `components/tasks/` para dentro de `features/tasks/`.
 import TaskDescriptionEditor from '@/features/tasks/components/TaskDescriptionEditor.vue'
+// Mesma exceção de boundary do editor acima: `components/tasks/` já é domínio
+// de tarefa, e recorrência é um campo da tarefa — não uma feature vizinha.
+import RecurrenceRuleEditor from '@/features/tasks/recurring/components/RecurrenceRuleEditor.vue'
+import { ACTIVITY_STATUSES } from '@/features/tasks/task-meta'
+import type { ActivityStatus } from '@/features/tasks/activity-types'
+import type { RecurrenceRule } from '@/features/tasks/recurring/recurrence-types'
+import { monthKeyOf, monthLabel } from '@/features/tasks/recurring/recurrence-engine'
 import { isMarkdownFilename } from '@/utils/file-kind'
 
 // Shapes locais (regra de boundary: componente compartilhado não importa tipos
@@ -86,6 +94,24 @@ interface TaskFormModel {
    * explicação nenhuma. O campo é opcional e fica recolhido até ser pedido.
    */
   subtasks: TaskFormSubtask[]
+  /**
+   * Coluna em que a tarefa nasce.
+   *
+   * Existe porque tarefa nem sempre nasce em "A fazer": muita coisa já está em
+   * andamento no momento em que é escrita, e as fixas do mês vivem em "Em
+   * teste" desde o primeiro dia. Sem este campo, criar significava criar e
+   * depois arrastar — duas ações para uma decisão que a pessoa já tinha tomado.
+   */
+  initialStatus: ActivityStatus
+  /**
+   * Regra de repetição. `frequency: 'once'` (o padrão) é a tarefa avulsa de
+   * sempre, e nada muda para quem não mexe neste campo.
+   *
+   * Recorrência é um CAMPO da tarefa, não outro tipo de tarefa: título,
+   * prioridade, responsáveis, tags e subtarefas são os mesmos, e transformar
+   * uma avulsa em semanal é trocar um campo, não recriar nada.
+   */
+  rule: RecurrenceRule
 }
 
 const emit = defineEmits<{
@@ -100,6 +126,12 @@ const props = defineProps<{
   loading?: boolean
   /** Escopo do catálogo de tags. Sem ele o campo de tags não aparece. */
   companyId?: string | null
+  /**
+   * Modo de edição. O formulário é o mesmo (criar e editar uma repetição
+   * mexem exatamente nos mesmos campos); só o texto muda, para a pessoa não
+   * achar que está criando uma segunda tarefa quando foi editar a que existe.
+   */
+  editing?: boolean
 }>()
 
 const form = computed({
@@ -380,6 +412,53 @@ const isSelected = (userId?: string) =>
 const initials = (name?: string) => personInitials(name || '?')
 const toneOf = (name?: string) => avatarTone(name || '?')
 
+// ─── Status inicial e recorrência ────────────────────────────────────────────
+
+const setStatus = (initialStatus: ActivityStatus) =>
+  emit('update:modelValue', { ...props.modelValue, initialStatus })
+
+const setRule = (rule: RecurrenceRule) =>
+  emit('update:modelValue', { ...props.modelValue, rule })
+
+const isRecurring = computed(() => props.modelValue.rule.frequency !== 'once')
+
+/**
+ * O prazo e o início da regra são o MESMO campo.
+ *
+ * Dois campos de data no formulário seriam duas datas para discordarem: a
+ * pessoa preenche "Entrega: 12/11" e a primeira repetição nasce no dia em que a
+ * regra foi criada. Aqui o campo é um só e o rótulo muda conforme a repetição.
+ */
+const dueDateModel = computed({
+  get: () => props.modelValue.dueDate || props.modelValue.rule.startDate,
+  set: (value: string) => {
+    if (!value) return
+    emit('update:modelValue', {
+      ...props.modelValue,
+      dueDate: value,
+      rule: { ...props.modelValue.rule, startDate: value },
+    })
+  },
+})
+
+/**
+ * O mês de destino, derivado do prazo.
+ *
+ * Não existe seletor de mês de propósito: mês escolhido à parte da data é a
+ * chance de os dois discordarem, e é o que hoje obriga a recriar a tarefa em
+ * vez de só adiá-la.
+ */
+const monthTarget = computed(() => monthLabel(monthKeyOf(dueDateModel.value)))
+
+/**
+ * Aviso de recorrente nascendo concluída. Não bloqueia: talvez a pessoa queira
+ * registrar algo que já é feito. Mas uma tarefa que se recria toda semana já
+ * concluída não pede nada de ninguém, e vale dizer antes.
+ */
+const doneRecurringWarning = computed(
+  () => isRecurring.value && props.modelValue.initialStatus === 'DONE',
+)
+
 const valid = computed(() => !!form.value?.title?.trim())
 
 const submit = () => {
@@ -400,8 +479,14 @@ const submit = () => {
           <Plus :size="17" />
         </span>
         <div>
-          <h2 class="head-title">Nova atividade</h2>
-          <p class="head-sub">Crie uma tarefa com responsáveis e prioridade</p>
+          <h2 class="head-title">{{ props.editing ? 'Editar repetição' : 'Nova atividade' }}</h2>
+          <p class="head-sub">
+            {{
+              props.editing
+                ? 'A alteração vale para todas as datas que ainda não aconteceram'
+                : 'Crie uma tarefa com responsáveis e prioridade'
+            }}
+          </p>
         </div>
       </div>
       <button class="close-btn" aria-label="Fechar" :disabled="props.loading" @click="emit('close')">
@@ -469,10 +554,50 @@ const submit = () => {
         <label class="field flex-1">
           <span class="label">
             <CalendarDays :size="12" />
-            Entrega
+            {{ isRecurring ? 'Começa em' : 'Entrega' }}
           </span>
-          <input v-model="form.dueDate" type="date" class="input" />
+          <input v-model="dueDateModel" type="date" class="input" />
+          <!-- O mês é consequência da data, não uma segunda escolha. -->
+          <span class="month-target">
+            <Sparkles :size="11" />
+            Vai para <strong>{{ monthTarget }}</strong>
+          </span>
         </label>
+      </div>
+
+      <!-- Status inicial: evita criar e depois arrastar -->
+      <div class="field">
+        <span class="label">
+          <Check :size="12" />
+          Começa em qual coluna
+        </span>
+        <div class="status-row">
+          <button
+            v-for="status in ACTIVITY_STATUSES"
+            :key="status.value"
+            type="button"
+            class="status-chip press"
+            :class="{ 'status-chip--active': form.initialStatus === status.value }"
+            :style="{ '--st-c': status.token } as Record<string, string>"
+            :aria-pressed="form.initialStatus === status.value"
+            @click="setStatus(status.value)"
+          >
+            <component :is="status.icon" :size="13" />
+            {{ status.label }}
+          </button>
+        </div>
+        <p v-if="doneRecurringWarning" class="warn-line">
+          Uma tarefa que se repete já concluída nunca vai pedir nada. Confere se é isso mesmo.
+        </p>
+      </div>
+
+      <!-- Repetição: campo da tarefa, não outro tipo de tarefa -->
+      <div class="field">
+        <RecurrenceRuleEditor
+          :model-value="form.rule"
+          hide-start
+          @update:model-value="setRule"
+        />
       </div>
 
       <!-- Assignees -->
@@ -751,7 +876,7 @@ const submit = () => {
         >
           <Loader2 v-if="props.loading" :size="13" class="spin" />
           <Plus v-else :size="13" />
-          {{ props.loading ? 'Criando…' : 'Criar atividade' }}
+          {{ props.loading ? 'Criando…' : props.editing ? 'Salvar alterações' : 'Criar atividade' }}
         </button>
       </div>
     </footer>
@@ -945,6 +1070,70 @@ const submit = () => {
   background: color-mix(in srgb, var(--prio-c) 14%, transparent);
   border-color: var(--prio-c);
   color: var(--prio-c);
+}
+
+/* Status inicial */
+.status-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.status-chip:hover {
+  color: var(--text-2);
+  border-color: var(--border-strong);
+}
+
+.status-chip--active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--st-c) 16%, transparent);
+  border-color: var(--st-c);
+}
+
+.status-chip--active svg {
+  color: var(--st-c);
+}
+
+.warn-line {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  color: var(--warn);
+}
+
+/* Mês de destino, derivado do prazo */
+.month-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.month-target strong {
+  color: var(--accent);
+  font-weight: 650;
+  text-transform: capitalize;
 }
 
 /* Members */

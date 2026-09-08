@@ -127,7 +127,35 @@ export interface RecurringOccurrence {
   skipped: boolean
 }
 
-/** Chave do override. Uma função para os dois lados nunca discordarem. */
+/**
+ * Prefixo do id de ocorrência.
+ *
+ * As ocorrências dividem o board com atividades REAIS (uuid vindo da API), e
+ * quem recebe um id precisa saber para onde mandar a escrita. O prefixo torna a
+ * confusão impossível: nenhum uuid começa com `rec:`. É o mesmo formato do
+ * contrato de backend (`docs/specs/tarefas-recorrentes-backend-contract.md`),
+ * de propósito — quando a API existir, o front não muda de gramática.
+ */
+export const OCCURRENCE_ID_PREFIX = 'rec:'
+
+/** Chave da ocorrência. Uma função para os dois lados nunca discordarem. */
 export function occurrenceKey(templateId: string, date: string): string {
-  return `${templateId}|${date}`
+  return `${OCCURRENCE_ID_PREFIX}${templateId}:${date}`
+}
+
+/** `true` quando o id é de uma ocorrência, não de uma atividade do servidor. */
+export function isOccurrenceId(id: string): boolean {
+  return id.startsWith(OCCURRENCE_ID_PREFIX)
+}
+
+/** Desmonta `rec:<templateId>:<data>`. `null` se não for id de ocorrência. */
+export function parseOccurrenceId(
+  id: string,
+): { templateId: string; date: string } | null {
+  if (!isOccurrenceId(id)) return null
+  const rest = id.slice(OCCURRENCE_ID_PREFIX.length)
+  // A data é o ÚLTIMO trecho: o id do modelo pode conter `:`, a data nunca.
+  const cut = rest.lastIndexOf(':')
+  if (cut === -1) return null
+  return { templateId: rest.slice(0, cut), date: rest.slice(cut + 1) }
 }

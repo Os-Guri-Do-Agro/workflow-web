@@ -13,6 +13,7 @@ import {
   Paperclip,
   Trash2,
   Inbox,
+  Repeat,
 } from 'lucide-vue-next'
 import type { LucideIcon } from 'lucide-vue-next'
 import TagChip from '@/components/ui/TagChip.vue'
@@ -60,6 +61,12 @@ export interface KanbanTask {
   tags?: Array<{ tag: KanbanTaskTag }>
   /** Contadores, nunca o conteúdo: markdown de spec não trafega em board. */
   _count?: { docs?: number; attachments?: number }
+  /**
+   * Rótulo curto da repetição que gerou este card ("Toda semana · seg").
+   * Ausente na tarefa comum — o board não sabe o que é recorrência, só mostra
+   * a etiqueta que o chamador mandou.
+   */
+  recurrence?: string
 }
 
 export type KanbanApiStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
@@ -404,6 +411,14 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
                 >
                   <Calendar :size="11" />
                   {{ formatDateOnly(task.dueDate, { month: 'short', year: undefined }) }}
+                </span>
+
+                <!-- Nasceu de uma repetição. A pessoa precisa distinguir o que
+                     ela escreveu do que a regra gerou: sem isso, um card que
+                     reaparece sozinho parece tarefa duplicada. -->
+                <span v-if="task.recurrence" class="repeats" :title="task.recurrence">
+                  <Repeat :size="11" />
+                  {{ task.recurrence }}
                 </span>
 
                 <span
@@ -917,6 +932,27 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 .due--overdue {
   color: var(--err);
   font-weight: 600;
+}
+
+/* Etiqueta de card gerado por repetição */
+.repeats {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 130px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repeats svg {
+  flex-shrink: 0;
 }
 
 /* ── Anel de progresso ──────────────────────────────────────── */

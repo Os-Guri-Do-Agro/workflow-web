@@ -21,7 +21,7 @@ import type {
   RecurringOccurrence,
   RecurringTemplate,
 } from './recurrence-types'
-import { occurrenceKey } from './recurrence-types'
+import { occurrenceKey, parseOccurrenceId } from './recurrence-types'
 import { MOCK_TEMPLATES } from './recurring-mock'
 import {
   dateInMonth,
@@ -166,7 +166,7 @@ export function useRecurringTasks(monthKey: Ref<string>) {
   function removeTemplate(id: string): void {
     templates.value = templates.value.filter((t) => t.id !== id)
     for (const key of Object.keys(overrides)) {
-      if (key.startsWith(`${id}|`)) delete overrides[key]
+      if (parseOccurrenceId(key)?.templateId === id) delete overrides[key]
     }
   }
 
