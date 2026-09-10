@@ -159,3 +159,27 @@ export function parseOccurrenceId(
   if (cut === -1) return null
   return { templateId: rest.slice(0, cut), date: rest.slice(cut + 1) }
 }
+
+/**
+ * A ocorrência como o BOARD do mês a recebe.
+ *
+ * O board mostra uma linha por regra (a corrente, mais as que a pessoa começou
+ * e não terminou); `hiddenInMonth` é quantas outras datas do mesmo modelo caem
+ * neste mês e ficaram de fora. É o número que o card oferece como caminho para
+ * a Agenda — sem ele, colapsar 22 datas em 1 card esconderia informação em vez
+ * de organizá-la.
+ */
+export interface BoardOccurrence extends RecurringOccurrence {
+  /** Datas do mesmo modelo, neste mês, que não estão no board. `0` = todas estão. */
+  hiddenInMonth: number
+  /**
+   * Dessas escondidas, quantas já PASSARAM sem ninguém encostar — a dívida da
+   * rotina. É um subconjunto de `hiddenInMonth`.
+   *
+   * Existe porque colapsar o board em uma linha por regra tinha um efeito
+   * colateral perverso: quem ignorava a rotina por uma semana via um quadro tão
+   * limpo quanto quem estava em dia. Um card não pode esconder que o trabalho
+   * não está sendo feito — a dívida vira NÚMERO, nunca card novo.
+   */
+  overdueInMonth: number
+}

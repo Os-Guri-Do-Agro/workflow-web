@@ -1,7 +1,11 @@
 # Contrato do backend — Tarefas recorrentes
 
-**Status:** protótipo de frontend pronto (dentro de `/tasks/:month`, dado fictício) · backend a fazer
+**Status:** frontend completo (local, dentro de `/tasks/:month`) · backend a fazer
 **Criada:** 03/09/2026
+**Leia junto:** [tarefas-recorrentes-handoff-backend.md](./tarefas-recorrentes-handoff-backend.md) — o
+delta do que o frontend passou a fazer depois deste contrato, e as **duas coisas
+que ele pede daqui e este documento não previa** (as exceções do mês no payload
+e `recurrenceId`/`occurrenceDate` nas atividades reais do board)
 **Protótipo:** [`src/features/tasks/recurring/`](../../src/features/tasks/recurring/)
 **Motor de datas de referência:** [`recurrence-engine.ts`](../../src/features/tasks/recurring/recurrence-engine.ts)
 
@@ -385,6 +389,15 @@ Quatro regras do card virtual:
 atividades já materializadas continuam aparecendo normalmente — pausar
 interrompe a geração daqui para a frente, não apaga o que já estava em andamento.
 
+**O servidor devolve o mês inteiro; quem colapsa é o cliente.** O frontend
+mostra no quadro **uma linha por regra** — a ocorrência corrente (hoje → a
+próxima → a última) mais as que já foram tocadas e continuam abertas — e leva o
+resto para a aba Agenda. A razão é de produto: uma regra diária despejava 22
+cards idênticos numa coluna, que é o trabalho manual que a feature deveria
+matar, gerado sozinho. Isso **não muda o contrato**: a Agenda precisa das datas
+todas, e decidir o que ocupa o quadro é decisão de tela, que muda sem migração.
+O servidor não deve tentar adivinhar o recorte.
+
 ### 7.3 Materialização
 
 Este é o único ponto novo no caminho de escrita, e ele pode ser transparente.
@@ -515,30 +528,34 @@ mês" em "mudar a data". Vale mesmo que a feature de recorrência não saia.
 - **Feed / histórico:** atividade materializada é atividade normal e entra no
   backlog de mudanças de status como qualquer outra. A materialização em si não
   precisa virar evento de feed (seria ruído: "sistema criou 22 tarefas").
-- **Contadores do board:** o total do mês deve somar reais + virtuais. Contar só
-  as reais faz o número no cabeçalho discordar dos cards na tela.
+- **Contadores do board:** o número do cabeçalho tem que bater com o que está na
+  tela. Como o cliente colapsa as ocorrências (§7.2), quem conta é ele, sobre o
+  que decidiu mostrar — o servidor não precisa devolver total nenhum. Contar as
+  virtuais todas faria o cabeçalho anunciar 53 atividades num quadro com 10.
 
 ## 12. O que o frontend já tem pronto
 
 **Não existe tela de recorrentes.** O protótipo vive inteiro dentro de
-`/tasks/:month`, contra dado fictício, e serve como especificação viva da
-interface — inclusive da parte que interessa ao backend: os cards gerados já
-dividem o board com as atividades reais, exatamente como a §7.2 descreve.
+`/tasks/:month` e serve como especificação viva da interface — inclusive da
+parte que interessa ao backend: os cards gerados já dividem o board com as
+atividades reais, exatamente como a §7.2 descreve. O estado é local
+(`localStorage` por empresa, chave `workflow:recurring:v1:<companyId>`) e some
+inteiro quando os endpoints existirem.
 
 Onde cada coisa aparece na tela:
 
 | Superfície | O que é |
 |---|---|
 | Campo **Repetição** no `TaskForm` | Onde a regra é criada. Avulsa e recorrente no mesmo formulário |
-| Board do mês | Cards reais + cards gerados, marcados com a etiqueta da regra |
-| Aba **Agenda** | O mês por dia; é onde uma data é dispensada sem mexer na regra (§7.4) |
+| Board do mês | Cards reais + **uma linha por regra** (a corrente + as tocadas e abertas), com a etiqueta da regra e o contador "+N no mês" que leva à Agenda |
+| Aba **Agenda** | O mês por dia, com TODAS as datas — dispensadas inclusive, apagadas e com desfazer (§7.4) |
 | Botão **Recorrentes** no header | Gestão das regras: pausar, editar, mover o prazo de mês |
 
 | Arquivo | Papel |
 |---|---|
 | [`recurrence-types.ts`](../../src/features/tasks/recurring/recurrence-types.ts) | Modelo × ocorrência × exceção, com os nomes de campo já alinhados aos da `Activity`. **O id virtual `rec:<id>:<data>` da §7.2 já é o formato usado aqui** — `isOccurrenceId` é o que decide, a cada escrita, se ela vai para a API ou para o store do protótipo |
 | [`recurrence-engine.ts`](../../src/features/tasks/recurring/recurrence-engine.ts) | O algoritmo da §5, em funções puras |
-| [`useRecurringTasks.ts`](../../src/features/tasks/recurring/useRecurringTasks.ts) | A store mocada. **É este arquivo que vira o composable de Vue Query** — o resto da feature fala só com a API exposta no `return` dele |
+| [`useRecurringTasks.ts`](../../src/features/tasks/recurring/useRecurringTasks.ts) | A store local. **É este arquivo que vira o composable de Vue Query** — o resto da feature fala só com a API exposta no `return` dele. `boardOccurrences` (o colapso de §7.2) e `monthOccurrences` (a Agenda, com as dispensadas) continuam existindo depois da troca: o que muda é a origem dos dados, não o recorte |
 | [`month-key.ts`](../../src/features/tasks/recurring/month-key.ts) | Costura temporária: adivinha `'YYYY-MM'` a partir do `monthId`. **Existe só porque a §8 ainda não existe** e é o primeiro arquivo a ser apagado quando ela chegar |
 
 Quando os endpoints existirem, a troca é concentrada em `useRecurringTasks.ts` e

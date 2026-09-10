@@ -9,7 +9,9 @@ import {
   Check,
   Calendar,
   ChevronDown,
+  ChevronRight,
   FileText,
+  TriangleAlert,
   Paperclip,
   Trash2,
   Inbox,
@@ -67,6 +69,18 @@ export interface KanbanTask {
    * a etiqueta que o chamador mandou.
    */
   recurrence?: string
+  /**
+   * Quantas outras datas da mesma repetição existem no período e não estão no
+   * quadro. O board mostra uma linha por regra; sem este número, colapsar as
+   * datas esconderia informação em vez de organizá-la.
+   */
+  recurrenceHidden?: number
+  /**
+   * Dessas escondidas, quantas já venceram sem ninguém encostar. Subconjunto de
+   * `recurrenceHidden`: um card não pode esconder que a rotina parou de ser
+   * feita, senão quem está uma semana atrás vê o mesmo quadro de quem está em dia.
+   */
+  recurrenceOverdue?: number
 }
 
 export type KanbanApiStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
@@ -84,6 +98,8 @@ const emit = defineEmits<{
   'open-details': [task: KanbanTask]
   'delete-task': [task: KanbanTask]
   'rename-task': [taskId: string, title: string]
+  /** "+17 no mês": quem chama decide para onde levar (hoje, a aba Agenda). */
+  'show-occurrences': [task: KanbanTask]
 }>()
 
 // ── Inline editing ──
@@ -392,100 +408,150 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
                 </span>
               </div>
 
-              <!-- uma única linha de meta: prio · prazo · anexos · doc · anel · avatares -->
-              <div class="card__meta">
-                <span
-                  v-if="task.priorityNumber !== undefined"
-                  class="prio"
-                  :title="getPriorityLabel(task.priorityNumber)"
-                  :style="{ '--pc': getPriorityColor(task.priorityNumber) }"
-                >
-                  <span class="prio__dot" aria-hidden="true" />
-                  P{{ task.priorityNumber }}
-                </span>
-
-                <span
-                  v-if="task.dueDate"
-                  class="due"
-                  :class="{ 'due--overdue': isOverdue(task.dueDate) && column.status !== 'done' }"
-                >
-                  <Calendar :size="11" />
-                  {{ formatDateOnly(task.dueDate, { month: 'short', year: undefined }) }}
-                </span>
-
+              <!-- Linha da REPETIÇÃO, separada da meta de propósito.
+                   Um card gerado carrega até três etiquetas (a regra, a dívida
+                   e o contador do mês) que juntas são mais largas que a coluna.
+                   Misturadas com prazo e prioridade, elas espremiam a linha
+                   inteira e o prazo quebrava em três linhas. Aqui elas têm a
+                   largura do card para si, e o card comum não muda em nada:
+                   a linha só existe quando veio de uma regra. -->
+              <div
+                v-if="task.recurrence || task.recurrenceOverdue || task.recurrenceHidden"
+                class="card__rule"
+              >
                 <!-- Nasceu de uma repetição. A pessoa precisa distinguir o que
                      ela escreveu do que a regra gerou: sem isso, um card que
                      reaparece sozinho parece tarefa duplicada. -->
                 <span v-if="task.recurrence" class="repeats" :title="task.recurrence">
                   <Repeat :size="11" />
-                  {{ task.recurrence }}
+                  <span class="repeats__text">{{ task.recurrence }}</span>
                 </span>
 
-                <span
-                  v-if="attachmentCount(task)"
-                  class="chipcount"
-                  :title="`${attachmentCount(task)} arquivo(s)`"
-                >
-                  <Paperclip :size="11" />
-                  {{ attachmentCount(task) }}
-                </span>
-
-                <!-- "tem spec aqui dentro": o número, nunca o conteúdo -->
-                <span
-                  v-if="docCount(task)"
-                  class="chipcount"
-                  :title="`${docCount(task)} documento(s)`"
-                >
-                  <FileText :size="11" />
-                  {{ docCount(task) }}
-                </span>
-
-                <span class="card__spacer" />
-
-                <!-- progress ring (também é o gatilho de expandir) -->
+                <!-- A dívida da rotina: datas que já venceram e ninguém tocou.
+                     Vem ANTES do contador neutro de propósito — é a informação
+                     que muda o que a pessoa faz agora. Nunca vira card novo:
+                     atrasar não pode ser motivo para o quadro inchar. -->
                 <button
-                  v-if="task.subtasks?.length"
-                  class="ring-btn"
-                  :class="{ 'ring-btn--complete': isAllDone(task), 'ring-btn--open': isExpanded(task.id) }"
-                  :aria-expanded="isExpanded(task.id)"
-                  :aria-label="`${getSubtaskProgress(task)!.done} de ${getSubtaskProgress(task)!.total} subtarefas`"
-                  @click.stop="toggleExpand(task.id)"
+                  v-if="task.recurrenceOverdue"
+                  type="button"
+                  class="late-dates press"
+                  :title="`${task.recurrenceOverdue} data(s) desta repetição já venceram sem ninguém encostar — ver na agenda`"
+                  @click.stop="emit('show-occurrences', task)"
                 >
-                  <svg class="ring" viewBox="0 0 22 22" width="18" height="18" aria-hidden="true">
-                    <circle class="ring__track" cx="11" cy="11" r="9" />
-                    <circle
-                      class="ring__fill"
-                      cx="11"
-                      cy="11"
-                      r="9"
-                      :stroke-dasharray="RING_CIRC"
-                      :style="{ strokeDashoffset: ringOffset(subtaskPercent(task)) }"
-                    />
-                  </svg>
-                  <span class="ring-btn__frac">
-                    {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
-                  </span>
-                  <ChevronDown :size="12" class="ring-btn__chev" />
+                  <TriangleAlert :size="10" />
+                  {{ task.recurrenceOverdue }}
+                  {{ task.recurrenceOverdue === 1 ? 'atrasada' : 'atrasadas' }}
                 </button>
 
-                <!-- responsáveis: tinta suave por pessoa, empilhados; o stack
-                     abre em leque no hover para ler cada inicial -->
-                <div v-if="task.responsibles?.length" class="crew">
-                  <div
-                    v-for="(responsible, ai) in task.responsibles.slice(0, MAX_AVATARS)"
-                    :key="responsible.userId ?? responsible.user.name"
-                    class="crew__avatar"
-                    :title="responsible.user.name"
-                    :style="{ '--pc': avatarTone(responsible.user.name), zIndex: MAX_AVATARS - ai }"
+                <!-- As outras datas da mesma regra, que não ocupam o quadro. O
+                     número é a prova de que nada sumiu, e o clique é o caminho
+                     para vê-las: um card colapsado sem saída seria informação
+                     escondida, não organizada. -->
+                <button
+                  v-if="task.recurrenceHidden"
+                  type="button"
+                  class="more-dates press"
+                  :title="`Mais ${task.recurrenceHidden} data(s) desta repetição neste mês — ver na agenda`"
+                  @click.stop="emit('show-occurrences', task)"
+                >
+                  +{{ task.recurrenceHidden }} no mês
+                  <ChevronRight :size="10" />
+                </button>
+              </div>
+
+              <!-- Meta: os FATOS à esquerda (quebram em quantas linhas
+                   precisarem) e as PESSOAS à direita (nunca encolhem). O
+                   espaçador de antes era `flex: 1` numa linha sem `wrap`, então
+                   quando faltava espaço quem cedia era o conteúdo: o prazo
+                   virava uma coluna de três linhas e a etiqueta da regra era
+                   cortada no meio da palavra. -->
+              <div class="card__meta">
+                <div class="card__facts">
+                  <span
+                    v-if="task.priorityNumber !== undefined"
+                    class="prio"
+                    :title="getPriorityLabel(task.priorityNumber)"
+                    :style="{ '--pc': getPriorityColor(task.priorityNumber) }"
                   >
-                    {{ getUserInitials(responsible.user.name) }}
-                  </div>
-                  <div
-                    v-if="task.responsibles.length > MAX_AVATARS"
-                    class="crew__avatar crew__avatar--extra"
-                    :title="extraNames(task)"
+                    <span class="prio__dot" aria-hidden="true" />
+                    P{{ task.priorityNumber }}
+                  </span>
+
+                  <span
+                    v-if="task.dueDate"
+                    class="due"
+                    :class="{ 'due--overdue': isOverdue(task.dueDate) && column.status !== 'done' }"
                   >
-                    +{{ task.responsibles.length - MAX_AVATARS }}
+                    <Calendar :size="11" />
+                    {{ formatDateOnly(task.dueDate, { month: 'short', year: undefined }) }}
+                  </span>
+
+                  <span
+                    v-if="attachmentCount(task)"
+                    class="chipcount"
+                    :title="`${attachmentCount(task)} arquivo(s)`"
+                  >
+                    <Paperclip :size="11" />
+                    {{ attachmentCount(task) }}
+                  </span>
+
+                  <!-- "tem spec aqui dentro": o número, nunca o conteúdo -->
+                  <span
+                    v-if="docCount(task)"
+                    class="chipcount"
+                    :title="`${docCount(task)} documento(s)`"
+                  >
+                    <FileText :size="11" />
+                    {{ docCount(task) }}
+                  </span>
+                </div>
+
+                <div class="card__people">
+                  <!-- progress ring (também é o gatilho de expandir) -->
+                  <button
+                    v-if="task.subtasks?.length"
+                    class="ring-btn"
+                    :class="{ 'ring-btn--complete': isAllDone(task), 'ring-btn--open': isExpanded(task.id) }"
+                    :aria-expanded="isExpanded(task.id)"
+                    :aria-label="`${getSubtaskProgress(task)!.done} de ${getSubtaskProgress(task)!.total} subtarefas`"
+                    @click.stop="toggleExpand(task.id)"
+                  >
+                    <svg class="ring" viewBox="0 0 22 22" width="18" height="18" aria-hidden="true">
+                      <circle class="ring__track" cx="11" cy="11" r="9" />
+                      <circle
+                        class="ring__fill"
+                        cx="11"
+                        cy="11"
+                        r="9"
+                        :stroke-dasharray="RING_CIRC"
+                        :style="{ strokeDashoffset: ringOffset(subtaskPercent(task)) }"
+                      />
+                    </svg>
+                    <span class="ring-btn__frac">
+                      {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
+                    </span>
+                    <ChevronDown :size="12" class="ring-btn__chev" />
+                  </button>
+
+                  <!-- responsáveis: tinta suave por pessoa, empilhados; o stack
+                       abre em leque no hover para ler cada inicial -->
+                  <div v-if="task.responsibles?.length" class="crew">
+                    <div
+                      v-for="(responsible, ai) in task.responsibles.slice(0, MAX_AVATARS)"
+                      :key="responsible.userId ?? responsible.user.name"
+                      class="crew__avatar"
+                      :title="responsible.user.name"
+                      :style="{ '--pc': avatarTone(responsible.user.name), zIndex: MAX_AVATARS - ai }"
+                    >
+                      {{ getUserInitials(responsible.user.name) }}
+                    </div>
+                    <div
+                      v-if="task.responsibles.length > MAX_AVATARS"
+                      class="crew__avatar crew__avatar--extra"
+                      :title="extraNames(task)"
+                    >
+                      +{{ task.responsibles.length - MAX_AVATARS }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -809,6 +875,10 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   -webkit-box-orient: vertical;
   overflow: hidden;
   flex: 1;
+  /* Título colado sem espaço ("aaaaaaaaaaaa…") não tem onde quebrar: sem isto
+     ele empurrava a lixeira para fora do card em vez de reticenciar. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .card__title-input {
@@ -867,15 +937,46 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 }
 
 /* meta: UMA linha — prio, prazo, anel, avatares */
+/* Meta em dois grupos com contratos OPOSTOS: os fatos cedem espaço quebrando
+   linha, as pessoas não cedem nunca. Antes era uma linha só, sem `wrap`, com um
+   espaçador `flex: 1` — e quando o conteúdo não cabia quem encolhia era o texto,
+   não o layout: o prazo virava uma coluna de três linhas. */
 .card__meta {
   display: flex;
   align-items: center;
-  gap: 9px;
+  justify-content: space-between;
+  gap: 8px;
   min-height: 22px;
 }
 
-.card__spacer {
-  flex: 1;
+.card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* linha menor que a coluna: quando quebra, as duas fileiras leem como um
+     bloco só, não como dois assuntos diferentes */
+  gap: 4px 9px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Anel e avatares são âncora do card: largura previsível, sempre à direita.
+   `flex-shrink: 0` aqui é o que impede o stack de avatares de ser esmagado
+   quando a esquerda enche. */
+.card__people {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* A linha da repetição: até três etiquetas, com a largura do card só para elas. */
+.card__rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .card__tags {
@@ -883,10 +984,11 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  margin-bottom: 7px;
 }
 
 .card__tags-more {
+  flex-shrink: 0;
+  white-space: nowrap;
   color: var(--text-4);
   font-size: 10.5px;
   font-weight: 600;
@@ -900,6 +1002,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   color: var(--text-4);
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* prioridade: sinal na cor do PONTO; o texto fica neutro (sem gritaria) */
@@ -911,6 +1015,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--text-3);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .prio__dot {
@@ -920,6 +1026,8 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   background: var(--pc);
 }
 
+/* `nowrap` não é cosmético: sem ele o flex espremia o chip até "10 de set."
+   virar três linhas empilhadas de uma letra e meia. */
 .due {
   display: inline-flex;
   align-items: center;
@@ -927,6 +1035,12 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   font-size: 11px;
   font-weight: 500;
   color: var(--text-3);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.due svg {
+  flex-shrink: 0;
 }
 
 .due--overdue {
@@ -934,29 +1048,108 @@ const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
   font-weight: 600;
 }
 
-/* Etiqueta de card gerado por repetição */
+/* Etiqueta de card gerado por repetição.
+   O teto era 130px fixos, o que cortava "Toda semana · seg" em "Toda semar" —
+   uma frase que existe para a pessoa CONFERIR a regra não pode ser ilegível.
+   Agora ela usa até a largura do card e, quando não cabe ao lado das outras
+   etiquetas, desce para a linha de baixo em vez de encolher. */
 .repeats {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  max-width: 130px;
-  padding: 1px 6px;
+  max-width: 100%;
+  padding: 1px 7px;
   font-size: 10.5px;
   font-weight: 600;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 11%, transparent);
   border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* A reticência mora no texto, não no chip: no chip ela comeria o padding
+   direito e o ícone perderia o arredondamento. */
+.repeats__text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .repeats svg {
   flex-shrink: 0;
 }
 
+/* Dívida da rotina. Âmbar e não vermelho de propósito: o vermelho já é do prazo
+   vencido DESTE card (`.due--overdue`), e dois vermelhos lado a lado apagam a
+   diferença entre "esta tarefa venceu" e "outras N ficaram para trás". */
+.late-dates {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color var(--motion-fast),
+    background var(--motion-fast);
+}
+
+.late-dates:hover {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 20%, transparent);
+}
+
+.late-dates svg {
+  flex-shrink: 0;
+}
+
+/* Irmão discreto do `.repeats`: mesma família visual, sem borda nem fundo, para
+   ler como "e tem mais" e não como uma segunda etiqueta de igual peso. */
+.more-dates {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px 1px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--motion-fast),
+    border-color var(--motion-fast),
+    background var(--motion-fast);
+}
+
+.more-dates:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.more-dates svg {
+  flex-shrink: 0;
+}
+
 /* ── Anel de progresso ──────────────────────────────────────── */
 .ring-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 5px;

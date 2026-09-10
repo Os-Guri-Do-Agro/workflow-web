@@ -13,7 +13,7 @@
  * linhas para mostrar 12.
  */
 import { computed, ref } from 'vue'
-import { ChevronDown, ChevronRight, Plus, Scale, Trash2 } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight, Scale, Trash2 } from 'lucide-vue-next'
 import {
   useAdjustmentMutations,
   useBalance,
@@ -21,7 +21,6 @@ import {
 } from '@/features/time/composables/useBalance'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { formatDurationLong } from '@/utils/duration'
-import BalanceAdjustDialog from './BalanceAdjustDialog.vue'
 
 const workspace = useWorkspaceStore()
 const extrato = useStatement()
@@ -74,7 +73,11 @@ const diasDoMes = computed(
 )
 
 // ─── Ajuste (ADMIN) ──────────────────────────────────────────────────────────
-const ajusteAberto = ref(false)
+//
+// Lançar ajuste novo saiu da tela por decisão de produto. O que sobra aqui é a
+// REMOÇÃO: ajustes lançados antes continuam no extrato e explicam a diferença
+// entre o cronômetro e o saldo — quem administra ainda precisa poder tirá-los.
+// (`BalanceAdjustDialog.vue` segue no repo, sem ninguém montando.)
 const { remover } = useAdjustmentMutations(
   computed(() => workspace.activeCompanyId),
 )
@@ -91,15 +94,6 @@ function removerAjuste(id: string) {
         <Scale :size="16" />
         <h3>Extrato do banco de horas</h3>
       </div>
-      <button
-        v-if="workspace.isAdmin"
-        type="button"
-        class="stm-adjust-btn"
-        @click="ajusteAberto = true"
-      >
-        <Plus :size="14" />
-        <span>Lançar ajuste</span>
-      </button>
     </header>
 
     <p v-if="extrato.isLoading.value" class="stm-loading">Calculando…</p>
@@ -221,12 +215,9 @@ function removerAjuste(id: string) {
           ({{ diaLabel(extrato.data.value.startedOn) }})
         </template>
         e o saldo atravessa os meses, para cima ou para baixo. Dia útil sem
-        registro conta como meta não cumprida; para corrigir o que o cronômetro
-        não viu, quem administra lança um ajuste.
+        registro conta como meta não cumprida.
       </p>
     </template>
-
-    <BalanceAdjustDialog v-model="ajusteAberto" />
   </section>
 </template>
 
@@ -258,23 +249,6 @@ function removerAjuste(id: string) {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
-}
-
-.stm-adjust-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  font-size: 0.8rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.stm-adjust-btn:hover {
-  background: var(--surface-2, rgba(127, 127, 127, 0.08));
 }
 
 .stm-loading,

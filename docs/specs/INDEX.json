@@ -1,17 +1,19 @@
 {
-  "generatedAt": "2026-08-12T04:57:14.119Z",
+  "generatedAt": "2026-09-10T19:54:19.568Z",
   "model": "Xenova/all-MiniLM-L6-v2",
   "counts": {
-    "specs": 35,
+    "specs": 39,
     "epics": 3,
-    "memories": 16,
+    "memories": 0,
     "enriched": 0
   },
   "statusByName": {
+    "Em Implementação (A, B e C entregues e verificados; falta aplicar a migration)": 1,
     "Em Implementação": 2,
     "Concluído": 8,
     "implementada": 1,
     "Em Implementação (código completo; bloqueada no gate de e2e, ver *Estado da entrega*)": 1,
+    "Em Implementação (P1 a P5 entregues; falta aplicar migration e empacotar a extensão)": 1,
     "Desconhecido": 9,
     "Em Implementação — F1–F4 entregues": 1,
     "Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)": 1,
@@ -21,10 +23,40 @@
     "Implementado (código) — migration pendente de aplicar em produção": 1,
     "Pronto para implementar": 1,
     "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)": 1,
+    "frontend completo (local, dentro de `/tasks/:month`)": 1,
+    "frontend completo e em uso local": 1,
     "Concluído (aguardando deploy do backend para e2e)": 1,
     "aprovada para implementação": 1
   },
   "specs": [
+    {
+      "path": "docs/specs/2026/q3/q3-2/banco-de-horas.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Banco de horas, relatórios e o Meu tempo como player",
+      "status": "Em Implementação (A, B e C entregues e verificados; falta aplicar a migration)",
+      "lastUpdated": "2026-08-14",
+      "sections": [
+        "Visão Geral",
+        "Motivação / Contexto de Negócio",
+        "Research Findings",
+        "Riscos e Mitigações",
+        "Requisitos Não-Funcionais",
+        "User Stories",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Considerações de Arquitetura",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Perguntas em Aberto",
+        "Follow-up (fora do escopo)",
+        "Change Log"
+      ]
+    },
     {
       "path": "docs/specs/2026/q3/q3-2/drive-p1-nativo.md",
       "kind": "spec",
@@ -76,6 +108,7 @@
         "Observabilidade",
         "Definition of Done",
         "Perguntas em Aberto",
+        "Iteração 2 — Dashboard bento (2026-08-12)",
         "Change Log"
       ]
     },
@@ -176,6 +209,24 @@
         "Considerações de Arquitetura",
         "Verificação executada",
         "Definition of Done",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/2026/q3/q3-2/timer-confiavel.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Cronômetro confiável (nunca cortar tempo trabalhado)",
+      "status": "Em Implementação (P1 a P5 entregues; falta aplicar migration e empacotar a extensão)",
+      "lastUpdated": "2026-08-13",
+      "sections": [
+        "Visão Geral",
+        "O que quebrou, e por quê",
+        "Princípio que passa a valer",
+        "Fases",
+        "Alcance por plataforma",
+        "Buraco conhecido, ainda aberto",
+        "Fora do escopo",
         "Change Log"
       ]
     },
@@ -790,6 +841,49 @@
       ]
     },
     {
+      "path": "docs/specs/tarefas-recorrentes-backend-contract.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Contrato do backend — Tarefas recorrentes",
+      "status": "frontend completo (local, dentro de `/tasks/:month`)",
+      "lastUpdated": null,
+      "sections": [
+        "1. O problema que isto resolve",
+        "2. Os três conceitos",
+        "3. A decisão central: ocorrência derivada, materializada sob demanda",
+        "4. Modelo de dados",
+        "5. Algoritmo de expansão",
+        "6. Vetores de teste (copiar como teste unitário)",
+        "7. Endpoints",
+        "8. A resolução do mês (o ponto de integração mais delicado)",
+        "9. Fuso horário",
+        "10. Mudanças em endpoints existentes",
+        "11. Permissões, realtime e detalhes",
+        "12. O que o frontend já tem pronto",
+        "13. Ordem sugerida de entrega",
+        "14. Perguntas em aberto para o backend"
+      ]
+    },
+    {
+      "path": "docs/specs/tarefas-recorrentes-handoff-backend.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Tarefas recorrentes — handoff para o backend",
+      "status": "frontend completo e em uso local",
+      "lastUpdated": null,
+      "sections": [
+        "0. Como ler este documento",
+        "1. O resumo em uma tela",
+        "2. O que mudou desde o contrato",
+        "3. O que o backend precisa devolver e o contrato não previa",
+        "4. A regra de colapso, precisa o suficiente para reimplementar",
+        "5. Mapeamento campo a campo",
+        "6. Decisões que continuam abertas",
+        "7. Como conferir que os dois lados concordam",
+        "8. O que some do frontend quando a API chegar"
+      ]
+    },
+    {
       "path": "docs/specs/time-tracking-v2.md",
       "kind": "spec",
       "isEpic": false,
@@ -861,118 +955,5 @@
       ]
     }
   ],
-  "memories": [
-    {
-      "path": "didactic-overhaul-program.md",
-      "kind": "memory",
-      "name": "didactic-overhaul-program",
-      "description": "Programa multi-fase para deixar o work-flow didático/acessível; spec em docs/specs/didactic-overhaul.md",
-      "type": "project"
-    },
-    {
-      "path": "drive-de-arquivos.md",
-      "kind": "memory",
-      "name": "drive-de-arquivos",
-      "description": "Drive P1 implementado (bucket privado drive-files, pessoal+empresa); migration 20260811120000 pendente de aplicar em produção",
-      "type": "project"
-    },
-    {
-      "path": "entrega-5-fixes-jul2026.md",
-      "kind": "memory",
-      "name": "entrega-5-fixes-jul2026",
-      "description": "Entrega dos 5 fixes (fonte Geist, tema claro, Meu Tempo, avatares, migração v-dialog→AppDialog) na branch main, NÃO COMMITADA, aguardando review do diff",
-      "type": "project"
-    },
-    {
-      "path": "envs-producao-railway.md",
-      "kind": "memory",
-      "name": "envs-producao-railway",
-      "description": "A API em producao (Railway) roda sem ENCRYPTION_KEY/JWT_SECRET conferidas; segredos de empresa cifrados com chave publica do codigo",
-      "type": "project"
-    },
-    {
-      "path": "guard-nao-ve-body-multipart.md",
-      "kind": "memory",
-      "name": "guard-nao-ve-body-multipart",
-      "description": "Na workflow-api, CompanyRoleGuard NÃO enxerga body de multipart (guards rodam antes do FileInterceptor/multer)",
-      "type": "project"
-    },
-    {
-      "path": "nicolas-ui-taste-premium.md",
-      "kind": "memory",
-      "name": "nicolas-ui-taste-premium",
-      "description": "Gosto de UI do Nicolas — \\\"premium de mercado\\\", não básico; odeia border-left; escolheu direção \\\"profundo + movimento\\\" pro board",
-      "type": "feedback"
-    },
-    {
-      "path": "ocr-v1-custo-completude.md",
-      "kind": "memory",
-      "name": "ocr-v1-custo-completude",
-      "description": "OCR v1 — implementado em ago/2026; limites de schema da API Anthropic e pendências de dado",
-      "type": "project"
-    },
-    {
-      "path": "overhaul-visual-premium.md",
-      "kind": "memory",
-      "name": "overhaul-visual-premium",
-      "description": "Programa de tirar o layout \\\"IAZADO\\\" - F0/F1/F2 entregues (gsap, v-reveal, ProgressRing, CountUp, echarts tokenizado, Dashboard e Roadmap); proximas fases e follow-ups",
-      "type": "project"
-    },
-    {
-      "path": "overnight-fix-program.md",
-      "kind": "memory",
-      "name": "overnight-fix-program",
-      "description": "Programa overnight (02/07/2026) de correção total do work-flow — plano de ondas, estado e caminho do relatório de auditoria",
-      "type": "project"
-    },
-    {
-      "path": "prisma-migrate-dev-e-perigoso.md",
-      "kind": "memory",
-      "name": "prisma-migrate-dev-e-perigoso",
-      "description": "Nunca rodar `prisma migrate dev` no workflow-api - aponta pra produção e o drift acumulado faria dropar índices que garantem regras de negócio",
-      "type": "project"
-    },
-    {
-      "path": "qr-microservice-roles-simplification.md",
-      "kind": "memory",
-      "name": "qr-microservice-roles-simplification",
-      "description": "Estado da simplificação de roles (ADMIN/WORKER) + QR pastas + microserviço de QR por token no work-flow",
-      "type": "project"
-    },
-    {
-      "path": "sentia-consome-ocr.md",
-      "kind": "memory",
-      "name": "sentia-consome-ocr",
-      "description": "Sentia é o primeiro cliente do OCR Digital; Marcel Yassumoto faz a integração e o alvo é preencher o cadastro de Empresa da Sentia",
-      "type": "project"
-    },
-    {
-      "path": "time-tracking-v2.md",
-      "kind": "memory",
-      "name": "time-tracking-v2",
-      "description": "Time Tracking v2 (paridade Clockify + visão de equipe admin) implementado; deploy do backend pendente p/ e2e",
-      "type": "project"
-    },
-    {
-      "path": "user-nicolas-workstyle.md",
-      "kind": "memory",
-      "name": "user-nicolas-workstyle",
-      "description": "Como o Nicolas gosta de trabalhar — delega com alta confiança, spec-driven, PT-BR casual",
-      "type": "feedback"
-    },
-    {
-      "path": "verificacao-visual-cdp.md",
-      "kind": "memory",
-      "name": "verificacao-visual-cdp",
-      "description": "Como verificar visualmente telas autenticadas do work-flow sem credenciais (Edge headless + CDP + JWT fake + API mock local)",
-      "type": "project"
-    },
-    {
-      "path": "workflow-privado-acessos-publicos.md",
-      "kind": "memory",
-      "name": "workflow-privado-acessos-publicos",
-      "description": "Workflow é ferramenta privada (sem cadastro público); tokens de API vivem na página Acessos Públicos com escopo por ferramenta e revogação só pelo criador",
-      "type": "project"
-    }
-  ]
+  "memories": []
 }

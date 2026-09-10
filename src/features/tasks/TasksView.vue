@@ -12,6 +12,7 @@ import {
   RefreshCw,
   CalendarDays,
   Repeat,
+  Bookmark,
 } from 'lucide-vue-next'
 import TaskForm, { type TaskFormSubtask } from '@/components/tasks/TaskForm.vue'
 import { plainToHtml } from '@/features/tasks/description-html'
@@ -33,6 +34,7 @@ import { useCompanyBoards } from '@/composables/useCompanyBoards'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { useBacklog } from '@/composables/useBacklog'
 import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
+import { useTaskFilterMemory } from '@/features/tasks/composables/useTaskFilterMemory'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import { useQueryClient } from '@tanstack/vue-query'
 // ── Repetição (PROTÓTIPO, dado fictício — ver docs/specs/tarefas-recorrentes-backend-contract.md)
@@ -52,8 +54,8 @@ import {
 import {
   isOccurrenceId,
   parseOccurrenceId,
+  type BoardOccurrence,
   type RecurrenceRule,
-  type RecurringOccurrence,
   type RecurringTemplate,
 } from '@/features/tasks/recurring/recurrence-types'
 
@@ -82,6 +84,18 @@ interface BoardTask {
   subtasks?: Array<{ id: string; title: string; status: string }>
   /** Presente só nos cards gerados por uma repetição (protótipo, §recorrência). */
   recurrence?: string
+  /**
+   * Quantas OUTRAS datas desta mesma repetição caem no mês e ficaram fora do
+   * board. `0`/ausente = o card é tudo que existe. Vira o contador que leva
+   * para a Agenda — colapsar as datas sem dizer quantas some com a informação.
+   */
+  recurrenceHidden?: number
+  /**
+   * Dessas escondidas, quantas já passaram sem ninguém encostar. É o que impede
+   * o quadro de quem ignorou a rotina a semana toda parecer igual ao de quem
+   * está em dia.
+   */
+  recurrenceOverdue?: number
 }
 
 type BoardColumns = Record<BoardStatus, BoardTask[]>
@@ -212,7 +226,7 @@ const monthCalendarKey = computed(() =>
 
 const {
   templates: recurrenceTemplates,
-  monthOccurrences,
+  boardOccurrences,
   monthlyFixed,
   scheduled: scheduledOccurrences,
   createTemplate,
@@ -226,14 +240,14 @@ const {
   resetOccurrence,
   templateById,
   countInMonth,
-} = useRecurringTasks(monthCalendarKey)
+} = useRecurringTasks(monthCalendarKey, companyId)
 
 const recurringCount = computed(
   () => recurrenceTemplates.value.filter((t) => t.rule.frequency !== 'once').length,
 )
 
 /** A ocorrência com a cara de card do board. */
-const occurrenceToBoardTask = (occurrence: RecurringOccurrence): BoardTask => ({
+const occurrenceToBoardTask = (occurrence: BoardOccurrence): BoardTask => ({
   id: occurrence.id,
   title: occurrence.title,
   priorityNumber: occurrence.priorityNumber,
@@ -246,10 +260,18 @@ const occurrenceToBoardTask = (occurrence: RecurringOccurrence): BoardTask => ({
     status: 'TODO',
   })),
   recurrence: describeRule(templateById(occurrence.templateId)?.rule ?? emptyRule()),
+  recurrenceHidden: occurrence.hiddenInMonth,
+  recurrenceOverdue: occurrence.overdueInMonth,
 })
 
 /**
- * O board do mês: atividades reais + as ocorrências geradas pelas repetições.
+ * O board do mês: atividades reais + UMA linha por repetição.
+ *
+ * O board é a superfície do MÊS, mas uma rotina diária é uma coisa do DIA:
+ * despejar as 22 datas de "todo dia útil" nas colunas trata a repetição como 22
+ * tarefas diferentes. `boardOccurrences` já entrega só a ocorrência corrente de
+ * cada regra (mais as que a pessoa começou e não terminou); o resto do mês é a
+ * aba Agenda, para onde o contador do card leva.
  *
  * As geradas entram no FIM de cada coluna. Card virtual não tem ordem manual
  * (não existe linha no servidor para gravá-la), e intercalá-las pela data faria
@@ -258,7 +280,7 @@ const occurrenceToBoardTask = (occurrence: RecurringOccurrence): BoardTask => ({
 const boardTasks = computed<BoardColumns>(() => {
   const merged = { TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] } as BoardColumns
   for (const status of STATUSES) merged[status] = [...(tasks.value[status] ?? [])]
-  for (const occurrence of monthOccurrences.value) {
+  for (const occurrence of boardOccurrences.value) {
     merged[occurrence.status].push(occurrenceToBoardTask(occurrence))
   }
   return merged
@@ -562,6 +584,30 @@ const clearFilters = () => {
   filterTags.value = []
 }
 
+/**
+ * "Lembrar filtro": guarda o recorte por empresa e restaura na próxima visita.
+ *
+ * Desligar limpa a tela junto, e não só o registro. Se desmarcar apenas parasse
+ * de gravar, a pessoa continuaria olhando um board filtrado depois de dizer que
+ * não quer mais filtro guardado — e a ação pareceria não ter feito nada.
+ */
+const { remember: rememberFilters, setRemember } = useTaskFilterMemory(
+  companyId,
+  {
+    user: selectedUser,
+    priority: filterPriority,
+    status: filterStatus,
+    tags: filterTags,
+  },
+  { urlHasTags: () => parseTagsParam(route.query.tags).length > 0 },
+)
+
+const toggleRememberFilters = () => {
+  const next = !rememberFilters.value
+  setRemember(next)
+  if (!next) clearFilters()
+}
+
 const allUsers = computed<string[]>(() => {
   const users = new Set<string>()
   for (const status of STATUSES) {
@@ -803,6 +849,12 @@ const moveRecurrenceToNextMonth = (template: RecurringTemplate) => {
 
 const showFilters = ref(false)
 
+// Filtro restaurado da memória abre o painel sozinho, uma vez, e só quando ele
+// de fato esconde alguma coisa. Recorte guardado agindo em silêncio é a receita
+// do "o board está vazio, o time parou de trabalhar": a pessoa não lembra que
+// ligou aquilo semanas atrás e a causa fica fora da tela.
+if (rememberFilters.value && activeFiltersCount.value > 0) showFilters.value = true
+
 // Alturas fake do skeleton: colunas com "cargas" diferentes leem como um board
 // de verdade carregando, não como quatro barras genéricas.
 const skeletonLanes = [
@@ -963,15 +1015,42 @@ const skeletonLanes = [
           </div>
         </div>
 
-        <!-- Clear -->
-        <button
-          v-if="activeFiltersCount > 0"
-          class="clear-filters-btn"
-          @click="clearFilters"
-        >
-          <X :size="12" />
-          Limpar filtros
-        </button>
+        <!-- Ações do filtro: lembrar e limpar, ancoradas à direita -->
+        <div class="filter-actions">
+          <!-- Memória do recorte. Fica AQUI, junto dos campos, e não em
+               Configurações: filtro que persiste sem a pessoa lembrar que ligou
+               vira "o board está vazio, o time parou de trabalhar". O botão à
+               vista é o que mantém a causa visível ao lado do efeito. -->
+          <button
+            type="button"
+            class="remember-switch"
+            role="switch"
+            :aria-checked="rememberFilters"
+            :title="
+              rememberFilters
+                ? 'Este recorte volta na próxima vez que você abrir. Desmarcar limpa o filtro.'
+                : 'Guardar este recorte para não refazê-lo toda vez'
+            "
+            @click="toggleRememberFilters"
+          >
+            <span class="remember-track" aria-hidden="true">
+              <span class="remember-thumb" />
+            </span>
+            <span class="remember-label">
+              <Bookmark :size="11" />
+              Lembrar filtro
+            </span>
+          </button>
+
+          <button
+            v-if="activeFiltersCount > 0"
+            class="clear-filters-btn"
+            @click="clearFilters"
+          >
+            <X :size="12" />
+            Limpar filtros
+          </button>
+        </div>
       </div>
     </Transition>
 
@@ -1032,6 +1111,7 @@ const skeletonLanes = [
             @open-details="openDetails"
             @delete-task="openDeleteConfirm"
             @rename-task="handleRenameTask"
+            @show-occurrences="currentTab = 'agenda'"
           />
         </div>
 
@@ -1441,6 +1521,95 @@ const skeletonLanes = [
   font-weight: 600;
 }
 
+/* As duas ações do filtro num bloco só: com `flex-wrap` na barra, dois
+   `margin-left: auto` soltos se separariam em linhas diferentes quando a barra
+   quebrasse. */
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  align-self: flex-end;
+}
+
+.remember-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 6px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    color var(--motion-fast),
+    border-color var(--motion-fast),
+    background var(--motion-fast);
+}
+
+.remember-switch:hover {
+  color: var(--text-2);
+  background: var(--surface-3);
+}
+
+.remember-switch[aria-checked='true'] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.remember-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.remember-track {
+  position: relative;
+  width: 26px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast);
+}
+
+.remember-switch[aria-checked='true'] .remember-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.remember-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--motion) var(--motion-ease);
+}
+
+.remember-switch[aria-checked='true'] .remember-thumb {
+  transform: translateX(11px);
+  background: var(--accent-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remember-thumb {
+    transition: none;
+  }
+}
+
 .clear-filters-btn {
   display: flex;
   align-items: center;
@@ -1452,8 +1621,6 @@ const skeletonLanes = [
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 6px;
-  margin-left: auto;
-  align-self: flex-end;
   transition: color 0.12s;
 }
 

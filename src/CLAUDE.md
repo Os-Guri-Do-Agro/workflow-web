@@ -148,7 +148,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Público         | [`features/public/PublicBoardView.vue`](./features/public/PublicBoardView.vue)                 | `/public/board/:token` | Board read-only por token                                         |
 | Público         | [`features/public/PublicRoadmapView.vue`](./features/public/PublicRoadmapView.vue)             | `/public/roadmap/:token` | Roadmap read-only por token                                   |
 | Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais, **100% API real** (a nota antiga de "mockados" está obsoleta desde o contrato `GET /company/:id/roadmap`) |
-| Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês. Abas **Board · Agenda · Backlog**. Tags, arquivos e documentos `.md` na tarefa (ver abaixo). Filtro por tag em `?tags=slug1,slug2`. **Repetição** é um campo da tarefa (protótipo com dado fictício, sem chamada de API): os cards gerados dividem o board com as atividades reais e o botão "Recorrentes" do header abre a gestão das regras — ver a seção abaixo |
+| Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês. Abas **Board · Agenda · Backlog**. Tags, arquivos e documentos `.md` na tarefa (ver abaixo). Filtro por tag em `?tags=slug1,slug2`. **Repetição** é um campo da tarefa (estado local em `localStorage` por empresa, sem chamada de API): o board mostra UMA linha por regra (a corrente + as abertas), com contadores "+N no mês" e "N atrasadas" que levam à Agenda; o botão "Recorrentes" do header abre a gestão das regras — ver a seção abaixo |
 | Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         | Rota registrada na navegação                                           |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
 | **Notas** ★     | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | Redesenhada na P1 do épico de notas colaborativas. Autosave, pastas com CRUD e aninhamento, bubble/slash menu, modo imersivo. Sub-components em `features/notes/` |
@@ -377,11 +377,37 @@ features/notes/
 
 Especificações: [épico](../docs/specs/epicos/notas-colaborativas-premium.md) · [P1](../docs/specs/notas-p1-editor-premium.md) · [P2](../docs/specs/notas-p2-compartilhamento.md) · [P3](../docs/specs/notas-p3-edicao-ao-vivo.md) · [P4](../docs/specs/notas-p4-rabisco.md)
 
-### Tarefas recorrentes (PROTÓTIPO, dado fictício)
+### Memória do filtro do board
 
-Contrato para o backend: [tarefas-recorrentes-backend-contract.md](../docs/specs/tarefas-recorrentes-backend-contract.md)
-(modelo de dados, algoritmo de expansão com vetores de teste, endpoints e as
-duas mudanças pedidas em `POST /activity` e `PATCH /activity/:id`).
+[`features/tasks/composables/useTaskFilterMemory.ts`](./features/tasks/composables/useTaskFilterMemory.ts) —
+o botão **Lembrar filtro** da barra de filtros de `/tasks/:month`. Guarda
+responsável + prioridade + tags em `localStorage` **por empresa**
+(`workflow:tasks-filter:v1:<companyId>`; tag de uma empresa aplicada em outra
+filtraria para o vazio sem explicação).
+
+Quatro regras que não são óbvias:
+
+1. **A presença do registro É o estado ligado.** Não existe um `enabled`
+   separado para os dois saírem de sincronia; desligar apaga a chave.
+2. **Desligar limpa a tela junto**, não só o registro. Se apenas parasse de
+   gravar, a pessoa continuaria olhando um board filtrado depois de dizer que
+   não quer mais filtro guardado, e a ação pareceria não ter feito nada.
+3. **Link compartilhado ganha do que está guardado.** Quem abre `?tags=cms`
+   quer ver o CMS, não o recorte que deixou ligado semana passada. O filtro de
+   tag continua sendo o único que mora na URL.
+4. **Filtro restaurado abre o painel de filtros** (uma vez, e só quando de fato
+   esconde algo). Recorte guardado agindo em silêncio é a receita do "o board
+   está vazio, o time parou de trabalhar" — a causa precisa estar na tela ao
+   lado do efeito.
+
+### Tarefas recorrentes (estado LOCAL, sem backend)
+
+- [tarefas-recorrentes-backend-contract.md](../docs/specs/tarefas-recorrentes-backend-contract.md) —
+  o contrato: modelo de dados, algoritmo de expansão com vetores de teste,
+  endpoints e as duas mudanças pedidas em `POST /activity` e `PATCH /activity/:id`
+- [tarefas-recorrentes-handoff-backend.md](../docs/specs/tarefas-recorrentes-handoff-backend.md) —
+  o delta: o que o front faz hoje (colapso do board, dívida, persistência), o
+  que isso pede do backend além do contrato e o mapeamento campo a campo
 
 **Não existe tela de recorrentes.** Recorrência é um CAMPO da tarefa e vive
 inteira dentro de `/tasks/:month`: o campo "Repetição" no `TaskForm`, os cards
@@ -390,23 +416,27 @@ Uma rota própria existiu por uma rodada e foi removida — ela criava dois luga
 para procurar a mesma tarefa (o board com os cards, a tela com as regras), que é
 o problema que a feature deveria resolver, não criar.
 
-**Nenhuma requisição de recorrência sai para o servidor**; o estado vive num
-`ref` de módulo em `useRecurringTasks.ts`, então navegar e voltar preserva o que
-foi criado e nada é gravado. A tarefa AVULSA continua indo pela API real.
+**Nenhuma requisição de recorrência sai para o servidor**; o estado é gravado em
+`localStorage` **por empresa** (`workflow:recurring:v1:<companyId>`, via
+`safeStorage`), então sobrevive ao F5 e não vaza de uma empresa para outra. Não
+sincroniza entre navegadores — é protótipo. A tarefa AVULSA continua indo pela
+API real. A versão na chave existe para o payload poder ser descartado sem
+cerimônia quando a API chegar.
 
 ```
 features/tasks/recurring/
   recurrence-types.ts     modelo x ocorrência x exceção + id `rec:<modelo>:<data>`
   recurrence-engine.ts    funções PURAS de data ('YYYY-MM-DD', aritmética em UTC)
   month-key.ts            monthId (uuid) → 'YYYY-MM'; some quando o backend existir
-  recurring-mock.ts       sementes relativas a hoje (o protótipo não pode envelhecer)
+  current-day.ts          o "hoje" reativo do board (vira sozinho na meia-noite)
+  recurring-mock.ts       sementes de DEMO — não carregadas (ver nota no fim)
   useRecurringTasks.ts    store do protótipo; vira o composable de Vue Query quando a API existir
   components/             RecurrenceRuleEditor (dentro do TaskForm),
                           RecurrenceManagerDialog, RecurringAgenda,
                           RecurringTemplateCard
 ```
 
-Cinco decisões que estruturam tudo:
+Oito decisões que estruturam tudo:
 
 1. **Ocorrência é derivada, nunca materializada.** As datas saem de
    `expandRule` a cada render; só o que a pessoa mudou em UMA data vira
@@ -427,6 +457,41 @@ Cinco decisões que estruturam tudo:
    `isOccurrenceId` decide, em cada escrita, se ela vai para a API ou para o
    store do protótipo. Arrastar um card gerado muda só aquele dia; renomear
    muda o MODELO (o título é dele); excluir dispensa a data e a regra continua.
+6. **O board mostra UMA linha por regra** (`boardOccurrences`), não as datas
+   todas. O board é a superfície do MÊS, mas uma rotina diária é coisa do DIA:
+   despejar as 22 datas de "todo dia útil" numa coluna trata a repetição como
+   22 tarefas diferentes — o trabalho manual que a feature existe para matar,
+   só que gerado sozinho. Entram a ocorrência **corrente** (hoje → a próxima →
+   a última) e as **tocadas que continuam abertas** (arrastadas e não
+   terminadas — sem elas, começar a de segunda e voltar na quarta faria o
+   trabalho em andamento sumir do quadro). O resto vira o contador
+   `hiddenInMonth`, que o card mostra como "+N no mês" e leva para a Agenda.
+   O mês por dia é a **Agenda**; o board é o que está pedindo algo agora.
+   O critério: **o quadro não engorda porque a regra repete, só porque a
+   pessoa atrasou.**
+7. **Atrasar é NÚMERO, nunca card novo** (`overdueInMonth`). Colapsar o board
+   tinha um efeito colateral perverso: quem ignorava a rotina a semana toda
+   via um quadro tão limpo quanto quem estava em dia. O card corrente carrega
+   um chip âmbar "N atrasadas" — as datas escondidas que já venceram e ninguém
+   tocou. Conta só o que está FORA do quadro (o card em tela já pinta o próprio
+   prazo vencido de vermelho) e some quando a data é dispensada ou concluída.
+8. **O "hoje" do board é reativo** (`current-day.ts`), não `today()` direto no
+   computed. Função pura não é dependência do Vue: uma aba aberta durante a
+   madrugada continuava mostrando o card de ontem até o F5. Revalida no foco da
+   aba e num timeout até a meia-noite (aba visível a noite toda nunca recebe
+   foco). O motor de datas segue puro e sem Vue — quem precisa de reatividade
+   importa de `current-day.ts`.
+7. **A Agenda recebe as dispensadas, o board não.** `monthOccurrences` inclui
+   `skipped`; é ele que a Agenda desenha apagado com o botão de trazer de
+   volta. Filtrar na origem (como era antes) transformava "dispensar esta
+   segunda" numa ação sem desfazer: o card sumia e não sobrava nada em tela
+   para clicar.
+
+As sementes de `recurring-mock.ts` **não são carregadas**. Elas já foram o
+estado inicial e o resultado era um board real poluído — só a diária gerava 18
+cards, ao lado de atividades de verdade e com responsáveis que não existem na
+empresa. Para demonstrar a feature com o quadro cheio, hidrate o store com
+`MOCK_TEMPLATES` de propósito.
 
 Aritmética de data sempre em UTC (`dateOnlyToUtc`), nunca `new Date('2026-09-01')`
 em fuso local: em UTC-3 o construtor local faz o dia RECUAR e uma regra "toda

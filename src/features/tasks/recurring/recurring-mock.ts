@@ -1,5 +1,13 @@
 /**
- * Sementes do protótipo — dados fictícios, nenhuma chamada de API.
+ * Sementes de DEMONSTRAÇÃO — dados fictícios, nenhuma chamada de API.
+ *
+ * **Nada aqui é carregado por padrão.** Estas cinco regras já foram a semente
+ * inicial do protótipo e o resultado era um board real poluído: só a diária
+ * ("Triagem dos bug reports") gerava 18 cards em setembro/2026, e ao lado das
+ * atividades de verdade apareciam responsáveis que não existem na empresa. O
+ * arquivo fica no repo para apresentar a feature com o board cheio — para isso,
+ * hidrate `useRecurringTasks` com `MOCK_TEMPLATES` de propósito, num ambiente
+ * onde ninguém está trabalhando.
  *
  * Só REPETIÇÕES: a tarefa avulsa passou a ir pela API de verdade quando a
  * recorrência virou um campo do formulário de tarefa, e semear uma avulsa
