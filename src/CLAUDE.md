@@ -148,7 +148,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Público         | [`features/public/PublicBoardView.vue`](./features/public/PublicBoardView.vue)                 | `/public/board/:token` | Board read-only por token                                         |
 | Público         | [`features/public/PublicRoadmapView.vue`](./features/public/PublicRoadmapView.vue)             | `/public/roadmap/:token` | Roadmap read-only por token                                   |
 | Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais, **100% API real** (a nota antiga de "mockados" está obsoleta desde o contrato `GET /company/:id/roadmap`) |
-| Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês. Tags, arquivos e documentos `.md` na tarefa (ver abaixo). Filtro por tag em `?tags=slug1,slug2` |
+| Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês. Abas **Board · Agenda · Backlog**. Tags, arquivos e documentos `.md` na tarefa (ver abaixo). Filtro por tag em `?tags=slug1,slug2`. **Repetição** é um campo da tarefa (protótipo com dado fictício, sem chamada de API): os cards gerados dividem o board com as atividades reais e o botão "Recorrentes" do header abre a gestão das regras — ver a seção abaixo |
 | Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         | Rota registrada na navegação                                           |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
 | **Notas** ★     | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | Redesenhada na P1 do épico de notas colaborativas. Autosave, pastas com CRUD e aninhamento, bubble/slash menu, modo imersivo. Sub-components em `features/notes/` |
@@ -376,6 +376,61 @@ features/notes/
 **Compartilhamento (P2, código pronto — migration pendente em prod):** `NoteShareDialog` (convidar pessoas VIEW/EDIT + link público revogável), `PublicNoteView` (`/public/note/:token`, HTML via DOMPurify), `useNoteAccess`. Backend: `NoteAccess` + `resolveAccess` central em `note.service.ts`. Nota compartilhada abre em somente-leitura para nível VIEW; 409 no PATCH trata edição concorrente.
 
 Especificações: [épico](../docs/specs/epicos/notas-colaborativas-premium.md) · [P1](../docs/specs/notas-p1-editor-premium.md) · [P2](../docs/specs/notas-p2-compartilhamento.md) · [P3](../docs/specs/notas-p3-edicao-ao-vivo.md) · [P4](../docs/specs/notas-p4-rabisco.md)
+
+### Tarefas recorrentes (PROTÓTIPO, dado fictício)
+
+Contrato para o backend: [tarefas-recorrentes-backend-contract.md](../docs/specs/tarefas-recorrentes-backend-contract.md)
+(modelo de dados, algoritmo de expansão com vetores de teste, endpoints e as
+duas mudanças pedidas em `POST /activity` e `PATCH /activity/:id`).
+
+**Não existe tela de recorrentes.** Recorrência é um CAMPO da tarefa e vive
+inteira dentro de `/tasks/:month`: o campo "Repetição" no `TaskForm`, os cards
+gerados no board do mês, a aba **Agenda** e o diálogo **Recorrentes** do header.
+Uma rota própria existiu por uma rodada e foi removida — ela criava dois lugares
+para procurar a mesma tarefa (o board com os cards, a tela com as regras), que é
+o problema que a feature deveria resolver, não criar.
+
+**Nenhuma requisição de recorrência sai para o servidor**; o estado vive num
+`ref` de módulo em `useRecurringTasks.ts`, então navegar e voltar preserva o que
+foi criado e nada é gravado. A tarefa AVULSA continua indo pela API real.
+
+```
+features/tasks/recurring/
+  recurrence-types.ts     modelo x ocorrência x exceção + id `rec:<modelo>:<data>`
+  recurrence-engine.ts    funções PURAS de data ('YYYY-MM-DD', aritmética em UTC)
+  month-key.ts            monthId (uuid) → 'YYYY-MM'; some quando o backend existir
+  recurring-mock.ts       sementes relativas a hoje (o protótipo não pode envelhecer)
+  useRecurringTasks.ts    store do protótipo; vira o composable de Vue Query quando a API existir
+  components/             RecurrenceRuleEditor (dentro do TaskForm),
+                          RecurrenceManagerDialog, RecurringAgenda,
+                          RecurringTemplateCard
+```
+
+Cinco decisões que estruturam tudo:
+
+1. **Ocorrência é derivada, nunca materializada.** As datas saem de
+   `expandRule` a cada render; só o que a pessoa mudou em UMA data vira
+   registro (`overrides`, chaveado por `rec:<modelo>:<data>`). Materializar
+   "toda segunda, para sempre" por antecedência traria de volta exatamente o
+   trabalho manual de virada de mês que a feature existe para matar.
+2. **O mês é derivado do prazo.** Não existe campo de mês no formulário: mudar
+   a data leva a tarefa para o mês da data (`dateInMonth`). Mês E data
+   separados é a chance de os dois discordarem.
+3. **Status inicial é campo da criação** (`initialStatus`). Tarefa nem sempre
+   nasce em "A fazer"; as fixas do mês nascem em "Em teste". Na tarefa avulsa
+   isso vira `POST /activity` + `PATCH /activity/:id/move`, porque a API cria
+   sempre em `TODO` — a §10.1 do contrato pede `status` no POST para virar uma
+   requisição só.
+4. **Recorrente e avulsa são o mesmo objeto** (`frequency: 'once'`): um
+   formulário só, e virar uma na outra é trocar um campo.
+5. **O prefixo `rec:` no id é o que separa os dois mundos** dentro do board.
+   `isOccurrenceId` decide, em cada escrita, se ela vai para a API ou para o
+   store do protótipo. Arrastar um card gerado muda só aquele dia; renomear
+   muda o MODELO (o título é dele); excluir dispensa a data e a regra continua.
+
+Aritmética de data sempre em UTC (`dateOnlyToUtc`), nunca `new Date('2026-09-01')`
+em fuso local: em UTC-3 o construtor local faz o dia RECUAR e uma regra "toda
+segunda" passa a cuspir domingos. É a mesma convenção de `utils/date.ts`.
 
 ### Tarefa: tags, arquivos e documentos
 
