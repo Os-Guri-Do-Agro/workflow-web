@@ -26,7 +26,7 @@ import { formatDurationLong } from '@/utils/duration'
 
 const props = withDefaults(
   defineProps<{
-    /** `team` exige ADMIN na empresa ativa; o servidor recusa o resto. */
+    /** `team` mostra a empresa toda: qualquer MEMBRO vê (spec D4). */
     scope?: 'me' | 'team'
   }>(),
   { scope: 'me' },
@@ -115,10 +115,21 @@ function exportarCsv() {
   if (props.scope === 'team') {
     const dados = equipe.data.value
     if (!dados) return
-    linhas.push('Pessoa;Email;Trabalhado (h);Meta (h);Saldo (h);Nesta empresa (h)')
+    linhas.push(
+      'Pessoa;Email;Trabalhado (h);Meta (h);Saldo (h);Nesta empresa (h);Acumulado (h);Desde',
+    )
     for (const p of dados.people) {
       linhas.push(
-        [p.name, p.email, dec(p.workedSec), dec(p.targetSec), dec(p.balanceSec), dec(p.companySec)].join(';'),
+        [
+          p.name,
+          p.email,
+          dec(p.workedSec),
+          dec(p.targetSec),
+          dec(p.balanceSec),
+          dec(p.companySec),
+          dec(p.cumulativeBalanceSec),
+          p.startedOn ?? '',
+        ].join(';'),
       )
     }
   } else {
@@ -258,9 +269,11 @@ function exportarCsv() {
     <!-- ─── Fechamento da equipe (ADMIN) ──────────────────────────────────── -->
     <template v-else>
       <p v-if="equipe.isLoading.value" class="rep-loading">Calculando…</p>
+      <!-- Erro aqui é erro mesmo: a lista deixou de ser restrita a ADMIN, então
+           403 só acontece para quem não é da empresa. -->
       <p v-else-if="equipe.isError.value" class="rep-denied">
         <Users :size="14" />
-        O fechamento da equipe é visível para quem administra a empresa.
+        Não foi possível carregar o fechamento da equipe.
       </p>
       <ul v-else-if="equipe.data.value" class="rep-people">
         <li v-for="p in equipe.data.value.people" :key="p.userId" class="rep-person">
@@ -273,11 +286,22 @@ function exportarCsv() {
           <span class="rep-person-bal" :class="p.balanceSec >= 0 ? 'rep-up' : 'rep-down'">
             {{ sinal(p.balanceSec) }}{{ abs(p.balanceSec) }}
           </span>
+          <!-- O acumulado é o saldo real do banco de horas; o da esquerda é só
+               a fatia do período escolhido. -->
+          <span
+            class="rep-person-cumulative"
+            :class="p.cumulativeBalanceSec >= 0 ? 'rep-up' : 'rep-down'"
+          >
+            {{ sinal(p.cumulativeBalanceSec) }}{{ abs(p.cumulativeBalanceSec) }}
+            <span class="rep-person-cumulative-label">acumulado</span>
+          </span>
         </li>
       </ul>
       <p class="rep-note">
         O saldo é da pessoa e considera a jornada dela, somando todas as empresas em que
-        atua. Entre parênteses, quanto desse tempo foi nesta empresa.
+        atua. Entre parênteses, quanto desse tempo foi nesta empresa. O
+        <strong>acumulado</strong> vem desde o primeiro apontamento de cada um e
+        é o saldo que atravessa os meses.
       </p>
     </template>
   </section>
@@ -501,6 +525,20 @@ function exportarCsv() {
 }
 
 .rep-day-diff,
+.rep-person-cumulative {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rep-person-cumulative-label {
+  font-size: 0.7rem;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
 .rep-person-bal {
   text-align: right;
   font-weight: 700;

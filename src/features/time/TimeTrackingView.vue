@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   AlertTriangle,
   DollarSign,
@@ -18,6 +19,7 @@ import TaskPicker from '@/components/ui/TaskPicker.vue'
 import TimeInsightsRail from '@/features/time/components/TimeInsightsRail.vue'
 import BalanceCard from '@/features/time/components/BalanceCard.vue'
 import BalanceReport from '@/features/time/components/BalanceReport.vue'
+import BalanceStatement from '@/features/time/components/BalanceStatement.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -74,7 +76,16 @@ const alerts = useIdleAlerts()
 // qualquer membro (o servidor segue exigindo membership na empresa ativa). Sem
 // empresa ativa não há equipe para ranquear, então aí ela some.
 type Tab = 'me' | 'team' | 'report'
-const activeTab = ref<Tab>('me')
+/**
+ * A aba inicial aceita `?tab=` para poder ser linkada de fora (o card de saldo
+ * manda direto para o extrato). Valor desconhecido cai em 'me' em vez de deixar
+ * a tela em branco.
+ */
+const rota = useRoute()
+const tabDaUrl = String(rota.query.tab ?? '')
+const activeTab = ref<Tab>(
+  tabDaUrl === 'team' || tabDaUrl === 'report' ? tabDaUrl : 'me',
+)
 const hasCompany = computed(() => !!workspace.activeCompanyId)
 
 const headEyebrow = computed(() =>
@@ -1208,6 +1219,12 @@ async function submitManual() {
 
     <!-- ═══════════════ ABA: FECHAMENTO (banco de horas) ═══════════════ -->
     <div v-else-if="activeTab === 'report'" class="tv-report">
+      <!-- O extrato vem PRIMEIRO: ele responde "qual é o meu saldo e de onde
+           ele veio", que é a pergunta que traz a pessoa até esta aba. O
+           fechamento por período, abaixo, é a conferência de um recorte. -->
+      <ErrorBoundary label="o extrato">
+        <BalanceStatement />
+      </ErrorBoundary>
       <ErrorBoundary label="o fechamento">
         <BalanceReport scope="me" />
       </ErrorBoundary>

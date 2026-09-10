@@ -1,6 +1,8 @@
 import { computed, ref, type MaybeRef, unref } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
-import timeService from '@/service/time/time-service'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import timeService, {
+  type CreateAdjustmentInput,
+} from '@/service/time/time-service'
 
 /**
  * Banco de horas (spec banco-de-horas).
@@ -73,6 +75,66 @@ export function useBalance(range: MaybeRef<BalanceRange>, enabled?: MaybeRef<boo
     // Curto de propósito: parar o cronômetro precisa mexer o saldo na hora, e o
     // `invalidateAll` do time tracking já derruba esta chave junto.
     staleTime: 30_000,
+  })
+}
+
+/**
+ * Extrato do banco de horas.
+ *
+ * Não recebe período: ele é a vida inteira da pessoa no sistema. `staleTime`
+ * curto pelo mesmo motivo do saldo — parar o cronômetro muda o mês corrente, e
+ * o `invalidateAll` do time tracking derruba esta chave junto.
+ */
+export function useStatement(enabled?: MaybeRef<boolean>) {
+  return useQuery({
+    queryKey: ['time', 'statement'],
+    queryFn: () => timeService.statement(),
+    enabled: computed(() => (enabled === undefined ? true : unref(enabled))),
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * Lançar e remover ajuste de saldo (ADMIN).
+ *
+ * Invalida extrato E saldos: um ajuste muda o número em toda tela que mostra
+ * banco de horas, e deixar uma delas com o valor antigo é a forma mais rápida
+ * de alguém achar que o lançamento não funcionou.
+ */
+export function useAdjustmentMutations(companyId: MaybeRef<string | null>) {
+  const queryClient = useQueryClient()
+
+  const invalidar = () => {
+    void queryClient.invalidateQueries({ queryKey: ['time', 'statement'] })
+    void queryClient.invalidateQueries({ queryKey: ['time', 'balance'] })
+    void queryClient.invalidateQueries({ queryKey: ['time', 'company-balance'] })
+    void queryClient.invalidateQueries({ queryKey: ['time', 'adjustments'] })
+  }
+
+  const criar = useMutation({
+    mutationFn: (input: CreateAdjustmentInput) =>
+      timeService.createAdjustment(input, unref(companyId) ?? undefined),
+    onSuccess: invalidar,
+  })
+
+  const remover = useMutation({
+    mutationFn: (id: string) =>
+      timeService.removeAdjustment(id, unref(companyId) ?? undefined),
+    onSuccess: invalidar,
+  })
+
+  return { criar, remover }
+}
+
+/** Ajustes lançados na empresa (qualquer membro vê). */
+export function useAdjustments(companyId: MaybeRef<string | null>) {
+  const empresa = computed(() => unref(companyId))
+  return useQuery({
+    queryKey: computed(() => ['time', 'adjustments', empresa.value]),
+    queryFn: () => timeService.listAdjustments(empresa.value ?? undefined),
+    enabled: computed(() => !!empresa.value),
+    staleTime: 60_000,
+    retry: false,
   })
 }
 

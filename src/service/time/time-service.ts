@@ -66,6 +66,12 @@ export interface TimeBalance {
   to: string
   workedSec: number
   targetSec: number
+  /**
+   * Ajustes manuais lançados no período. Fica separado de `workedSec` porque
+   * hora ajustada não é hora apontada: somar as duas na mesma coluna esconderia
+   * de onde veio o saldo.
+   */
+  adjustmentSec: number
   /** Positivo = crédito, negativo = dívida. */
   balanceSec: number
   businessDays: number
@@ -91,6 +97,17 @@ export interface CompanyBalancePerson {
   projectedBalanceSec: number | null
   /** Quanto do tempo dela foi NESTA empresa (a jornada é da pessoa, não daqui). */
   companySec: number
+  /** Dia do primeiro apontamento. `null` = nunca apontou. */
+  startedOn: string | null
+  /** Soma dos ajustes manuais da pessoa, até hoje. */
+  adjustmentSec: number
+  /**
+   * O saldo que ATRAVESSA os meses: desde a estreia dela até hoje.
+   *
+   * É o número do banco de horas de verdade. `balanceSec` é só a fatia do
+   * período que está sendo olhado.
+   */
+  cumulativeBalanceSec: number
 }
 
 export interface CompanyBalance {
@@ -98,6 +115,61 @@ export interface CompanyBalance {
   from: string
   to: string
   people: CompanyBalancePerson[]
+}
+
+/** Um ajuste manual, como o extrato o mostra. */
+export interface BalanceAdjustment {
+  id: string
+  day: string
+  /** Positivo = crédito, negativo = débito. */
+  seconds: number
+  reason: string
+  /** Nome de quem lançou. `null` quando a conta foi removida. */
+  by: string | null
+}
+
+/** Uma linha do extrato: um mês. */
+export interface StatementMonth {
+  /** `YYYY-MM`. */
+  month: string
+  /** Primeiro dia COBRADO (no mês de estreia, o dia do primeiro apontamento). */
+  from: string
+  /** Último dia cobrado (no mês corrente, hoje). */
+  to: string
+  workedSec: number
+  targetSec: number
+  adjustmentSec: number
+  /** Saldo do mês. */
+  balanceSec: number
+  /** Saldo depois deste mês, somando tudo desde o começo. */
+  cumulativeSec: number
+  adjustments: BalanceAdjustment[]
+}
+
+export interface TimeStatement {
+  /** Dia do primeiro apontamento. `null` = a pessoa nunca apontou. */
+  startedOn: string | null
+  months: StatementMonth[]
+  /** O saldo de hoje. */
+  cumulativeSec: number
+}
+
+export interface BalanceAdjustmentRow {
+  id: string
+  userId: string
+  day: string
+  seconds: number
+  reason: string
+  createdAt: string
+  user: { id: string; name: string }
+  createdBy: { id: string; name: string } | null
+}
+
+export interface CreateAdjustmentInput {
+  userId: string
+  day: string
+  seconds: number
+  reason: string
 }
 
 export interface WorkScheduleInput {
@@ -309,7 +381,53 @@ const timeService = {
     return response.data
   },
 
-  /** Fechamento da equipe (ADMIN da empresa ativa). */
+  /**
+   * Extrato do banco de horas: um mês por linha, do primeiro apontamento até
+   * hoje, com o saldo acumulado.
+   *
+   * Sem `from`/`to`: o período não é escolha de quem pergunta. Ele começa na
+   * estreia da pessoa, e é isso que faz o saldo positivo existir em vez de ser
+   * enterrado pela meta de dias em que ninguém apontava.
+   */
+  async statement() {
+    const response = await api.get<TimeStatement>('/time/statement', {
+      params: { tzOffset: new Date().getTimezoneOffset() },
+    })
+    return response.data
+  },
+
+  /** Ajustes lançados na empresa. Qualquer membro vê. */
+  async listAdjustments(companyId?: string, userId?: string) {
+    const response = await api.get<BalanceAdjustmentRow[]>(
+      '/time/balance-adjustment',
+      {
+        params: { ...(userId ? { userId } : {}) },
+        ...(companyId ? { headers: { 'x-company-id': companyId } } : {}),
+      },
+    )
+    return response.data
+  },
+
+  /** Lança crédito ou débito no banco de horas de alguém (ADMIN). */
+  async createAdjustment(input: CreateAdjustmentInput, companyId?: string) {
+    const response = await api.post<BalanceAdjustmentRow>(
+      '/time/balance-adjustment',
+      input,
+      companyId ? { headers: { 'x-company-id': companyId } } : {},
+    )
+    return response.data
+  },
+
+  /** Remove um ajuste (ADMIN). O saldo volta ao que era. */
+  async removeAdjustment(id: string, companyId?: string) {
+    const response = await api.delete<{ deleted: boolean }>(
+      `/time/balance-adjustment/${id}`,
+      companyId ? { headers: { 'x-company-id': companyId } } : {},
+    )
+    return response.data
+  },
+
+  /** Saldo de cada pessoa da empresa. Qualquer MEMBRO vê (não só ADMIN). */
   async companyBalance(from: string, to: string, companyId?: string) {
     const response = await api.get<CompanyBalance>('/time/company-balance', {
       params: { from, to, tzOffset: new Date().getTimezoneOffset() },

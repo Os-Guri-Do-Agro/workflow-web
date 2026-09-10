@@ -19,6 +19,7 @@ import {
   currentMonth,
   currentWeek,
   useBalance,
+  useStatement,
   useToday,
 } from '@/features/time/composables/useBalance'
 import { formatDurationLong } from '@/utils/duration'
@@ -34,6 +35,16 @@ const range = computed(() => {
   return escopo.value === 'week' ? currentWeek() : currentMonth()
 })
 const { data, isLoading } = useBalance(range)
+
+/**
+ * O saldo que ATRAVESSA os meses, desde o primeiro apontamento.
+ *
+ * É o número do banco de horas de verdade; o do período é uma fatia dele.
+ * Antes só existia a fatia, e por isso o crédito de julho sumia em agosto.
+ */
+const extrato = useStatement()
+const acumulado = computed(() => extrato.data.value?.cumulativeSec ?? null)
+const acumuladoCredito = computed(() => (acumulado.value ?? 0) >= 0)
 
 const saldo = computed(() => data.value?.balanceSec ?? 0)
 const credito = computed(() => saldo.value >= 0)
@@ -120,6 +131,22 @@ const progresso = computed(() => {
         <span class="bal-value">{{ credito ? '+' : '−' }}{{ abs(saldo) }}</span>
         <span class="bal-word">{{ palavra }}</span>
       </div>
+
+      <!-- O acumulado vem logo abaixo do saldo do período de propósito: são
+           números diferentes, e vê-los separados é o que impede alguém ler o
+           saldo do mês como se fosse o do banco de horas inteiro. -->
+      <RouterLink
+        v-if="acumulado !== null"
+        to="/time?tab=report"
+        class="bal-cumulative"
+        :class="acumuladoCredito ? 'bal-cumulative--up' : 'bal-cumulative--down'"
+      >
+        <span class="bal-cumulative-label">Acumulado desde o começo</span>
+        <span class="bal-cumulative-value">
+          {{ acumuladoCredito ? '+' : '−' }}{{ abs(acumulado) }}
+        </span>
+        <span class="bal-cumulative-hint">ver extrato</span>
+      </RouterLink>
 
       <!-- A conta aberta. Um saldo sem a conta atrás é um número em que
            ninguém confia, e a primeira dúvida vira chamado. -->
@@ -218,6 +245,45 @@ const progresso = computed(() => {
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-sm);
+}
+
+.bal-cumulative {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  text-decoration: none;
+  color: inherit;
+  font-size: 0.82rem;
+}
+
+.bal-cumulative:hover {
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+}
+
+.bal-cumulative-label {
+  opacity: 0.75;
+}
+
+.bal-cumulative-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bal-cumulative--up .bal-cumulative-value {
+  color: var(--success, #16a34a);
+}
+
+.bal-cumulative--down .bal-cumulative-value {
+  color: var(--danger, #dc2626);
+}
+
+.bal-cumulative-hint {
+  margin-left: auto;
+  font-size: 0.75rem;
+  opacity: 0.6;
 }
 
 .bal-loading {
