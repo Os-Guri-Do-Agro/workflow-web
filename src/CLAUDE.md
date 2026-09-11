@@ -400,7 +400,51 @@ Quatro regras que não são óbvias:
    está vazio, o time parou de trabalhar" — a causa precisa estar na tela ao
    lado do efeito.
 
-### Tarefas recorrentes (estado LOCAL, sem backend)
+### Tarefas recorrentes — modo API (flag `VITE_RECURRING_API_ENABLED`)
+
+A integração com a API real existe e está **desligada por padrão**
+(`RECURRING_API_ENABLED` em `config/feature-flags.ts`). Ligar troca a origem do
+dado; a tela não muda.
+
+```
+features/tasks/recurring/
+  useRecurring.ts               ponto ÚNICO de entrada: escolhe local x API pela flag
+  useRecurringApi.ts            modo API (lê do payload do board + lista de rotinas)
+  useRecurringTasks.ts          modo LOCAL (localStorage) — continua como plano B
+  recurrence-api-mapping.ts     tradução tela ↔ API (funções puras)
+  migrate-local-recurrences.ts  sobe as rotinas locais uma vez, por empresa
+service/activities/activity-recurrence-service.ts   as 8 rotas
+```
+
+Cinco coisas que não são óbvias:
+
+1. **`useRecurring` normaliza os dois modos numa superfície ASSÍNCRONA.** O modo
+   local é síncrono e vai envolvido em `Promise.resolve`: custa nada e dá à tela
+   um caminho só, em vez de `if (isRemote)` em cada handler.
+2. **O colapso do board, no modo API, vale só para os cards VIRTUAIS.** Uma
+   ocorrência materializada é `Activity` comum e já vem nas colunas — esconder
+   tarefa real seria esconder trabalho de alguém.
+3. **Arrastar card virtual cai no caminho normal de propósito.**
+   `PATCH /activity/:id/move` aceita o id `rec:<regra>:<data>` e materializa na
+   mesma transação. Depois do sucesso é obrigatório refetch: o card trocou de
+   identidade (`rec:…` virou cuid) e sem isso o próximo arraste tentaria
+   materializar de novo.
+4. **Renomear um card de rotina edita a REGRA, não a ocorrência.** `PATCH
+   /activity/rec:…` funcionaria, mas materializaria e renomearia só aquele dia —
+   o oposto do que a pessoa pediu.
+5. **`month-key.ts` continua existindo como rede de segurança.** O board agora
+   manda `from`/`to`/`monthNumber` e a heurística não é mais usada quando eles
+   vêm; ela cobre o backend que ainda não tem esse commit. É o último arquivo a
+   sair, não o primeiro.
+
+A migração (`migrate-local-recurrences.ts`) **nunca apaga o registro local** —
+nem depois de migrar. A marca de "já migrei" vive numa chave separada
+(`workflow:recurring:migrated:v1:<companyId>`), justamente para o original
+continuar sendo backup. Tags e responsáveis **não** vão junto: no modo local
+eram nomes soltos, sem id de membro ou de tag, e vínculo errado numa rotina é
+copiado para toda ocorrência futura.
+
+### Tarefas recorrentes — modo LOCAL (o plano B)
 
 - [tarefas-recorrentes-backend-contract.md](../docs/specs/tarefas-recorrentes-backend-contract.md) —
   o contrato: modelo de dados, algoritmo de expansão com vetores de teste,

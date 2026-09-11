@@ -38,3 +38,27 @@ export const CANVAS_ENABLED = import.meta.env.VITE_CANVAS_ENABLED === 'true'
  */
 export const TIMER_AUTO_STOP_ENABLED =
   import.meta.env.VITE_TIMER_AUTO_STOP_ENABLED === 'true'
+
+/**
+ * ## RECURRING_API_ENABLED
+ * Liga a integração das tarefas recorrentes com a API real.
+ *
+ * Desligada (padrão), a feature continua no estado LOCAL: regras em
+ * `localStorage` por empresa, ocorrências derivadas no cliente, nenhuma
+ * requisição de recorrência saindo. Ligada, as regras passam a vir de
+ * `GET /company/:id/activity-recurrence` e do payload do board, e as escritas
+ * vão para a API.
+ *
+ * A flag existe porque a troca mexe no quadro onde as pessoas trabalham: um
+ * board que passa a mostrar tarefa de rotina errada não é um bug de tela, é
+ * gente fazendo — ou deixando de fazer — trabalho. Com a flag, voltar ao
+ * comportamento conhecido é uma variável de ambiente, não um revert com
+ * deploy. Mesmo tratamento do Canvas e do corte por ociosidade: nada é
+ * deletado dos dois lados.
+ *
+ * Depende do backend ter o commit que expõe `recurrences`, `monthNumber`,
+ * `from` e `to` no payload do board (`GET /month/:monthId/board`). Sem ele, a
+ * flag ligada mostra um board sem nenhuma rotina — não quebra, mas não serve.
+ */
+export const RECURRING_API_ENABLED =
+  import.meta.env.VITE_RECURRING_API_ENABLED === 'true'

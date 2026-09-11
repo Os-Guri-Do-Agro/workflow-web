@@ -37,13 +37,23 @@ import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime
 import { useTaskFilterMemory } from '@/features/tasks/composables/useTaskFilterMemory'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import { useQueryClient } from '@tanstack/vue-query'
-// ── Repetição (PROTÓTIPO, dado fictício — ver docs/specs/tarefas-recorrentes-backend-contract.md)
+// ── Repetição (ver docs/specs/tarefas-recorrentes-frontend.md)
 // Recorrência é um CAMPO da tarefa, então ela vive aqui dentro, no board do mês,
 // e não numa tela paralela: dois lugares para procurar a mesma tarefa seria
 // exatamente o problema que a feature tenta resolver.
+//
+// `useRecurring` decide entre o estado local (`localStorage`) e a API pela flag
+// `RECURRING_API_ENABLED`. A tela fala com uma superfície só.
 import RecurringAgenda from '@/features/tasks/recurring/components/RecurringAgenda.vue'
 import RecurrenceManagerDialog from '@/features/tasks/recurring/components/RecurrenceManagerDialog.vue'
-import { useRecurringTasks } from '@/features/tasks/recurring/useRecurringTasks'
+import {
+  useRecurring,
+  monthKeyFromBoard,
+  flattenBoardCards,
+  isBoardVirtualCard,
+} from '@/features/tasks/recurring/useRecurring'
+import type { RecurringBoardPayload } from '@/features/tasks/recurring/useRecurringApi'
+import { migrateLocalRecurrences } from '@/features/tasks/recurring/migrate-local-recurrences'
 import { resolveBoardMonthKey } from '@/features/tasks/recurring/month-key'
 import {
   describeRule,
@@ -194,8 +204,27 @@ const {
 const { data: quartersData } = useCompanyQuarters(companyId)
 const { data: backlogData } = useBacklog(companyId)
 
-// Sync tasks query data → local ref (preserves optimistic mutation support)
-watch(tasksData, (val) => { if (val) tasks.value = val }, { immediate: true })
+/**
+ * Sync da query para o ref local (que o arraste otimista muta).
+ *
+ * Os cards VIRTUAIS são retirados aqui: com a API de rotinas, o servidor manda
+ * as ocorrências ainda não materializadas dentro das colunas, e elas não podem
+ * viver em `tasks` — é esse ref que o arraste faz `splice`, e mover um card que
+ * não tem linha no banco mexeria numa posição que não existe. Elas voltam ao
+ * quadro por `boardOccurrences`, já colapsadas em uma linha por regra.
+ */
+watch(
+  tasksData,
+  (val) => {
+    if (!val) return
+    const real = { ...val } as BoardColumns
+    for (const status of STATUSES) {
+      real[status] = (val[status] ?? []).filter((t: BoardTask) => !isBoardVirtualCard(t))
+    }
+    tasks.value = real
+  },
+  { immediate: true },
+)
 
 const loading = computed(() => tasksLoading.value)
 
@@ -217,11 +246,35 @@ const currentMonthInfo = computed<{ month: RawMonth; quarterName: string | null 
 // `/tasks/:month` navega por `monthId` (uuid) e o contrato atual não devolve o
 // intervalo de datas do mês. `resolveBoardMonthKey` é a costura do protótipo
 // (ela some quando a §8 do contrato de backend existir).
-const monthCalendarKey = computed(() =>
-  resolveBoardMonthKey(
-    currentMonthInfo.value?.month ?? null,
-    STATUSES.flatMap((s) => (tasks.value[s] ?? []).map((t) => t.dueDate)),
-  ),
+/**
+ * O payload cru do board.
+ *
+ * Com a API de rotinas ligada ele traz `monthNumber`, `from`, `to` e
+ * `recurrences` (as regras do mês com as exceções já recortadas). `tasks` é a
+ * cópia local mutável das colunas, e não serve aqui: o arraste otimista mexe
+ * nela, e a janela do mês tem que vir do servidor sem passar por isso.
+ */
+const boardPayload = computed<RecurringBoardPayload | undefined>(
+  () => tasksData.value as RecurringBoardPayload | undefined,
+)
+
+/** Todos os cards do mês, reais e virtuais, numa lista só. */
+const boardCards = computed(() => flattenBoardCards(tasksData.value, STATUSES))
+
+/**
+ * O mês do board em calendário de verdade.
+ *
+ * O servidor agora manda a janela (`from`/`to`), então não há o que adivinhar.
+ * `resolveBoardMonthKey` fica como rede de segurança para o backend que ainda
+ * não tem esse commit — e é a única razão de `month-key.ts` continuar existindo.
+ */
+const monthCalendarKey = computed(
+  () =>
+    monthKeyFromBoard(boardPayload.value) ??
+    resolveBoardMonthKey(
+      currentMonthInfo.value?.month ?? null,
+      STATUSES.flatMap((s) => (tasks.value[s] ?? []).map((t) => t.dueDate)),
+    ),
 )
 
 const {
@@ -240,7 +293,13 @@ const {
   resetOccurrence,
   templateById,
   countInMonth,
-} = useRecurringTasks(monthCalendarKey, companyId)
+  isRemote: recurrenceIsRemote,
+} = useRecurring({
+  monthKey: monthCalendarKey,
+  companyId,
+  board: boardPayload,
+  cards: boardCards,
+})
 
 const recurringCount = computed(
   () => recurrenceTemplates.value.filter((t) => t.rule.frequency !== 'once').length,
@@ -310,11 +369,13 @@ const findMembers = async () => {
  * doze meses de "toda segunda" na criação seria o trabalho manual da virada de
  * mês, só que automatizado.
  */
-const createRecurrence = () => {
+const createRecurrence = async () => {
   const form = formActivity.value
-  // Responsáveis viram NOMES: o modelo é do protótipo e o card mostra nome, não
-  // uuid. Some quando `responsibleUserIds` for para a API de verdade.
+  // O modelo carrega NOMES porque é isso que os cards e avatares desenham; os
+  // IDS vão à parte, em `responsibleUserIds`, que é o que a API quer. No modo
+  // local o segundo é ignorado.
   const nameById = new Map(members.value.map((m) => [m.id, m.name]))
+  const responsibleUserIds = form.assignees.filter((id) => nameById.has(id))
   const template: Omit<RecurringTemplate, 'id' | 'createdAt'> = {
     title: form.title.trim(),
     description: form.description || '',
@@ -328,12 +389,22 @@ const createRecurrence = () => {
     rule: form.rule,
     active: true,
   }
-  if (editingRecurrenceId.value) {
-    updateTemplate(editingRecurrenceId.value, template)
-    showSuccess('Repetição atualizada')
-  } else {
-    createTemplate(template)
-    showSuccess(`Repetição criada — ${describeRule(template.rule).toLowerCase()}`)
+  creating.value = true
+  try {
+    if (editingRecurrenceId.value) {
+      await updateTemplate(editingRecurrenceId.value, template, responsibleUserIds)
+      showSuccess('Repetição atualizada')
+    } else {
+      await createTemplate(template, responsibleUserIds)
+      showSuccess(`Repetição criada — ${describeRule(template.rule).toLowerCase()}`)
+    }
+  } catch (error: unknown) {
+    // O formulário FICA ABERTO no erro: fechar levaria junto o que a pessoa
+    // escreveu, e ela teria que redigitar a regra inteira para tentar de novo.
+    showError(apiErrorMessage(error, 'Não foi possível salvar a repetição'))
+    return
+  } finally {
+    creating.value = false
   }
 
   editingRecurrenceId.value = null
@@ -344,9 +415,10 @@ const createRecurrence = () => {
 const createActivity = async () => {
   if (!formActivity.value.title) return
 
-  // Recorrente não passa pela API: é o protótipo. Avulsa segue o caminho real.
+  // Recorrente vai pelo caminho da rotina (API ou local, conforme a flag).
+  // Avulsa continua em `POST /activity`, como sempre foi.
   if (formActivity.value.rule.frequency !== 'once') {
-    createRecurrence()
+    await createRecurrence()
     return
   }
 
@@ -469,7 +541,36 @@ onMounted(async () => {
     dialog.value = true
     router.replace({ path: route.path })
   }
+  void migrateRecurrences()
 })
+
+/**
+ * Sobe para a API, uma vez por empresa, as rotinas criadas enquanto a feature
+ * era local. O registro local NUNCA é apagado — ele é o backup.
+ *
+ * Avisa na tela mesmo quando dá tudo certo: rotina aparecendo sozinha no quadro,
+ * sem explicação, é indistinguível de bug.
+ */
+const migrateRecurrences = async () => {
+  if (!recurrenceIsRemote || !companyId.value) return
+  try {
+    const report = await migrateLocalRecurrences(companyId.value)
+    if (!report.found) return
+    if (report.migrated) {
+      showSuccess(
+        `${report.migrated} repetição${report.migrated > 1 ? 'ões' : ''} que estava${report.migrated > 1 ? 'm' : ''} só neste navegador foi enviada para o servidor`,
+      )
+      await refreshTasks()
+    }
+    if (report.failed.length) {
+      showError(
+        `Não consegui enviar: ${report.failed.join(', ')}. Continuam guardadas neste navegador.`,
+      )
+    }
+  } catch (error: unknown) {
+    showError(apiErrorMessage(error, 'Não foi possível migrar as repetições locais'))
+  }
+}
 
 // ── Filters ──
 const filterPriority = ref<number | null>(null)
@@ -662,9 +763,14 @@ const handleMove = async (payload: { taskId: string; status: string; position: n
 
   // Card gerado por repetição: a mudança é do DIA, não do modelo. Mover a
   // segunda-feira para "Concluído" não pode dar a semana inteira como feita.
-  // Nada de API aqui — a ocorrência ainda não existe no servidor.
-  if (isOccurrenceId(taskId)) {
-    setOccurrenceStatus(taskId, status as BoardStatus)
+  //
+  // No modo LOCAL isso vira um override e nada sai para o servidor. No modo
+  // REMOTO cai no caminho normal de propósito: `PATCH /activity/:id/move`
+  // aceita o id virtual `rec:<regra>:<data>` e MATERIALIZA a ocorrência dentro
+  // da mesma transação — o card é arrastado e fica onde foi solto, e o refetch
+  // o traz de volta já como atividade real.
+  if (isOccurrenceId(taskId) && !recurrenceIsRemote) {
+    void setOccurrenceStatus(taskId, status as BoardStatus)
     return
   }
 
@@ -677,6 +783,10 @@ const handleMove = async (payload: { taskId: string; status: string; position: n
 
   try {
     await activityService.moveActivity(taskId, { status, position })
+    // Materializou: o card trocou de identidade (`rec:…` virou cuid) e deixou
+    // de ser virtual. Sem o refetch a tela continuaria com o id antigo, e o
+    // próximo arraste tentaria materializar de novo uma data que já é tarefa.
+    if (isOccurrenceId(taskId)) await refreshTasks()
   } catch (error: unknown) {
     showError(apiErrorMessage(error, 'Erro ao mover atividade'))
     await refreshTasks() // revert on failure
@@ -704,10 +814,19 @@ useActivityBoardRealtime(applyRemoteMove, refreshTasks)
 const handleRenameTask = async (taskId: string, newTitle: string) => {
   // Renomear um card gerado muda o MODELO: o título é dele, não de uma data.
   // Vale para todas as repetições, e a pessoa precisa saber disso.
+  //
+  // Vale nos dois modos, e no remoto é uma escolha: `PATCH /activity/rec:…`
+  // funcionaria, mas MATERIALIZARIA a ocorrência e renomearia só aquele dia —
+  // o oposto do que a pessoa pediu ao editar o título de um card de rotina.
   const occurrence = parseOccurrenceId(taskId)
   if (occurrence) {
-    updateTemplate(occurrence.templateId, { title: newTitle })
-    showSuccess('Título alterado na repetição — vale para todas as datas')
+    try {
+      await updateTemplate(occurrence.templateId, { title: newTitle })
+      showSuccess('Título alterado na repetição — vale para todas as datas')
+    } catch (error: unknown) {
+      showError(apiErrorMessage(error, 'Erro ao renomear a repetição'))
+      await refreshTasks()
+    }
     return
   }
 
@@ -729,8 +848,11 @@ const openDeleteConfirm = (task: BoardTask) => {
   // pede confirmação porque não destrói nada: o botão de desfazer é o próprio
   // calendário da aba Agenda, onde a data dispensada volta em um clique.
   if (isOccurrenceId(task.id)) {
-    skipOccurrence(task.id)
-    showSuccess('Dispensada só nesta data. A repetição continua valendo.')
+    void skipOccurrence(task.id)
+      .then(() => showSuccess('Dispensada só nesta data. A repetição continua valendo.'))
+      .catch((error: unknown) =>
+        showError(apiErrorMessage(error, 'Não foi possível dispensar esta data')),
+      )
     return
   }
   taskToDelete.value = task
@@ -826,14 +948,30 @@ watch(dialog, (open) => {
   formActivity.value = EMPTY_FORM()
 })
 
-const removeRecurrence = (template: RecurringTemplate) => {
-  removeTemplate(template.id)
-  showSuccess('Repetição excluída')
+const removeRecurrence = async (template: RecurringTemplate) => {
+  try {
+    const kept = await removeTemplate(template.id)
+    // O servidor devolve quantas atividades sobreviveram. Dizer o número é o
+    // que separa "excluí a regra" de "apaguei o histórico": as tarefas que já
+    // nasceram dela continuam lá, com o tempo e os comentários que receberam.
+    showSuccess(
+      kept > 0
+        ? `Repetição excluída — ${kept} tarefa${kept > 1 ? 's' : ''} já criada${kept > 1 ? 's' : ''} continua${kept > 1 ? 'm' : ''} no quadro`
+        : 'Repetição excluída',
+    )
+  } catch (error: unknown) {
+    showError(apiErrorMessage(error, 'Não foi possível excluir a repetição'))
+  }
 }
 
-const toggleRecurrence = (template: RecurringTemplate) => {
-  toggleActive(template.id)
-  showSuccess(template.active ? 'Repetição pausada' : 'Repetição retomada')
+const toggleRecurrence = async (template: RecurringTemplate) => {
+  const pausing = template.active
+  try {
+    await toggleActive(template.id)
+    showSuccess(pausing ? 'Repetição pausada' : 'Repetição retomada')
+  } catch (error: unknown) {
+    showError(apiErrorMessage(error, 'Não foi possível alterar a repetição'))
+  }
 }
 
 /**
@@ -842,9 +980,13 @@ const toggleRecurrence = (template: RecurringTemplate) => {
  * É a resposta direta ao ritual de recopiar o quadro na virada: em vez de
  * recriar tudo em novembro, muda-se a data e o mês vem junto.
  */
-const moveRecurrenceToNextMonth = (template: RecurringTemplate) => {
-  const landed = moveToMonth(template.id, shiftMonthKey(monthCalendarKey.value, 1))
-  if (landed) showSuccess(`Prazo movido — a tarefa foi para ${monthLabel(landed)}`)
+const moveRecurrenceToNextMonth = async (template: RecurringTemplate) => {
+  try {
+    const landed = await moveToMonth(template.id, shiftMonthKey(monthCalendarKey.value, 1))
+    if (landed) showSuccess(`Prazo movido — a tarefa foi para ${monthLabel(landed)}`)
+  } catch (error: unknown) {
+    showError(apiErrorMessage(error, 'Não foi possível mover o prazo'))
+  }
 }
 
 const showFilters = ref(false)
