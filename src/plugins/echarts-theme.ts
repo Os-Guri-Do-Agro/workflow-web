@@ -94,6 +94,36 @@ export function chartTooltip(): Record<string, unknown> {
   }
 }
 
+/**
+ * Cores do banco de horas no canvas: crédito, dívida e o neutro.
+ *
+ * O verde aqui NÃO é o `--success` do produto, e isso é medido, não gosto. O
+ * validador de paleta (skill dataviz) reprova `#12B76A` como marca de gráfico:
+ * no tema ESCURO ele tem L 0,686 contra um teto de 0,67, e no claro fica em
+ * 2,55:1 de contraste com a superfície. O step vizinho da mesma rampa
+ * (`#039855`) passa em todas as checagens nos dois temas e ainda melhora a
+ * separação para daltonismo (ΔE 8,3 contra 6,4).
+ *
+ * `--success` continua sendo a cor de TEXTO e chip de saldo — o que muda é só a
+ * tinta do canvas, onde a exigência é outra.
+ *
+ * ΔE 8,3 passa raspando no piso de 8, então a cor NUNCA é o único canal: quem
+ * usa estas cores precisa dar direção (sobe/desce), sinal (+/−) e palavra.
+ */
+export function chartBalanceColors(): {
+  credito: string
+  divida: string
+  neutro: string
+} {
+  return {
+    credito: '#039855',
+    divida: resolveCssColor('var(--err)'),
+    // O "nada aconteceu" do eixo: cinza de superfície, nunca um matiz — num
+    // gráfico divergente, cor no meio vira polaridade que não existe.
+    neutro: resolveCssColor('var(--text-4)'),
+  }
+}
+
 /** textStyle base para qualquer texto que o ECharts desenhe. */
 export function chartTextStyle(): Record<string, unknown> {
   return {

@@ -1,5 +1,10 @@
 import { computed, ref, type MaybeRef, unref } from 'vue'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/vue-query'
 import timeService, {
   type CreateAdjustmentInput,
 } from '@/service/time/time-service'
@@ -75,6 +80,11 @@ export function useBalance(range: MaybeRef<BalanceRange>, enabled?: MaybeRef<boo
     // Curto de propósito: parar o cronômetro precisa mexer o saldo na hora, e o
     // `invalidateAll` do time tracking já derruba esta chave junto.
     staleTime: 30_000,
+    // Cada período é uma chave diferente, então trocar de mês trocava o dado
+    // por `undefined` e o gráfico sumia da tela até a resposta chegar — o card
+    // encolhia e a página pulava embaixo do cursor. Segurando o período
+    // anterior, a troca vira uma substituição no lugar.
+    placeholderData: keepPreviousData,
   })
 }
 

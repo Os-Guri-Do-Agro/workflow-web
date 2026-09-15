@@ -21,6 +21,8 @@ import {
 } from '@/features/time/composables/useBalance'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { formatDurationLong } from '@/utils/duration'
+import BalanceWaterfall from './BalanceWaterfall.vue'
+import BalanceTrendChart from './BalanceTrendChart.vue'
 
 const workspace = useWorkspaceStore()
 const extrato = useStatement()
@@ -111,6 +113,14 @@ function removerAjuste(id: string) {
         <strong class="stm-saldo-value">{{ abs(saldo) }}</strong>
         <span class="stm-saldo-word">{{ credito ? 'de crédito' : 'devendo' }}</span>
       </div>
+
+      <!-- Os gráficos vêm antes da tabela de propósito: a pergunta que traz a
+           pessoa aqui é "por que esse número?", e ela se responde vendo o
+           movimento. A tabela continua abaixo como a leitura exata — e é ela
+           que cumpre o requisito de acessibilidade de ter os mesmos dados fora
+           do canvas. -->
+      <BalanceWaterfall :months="extrato.data.value.months" />
+      <BalanceTrendChart :months="extrato.data.value.months" />
 
       <ul class="stm-months">
         <li v-for="m in extrato.data.value.months" :key="m.month" class="stm-month">
