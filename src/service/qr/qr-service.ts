@@ -14,8 +14,13 @@ export interface QrStyle {
   dotStyle?: 'square' | 'rounded' | 'dots' | 'classy'
   /** Formato dos três "olhos" (cantos). */
   cornerStyle?: 'square' | 'rounded' | 'dot'
-  /** Logo no centro (URL http(s) OU data URL base64). */
-  logoUrl?: string
+  /**
+   * Logo no centro (URL http(s) OU data URL base64).
+   *
+   * `null` REMOVE a logo. O backend mescla o estilo — o que não vem no corpo é
+   * preservado —, então omitir este campo mantém a logo que já estava lá.
+   */
+  logoUrl?: string | null
 }
 
 export interface QrCode {

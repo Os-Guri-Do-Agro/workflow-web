@@ -413,16 +413,22 @@ function requestClose() {
   close()
 }
 
-// Envia só os campos preenchidos: cores/formatos sempre têm valor; logo é opcional.
+/**
+ * O estilo que vai no corpo.
+ *
+ * `logoUrl` vai SEMPRE, e vira `null` quando não há logo. O backend mescla o
+ * estilo (campo ausente é preservado), então omitir o campo ao remover deixaria
+ * a logo antiga no QR — o usuário clicaria em "Remover", salvaria, e a logo
+ * continuaria lá.
+ */
 function buildStyle(): QrStyle {
-  const style: QrStyle = {
+  return {
     colorDark: form.colorDark,
     colorLight: form.colorLight,
     dotStyle: form.dotStyle,
     cornerStyle: form.cornerStyle,
+    logoUrl: form.logoUrl || null,
   }
-  if (form.logoUrl) style.logoUrl = form.logoUrl
-  return style
 }
 
 function submit() {
