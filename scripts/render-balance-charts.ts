@@ -46,11 +46,28 @@ const escuro: CoresDoGrafico = {
   neutro: 'rgba(240,243,247,0.42)',
 }
 
+/**
+ * Um dia FECHADO: a meta cheia foi cobrada.
+ *
+ * `chargedSec` existe porque o dia que ainda está correndo cobra só o que já
+ * foi cumprido (ver `DayBalance` no backend). Aqui ele é igual à meta; para o
+ * dia corrente existe o `diaDeHoje`.
+ */
 const dia = (day: string, workedH: number, targetH: number, holiday: string | null = null) => ({
   day,
   workedSec: Math.round(workedH * HORA),
   targetSec: Math.round(targetH * HORA),
+  chargedSec: Math.round(targetH * HORA),
   holiday,
+})
+
+/** O dia que ainda corre: cobra `min(meta, trabalhado)`, nunca a meta cheia. */
+const diaDeHoje = (day: string, workedH: number, targetH: number) => ({
+  day,
+  workedSec: Math.round(workedH * HORA),
+  targetSec: Math.round(targetH * HORA),
+  chargedSec: Math.round(Math.min(targetH, workedH) * HORA),
+  holiday: null,
 })
 
 /**
@@ -75,7 +92,7 @@ const setembro = montarCascata({
     dia('2026-09-12', 0, 4),
     dia('2026-09-13', 0, 4),
     dia('2026-09-14', 5.62, 8),
-    dia('2026-09-15', 3.32, 8),
+    diaDeHoje('2026-09-15', 3.32, 8), // hoje: ainda corre, cobra so o cumprido
   ],
   ajustes: [
     {

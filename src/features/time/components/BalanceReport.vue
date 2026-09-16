@@ -145,7 +145,7 @@ function exportarCsv() {
           d.day,
           dec(d.workedSec),
           dec(d.targetSec),
-          futuro ? '' : dec(d.workedSec - d.targetSec),
+          futuro ? '' : dec(d.workedSec - d.chargedSec),
           d.holiday ?? '',
         ].join(';'),
       )

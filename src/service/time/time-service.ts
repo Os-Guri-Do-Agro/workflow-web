@@ -57,6 +57,14 @@ export interface BalanceDay {
   workedSec: number
   /** Meta daquele dia. Zero em fim de semana e feriado nacional. */
   targetSec: number
+  /**
+   * Quanto da meta foi COBRADO neste dia. É o que entra no saldo.
+   *
+   * Difere de `targetSec` só no dia que ainda está correndo: hoje cobra apenas
+   * o que já foi cumprido, para ninguém aparecer devendo um dia que nem
+   * aconteceu. Dia fechado cobra a meta cheia; dia futuro não cobra nada.
+   */
+  chargedSec: number
   /** Nome do feriado nacional, quando houver. */
   holiday: string | null
 }

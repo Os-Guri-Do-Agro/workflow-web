@@ -31,11 +31,28 @@ function check(rotulo: string, condicao: boolean, detalhe?: unknown) {
   }
 }
 
+/**
+ * Um dia FECHADO: a meta cheia foi cobrada.
+ *
+ * `chargedSec` existe porque o dia que ainda está correndo cobra só o que já
+ * foi cumprido (ver `DayBalance` no backend). Aqui ele é igual à meta; para o
+ * dia corrente existe o `diaDeHoje`.
+ */
 const dia = (day: string, workedH: number, targetH: number, holiday: string | null = null) => ({
   day,
   workedSec: Math.round(workedH * HORA),
   targetSec: Math.round(targetH * HORA),
+  chargedSec: Math.round(targetH * HORA),
   holiday,
+})
+
+/** O dia que ainda corre: cobra `min(meta, trabalhado)`, nunca a meta cheia. */
+const diaDeHoje = (day: string, workedH: number, targetH: number) => ({
+  day,
+  workedSec: Math.round(workedH * HORA),
+  targetSec: Math.round(targetH * HORA),
+  chargedSec: Math.round(Math.min(targetH, workedH) * HORA),
+  holiday: null,
 })
 
 const ajuste = (day: string, horas: number, reason = 'acerto') => ({
@@ -141,7 +158,7 @@ const ajuste = (day: string, horas: number, reason = 'acerto') => ({
 {
   const c = montarCascata({
     saldoInicialSec: 0,
-    dias: [dia('2026-09-15', 3, 8), dia('2026-09-16', 0, 8), dia('2026-09-17', 0, 8)],
+    dias: [diaDeHoje('2026-09-15', 3, 8), dia('2026-09-16', 0, 8), dia('2026-09-17', 0, 8)],
     ajustes: [ajuste('2026-09-20', 5)],
     hoje: '2026-09-15',
   })
@@ -149,6 +166,40 @@ const ajuste = (day: string, horas: number, reason = 'acerto') => ({
   check('dia futuro não vira dívida', c.barras.length === 1, c.barras.map((b) => b.day))
   check('ajuste com data futura também fica de fora', c.ajustes.length === 0 && c.ajustesSec === 0)
   check('hoje entra marcado como em andamento', c.barras[0].emAndamento === true)
+  // A regra que mudou em 16/09/2026: enquanto o dia corre, ele cobra só o que
+  // ja foi cumprido. Sem isto, quem abrisse a tela as 9h aparecia devendo a
+  // jornada inteira de um dia que nem tinha acontecido.
+  check(
+    'hoje com 3h de uma meta de 8h ainda não tira nada do banco',
+    c.barras[0].deltaSec === 0,
+    c.barras[0].deltaSec,
+  )
+}
+
+// ── Hoje que passou da meta ────────────────────────────────────────────────
+{
+  const c = montarCascata({
+    saldoInicialSec: 10 * HORA,
+    dias: [diaDeHoje('2026-09-15', 10, 8)],
+    ajustes: [],
+    hoje: '2026-09-15',
+  })
+
+  check('a hora extra de hoje já entra como crédito', c.barras[0].deltaSec === 2 * HORA)
+  check('  e o saldo sobe na hora', c.saldoFinalSec === 12 * HORA)
+}
+
+// ── O mesmo dia, depois de fechar ──────────────────────────────────────────
+{
+  const c = montarCascata({
+    saldoInicialSec: 0,
+    dias: [dia('2026-09-15', 3, 8)],
+    ajustes: [],
+    hoje: '2026-09-16',
+  })
+
+  check('quando o dia fecha, a meta cheia é cobrada', c.barras[0].deltaSec === -5 * HORA)
+  check('  e ele deixa de estar em andamento', c.barras[0].emAndamento === false)
 }
 
 // ── Os outros dois canais, além da cor ────────────────────────────────────

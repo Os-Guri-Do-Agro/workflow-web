@@ -111,7 +111,11 @@ export function montarCascata(opts: {
     eventos.push({
       day: d.day,
       label: rotulo(d.day),
-      deltaSec: d.workedSec - d.targetSec,
+      // `chargedSec`, e não `targetSec`: o dia de hoje ainda está correndo e só
+      // cobra o que já foi cumprido. Usar a meta cheia aqui faria a barra de
+      // hoje despencar a jornada inteira logo cedo, e o gráfico discordaria do
+      // saldo que o servidor calculou.
+      deltaSec: d.workedSec - d.chargedSec,
       tipo: !temMeta ? 'sem-meta' : trabalhou ? 'trabalho' : 'sem-registro',
       workedSec: d.workedSec,
       targetSec: d.targetSec,

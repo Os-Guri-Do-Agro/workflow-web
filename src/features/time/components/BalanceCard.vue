@@ -44,15 +44,37 @@ const { data, isLoading } = useBalance(range)
  */
 const extrato = useStatement()
 const acumulado = computed(() => extrato.data.value?.cumulativeSec ?? null)
-const acumuladoCredito = computed(() => (acumulado.value ?? 0) >= 0)
-
-const saldo = computed(() => data.value?.balanceSec ?? 0)
-const credito = computed(() => saldo.value >= 0)
+const credito = computed(() => (acumulado.value ?? 0) >= 0)
 
 /** Duração sempre positiva: o sinal é dito em palavra, não no número. */
 const abs = (sec: number) => formatDurationLong(Math.abs(sec))
 
-const palavra = computed(() => (credito.value ? 'de crédito' : 'devendo'))
+const palavra = computed(() => {
+  if (acumulado.value === 0) return 'em dia'
+  return credito.value ? 'de crédito' : 'devendo'
+})
+
+/**
+ * O dia de hoje, quando ele está no período em foco.
+ *
+ * Serve para dizer, na tela, que a jornada de hoje ainda NÃO foi cobrada. Sem
+ * essa frase a pessoa soma os dias na cabeça, não bate com o card, e a conta
+ * inteira perde a credibilidade — foi exatamente a dúvida que motivou a
+ * mudança: "considerou um dia sem nem mesmo acabar, aí a soma não bate nunca".
+ */
+const diaDeHoje = computed(() =>
+  data.value?.byDay.find((d) => d.day === hoje.value) ?? null,
+)
+
+/** Quanto ainda falta para fechar a meta de hoje. */
+const faltaHoje = computed(() => {
+  const d = diaDeHoje.value
+  if (!d || d.targetSec <= 0) return null
+  const resta = d.targetSec - d.workedSec
+  return resta > 0 ? resta : 0
+})
+
+const saldoDoPeriodo = computed(() => data.value?.balanceSec ?? 0)
 
 const projecao = computed(() => data.value?.projectedBalanceSec ?? null)
 const projecaoCredito = computed(() => (projecao.value ?? 0) >= 0)
@@ -126,25 +148,23 @@ const progresso = computed(() => {
     <p v-if="isLoading" class="bal-loading">Calculando…</p>
 
     <template v-else-if="data">
-      <div class="bal-main" :class="credito ? 'bal-main--up' : 'bal-main--down'">
+      <!--
+        O número grande é o SALDO ACUMULADO, não o do período.
+
+        Era o contrário, e os dois apareciam juntos: o card mostrava "+195h56 de
+        crédito" (setembro, que continha um ajuste de +253h) logo acima de
+        "−9h30 acumulado". Dois números verdadeiros que se contradizem à
+        primeira vista, e o errado era o que estava em destaque — banco de horas
+        é o saldo que atravessa os meses, e a fatia do mês é detalhe dele.
+      -->
+      <div v-if="acumulado !== null" class="bal-main" :class="credito ? 'bal-main--up' : 'bal-main--down'">
         <component :is="credito ? TrendingUp : TrendingDown" :size="18" />
-        <span class="bal-value">{{ credito ? '+' : '−' }}{{ abs(saldo) }}</span>
+        <span class="bal-value">{{ credito ? '+' : '−' }}{{ abs(acumulado) }}</span>
         <span class="bal-word">{{ palavra }}</span>
       </div>
 
-      <!-- O acumulado vem logo abaixo do saldo do período de propósito: são
-           números diferentes, e vê-los separados é o que impede alguém ler o
-           saldo do mês como se fosse o do banco de horas inteiro. -->
-      <RouterLink
-        v-if="acumulado !== null"
-        to="/time?tab=report"
-        class="bal-cumulative"
-        :class="acumuladoCredito ? 'bal-cumulative--up' : 'bal-cumulative--down'"
-      >
-        <span class="bal-cumulative-label">Acumulado desde o começo</span>
-        <span class="bal-cumulative-value">
-          {{ acumuladoCredito ? '+' : '−' }}{{ abs(acumulado) }}
-        </span>
+      <RouterLink to="/time?tab=report" class="bal-cumulative bal-cumulative--plain">
+        <span class="bal-cumulative-label">Banco de horas desde o começo</span>
         <span class="bal-cumulative-hint">ver extrato</span>
       </RouterLink>
 
@@ -155,13 +175,37 @@ const progresso = computed(() => {
         cobra dia futuro, e mostrar "21 dias úteis" ao lado de uma meta de 10
         dias faria a conta não fechar para quem conferisse.
       -->
+      <p class="bal-period">
+        <span class="bal-period-label">{{ escopo === 'week' ? 'Nesta semana' : 'Neste mês' }}</span>
+        <span :class="saldoDoPeriodo >= 0 ? 'bal-up' : 'bal-down'">
+          {{ saldoDoPeriodo >= 0 ? '+' : '−' }}{{ abs(saldoDoPeriodo) }}
+        </span>
+      </p>
+
       <p class="bal-math">
-        {{ formatDurationLong(data.workedSec) }} trabalhadas · meta
+        {{ formatDurationLong(data.workedSec) }} trabalhadas · meta cobrada
         {{ formatDurationLong(data.targetSec) }}
         <span v-if="data.businessDaysElapsed > 0" class="bal-math-days">
           ({{ data.businessDaysElapsed }}
-          {{ data.businessDaysElapsed === 1 ? 'dia útil' : 'dias úteis' }} até hoje)
+          {{ data.businessDaysElapsed === 1 ? 'dia útil fechado' : 'dias úteis fechados' }})
         </span>
+      </p>
+
+      <!--
+        A frase que faltava. Hoje não entra na meta cobrada enquanto o dia corre,
+        e isso precisa estar ESCRITO: sem ela, quem soma os dias na mão não bate
+        com o card e conclui que a conta está errada.
+      -->
+      <p v-if="faltaHoje !== null" class="bal-today">
+        <template v-if="faltaHoje > 0">
+          Hoje ainda está correndo: faltam
+          <strong>{{ formatDurationLong(faltaHoje) }}</strong> para a meta do dia,
+          e ela só é cobrada quando o dia fecha.
+        </template>
+        <template v-else>
+          Meta de hoje cumprida. Daqui em diante, o que você trabalhar hoje já
+          entra como crédito.
+        </template>
       </p>
 
       <div
@@ -267,17 +311,14 @@ const progresso = computed(() => {
   opacity: 0.75;
 }
 
-.bal-cumulative-value {
-  font-weight: 700;
+.bal-up {
+  color: var(--success);
   font-variant-numeric: tabular-nums;
 }
 
-.bal-cumulative--up .bal-cumulative-value {
-  color: var(--success, #16a34a);
-}
-
-.bal-cumulative--down .bal-cumulative-value {
-  color: var(--danger, #dc2626);
+.bal-down {
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
 }
 
 .bal-cumulative-hint {
@@ -317,6 +358,32 @@ const progresso = computed(() => {
   font-size: 12px;
   font-weight: 650;
   color: var(--text-3);
+}
+
+.bal-period {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.bal-period-label {
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.bal-today {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  opacity: 0.72;
+}
+
+.bal-cumulative--plain {
+  justify-content: space-between;
 }
 
 .bal-math {

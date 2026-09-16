@@ -207,11 +207,14 @@ function removerAjuste(id: string) {
                 <span class="stm-day-target">
                   {{ d.targetSec > 0 ? formatDurationLong(d.targetSec) : 'sem meta' }}
                 </span>
+                <!-- `chargedSec` e não `targetSec`: o dia de hoje ainda corre e
+                     só cobra o que já foi cumprido, então ele aparece zerado em
+                     vez de devendo a jornada inteira desde cedo. -->
                 <span
                   class="stm-day-diff"
-                  :class="d.workedSec - d.targetSec >= 0 ? 'stm-up' : 'stm-down'"
+                  :class="d.workedSec - d.chargedSec >= 0 ? 'stm-up' : 'stm-down'"
                 >
-                  {{ sinal(d.workedSec - d.targetSec) }}{{ abs(d.workedSec - d.targetSec) }}
+                  {{ sinal(d.workedSec - d.chargedSec) }}{{ abs(d.workedSec - d.chargedSec) }}
                 </span>
               </li>
             </ul>
