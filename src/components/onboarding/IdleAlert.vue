@@ -25,7 +25,15 @@ const { error: showError } = useToast()
 
 const warning = computed(() => isRunning.value && idle.phase.value === 'warning')
 /** Em modo limitado o Nevo não corta — e o texto não pode prometer que corta. */
-const limited = computed(() => idle.protection.value === 'limited')
+/**
+ * O aviso vai terminar em corte?
+ *
+ * É `cuts`, e não `protection`: são perguntas diferentes. `protection` diz se o
+ * Nevo enxerga o computador inteiro (sem isso ele nem chega a avisar); `cuts`
+ * diz se ESTE aviso termina com o tempo parado. Hoje a chave geral do corte
+ * está desligada, então o caminho normal é avisar sem cortar.
+ */
+const cortaSozinho = computed(() => idle.cuts.value)
 const cut = computed(() => idle.lastCut.value)
 const visible = computed(() => warning.value || !!cut.value)
 
@@ -74,7 +82,7 @@ async function handleRecover() {
       live="assertive"
     >
       <template #meta>
-        <span v-if="warning && !limited" class="alert-countdown">para em {{ countdown }}</span>
+        <span v-if="warning && cortaSozinho" class="alert-countdown">para em {{ countdown }}</span>
         <span v-else-if="warning" class="alert-countdown alert-countdown--soft">
           não vou parar sozinho
         </span>
@@ -83,10 +91,9 @@ async function handleRecover() {
       <!-- Estado 1: ainda dá para continuar -->
       <template v-if="warning">
         <p class="alert-title">Você ainda está por aí?</p>
-        <p v-if="limited" class="alert-desc">
-          Não vejo atividade no Nevo há {{ idleMinutes }} min e seu cronômetro continua
-          correndo. Como não consigo enxergar o que você faz fora do navegador, não vou parar
-          nada sozinho — se você saiu mesmo, use "Parar agora".
+        <p v-if="!cortaSozinho" class="alert-desc">
+          Não vejo atividade no computador há {{ idleMinutes }} min e seu cronômetro continua
+          correndo. Não vou parar nada sozinho. Se você saiu mesmo, use "Parar agora".
         </p>
         <p v-else class="alert-desc">
           Não vejo atividade há {{ idleMinutes }} min e seu cronômetro continua correndo. Se
@@ -98,7 +105,7 @@ async function handleRecover() {
       <template v-else-if="cut">
         <p class="alert-title">Parei seu tempo às {{ cutAtLabel }}</p>
         <p class="alert-desc">
-          Foi por inatividade, e voltei até o último momento ativo — o tempo parado não entrou
+          Foi por inatividade, e voltei até o último momento ativo. O tempo parado não entrou
           na sua conta.
         </p>
       </template>

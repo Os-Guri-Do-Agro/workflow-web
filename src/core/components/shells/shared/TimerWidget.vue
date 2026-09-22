@@ -66,6 +66,9 @@ const idleMinutes = computed(() => Math.max(1, Math.round(idle.idleSec.value / 6
 /** "Parar em 4:12" enquanto a carência corre. */
 const cutCountdown = computed(() => formatTimer(idle.secondsToCut.value))
 
+/** Este aviso termina em corte? Ver a nota em `useTimerIdleGuard().cuts`. */
+const cortaSozinho = computed(() => idle.cuts.value)
+
 /** Linha discreta de permissão: pede quando dá, orienta quando está bloqueada. */
 async function handleEnableAlerts() {
   if (alerts.nextStep.value === null && alerts.blocked.value) {
@@ -235,7 +238,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
       type="button"
       :title="
         idleWarning
-          ? 'Sem atividade: o timer vai parar'
+          ? cortaSozinho
+            ? 'Sem atividade: o timer vai parar'
+            : 'Sem atividade no computador. O timer continua correndo'
           : isRunning
             ? 'Timer em andamento'
             : 'Iniciar timer'
@@ -325,7 +330,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
                fica só o eco discreto, para quem abriu o painel entender o
                estado da pílula âmbar. -->
           <p v-if="idleWarning" class="timer-idle-hint">
-            Sem atividade há {{ idleMinutes }} min. O tempo para em {{ cutCountdown }}.
+            Sem atividade há {{ idleMinutes }} min.
+            <template v-if="cortaSozinho">O tempo para em {{ cutCountdown }}.</template>
+            <template v-else>O tempo continua correndo.</template>
           </p>
 
           <!-- F3 — aviso de timer esquecido (âmbar), sem parar automaticamente. -->

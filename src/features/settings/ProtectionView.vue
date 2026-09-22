@@ -36,6 +36,7 @@ import { useIdleAlerts } from '@/composables/useIdleAlerts'
 import { useToast } from '@/composables/useToast'
 import { extensionDetected, extensionVersion } from '@/composables/useExtensionBridge'
 import { detectionSource, protectionLevel } from '@/composables/idle-state'
+import { TIMER_AUTO_STOP_ENABLED } from '@/config/feature-flags'
 
 const router = useRouter()
 const { success } = useToast()
@@ -45,6 +46,13 @@ const alerts = useIdleAlerts()
 const storeUrl = import.meta.env.VITE_EXTENSION_STORE_URL as string | undefined
 
 const completa = computed(() => protectionLevel.value === 'full')
+
+/**
+ * Proteção completa ainda não quer dizer corte automático: a chave geral está
+ * desligada desde 27/08/2026. Prometer "o tempo para sozinho" enquanto ela
+ * estiver assim faria a tela mentir para quem acabou de conceder a permissão.
+ */
+const cortaSozinho = computed(() => completa.value && TIMER_AUTO_STOP_ENABLED)
 
 /**
  * O navegador consegue dar a permissão? Firefox e Safari não têm a API, e
@@ -107,14 +115,20 @@ function copiarPedido() {
           {{ completa ? 'Seu tempo está protegido' : 'Seu tempo ainda não está protegido' }}
         </h1>
         <p class="prot-hero-sub">
-          <template v-if="completa">
+          <template v-if="cortaSozinho">
             O Nevo enxerga o computador inteiro por {{ fonteAtual }}. Se você sair, o cronômetro
             para sozinho no último momento em que você estava ativo.
           </template>
+          <template v-else-if="completa">
+            O Nevo enxerga o computador inteiro por {{ fonteAtual }}, então ele sabe a diferença
+            entre você ter saído e você estar em outro programa. Ele avisa quando você some, mas
+            não para o tempo sozinho.
+          </template>
           <template v-else>
-            Hoje o Nevo só enxerga esta aba. Ele avisa quando você some, mas nunca para o tempo
-            sozinho, porque não consegue distinguir "saiu do computador" de "foi trabalhar em
-            outro programa". Escolha um caminho abaixo: leva um clique.
+            Hoje o Nevo só enxerga esta aba, e uma aba em segundo plano é igualzinha a um
+            computador vazio. Como ele não consegue distinguir "saiu do computador" de "foi
+            trabalhar em outro programa", ele não avisa nada: prefere ficar quieto a interromper
+            quem está trabalhando. Escolha um caminho abaixo: leva um clique.
           </template>
         </p>
       </div>
