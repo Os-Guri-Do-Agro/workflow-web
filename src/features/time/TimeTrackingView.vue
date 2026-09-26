@@ -82,9 +82,20 @@ type Tab = 'me' | 'team' | 'report'
  * a tela em branco.
  */
 const rota = useRoute()
-const tabDaUrl = String(rota.query.tab ?? '')
-const activeTab = ref<Tab>(
-  tabDaUrl === 'team' || tabDaUrl === 'report' ? tabDaUrl : 'me',
+function abaDaUrl(valor: unknown): Tab {
+  const aba = String(valor ?? '')
+  return aba === 'team' || aba === 'report' ? aba : 'me'
+}
+const activeTab = ref<Tab>(abaDaUrl(rota.query.tab))
+// A view não remonta quando só a query muda: quem já está no /time e clica em
+// "Ver o time" (popover da sequência na topbar) ganhava a URL nova e a mesma
+// aba. O guarda de rota evita trocar a aba da tela que está saindo.
+watch(
+  () => rota.query.tab,
+  (tab) => {
+    if (rota.name !== 'time') return
+    activeTab.value = abaDaUrl(tab)
+  },
 )
 const hasCompany = computed(() => !!workspace.activeCompanyId)
 

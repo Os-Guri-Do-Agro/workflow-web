@@ -84,7 +84,8 @@ function tentarDeNovo() {
 
 .eb-msg {
   margin: 3px 0 0;
-  font-size: 11px;
+  /* Piso de 12px (acessibilidade 50+); em rem para seguir o "Aumento de fonte". */
+  font-size: 0.75rem;
   line-height: 1.45;
   color: var(--text-3);
   overflow-wrap: anywhere;
@@ -95,14 +96,15 @@ function tentarDeNovo() {
   align-items: center;
   gap: 5px;
   flex: none;
-  min-height: 28px;
-  padding: 0 10px;
+  /* Alvo de toque >= 44px (acessibilidade 50+). */
+  min-height: 44px;
+  padding: 0 12px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 0.75rem;
   font-weight: 650;
   cursor: pointer;
 }

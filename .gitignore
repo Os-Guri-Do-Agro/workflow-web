@@ -50,3 +50,8 @@ __screenshots__/
 
 # Spec-RAG: embeddings regeneráveis (o cache do modelo fica fora do repo, em ~/.cache/spec-rag-models)
 docs/specs/.rag/dist-extension
+
+# Pipeline de sprites (intermediários)
+scripts/sprites/.work/
+.venv/
+__pycache__/

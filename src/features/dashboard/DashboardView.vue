@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import { useDashboardOrchestration } from '@/composables/useDashboardOrchestration'
 import { useLazyLoad } from '@/composables/useLazyLoad'
+import { useStreakTeam } from '@/composables/useStreak'
+import { safeStorage } from '@/utils/safe-storage'
 import DashboardHeader from './components/DashboardHeader.vue'
+import StreakHero from './components/StreakHero.vue'
+import ShowcaseSection from './components/ShowcaseSection.vue'
+import TeamStreakPanel from './components/TeamStreakPanel.vue'
 import HeroSection from './components/HeroSection.vue'
 import MovementModule from './components/MovementModule.vue'
 import StatsRow from './components/StatsRow.vue'
@@ -21,6 +27,25 @@ const { target: agendaTarget, isVisible: agendaVisible } = useLazyLoad()
 const { target: copilotTarget, isVisible: copilotVisible } = useLazyLoad()
 const { target: feedTarget, isVisible: feedVisible } = useLazyLoad()
 const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
+
+// ─── Linha vitrine + time (spec sequencia-diaria-nevo) ───────────────────────
+// A grade dessa linha depende de duas coisas que os módulos decidem sozinhos:
+// o painel do time some sem rota na API ou sem empresa (mesma regra do
+// TeamStreakPanel; a consulta é a mesma, o Vue Query deduplica), e a vitrine
+// pode ser ocultada pela pessoa. Sem um dos dois, a linha vira uma coluna só,
+// em vez de deixar metade da largura vazia.
+const streakTeam = useStreakTeam()
+const teamShown = computed(() => streakTeam.available.value && !!streakTeam.companyId.value)
+
+/** Preferência da pessoa, lembrada entre visitas (storage seguro do repo). */
+const SHOWCASE_HIDDEN_KEY = 'dashboard.showcase.hidden'
+const showcaseHidden = ref(safeStorage.getItem(SHOWCASE_HIDDEN_KEY) === '1')
+watch(showcaseHidden, (hidden) => {
+  if (hidden) safeStorage.setItem(SHOWCASE_HIDDEN_KEY, '1')
+  else safeStorage.removeItem(SHOWCASE_HIDDEN_KEY)
+})
+
+const duoSingle = computed(() => showcaseHidden.value || !teamShown.value)
 </script>
 
 <template>
@@ -28,6 +53,7 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
     <DashboardHeader
       v-reveal="0"
       :greeting="dash.greeting.value"
+      :first-name="dash.firstName.value"
       :today-label="dash.todayLabel.value"
       :mode="dash.mode.value"
       :can-create-task="!!dash.firstMonth.value"
@@ -36,10 +62,30 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
     />
 
     <!--
+      Sequência do Nevo (spec sequencia-diaria-nevo): o primeiro módulo da home,
+      em largura cheia. É o motivo para voltar todo dia, por isso vem antes dos
+      números do projeto. Sem a rota na API ele (e o painel do time) não
+      renderiza; a vitrine continua, porque não depende da sequência, e ocupa a
+      linha inteira. O v-reveal mora dentro dele (e dos dois abaixo): um
+      componente que pode não renderizar nada não pode receber a diretiva de fora.
+    -->
+    <StreakHero />
+
+    <!--
+      Vitrine animada (7fr) ao lado do time (5fr), a mesma proporção do
+      `.dash-below`. Vira uma coluna só abaixo de 1100px, quando a pessoa oculta
+      a vitrine ou quando não há painel do time (ver `duoSingle`).
+    -->
+    <div class="dash-duo" :class="{ 'dash-duo--single': duoSingle }">
+      <ShowcaseSection v-model:hidden="showcaseHidden" />
+      <TeamStreakPanel />
+    </div>
+
+    <!--
       Bento assimétrico (spec overhaul-visual-premium, iteração 2): módulos de
       tamanhos distintos em grid por áreas. Cada módulo declara a própria
       `grid-area` no CSS dele; aqui só o mapa. A coluna da direita (atividade)
-      é alta de propósito — é o que quebra a cara de "4 cards gêmeos".
+      é alta de propósito, é o que quebra a cara de "4 cards gêmeos".
     -->
     <div class="bento">
       <HeroSection
@@ -192,6 +238,42 @@ const { target: projectsTarget, isVisible: projectsVisible } = useLazyLoad()
       't3   t4'
       'dist dist'
       'act  act';
+  }
+}
+
+/*
+ * Linha da vitrine + time. `align-items: start`: a vitrine tem altura de vídeo
+ * (16:9) e o painel cresce com o número de pessoas; esticar o mais baixo só
+ * criaria um vazio dentro do card.
+ */
+.dash-duo {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.dash-duo--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/*
+ * Lado a lado, a vitrine acompanha a rolagem enquanto a lista do time passa
+ * (mesma ideia da timeline do `.dash-below`): o vão embaixo dela vira o
+ * caminho do vídeo, não um buraco. `.ss` é a raiz do ShowcaseSection.
+ */
+.dash-duo:not(.dash-duo--single) > .ss {
+  position: sticky;
+  top: 8px;
+}
+
+@media (max-width: 1100px) {
+  .dash-duo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-duo:not(.dash-duo--single) > .ss {
+    position: static;
   }
 }
 

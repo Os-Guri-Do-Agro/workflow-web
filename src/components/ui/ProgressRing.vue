@@ -51,7 +51,13 @@ const transition = computed(() =>
     role="img"
     :aria-label="ariaLabel ?? `${Math.round(clamped)}% concluído`"
   >
-    <svg :width="size" :height="size" :viewBox="`0 0 ${size} ${size}`" aria-hidden="true">
+    <svg
+      :width="size"
+      :height="size"
+      :viewBox="`0 0 ${size} ${size}`"
+      aria-hidden="true"
+      focusable="false"
+    >
       <circle
         class="pring__track"
         :cx="size / 2"
@@ -60,8 +66,16 @@ const transition = computed(() =>
         fill="none"
         :stroke-width="stroke"
       />
+      <!--
+        tabindex -1: o motion-v escuta focus/blur em todo <Motion> (gesto
+        whileFocus), e o Chromium torna focável por Tab qualquer elemento SVG
+        com esses ouvintes. O anel virava uma parada de Tab invisível, dentro
+        de um SVG que o leitor de tela nem enxerga (no popover da sequência
+        eram duas, antes dos atalhos).
+      -->
       <Motion
         as="circle"
+        tabindex="-1"
         class="pring__fill"
         :class="{ 'pring__fill--glow': glow }"
         :cx="size / 2"

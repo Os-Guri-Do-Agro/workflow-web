@@ -37,12 +37,98 @@ function restoreScroll(top: number) {
   requestAnimationFrame(tick)
 }
 
+/** Folga acima do alvo da âncora quando ele não declara `scroll-margin-top`. */
+const ANCHOR_GAP_PX = 16
+
+/**
+ * Distância do alvo até o topo do CONTEÚDO do container, em coordenadas de
+ * `scrollTop`. Desconta o `translateY` do próprio alvo: o `v-reveal` entra
+ * deslocado para baixo e, lido no meio da animação, o destino sairia errado
+ * por esse tanto.
+ */
+function offsetInside(container: HTMLElement, target: HTMLElement): number {
+  const transform = getComputedStyle(target).transform
+  let shift = 0
+  if (transform && transform !== 'none') {
+    try {
+      shift = new DOMMatrixReadOnly(transform).m42
+    } catch {
+      // Transform que o DOMMatrix não entende: fica o erro de poucos pixels.
+    }
+  }
+  const containerTop = container.getBoundingClientRect().top + container.clientTop
+  return target.getBoundingClientRect().top - shift - containerTop + container.scrollTop
+}
+
+/**
+ * Âncora na URL (`/#sequencia`, o "Ver minha jornada" do chip da topbar). O
+ * vue-router resolveria o hash rolando a JANELA, que aqui nunca rola: quem
+ * rola é o container do shell. E o alvo costuma nascer depois da navegação
+ * (chunk da view + fetch), então tentamos por alguns frames, como no
+ * `restoreScroll`, até o elemento existir e o container ter altura para
+ * chegar nele.
+ *
+ * O `padding-top` do container entra na conta porque no Modo XP ele reserva a
+ * barra de título, que fica POR CIMA do conteúdo. Movimento reduzido: pulo
+ * direto, sem animação (`instant` ignora qualquer `scroll-behavior` de CSS).
+ *
+ * `fromOtherPage`: o container é do shell e guarda o scroll da tela anterior.
+ * Se o alvo ainda não existe (ou nunca vai existir, como o módulo da sequência
+ * sem a rota na API), a tela nova começa do topo, igual a qualquer navegação.
+ * Na mesma página o scroll atual fica, para a animação partir de onde está.
+ */
+function scrollToAnchor(hash: string, fromOtherPage: boolean) {
+  let id = hash.slice(1)
+  try {
+    id = decodeURIComponent(id)
+  } catch {
+    // Hash malformado: tenta com o texto cru.
+  }
+  if (!id) return
+  let resetPending = fromOtherPage
+  const deadline = Date.now() + 3000
+  const tick = () => {
+    const container = scrollContainer()
+    const target = document.getElementById(id)
+    if (!container || !target || !container.contains(target)) {
+      if (container && resetPending) container.scrollTop = 0
+      resetPending = false
+      if (Date.now() < deadline) requestAnimationFrame(tick)
+      return
+    }
+    resetPending = false
+    const styles = getComputedStyle(container)
+    const margin = parseFloat(getComputedStyle(target).scrollMarginTop) || ANCHOR_GAP_PX
+    const top = Math.max(
+      0,
+      Math.round(offsetInside(container, target) - (parseFloat(styles.paddingTop) || 0) - margin),
+    )
+    // Página ainda curta demais para o alvo chegar ao topo: espera renderizar.
+    if (container.scrollHeight - container.clientHeight < top && Date.now() < deadline) {
+      requestAnimationFrame(tick)
+      return
+    }
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    container.scrollTo({ top, behavior: reduced ? 'instant' : 'smooth' })
+  }
+  requestAnimationFrame(tick)
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  scrollBehavior(to, _from, savedPosition) {
+  scrollBehavior(to, from, savedPosition) {
+    // Link novo com âncora vai até ela. No voltar/avançar (`savedPosition`
+    // presente) vale a posição guardada, como o navegador faria.
+    if (to.hash && !savedPosition) {
+      scrollToAnchor(to.hash, to.path !== from.path)
+      return false
+    }
     const remembered = scrollMemory.get(to.fullPath)
     const isFresh = !!remembered && Date.now() - remembered.at < SCROLL_MEMORY_MS
-    const top = savedPosition?.top ?? (isFresh ? remembered!.top : 0)
+    // A posição guardada do CONTAINER vem antes do `savedPosition`: ele é o da
+    // janela, que aqui está sempre em zero, e ganhava do valor guardado. Era por
+    // isso que o voltar do navegador caía sempre no topo da tela anterior.
+    const top = isFresh ? remembered!.top : (savedPosition?.top ?? 0)
     restoreScroll(top)
     // Devolvido pro vue-router só por completude: a janela em si não rola.
     return { top: savedPosition?.top ?? 0, left: 0 }

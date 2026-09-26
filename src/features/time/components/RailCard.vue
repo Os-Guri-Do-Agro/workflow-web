@@ -36,7 +36,9 @@ defineProps<{ title: string }>()
 
 .rc__title {
   margin: 0;
-  font-size: 11px;
+  /* Piso de 12px (acessibilidade 50+); em rem para seguir o "Aumento de fonte".
+     Na escala máxima o título longo quebra em duas linhas, sem vazar. */
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;

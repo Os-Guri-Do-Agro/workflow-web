@@ -30,6 +30,7 @@ import XpToggle from './shared/XpToggle.vue'
 import InboxBell from './shared/InboxBell.vue'
 import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
+import StreakChip from './shared/StreakChip.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
@@ -209,6 +210,8 @@ const onTabsWheel = (event: WheelEvent) => {
             <span>Novo</span>
           </button>
           <HelpButton />
+          <!-- Compacto: este grupo não encolhe, e cada pixel dele sai das abas. -->
+          <StreakChip compact />
           <TimerWidget />
           <InboxBell />
           <XpToggle />

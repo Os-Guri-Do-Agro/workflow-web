@@ -8,6 +8,7 @@ Guia interno para navegar e evoluir o código.
 - [shell-nav-unification.md](../docs/specs/shell-nav-unification.md) — Q1-Q4 em todos os shells + dead buttons + modais (entregue `0d1ea7c`)
 - [legacy-views-migration.md](../docs/specs/legacy-views-migration.md) — migração mdi→lucide + tokens das views legadas (L1-L4, planejada)
 - [overhaul-visual-premium.md](../docs/specs/2026/q3/q3-2/overhaul-visual-premium.md) — F0 fundações (gsap, `v-reveal`, `useCountUp`, `ProgressRing`, `echarts-theme`) + F1 Dashboard + F2 Roadmap (entregue ago/2026)
+- [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md): sequência diária com o Nevo (chip na topbar, módulo da home, comemoração, equipe, vitrine 3D). Contrato da API na spec irmã `workflow-api/docs/specs/2026/q3/q3-3/sequencia-diaria-api.md`
 
 ## Stack
 
@@ -17,6 +18,7 @@ Guia interno para navegar e evoluir o código.
 - Ícones: **lucide-vue-next** (padrão) + `mdi` via fonte (legado, em migração)
 - Fonte: **Geist** (Vercel, OFL 1.1; self-host VARIÁVEL 100–900 + itálico em `assets/fonts/geist/`, importada no `main.ts`; Inter fica de fallback). Trocar em `tokens.ts` (`--font-family`). Não ligar stylistic sets no reset: o corte padrão é o desenho do produto
 - Motion: `motion-v` (springs de estado, ex.: anéis de progresso) + **gsap** (coreografia de entrada e count-up; spec overhaul-visual-premium). O gsap NUNCA entra no chunk de entrada: a diretiva `v-reveal` (`plugins/reveal.ts`, registrada no `main.ts`) importa a lib dinamicamente, e `useCountUp` só é importado por views lazy. Toda animação decorativa respeita `prefers-reduced-motion`
+- 3D: **three.js**, só na vitrine da home. Import de `three` **apenas** em `components/nevo/showcase/`, e a vitrine chega por `defineAsyncComponent` + `useLazyLoad` (`features/dashboard/components/ShowcaseSection.vue`). Nunca no chunk de entrada nem no da home (checar no build)
 - Toast: **vue-sonner** (consumido via `useToast()` bridge)
 - Charts: `vue-echarts` (line, bar, pie). **Proibido usar as cores default do ECharts**: todo gráfico resolve tokens via `plugins/echarts-theme.ts` (paleta de status, tooltip, textStyle) e monta o `option` num `computed` que depende de `uiStore.theme`/`accent` pra repintar na troca de tema. Ver `components/dashboard/OverviewChart.vue` como referência
 - Headless primitives: `reka-ui` — em uso em `components/ui/AppSelect.vue`. Preferir para menus/popovers/selects novos.
@@ -43,6 +45,7 @@ Camadas disponíveis como CSS custom properties em `:root` (atualizadas runtime 
 | **Shadow**         | `--shadow-sm`, `--shadow`, `--shadow-overlay`                                         |
 | **Motion**         | `--motion-fast` (120ms), `--motion` (180ms), `--motion-slow` (280ms), `--motion-ease` |
 | **Typography**     | `--font-family` (Geist), `--font-mono`                                                 |
+| **Sequência (Nevo)** | `--streak-flame`, `--streak-flame-soft`, `--streak-off`, `--streak-rest`, `--streak-perfect`, `--streak-missed`, `--streak-done`, `--nevo-floor` e os níveis `--tier-basico`, `--tier-progresso`, `--tier-determinado`, `--tier-especialista`, `--tier-lendario`. Cor como sinal chapado (número, anel, tinta), nunca brilho em volta. No Modo XP o `styles/xp.css` força os valores do tema claro no `<html>` (a paleta Luna é clara) e um laranja claro na barra azul do topo |
 
 **Nunca escreva hex em componentes.** Se precisar de uma cor que não existe, adicione o token em `tokens.ts` primeiro.
 
@@ -90,6 +93,9 @@ Trocar a variante é feito em `/settings` e é aplicada em runtime (sem reload).
 - `CmdKButton.vue` — disparador da Command Palette (full / compact / icon)
 - `ThemeToggle.vue` — botão sol/lua que usa `useUiPreferences`
 - `NavList.vue` — lista de navegação reutilizável (usada em CommandShell; quarters carregadas da API)
+- `StreakChip.vue`: chama + número da sequência antes do `TimerWidget` nos 3 shells (`compact` no Canvas). Popover reka-ui com portal (estilo global `streak-pop`, z 3000) com semana, missões, próximo marco e atalhos (`/#sequencia`, `/time?tab=team`). Corpo do popover em chunks sob demanda; some quando a API não tem a rota (404/403)
+
+Os rótulos do breadcrumb (CommandShell) e do título da barra (FocusShell) são os mesmos do `NavList`; rota sem rótulo cai em "Nevo".
 
 ## UI Primitives
 
@@ -115,6 +121,25 @@ Em [`components/ui/`](./components/ui/):
 | `MascotCard.vue`       | Aviso do Nevo no formato de mensagem recebida: carinha da marca como avatar à esquerda e balão com bico. Slots `meta` / `actions` / `dismiss`; prop `tone` (`warn` tinge de âmbar) e `live` (`assertive` para o que pede ação). Posicionamento é do container, não dele. |
 | `TagChip.vue` + `tag-palette.ts` | Chip de tag. Cor vem de `var(--tag-<chave>)` (definido em `tokens.ts`, por tema), nunca hex. Tag sem cor recebe uma determinística pelo slug. |
 | `TagInput.vue`         | Campo de tags estilo Azure Boards: chips na caixa, Enter cria a que não existe, Backspace remove a última. Combobox ARIA à mão (não reka) — ver o comentário no arquivo. |
+
+## Nevo (sequência diária)
+
+Spec: [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md). A sequência é **derivada** na API (`GET /streak/me`, `GET /streak/team`), sem tabela nova. No front: `service/streak/streak-service.ts` (cliente tipado, sempre com `tzOffset`), `composables/useStreak.ts` (Vue Query, `streakKeys`; `available=false` em 404/403 esconde a UI) e `composables/useStreakCelebration.ts` (dispara a festa uma vez por dia e por pessoa: chaves `nevo.celebrated.<userId>.<data>` e `nevo.milestone.<userId>.<dias>.<data>`). O `useRealtimeQuerySync` invalida `['streak']` com eventos de socket que já existem (tarefa entrando ou saindo de concluída, timer, comentário, feed); nenhum evento novo no backend.
+
+Em [`components/nevo/`](./components/nevo/) (sprites WebP em `public/brand/nevo/`, pipeline de recorte em `scripts/sprites/`; manifesto, níveis, marcos e humores em `nevo-assets.ts`):
+
+| Componente | Uso |
+| --- | --- |
+| `NevoSprite.vue` | O mascote a partir dos sprites, animação só em CSS (`idle`, `walk`/`run` flipbook, `bounce`, `sleep`, `still`). Decorativo por padrão; reduced-motion vira `still` |
+| `NevoFlame.vue` | Chama da sequência (`fogo-*`) ou chama-cristal de marco (`seq-*`); `lit=false` = apagada, `live` = tremula |
+| `StreakWeek.vue` | Semana seg..dom, um círculo por dia (garantido, perfeito, hoje pendente, descanso, perdido, futuro), com texto para leitor de tela |
+| `StreakMissions.vue` | "Sua jornada": as 3 missões do dia (`cards` na home, `compact` no popover) |
+| `TierTrack.vue` | Evolução do Nevo pelos 5 níveis |
+| `MilestoneTrack.vue` | Marcos de 7/14/30/60/100 dias (conquista pelo recorde) |
+| `StreakCelebration.vue` | Overlay da comemoração, montado UMA vez no AppShell (teleport, z 4000, `aria-live`, some sozinho em 7 s) |
+| `showcase/NevoShowcase.vue` | Vitrine 3D da home (three.js + GSAP). Único lugar do app que importa `three`; carregada por `defineAsyncComponent` quando o card entra na tela, pausa fora da tela e com reduced-motion vira quadro estático |
+
+Na home: `features/dashboard/components/StreakHero.vue` (primeiro módulo, âncora `#sequencia`), `TeamStreakPanel.vue` e `ShowcaseSection.vue`. Na Equipe do `/time`: `TeamStreakCard.vue` e a ordenação Horas / Sequência / Pontos do `TeamView`.
 
 ## Colaboração
 
@@ -159,6 +184,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Acessos Públicos | [`features/public-access/PublicAccessView.vue`](./features/public-access/PublicAccessView.vue) | `/public-access`   | Tokens de API das ferramentas (seção Ferramentas): listagem agregada de todas as empresas onde o usuário é ADMIN, escopo por ferramenta (QR/OCR/ambas), revogação só pelo criador. Gate `meta.anyCompanyAdmin`. Spec: docs/specs/acessos-publicos.md |
 | Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only                                                            |
 | Configurações   | [`features/settings/SettingsView.vue`](./features/settings/SettingsView.vue)                   | `/settings`        | Tema, acento, densidade, shell variant                                |
+| Sequência (Nevo) | [`features/dashboard/components/StreakHero.vue`](./features/dashboard/components/StreakHero.vue) | `/#sequencia` (home) + chip nos 3 shells | Sequência diária, missões, níveis, marcos, ranking de pontos da equipe e vitrine 3D. Ver a seção **Nevo (sequência diária)**. Spec: [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md) |
 
 ★ = redesign completo entregue pelo design-system-evolution spec.
 
@@ -618,7 +644,7 @@ Atalhos globais na página Variables: `/` (foca busca), `N` (abre criação), `E
 
 1. Crie `features/<nome>/<Nome>View.vue`.
 2. Registre a rota em [`router/index.ts`](./router/index.ts).
-3. Adicione entrada em `NavList.vue` (`mainItems` ou `personalItems`) e nos shells `FocusShell` / `CanvasShell` (railItems / tabs / dockItems) se deve aparecer lá.
+3. Adicione entrada em `NavList.vue` (`mainItems` ou `personalItems`) e nos shells `FocusShell` / `CanvasShell` (railItems / tabs / dockItems) se deve aparecer lá. O rótulo do breadcrumb vai no mapa `routes` do `CommandShell`, com o mesmo texto do menu (sem ele a topbar mostra o fallback "Nevo").
 4. Use tokens e lucide icons desde o início.
 5. Atualize a tabela de features nesta doc.
 

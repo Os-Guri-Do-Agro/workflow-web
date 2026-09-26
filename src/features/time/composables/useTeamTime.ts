@@ -7,8 +7,15 @@ import timeService, {
 } from '@/service/time/time-service'
 import companiesServices from '@/service/companies/companies-services'
 import realtimeService from '@/service/realtime/realtime-service'
+import streakService, {
+  type StreakTeam,
+  type StreakTeamDay,
+  type StreakTeamMember,
+  type StreakTierKey,
+} from '@/service/streak/streak-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useCurrentUser } from '@/composables/useCurrentUser'
+import { streakKeys } from '@/composables/useStreak'
 import {
   buildPulseBars,
   type PulseBar,
@@ -52,12 +59,107 @@ export interface TeamRow {
   companies: string[]
   /** É o usuário logado (destaque "Você" na lista). */
   isMe: boolean
+  /**
+   * Sequência diária da pessoa (spec sequencia-diaria-nevo, T9). Ausente
+   * quando o servidor ainda não tem a rota ou a pessoa não veio nela: a tela
+   * mostra o ranking de horas como antes, sem chama.
+   */
+  streak?: TeamRowStreak
+}
+
+/** Eixo do ranking: horas do período (padrão), sequência atual ou pontos da semana. */
+export type TeamSort = 'hours' | 'streak' | 'points'
+
+/**
+ * A sequência de um colega como a Equipe mostra. É GLOBAL por pessoa (D6): a
+ * mesma em qualquer empresa do grupo. Só o que a API abre para colegas (D12):
+ * estado dos dias e pontos, nunca horas por dia nem contagens.
+ */
+export interface TeamRowStreak {
+  current: number
+  best: number
+  securedToday: boolean
+  todayIsRest: boolean
+  tierKey: StreakTierKey
+  tierLabel: string
+  /** Segunda a domingo da semana local de hoje. */
+  week: StreakTeamDay[]
+  pointsWeek: number
+}
+
+/** Uma pessoa do top da semana (card "Sequências do time" do rail). */
+export interface TeamStreakLeader {
+  userId: string
+  userName: string
+  isMe: boolean
+  current: number
+  securedToday: boolean
+  pointsWeek: number
+}
+
+/** Resumo da sequência do escopo, já sem repetir quem está em várias empresas. */
+export interface TeamStreakSummary {
+  /** Pessoas que já garantiram o dia hoje. */
+  securedToday: number
+  /** De descanso hoje e sem ter garantido (não é pendência, é folga). */
+  restToday: number
+  /** Pessoas com sequência conhecida no escopo. */
+  total: number
+  /**
+   * Dias seguidos do time (D13). Numa empresa é o valor da API; no grupo é o
+   * MENOR entre as empresas que têm gente ativa: a chama do grupo é tão forte
+   * quanto a da empresa mais fraca.
+   */
+  teamStreak: number
+  /** Sequência do time por empresa, só no grupo com duas ou mais empresas ativas. */
+  byCompany: { name: string; teamStreak: number }[]
+  /** Top 3 da semana por pontos (só quem somou algum). */
+  top: TeamStreakLeader[]
+}
+
+/** Valor do eixo do ranking para uma linha (0 = sem pontuação naquele eixo). */
+export function teamScore(row: Pick<TeamRow, 'totalSec' | 'streak'>, mode: TeamSort): number {
+  if (mode === 'streak') return row.streak?.current ?? 0
+  if (mode === 'points') return row.streak?.pointsWeek ?? 0
+  return row.totalSec
+}
+
+/**
+ * Ordem do ranking em cada eixo. Sequência desempata por pontos e pontos por
+ * sequência (a mesma ordem que a API usa no /streak/team); o nome fecha o
+ * empate para a lista não "pular" entre refetches.
+ */
+function compareRows(a: TeamRow, b: TeamRow, mode: TeamSort): number {
+  const byScore = teamScore(b, mode) - teamScore(a, mode)
+  if (byScore !== 0) return byScore
+  if (mode === 'streak') {
+    const byPoints = (b.streak?.pointsWeek ?? 0) - (a.streak?.pointsWeek ?? 0)
+    if (byPoints !== 0) return byPoints
+  } else if (mode === 'points') {
+    const byDays = (b.streak?.current ?? 0) - (a.streak?.current ?? 0)
+    if (byDays !== 0) return byDays
+  }
+  return a.userName.localeCompare(b.userName)
 }
 
 /** Erro HTTP com response (axios) sem depender do tipo do axios aqui. */
 function statusOf(err: unknown): number | undefined {
   const maybe = err as { response?: { status?: number } } | null
   return maybe?.response?.status
+}
+
+/** Sequência: mesmo fôlego do `useStreak` (o socket cobre o resto). */
+const STREAK_STALE_MS = 60 * 1000
+const STREAK_POLL_MS = 5 * 60 * 1000
+
+/**
+ * Sem a rota no servidor (404) ou negada (403), perguntar de novo a cada
+ * 5 min não muda nada: para o polling e deixa o foco na janela descobrir
+ * quando a API for atualizada.
+ */
+function pollStreakUnlessUnavailable(query: { state: { error: unknown } }): number | false {
+  const code = statusOf(query.state.error)
+  return code === 403 || code === 404 ? false : STREAK_POLL_MS
 }
 
 /**
@@ -108,8 +210,16 @@ export function constancyWindow(): { from: string; to: string } {
  * gráfico de ritmo precisa do modo e do mês exibido para decidir a
  * granularidade das colunas. O range pode ser PARCIAL: no período "Tudo" não há
  * `from` nem `to`, e a API trata ausência como "sem filtro".
+ *
+ * `sortBy` escolhe o eixo do ranking (set/2026, sequência diária do Nevo):
+ * horas deixou de ser o único jeito de aparecer no topo, porque escondia quem
+ * mantém o hábito todo dia com menos horas no total.
  */
-export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
+export function useTeamTime(
+  period: TimePeriodApi,
+  scope: Ref<TeamScope>,
+  sortBy: Ref<TeamSort> = ref<TeamSort>('hours'),
+) {
   const { range, pulseRange, staleTime } = period
   const workspace = useWorkspaceStore()
   const { me } = useCurrentUser()
@@ -217,11 +327,77 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
     ),
   })
 
+  /**
+   * Sequência diária (spec sequencia-diaria-nevo, T9): uma chamada por empresa
+   * do escopo, com a MESMA chave do `useStreakTeam` (`streakKeys.team`). Assim
+   * o painel da home e esta aba dividem o cache, e o sync por socket (que
+   * invalida o prefixo `['streak']`) atualiza as duas de uma vez.
+   *
+   * Fica FORA de isLoading/isError/isForbidden de propósito: é rota nova, que
+   * pode ainda não existir no servidor (404) ou negar (403), e o `isForbidden`
+   * trata esses códigos como "servidor antigo" e troca a tela inteira por um
+   * aviso. Sem sequência o ranking de horas segue igual; só a chama some.
+   */
+  const streakQueries = useQueries({
+    queries: computed(() =>
+      targetIds.value.map((id) => ({
+        queryKey: streakKeys.team(id),
+        queryFn: () => streakService.team(id),
+        staleTime: STREAK_STALE_MS,
+        refetchInterval: pollStreakUnlessUnavailable,
+        retry: retryUnlessClientError,
+      })),
+    ),
+  })
+
   const reports = computed(() =>
     reportQueries.value
       .map((q, i) => ({ companyId: targetIds.value[i], data: q.data as CompanyReport | undefined }))
       .filter((r): r is { companyId: string; data: CompanyReport } => !!r.data),
   )
+
+  const streakTeams = computed(() =>
+    streakQueries.value
+      .map((q, i) => ({ companyId: targetIds.value[i], data: q.data as StreakTeam | undefined }))
+      .filter((t): t is { companyId: string; data: StreakTeam } => !!t.data && !!t.companyId),
+  )
+
+  /** Alguma empresa do escopo respondeu a sequência (a rota existe e liberou). */
+  const streakAvailable = computed(() => streakTeams.value.length > 0)
+
+  /**
+   * Membros com sequência, sem repetir quem está em várias empresas. A
+   * sequência é global (D6), então qualquer empresa serve: fica a primeira.
+   */
+  const streakMembers = computed(() => {
+    const map = new Map<string, StreakTeamMember>()
+    for (const t of streakTeams.value) {
+      for (const m of t.data.members) {
+        if (m.user.id && !map.has(m.user.id)) map.set(m.user.id, m)
+      }
+    }
+    return map
+  })
+
+  const streakByUser = computed(() => {
+    const map = new Map<string, TeamRowStreak>()
+    for (const [userId, m] of streakMembers.value) {
+      map.set(userId, {
+        current: m.current,
+        best: m.best,
+        securedToday: m.securedToday,
+        todayIsRest: m.todayIsRest,
+        tierKey: m.tier.key,
+        tierLabel: m.tier.label,
+        week: m.week,
+        pointsWeek: m.points.week,
+      })
+    }
+    return map
+  })
+
+  /** Sem sequência no servidor o ranking volta para horas (e o seletor some). */
+  const sortMode = computed<TeamSort>(() => (streakAvailable.value ? sortBy.value : 'hours'))
 
   // ─── Estado ao vivo: semente das queries + eventos de socket ────────────────
   const runningByUser = ref<Record<string, TeamLiveEntry>>({})
@@ -346,35 +522,89 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
 
     const total = teamTotalSec.value
     const myId = me.value?.id
+    const mode = sortMode.value
 
     return [...roster.values()]
-      .map((m) => {
-        const running = runningByUser.value[m.userId] ?? null
-        const agg = perUser.value.get(m.userId)
-        const totalSec = agg?.totalSec ?? 0
-        return {
-          userId: m.userId,
-          userName: agg?.name ?? m.userName,
-          rank: 0,
-          running,
-          elapsedSec: running ? elapsedSince(running.startedAt) : 0,
-          totalSec,
-          pct: total > 0 ? Math.round((totalSec / total) * 100) : 0,
-          companies: agg ? [...agg.companies] : [],
-          isMe: !!myId && m.userId === myId,
-        }
-      })
-      // Ranking puro por tempo registrado: quem está rodando agora não "fura a
-      // fila" (a lista é placar do período, não fila de atividade).
-      .sort((a, b) => {
-        if (b.totalSec !== a.totalSec) return b.totalSec - a.totalSec
-        return a.userName.localeCompare(b.userName)
-      })
+      .map(
+        (m): TeamRow => {
+          const running = runningByUser.value[m.userId] ?? null
+          const agg = perUser.value.get(m.userId)
+          const totalSec = agg?.totalSec ?? 0
+          return {
+            userId: m.userId,
+            userName: agg?.name ?? m.userName,
+            rank: 0,
+            running,
+            elapsedSec: running ? elapsedSince(running.startedAt) : 0,
+            totalSec,
+            pct: total > 0 ? Math.round((totalSec / total) * 100) : 0,
+            companies: agg ? [...agg.companies] : [],
+            isMe: !!myId && m.userId === myId,
+            streak: streakByUser.value.get(m.userId),
+          }
+        },
+      )
+      // Ranking pelo eixo escolhido. Em horas continua placar puro do período:
+      // quem está rodando agora não "fura a fila" (não é fila de atividade).
+      .sort((a, b) => compareRows(a, b, mode))
       .map((r, i) => ({ ...r, rank: i + 1 }))
   })
 
-  /** Top 3 do período com tempo > 0 (o pódio some quando ninguém registrou). */
-  const podium = computed(() => rows.value.filter((r) => r.totalSec > 0).slice(0, 3))
+  /** Top 3 com pontuação > 0 no eixo atual (o pódio some quando ninguém pontuou). */
+  const podium = computed(() =>
+    rows.value.filter((r) => teamScore(r, sortMode.value) > 0).slice(0, 3),
+  )
+
+  /**
+   * Resumo do card "Sequências do time". Conta PESSOAS, não vínculos: quem
+   * está em duas empresas do grupo aparece uma vez só.
+   */
+  const streakSummary = computed<TeamStreakSummary | null>(() => {
+    if (!streakAvailable.value) return null
+    const people = [...streakMembers.value.values()]
+
+    const withActive = streakTeams.value.filter((t) => t.data.summary.active > 0)
+    const teamStreak = withActive.length
+      ? Math.min(...withActive.map((t) => t.data.summary.teamStreak))
+      : 0
+    // O detalhe por empresa só explica o número quando há mais de uma no jogo.
+    const byCompany =
+      withActive.length > 1
+        ? withActive
+            .map((t) => ({
+              name: nameOfCompany.value.get(t.companyId) ?? 'Empresa',
+              teamStreak: t.data.summary.teamStreak,
+            }))
+            .sort((a, b) => b.teamStreak - a.teamStreak || a.name.localeCompare(b.name))
+        : []
+
+    const top = people
+      .filter((m) => m.points.week > 0)
+      .sort(
+        (a, b) =>
+          b.points.week - a.points.week ||
+          b.current - a.current ||
+          a.user.name.localeCompare(b.user.name),
+      )
+      .slice(0, 3)
+      .map((m) => ({
+        userId: m.user.id,
+        userName: m.user.name,
+        isMe: m.isMe,
+        current: m.current,
+        securedToday: m.securedToday,
+        pointsWeek: m.points.week,
+      }))
+
+    return {
+      securedToday: people.filter((m) => m.securedToday).length,
+      restToday: people.filter((m) => m.todayIsRest && !m.securedToday).length,
+      total: people.length,
+      teamStreak,
+      byCompany,
+      top,
+    }
+  })
 
   const myRow = computed(() => rows.value.find((r) => r.isMe) ?? null)
 
@@ -503,6 +733,7 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
       ...pulseQueries.value,
       // Sem esta linha, "tentar de novo" deixava os heatmaps quebrados para sempre.
       ...constancyQueries.value,
+      ...streakQueries.value,
     ].forEach((q) => void q.refetch())
   }
 
@@ -511,6 +742,9 @@ export function useTeamTime(period: TimePeriodApi, scope: Ref<TeamScope>) {
     rows,
     podium,
     myRow,
+    sortMode,
+    streakAvailable,
+    streakSummary,
     activeCount,
     contributorCount,
     teamTotalSec,

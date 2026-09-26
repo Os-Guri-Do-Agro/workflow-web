@@ -33,6 +33,7 @@ import XpToggle from './shared/XpToggle.vue'
 import InboxBell from './shared/InboxBell.vue'
 import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
+import StreakChip from './shared/StreakChip.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
@@ -124,9 +125,28 @@ const isActive = (to: string) => {
   return route.path === to || route.path.startsWith(to + '/')
 }
 
+/**
+ * Telas que existem mas não estão no rail. Sem isto o título da barra caía no
+ * fallback em Configurações, Proteção e Repositórios. Mesmos rótulos do
+ * breadcrumb do CommandShell. Tarefas entra aqui também porque o item do rail
+ * só existe depois que os trimestres carregam.
+ */
+const OFF_RAIL_LABELS: Array<{ prefix: string; label: string }> = [
+  { prefix: '/settings', label: 'Configurações' },
+  { prefix: '/protecao', label: 'Proteção do cronômetro' },
+  { prefix: '/repos', label: 'Repositórios' },
+  { prefix: '/tasks', label: 'Tarefas' },
+  { prefix: '/relatorio', label: 'Tarefas' },
+]
+
 const currentLabel = computed(() => {
   const active = railItems.value.find((i) => isActive(i.to))
-  return active?.label || 'Forge'
+  if (active) return active.label
+  const path = route.path
+  const offRail = OFF_RAIL_LABELS.find((i) => path === i.prefix || path.startsWith(i.prefix + '/'))
+  // Nome do produto (o mesmo do título da aba e do BrandMark) para rota sem
+  // rótulo próprio, como a página de "não encontrado".
+  return offRail?.label ?? 'Nevo'
 })
 
 const openQuarter = ref<string | null>(null)
@@ -268,6 +288,7 @@ const showTasks = computed(() =>
         <span class="slim-label">{{ currentLabel }}</span>
         <div class="spacer" />
         <HelpButton />
+        <StreakChip />
         <TimerWidget />
         <InboxBell />
         <XpToggle />

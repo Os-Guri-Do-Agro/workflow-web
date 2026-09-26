@@ -7,12 +7,17 @@
 import { Sparkles, Plus, Building2, Globe2 } from 'lucide-vue-next'
 import type { DashboardMode } from '@/composables/useDashboardOrchestration'
 
-defineProps<{
-  greeting: string
-  todayLabel: string
-  mode: DashboardMode
-  canCreateTask: boolean
-}>()
+withDefaults(
+  defineProps<{
+    greeting: string
+    /** Primeiro nome da pessoa logada; vazio = só a saudação ("Boa tarde"). */
+    firstName?: string
+    todayLabel: string
+    mode: DashboardMode
+    canCreateTask: boolean
+  }>(),
+  { firstName: '' },
+)
 
 const emit = defineEmits<{
   (e: 'set-mode', mode: DashboardMode): void
@@ -27,7 +32,7 @@ const emit = defineEmits<{
         <Sparkles :size="12" />
         {{ todayLabel }}
       </span>
-      <h1 class="dh-title">{{ greeting }}</h1>
+      <h1 class="dh-title">{{ firstName ? `${greeting}, ${firstName}` : greeting }}</h1>
     </div>
 
     <div class="dh-actions">
@@ -35,6 +40,8 @@ const emit = defineEmits<{
         <button
           class="mode-btn press"
           :class="{ 'mode-btn--active': mode === 'company' }"
+          type="button"
+          :aria-pressed="mode === 'company'"
           @click="emit('set-mode', 'company')"
         >
           <Building2 :size="12" />
@@ -43,6 +50,8 @@ const emit = defineEmits<{
         <button
           class="mode-btn press"
           :class="{ 'mode-btn--active': mode === 'workspace' }"
+          type="button"
+          :aria-pressed="mode === 'workspace'"
           @click="emit('set-mode', 'workspace')"
         >
           <Globe2 :size="12" />

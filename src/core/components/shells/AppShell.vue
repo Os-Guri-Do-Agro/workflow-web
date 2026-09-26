@@ -40,6 +40,21 @@ import IdleProtectionDialog from '@/components/onboarding/IdleProtectionDialog.v
 import AbandonedTimerDialog from '@/components/onboarding/AbandonedTimerDialog.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
+/**
+ * Comemoração da sequência ("Dia garantido!", marcos). Assíncrona para o
+ * overlay (confete, Nevo pulando, CSS da festa) não pesar no chunk de ENTRADA:
+ * ele só aparece uma vez por dia. O chunk é pedido assim que a área logada
+ * monta, então o observador já está de pé muito antes da primeira festa; o gsap
+ * do confete continua vindo por import dinâmico lá dentro.
+ *
+ * Ele mesmo liga o observador da sequência (`useStreakCelebration`), por isso é
+ * montado só dentro de `.app-shell-root`: nas rotas bare (login, links
+ * públicos) nenhuma chamada a /streak sai.
+ */
+const StreakCelebration = defineAsyncComponent(
+  () => import('@/components/nevo/StreakCelebration.vue'),
+)
+
 const route = useRoute()
 const router = useRouter()
 const { shell, xp } = useUiPreferences()
@@ -241,6 +256,11 @@ const openPalette = () => paletteRef.value?.open()
     <!-- Cronômetro que ficou aberto sem cliente vivo (reboot, sleep, navegador
          morto): quem decide o que fazer com o tempo é a pessoa. -->
     <AbandonedTimerDialog />
+    <!-- Festa da sequência (Nevo pulando + confete). Mora AQUI, e não no chip
+         de cada shell, porque o shell remonta ao trocar de variante: a festa
+         sumiria no meio e o observador recomeçaria do zero a cada troca.
+         Montado uma vez, vale para a sessão logada inteira, em qualquer rota. -->
+    <StreakCelebration />
     <!-- Easter egg Windows XP (só quando o modo XP está ligado): ícones de área
          de trabalho, title bar da "janela" de conteúdo e barra de tarefas. -->
     <template v-if="xp">

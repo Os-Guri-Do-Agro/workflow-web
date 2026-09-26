@@ -1,15 +1,17 @@
 <script setup lang="ts">
 /**
  * Rail lateral da aba Equipe: leitura rápida do placar do período (total,
- * quem está trabalhando agora, média por pessoa), ritmo do período selecionado
- * e onde a equipe gastou o tempo. Puramente derivado (recebe tudo por props).
+ * quem está trabalhando agora, média por pessoa), sequências do time (set/2026,
+ * spec sequencia-diaria-nevo), ritmo do período selecionado e onde a equipe
+ * gastou o tempo. Puramente derivado (recebe tudo por props).
  */
 import { computed } from 'vue'
 import RailCard from '@/features/time/components/RailCard.vue'
 import MiniBars from '@/features/time/components/MiniBars.vue'
 import BreakdownList from '@/features/time/components/BreakdownList.vue'
 import TimeHeatmap from '@/features/time/components/TimeHeatmap.vue'
-import { HEATMAP_WEEKS } from '@/features/time/composables/useTeamTime'
+import TeamStreakCard from '@/features/time/components/TeamStreakCard.vue'
+import { HEATMAP_WEEKS, type TeamStreakSummary } from '@/features/time/composables/useTeamTime'
 import { formatDurationLong } from '@/utils/duration'
 import type { PulseBar } from '@/features/time/composables/useTimePeriod'
 
@@ -33,8 +35,18 @@ const props = withDefaults(
     byCompany?: { name: string; sec: number; pct: number }[]
     /** Segundos por dia do escopo nos últimos 6 meses (heatmap de constância). */
     constancyByDay?: Map<string, number>
+    /**
+     * Resumo da sequência diária do escopo. `null` quando o servidor ainda não
+     * tem a rota (ou negou): o card simplesmente não aparece.
+     */
+    streak?: TeamStreakSummary | null
   }>(),
-  { scopeLabel: 'Equipe', byCompany: () => [], constancyByDay: () => new Map<string, number>() },
+  {
+    scopeLabel: 'Equipe',
+    byCompany: () => [],
+    constancyByDay: () => new Map<string, number>(),
+    streak: null,
+  },
 )
 
 const activityItems = computed(() =>
@@ -84,6 +96,9 @@ const activityItems = computed(() =>
       </span>
     </RailCard>
 
+    <!-- Logo abaixo do placar: é a outra forma de "estar bem" na equipe. -->
+    <TeamStreakCard v-if="streak" :summary="streak" />
+
     <RailCard v-if="byCompany.length > 1" title="Por empresa">
       <BreakdownList :items="byCompany" />
     </RailCard>
@@ -118,7 +133,8 @@ const activityItems = computed(() =>
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-3);
-  font-size: 10.5px;
+  /* 12px no mínimo (regra 50+); em rem para seguir o aumento de fonte. */
+  font-size: 0.75rem;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -133,7 +149,7 @@ const activityItems = computed(() =>
 }
 
 .trail-hero-val {
-  font-size: 26px;
+  font-size: 1.625rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text);
@@ -141,7 +157,7 @@ const activityItems = computed(() =>
 }
 
 .trail-hero-lbl {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--text-3);
 }
 
@@ -165,14 +181,14 @@ const activityItems = computed(() =>
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 700;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 .trail-metric-lbl {
-  font-size: 11px;
+  font-size: 0.75rem;
   color: var(--text-3);
 }
 
@@ -206,7 +222,7 @@ const activityItems = computed(() =>
 .trail-split-lbl {
   display: block;
   margin-top: 7px;
-  font-size: 11.5px;
+  font-size: 0.75rem;
   color: var(--text-3);
 }
 

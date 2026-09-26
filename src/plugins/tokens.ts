@@ -116,6 +116,33 @@ const darkTokens: TokenMap = {
   '--avatar-4': '#E0A1B8',
   '--avatar-5': '#D4B476',
   '--avatar-6': '#93C79C',
+  // Sequência diária do Nevo (spec sequencia-diaria-nevo). Cor como sinal
+  // chapado (número, anel, tinta de fundo), nunca brilho em volta. Os tons que
+  // viram TEXTO (chama, níveis) passam AA sobre --surface: chama 8,2:1,
+  // perfeito 10,6:1, níveis entre 7,4:1 e 10,6:1. `--streak-off` é a chama
+  // apagada (ícone, não texto; 4,5:1) e `--streak-missed` é discreto de
+  // propósito: dia perdido é informação, não alarme (o vermelho de --err
+  // já significa "gravando" no timer).
+  '--streak-flame': '#FF9A3D',
+  '--streak-flame-soft': 'rgba(255,154,61,0.14)',
+  '--streak-off': '#7C838F',
+  '--streak-rest': '#8FA6C7',
+  '--streak-perfect': '#F5C542',
+  '--streak-missed': '#A98387',
+  // "Concluído!" em TEXTO. No escuro é o próprio --success (5,9:1); existe
+  // porque no claro o verde de --success dá só 2,4:1 como texto.
+  '--streak-done': '#12B76A',
+  // Níveis do mascote, na mesma família das chamas-cristal de cada nível
+  // (seq-basico laranja, seq-disciplina laranja-dourado, seq-constancia azul,
+  // seq-avancado roxo, seq-lendario dourado).
+  '--tier-basico': '#FB923C',
+  '--tier-progresso': '#F9A83B',
+  '--tier-determinado': '#8EAEE0',
+  '--tier-especialista': '#B89AF7',
+  '--tier-lendario': '#F5C542',
+  // Sombra de chão do mascote: neutra, mais densa no escuro pelo mesmo motivo
+  // de --shadow (sombra fraca some sobre fundo escuro).
+  '--nevo-floor': 'rgba(0,0,0,0.42)',
 }
 
 /**
@@ -161,6 +188,22 @@ const lightTokens: TokenMap = {
   '--avatar-4': '#B34A6E',
   '--avatar-5': '#96690F',
   '--avatar-6': '#35793F',
+  // Sequência diária: versão escura dos mesmos matizes do tema dark, porque o
+  // laranja da marca (--brand-accent) dá só 3:1 sobre branco. Medido sobre
+  // --surface: chama 5,2:1, perfeito 5,4:1, níveis entre 5,0:1 e 7,1:1.
+  '--streak-flame': '#C2410C',
+  '--streak-flame-soft': 'rgba(234,88,12,0.10)',
+  '--streak-off': '#878D97',
+  '--streak-rest': '#4F6485',
+  '--streak-perfect': '#9A5B06',
+  '--streak-missed': '#A86A70',
+  '--streak-done': '#067647',
+  '--tier-basico': '#C2410C',
+  '--tier-progresso': '#B45309',
+  '--tier-determinado': '#3B5B9A',
+  '--tier-especialista': '#6D28D9',
+  '--tier-lendario': '#9A5B06',
+  '--nevo-floor': 'rgba(11,11,12,0.16)',
 }
 
 export const themeTokens: Record<ThemeName, TokenMap> = {

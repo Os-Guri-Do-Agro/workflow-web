@@ -18,6 +18,8 @@ import { useWorkspaceDashboard } from '@/composables/useWorkspaceDashboard'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { useToast } from '@/composables/useToast'
 import { useAssistant } from '@/composables/useAssistant'
+import { useCurrentUser } from '@/composables/useCurrentUser'
+import { getUserToken } from '@/utils/authContent'
 import type { CalendarEvent } from '@/service/events/events-service'
 
 export type DashboardMode = 'company' | 'workspace'
@@ -175,6 +177,18 @@ export function useDashboardOrchestration() {
     return 'Boa noite'
   })
 
+  // Primeiro nome para "Boa tarde, Nicolas". `/user/me` é a fonte de verdade
+  // (reflete o banco); o token entra de reserva para a saudação já nascer com
+  // nome enquanto a consulta não volta. Sem nome nenhum, fica só a saudação.
+  const { me } = useCurrentUser()
+  const firstName = computed(() => {
+    const full = me.value?.name || getUserToken()?.name || ''
+    const first = full.trim().split(/\s+/)[0] ?? ''
+    if (!first) return ''
+    // Nome salvo em minúsculas ("nicolas") não pode sair assim na saudação.
+    return first.charAt(0).toLocaleUpperCase('pt-BR') + first.slice(1)
+  })
+
   const todayLabel = computed(() => {
     const d = new Date()
     return d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
@@ -289,7 +303,8 @@ export function useDashboardOrchestration() {
       else if (progress >= 50) status = 'in-progress'
       return {
         id: company?.id || '',
-        name: company?.name || '—',
+        // Texto visível: em-dash é proibido na copy do produto.
+        name: company?.name || 'Sem nome',
         progress,
         cnpj: company?.cnpj || '',
         total: m.total || 0,
@@ -424,6 +439,7 @@ export function useDashboardOrchestration() {
     hero,
     stats,
     greeting,
+    firstName,
     todayLabel,
     weeklySeries,
     weeklyTrendData,

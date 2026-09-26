@@ -14,6 +14,7 @@ import NavList from './shared/NavList.vue'
 import InboxBell from './shared/InboxBell.vue'
 import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
+import StreakChip from './shared/StreakChip.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 
 defineEmits<{
@@ -28,6 +29,9 @@ const canCreateCompany = computed(() => workspace.isAdmin)
 
 const breadcrumbs = computed(() => {
   const path = route.path
+  // Rótulos IGUAIS aos do menu lateral (shared/NavList.vue): o crumb confirma
+  // onde a pessoa clicou, e nome diferente do menu parece outra tela. Rota que
+  // não está aqui caía no fallback, e o /time mostrava um nome antigo do app.
   const routes: Record<string, string> = {
     '/': 'Dashboard',
     '/dashboard': 'Dashboard',
@@ -35,12 +39,21 @@ const breadcrumbs = computed(() => {
     // Canvas: breadcrumb '/boards' só existe com a flag ligada (ver feature-flags.ts).
     ...(CANVAS_ENABLED ? { '/boards': 'Canvas' } : {}),
     '/roadmap': 'Roadmap',
+    '/drive': 'Drive',
+    '/bug-reports': 'Bug reports',
+    // Fora do menu por enquanto (só por URL direta), mas é uma tela do app.
+    '/repos': 'Repositórios',
     '/settings': 'Configurações',
     '/protecao': 'Proteção do cronômetro',
     '/variables': 'Variáveis',
     '/company-users': 'Usuários',
+    '/time': 'Meu tempo',
     '/notes': 'Notas',
     '/calendar': 'Calendário',
+    '/qr': 'QR Codes',
+    '/links': 'Encurtador',
+    '/ocr': 'OCR Digital',
+    '/public-access': 'Acessos Públicos',
   }
   if (routes[path]) return [routes[path]]
   if (path.startsWith('/tasks/')) {
@@ -53,7 +66,11 @@ const breadcrumbs = computed(() => {
   if (path.startsWith('/relatorio/')) return ['Tarefas', 'Relatório']
   if (CANVAS_ENABLED && path.startsWith('/boards/')) return ['Canvas', 'Board']
   if (path.startsWith('/notes/')) return ['Notas', 'Editor']
-  return ['Forge']
+  if (path.startsWith('/bug-reports/')) return ['Bug reports', 'Detalhes']
+  if (path.startsWith('/repos/')) return ['Repositórios', 'Detalhes']
+  // Nome do produto (o mesmo do título da aba e do BrandMark), para rota sem
+  // rótulo próprio, como a página de "não encontrado".
+  return ['Nevo']
 })
 
 // Glossário de jargão em PT-BR simples (acessibilidade 50+). Quando um crumb é
@@ -63,6 +80,8 @@ const JARGON_GLOSSARY: Record<string, string> = {
   Backlog: 'Lista de tudo o que ainda está por fazer, esperando para ser priorizado.',
   Sprint: 'Ciclo curto de trabalho (geralmente 1 a 2 semanas) com metas definidas.',
   Roadmap: 'Planejamento do que será entregue ao longo do tempo.',
+  'Bug reports': 'Relatos de erro enviados pelo time, com vídeo, para acompanhar até a correção.',
+  'OCR Digital': 'Leitura automática do texto de documentos e imagens.',
 }
 
 function crumbTooltip(crumb: string): string | undefined {
@@ -91,6 +110,7 @@ function crumbTooltip(crumb: string): string | undefined {
       <div class="spacer" />
       <CmdKButton variant="full" @open="$emit('open-command-palette')" />
       <HelpButton />
+      <StreakChip />
       <TimerWidget />
       <InboxBell />
       <XpToggle />

@@ -330,3 +330,42 @@ html[data-xp='true'] .app-select__trigger {
     animation: xp-dialog-open 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 }
+
+/* ─── Sequência do Nevo: tons da sequência e dos níveis ─────────────────────── */
+/* A paleta Luna é CLARA mesmo com o tema escuro ligado (superfícies brancas e
+   bege). Só que os tons --streak-* e --tier-* não eram redefinidos pelo XP: com
+   o tema escuro continuavam os do escuro (laranja claro, azul claro), feitos
+   para fundo escuro, e sobre o branco do XP davam ~2:1 no popover do chip, na
+   home, na comemoração e na Equipe do /time. Aqui voltam aos do tema claro, no
+   <html>, para valer em todo lugar (inclusive no que vai por portal para o
+   <body>). Os valores são os de `lightTokens` em plugins/tokens.ts (mudou lá,
+   muda aqui). !important pelo mesmo motivo do topo do arquivo: os tokens do
+   tema são inline style no <html>. */
+html[data-xp='true'] {
+  --streak-flame: #c2410c !important;
+  --streak-flame-soft: rgba(234, 88, 12, 0.1) !important;
+  --streak-off: #878d97 !important;
+  --streak-rest: #4f6485 !important;
+  --streak-perfect: #9a5b06 !important;
+  --streak-missed: #a86a70 !important;
+  --streak-done: #067647 !important;
+  --tier-basico: #c2410c !important;
+  --tier-progresso: #b45309 !important;
+  --tier-determinado: #3b5b9a !important;
+  --tier-especialista: #6d28d9 !important;
+  --tier-lendario: #9a5b06 !important;
+  --nevo-floor: rgba(11, 11, 12, 0.16) !important;
+}
+
+/* Exceção: a barra azul Luna do topo. Lá a chama do tema claro some no azul
+   (1,2:1 contra #0050ee) e o ponto de "sequência em risco" do chip usa essa
+   cor. Um laranja claro dá 3,1:1 contra o azul da faixa onde o ponto fica. O
+   número aceso, o hover e o foco do chip já têm override próprio no
+   StreakChip.vue (texto branco da barra). Mesmo escopo por shell das regras da
+   title bar acima; sem !important porque declarar no elemento já vence o valor
+   herdado do <html>. */
+html[data-xp='true'] .command-shell > .topbar,
+html[data-xp='true'] .focus-shell .slim-top,
+html[data-xp='true'] .canvas-shell > .topnav {
+  --streak-flame: #ffa24d;
+}

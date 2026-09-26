@@ -82,7 +82,8 @@ const toneOf = (i: number, tone: 'series' | 'flat') =>
 }
 
 .bd__dur {
-  font-size: 11.5px;
+  /* Piso de 12px (acessibilidade 50+). */
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
