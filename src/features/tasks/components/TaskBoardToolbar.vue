@@ -24,7 +24,7 @@ import {
 } from 'reka-ui'
 import { Bookmark, Check, ChevronDown, Search, X } from 'lucide-vue-next'
 import { tagColorVar } from '@/components/ui/tag-palette'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { ACTIVITY_PRIORITIES } from '../task-meta'
 import type { BoardFilters, BoardPerson, QuickFilterName } from '../composables/useBoardFilters'
 
@@ -123,13 +123,12 @@ defineExpose({
         type="button"
         class="face hit"
         :class="{ 'face--on': filters.isPersonOn(person) }"
-        :style="{ '--av': avatarTone(person.name) }"
         :aria-pressed="filters.isPersonOn(person)"
         :aria-label="`Filtrar por ${personLabel(person)}`"
         :title="personLabel(person)"
         @click="filters.togglePerson(person)"
       >
-        {{ initials(person.name) }}
+        <PersonAvatar :id="person.key" :name="person.name" :size="28" decorative />
       </button>
 
       <DropdownMenuRoot v-if="hiddenPeople.length">
@@ -156,9 +155,7 @@ defineExpose({
               <span class="filter-item__check">
                 <DropdownMenuItemIndicator><Check :size="14" :stroke-width="2" /></DropdownMenuItemIndicator>
               </span>
-              <span class="mini-avatar" :style="{ '--av': avatarTone(person.name) }" aria-hidden="true">
-                {{ initials(person.name) }}
-              </span>
+              <PersonAvatar :id="person.key" :name="person.name" :size="20" decorative />
               <span class="filter-item__label">{{ person.name }}</span>
               <span class="filter-item__count">{{ person.count }}</span>
             </DropdownMenuCheckboxItem>
@@ -419,6 +416,8 @@ defineExpose({
   flex: none;
 }
 
+/* O botão é o alvo e o anel; quem pinta o rosto (foto ou iniciais de 12px no
+   tom) é o PersonAvatar de 28px dentro dele. */
 .face {
   width: 28px;
   height: 28px;
@@ -428,8 +427,7 @@ defineExpose({
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: var(--av);
-  color: var(--surface);
+  background: transparent;
   box-shadow: 0 0 0 2px var(--bg);
   font: inherit;
   font-size: 12px;
@@ -629,20 +627,6 @@ defineExpose({
   height: 8px;
   border-radius: 999px;
   background: var(--tc);
-  flex: none;
-}
-
-.board-filter-menu .mini-avatar {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--av);
-  color: var(--surface);
-  /* Mesma exceção do card: duas iniciais num disco de 20px. */
-  font-size: 10px;
-  font-weight: 600;
   flex: none;
 }
 

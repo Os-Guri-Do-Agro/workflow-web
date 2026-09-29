@@ -19,10 +19,17 @@ export function resetSessionState(): void {
  * - `['streak', 'me']` soma todas as empresas (D6 da spec sequencia-diaria-nevo);
  * - `['time', 'current']` é o timer rodando do usuário (`GET /time/current`
  *   filtra só pelo usuário).
- * Resetar os dois faria o chip e o cronômetro piscarem vazios até o refetch.
+ * - `['people', ...]` é o diretório de pessoas com as fotos (`GET /user` já é
+ *   "quem divide alguma empresa comigo", a mesma resposta em qualquer empresa).
+ * Resetar faria o chip e o cronômetro piscarem vazios até o refetch, e todo
+ * avatar da tela trocar a foto pelas iniciais e voltar.
  */
 function isPersonScoped(key: QueryKey): boolean {
-  return (key[0] === 'streak' && key[1] === 'me') || (key[0] === 'time' && key[1] === 'current')
+  return (
+    (key[0] === 'streak' && key[1] === 'me') ||
+    (key[0] === 'time' && key[1] === 'current') ||
+    key[0] === 'people'
+  )
 }
 
 /**

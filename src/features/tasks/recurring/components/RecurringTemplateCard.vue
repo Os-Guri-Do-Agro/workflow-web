@@ -24,7 +24,7 @@ import {
   Trash2,
 } from 'lucide-vue-next'
 import TagChip from '@/components/ui/TagChip.vue'
-import { avatarTone, initials as personInitials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { prioritySpec, statusSpec } from '../../task-meta'
 import type { RecurringTemplate } from '../recurrence-types'
 import { dayLabel, describeRule, monthLabel, nextOccurrences, shiftMonthKey } from '../recurrence-engine'
@@ -101,18 +101,18 @@ const nextMonthLabel = computed(() => monthLabel(shiftMonthKey(props.monthKey, 1
 
     <div class="tpl-side">
       <div v-if="template.assignees.length" class="avatars">
-        <span
+        <!-- A rotina local guarda só o NOME: o diretório acha a foto pelo nome
+             normalizado (sem acento, sem caixa). -->
+        <PersonAvatar
           v-for="name in template.assignees"
           :key="name"
           class="avatar"
+          :name="name"
+          :size="24"
+          variant="soft"
+          ring
           :title="name"
-          :style="{
-            background: `color-mix(in srgb, ${avatarTone(name)} 20%, var(--surface-3))`,
-            color: `color-mix(in srgb, ${avatarTone(name)} 64%, var(--text))`,
-          }"
-        >
-          {{ personInitials(name) }}
-        </span>
+        />
       </div>
 
       <div class="tpl-actions">
@@ -295,17 +295,12 @@ const nextMonthLabel = computed(() => monthLabel(shiftMonthKey(props.monthKey, 1
 
 .avatars {
   display: flex;
+  /* Aro de 2px na cor do card separa os discos sobrepostos. */
+  --pa-ring-color: var(--surface);
+  --pa-ring-width: 2px;
 }
 
 .avatar {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  font-size: 9.5px;
-  font-weight: 700;
-  border-radius: 50%;
-  border: 2px solid var(--surface);
   margin-left: -6px;
 }
 

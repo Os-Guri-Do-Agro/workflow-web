@@ -35,7 +35,8 @@ import {
   type TeamSort,
 } from '@/features/time/composables/useTeamTime'
 import { useTimePeriod } from '@/features/time/composables/useTimePeriod'
-import { avatarTone, initials } from '@/utils/avatar'
+import { avatarTone } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { formatClock, formatDurationLong, formatTimer } from '@/utils/duration'
 
 /**
@@ -327,7 +328,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
             </header>
 
             <div class="pod__who">
-              <span class="pod__avatar">{{ initials(p.userName) }}</span>
+              <PersonAvatar :id="p.userId" class="pod__avatar" :name="p.userName" :size="32" variant="soft" decorative />
               <span class="pod__id">
                 <!-- O nome trunca num filho próprio: texto solto dentro de um
                      flex não respeita ellipsis e vazava o card. -->
@@ -441,9 +442,16 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
               <span v-else class="team-rank__num">{{ scores(row) ? `${row.rank}º` : '–' }}</span>
             </span>
 
-            <span class="team-avatar" :class="{ 'team-avatar--live': row.running }">
-              {{ initials(row.userName) }}
-            </span>
+            <PersonAvatar
+              :id="row.userId"
+              class="team-avatar"
+              :class="{ 'team-avatar--live': row.running }"
+              :name="row.userName"
+              :size="38"
+              variant="soft"
+              :ring="!!row.running"
+              decorative
+            />
 
             <div class="team-main-cell">
               <span class="team-name">
@@ -831,19 +839,9 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
   min-width: 0;
 }
 
+/* PersonAvatar de 32px: foto, ou iniciais no tom estável da pessoa. */
 .pod__avatar {
-  width: 32px;
-  height: 32px;
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--pc) 16%, var(--surface));
-  color: color-mix(in srgb, var(--pc) 64%, var(--text));
-  border: 1px solid color-mix(in srgb, var(--pc) 32%, transparent);
-  font-size: 0.75rem;
-  font-weight: 750;
 }
 
 .pod__id {
@@ -1043,23 +1041,16 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
   font-variant-numeric: tabular-nums;
 }
 
+/* PersonAvatar de 38px (foto, ou iniciais no tom estável da pessoa). */
 .team-avatar {
-  width: 38px;
-  height: 38px;
   flex: 0 0 auto;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--pc) 16%, var(--surface));
-  color: color-mix(in srgb, var(--pc) 64%, var(--text));
-  font-size: 0.78125rem;
-  font-weight: 750;
-  border: 1px solid color-mix(in srgb, var(--pc) 32%, transparent);
 }
 
+/* Timer rodando: o anel do avatar fica na cor de "ao vivo". Traço chapado,
+   sem brilho em volta. */
 .team-avatar--live {
-  border-color: color-mix(in srgb, var(--err) 55%, transparent);
+  --pa-ring-color: color-mix(in srgb, var(--err) 55%, transparent);
+  --pa-ring-width: 1.5px;
 }
 
 .team-main-cell {

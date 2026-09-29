@@ -19,7 +19,7 @@ import {
 } from 'lucide-vue-next'
 import TagInput from '@/components/ui/TagInput.vue'
 import { dateOnlyToUtcNoonIso } from '@/utils/date'
-import { avatarTone, initials as personInitials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 // Boundary: a regra do repo é que componente compartilhado não importe TIPOS de
 // `features/*` na sua API pública. Isto é outra coisa: `components/tasks/` já é
 // do domínio de tarefa (aqui e no `KanbanBoard`), então consumir o editor de
@@ -402,12 +402,6 @@ const toggleAssignee = (userId?: string) => {
 const isSelected = (userId?: string) =>
   !!userId && Array.isArray(form.value?.assignees) && form.value.assignees.includes(userId)
 
-// Iniciais e tom de pessoa vêm do util compartilhado (tokens --avatar-1..6):
-// o mesmo membro aparece igual aqui, no board, no detalhe da tarefa e no
-// ranking da equipe.
-const initials = (name?: string) => personInitials(name || '?')
-const toneOf = (name?: string) => avatarTone(name || '?')
-
 // ─── Status inicial e recorrência ────────────────────────────────────────────
 
 const setStatus = (initialStatus: ActivityStatus) =>
@@ -621,16 +615,15 @@ const submit = () => {
             :aria-pressed="isSelected(m.user?.id || m.id)"
             @click="toggleAssignee(m.user?.id || m.id)"
           >
-            <span
-              class="avatar"
-              aria-hidden="true"
-              :style="{
-                background: `color-mix(in srgb, ${toneOf(m.user?.name || m.name)} 20%, var(--surface-3))`,
-                color: `color-mix(in srgb, ${toneOf(m.user?.name || m.name)} 64%, var(--text))`,
-              }"
-            >
-              {{ initials(m.user?.name || m.name) }}
-            </span>
+            <!-- Foto ou iniciais no tom (PersonAvatar): o mesmo membro aparece
+                 igual aqui, no board, no detalhe da tarefa e na equipe. -->
+            <PersonAvatar
+              :id="m.user?.id || m.id"
+              :name="m.user?.name || m.name || '?'"
+              :size="22"
+              variant="soft"
+              decorative
+            />
             <span class="member-name">{{ m.user?.name || m.name }}</span>
             <Check v-if="isSelected(m.user?.id || m.id)" :size="12" class="member-check" />
           </button>
@@ -1210,20 +1203,6 @@ const submit = () => {
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
-}
-
-.avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--surface-3);
-  color: var(--text-2);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  flex-shrink: 0;
 }
 
 /* Selecionado NÃO repinta o avatar de acento: o tom é a identidade da pessoa e

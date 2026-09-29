@@ -4,6 +4,7 @@ import userService from '@/service/user/user-service'
 import companieService from '@/service/companies/companies-services'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { Loader2, Search, ShieldUser, Users, X } from 'lucide-vue-next'
 
 type Company = {
@@ -196,7 +197,7 @@ onMounted(() => {
         >
           <template #item.name="{ item }">
             <div class="um-user">
-              <span class="um-avatar">{{ item.name.charAt(0) }}</span>
+              <PersonAvatar :id="item.id" :name="item.name" :size="32" variant="soft" decorative />
               <span>{{ item.name }}</span>
             </div>
           </template>
@@ -436,20 +437,6 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
   padding: 6px 0;
-}
-
-.um-avatar {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  flex-shrink: 0;
 }
 
 .um-count {

@@ -55,6 +55,7 @@ type WeeklyTrendPayload = {
 export type BacklogChange = {
   activityTitle?: string
   changedBy?: {
+    id?: string
     name?: string
   } | null
   changedAt: string

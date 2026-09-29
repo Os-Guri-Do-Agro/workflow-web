@@ -5,6 +5,9 @@
  *
  * Os tons vivem em `plugins/tokens.ts` (`--avatar-1..6`, por tema) — aqui só
  * se escolhe qual, nunca a cor em si.
+ *
+ * Quem desenha a pessoa na tela é SEMPRE o `components/ui/PersonAvatar.vue`
+ * (foto quando existe, estas iniciais quando não existe ou a imagem falha).
  */
 const AVATAR_TONES = 6
 
@@ -20,4 +23,38 @@ export function initials(name: string): string {
   const first = parts[0]?.[0] ?? '?'
   const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : ''
   return (first + last).toUpperCase()
+}
+
+/**
+ * Nome como chave de busca: sem acento, sem caixa e com os espaços colapsados.
+ * É o que liga "Letícia Porfirio" (payload com nome) a "leticia porfirio"
+ * (diretório), nos lugares que só conhecem o nome, como as rotinas.
+ */
+export function normalizePersonName(name: string | null | undefined): string {
+  return (name ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+/**
+ * URL pronta para o `<img>` a partir do `avatarUrl` da API.
+ *
+ * - `https://...` (bucket público), `blob:` e `data:image/` (prévia local)
+ *   passam como estão;
+ * - `/avatars/x.webp` é relativo à ORIGEM DO FRONT (os avatares prontos moram em
+ *   `public/avatars/`), não à API: o navegador resolve sozinho;
+ * - caminho sem barra inicial ganha a barra, para não virar relativo à rota
+ *   atual (`/tasks/m-09/avatars/...`);
+ * - qualquer outro esquema (`javascript:`, `//host` etc.) é recusado e a pessoa
+ *   aparece com as iniciais.
+ */
+export function resolveAvatarSrc(url: string | null | undefined): string | null {
+  const raw = (url ?? '').trim()
+  if (!raw) return null
+  if (/^https?:\/\//i.test(raw) || /^blob:/i.test(raw) || /^data:image\//i.test(raw)) return raw
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//')) return null
+  return raw.startsWith('/') ? raw : `/${raw}`
 }

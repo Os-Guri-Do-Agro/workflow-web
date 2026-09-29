@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Settings, LogOut } from 'lucide-vue-next'
+import { Settings, LogOut, Camera } from 'lucide-vue-next'
 import { getUserToken } from '@/utils/authContent'
 import { clearSession } from '@/service/api'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 withDefaults(
   defineProps<{
@@ -16,15 +17,7 @@ const router = useRouter()
 const menu = ref(false)
 const user = getUserToken()
 
-const userInitials = computed(() => {
-  const name = user?.name || ''
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-})
+const userName = computed(() => user?.name?.trim() || 'Você')
 
 const firstName = computed(() => user?.name?.split(' ')[0] || '')
 
@@ -46,12 +39,19 @@ const handleLogout = () => {
         aria-label="Abrir menu do usuário"
         aria-haspopup="menu"
       >
-        <div class="user-avatar">{{ userInitials }}</div>
+        <PersonAvatar :id="user?.sub" :name="userName" :size="32" decorative />
         <span v-if="showName" class="user-name">{{ firstName }}</span>
       </button>
     </template>
     <v-card class="user-menu-card" rounded="lg" min-width="200" elevation="0">
       <v-list density="compact" class="py-1">
+        <!-- Leva à seção "Seu perfil" das Configurações (o router rola até a âncora). -->
+        <v-list-item density="compact" @click="router.push('/settings#perfil')">
+          <template #prepend>
+            <Camera :size="15" class="menu-icon" />
+          </template>
+          <v-list-item-title class="menu-title">Trocar foto</v-list-item-title>
+        </v-list-item>
         <v-list-item density="compact" @click="router.push('/settings')">
           <template #prepend>
             <Settings :size="15" class="menu-icon" />
@@ -102,20 +102,6 @@ const handleLogout = () => {
   outline-offset: 2px;
 }
 
-.user-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-fg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
 .user-name {
   font-size: 12.5px;
   font-weight: 500;
@@ -126,6 +112,11 @@ const handleLogout = () => {
   background: var(--surface) !important;
   border: 1px solid var(--border) !important;
   box-shadow: var(--shadow-overlay) !important;
+}
+
+/* Alvo de 44px em cada item (o `compact` do Vuetify para em 40px). */
+.user-menu-card :deep(.v-list-item) {
+  min-height: 44px;
 }
 
 .menu-icon {

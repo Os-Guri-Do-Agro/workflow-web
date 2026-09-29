@@ -49,7 +49,7 @@ import {
   SelectItemIndicator,
 } from 'reka-ui'
 import { ChevronDown, Check, X } from 'lucide-vue-next'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 type SelectValuePrimitive = string | number | null
 
@@ -74,11 +74,11 @@ const props = withDefaults(
     /** Habilita seleção múltipla com chips no trigger. */
     multiple?: boolean
     /**
-     * Só faz sentido com `multiple`: desenha um disco de iniciais (tom estável
-     * por nome, dos tokens `--avatar-1..6`) antes do rótulo de cada chip. Use
-     * quando os itens são PESSOAS — dá a mesma identidade visual do board e do
-     * ranking da equipe. Default `false`: um select de tags/status continua
-     * exatamente como era.
+     * Itens são PESSOAS (`value` = id do usuário, `label` = nome): desenha o
+     * `PersonAvatar` (foto ou iniciais no tom estável) antes do rótulo de cada
+     * chip e de cada opção da lista. Dá a mesma identidade visual do board e
+     * da equipe. Default `false`: um select de tags/status continua exatamente
+     * como era.
      */
     chipAvatars?: boolean
   }>(),
@@ -147,8 +147,14 @@ const selectedChips = computed(() =>
   selectedKeys.value.map((key) => ({
     key,
     label: labelById.value.get(key) as string,
+    personId: personIdOf(valueById.value.get(key) ?? null),
   })),
 )
+
+/** Com `chipAvatars`, o valor do item é o id da pessoa (quando é string). */
+function personIdOf(value: SelectValuePrimitive): string | null {
+  return typeof value === 'string' && value ? value : null
+}
 
 // model-value passado ao reka-ui: string|undefined (single) ou string[] (multiple).
 const rootModelValue = computed<string | string[] | undefined>(() =>
@@ -270,17 +276,15 @@ onBeforeUnmount(() => {
             :class="{ 'app-select__chip--plain': !chipAvatars }"
             :title="chip.label"
           >
-            <span
+            <PersonAvatar
               v-if="chipAvatars"
+              :id="chip.personId"
               class="app-select__chip-avatar"
-              aria-hidden="true"
-              :style="{
-                background: `color-mix(in srgb, ${avatarTone(chip.label)} 20%, var(--surface-2))`,
-                color: `color-mix(in srgb, ${avatarTone(chip.label)} 64%, var(--text))`,
-              }"
-            >
-              {{ initials(chip.label) }}
-            </span>
+              :name="chip.label"
+              :size="density === 'compact' ? 14 : 16"
+              variant="soft"
+              decorative
+            />
             <span class="app-select__chip-label">{{ chip.label }}</span>
             <span
               class="app-select__chip-x"
@@ -329,6 +333,14 @@ onBeforeUnmount(() => {
             <SelectItemIndicator class="app-select__indicator">
               <Check :size="14" />
             </SelectItemIndicator>
+            <PersonAvatar
+              v-if="chipAvatars"
+              :id="personIdOf(item.value)"
+              :name="item.label"
+              :size="20"
+              variant="soft"
+              decorative
+            />
             <SelectItemText>{{ item.label }}</SelectItemText>
           </SelectItem>
         </SelectViewport>
@@ -452,17 +464,9 @@ onBeforeUnmount(() => {
   padding-left: 8px;
 }
 
+/* Disco de (--chip-h - 8px): 16px no confortável, 14px no compacto. */
 .app-select__chip-avatar {
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(var(--chip-h) - 8px);
-  height: calc(var(--chip-h) - 8px);
-  border-radius: 999px;
-  font-size: 8.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
 }
 
 .app-select__chip-label {

@@ -32,7 +32,7 @@ import StreakWeek from '@/components/nevo/StreakWeek.vue'
 import { daysLabel, tierToneText } from '@/components/nevo/nevo-assets'
 import { useStreakTeam } from '@/composables/useStreak'
 import type { StreakTeamMember } from '@/service/streak/streak-service'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { getUserToken } from '@/utils/authContent'
 
 const { team, companyId, isLoading, isFetching, isError, available, refetch } = useStreakTeam()
@@ -59,9 +59,7 @@ interface Row {
   member: StreakTeamMember
   rank: number
   firstName: string
-  tone: string
   tierColor: string
-  initials: string
   medal: 1 | 2 | 3 | null
   /** A linha vem depois de um salto na posição (a sua, fora do top). */
   gapBefore: boolean
@@ -91,9 +89,7 @@ const rows = computed<Row[]>(() => {
       member,
       rank,
       firstName: firstNameOf(member.user.name),
-      tone: avatarTone(member.user.name),
       tierColor: tierToneText(member.tier.key),
-      initials: initials(member.user.name),
       medal: rank <= 3 && member.points.week > 0 ? (rank as 1 | 2 | 3) : null,
       gapBefore: !!prev && rank - prev.rank > 1,
       todayText: todayTextOf(member),
@@ -210,8 +206,8 @@ const summaryText = computed(() => {
               <span v-else class="tsp-rank" aria-hidden="true">{{ row.rank }}</span>
             </span>
 
-            <span class="tsp-avatar" :style="{ '--pc': row.tone }" aria-hidden="true">
-              {{ row.initials }}
+            <span class="tsp-avatar" aria-hidden="true">
+              <PersonAvatar :id="row.member.user.id" :name="row.member.user.name" :size="40" variant="soft" decorative />
               <!-- Acesa, a chama é a do nível da pessoa (roxo no Especialista...). -->
               <span class="tsp-avatar-flame">
                 <NevoFlame :lit="row.member.securedToday" :tier="row.member.tier.key" :size="14" />
@@ -465,21 +461,14 @@ const summaryText = computed(() => {
   border: 1.5px solid var(--metal-bronze-lo);
 }
 
-/* Avatar de iniciais no padrão da Equipe (tom estável por pessoa). */
+/* PersonAvatar de 40px no padrão da Equipe (foto, ou iniciais no tom estável
+   da pessoa); o span só posiciona a mini chama no canto. */
 .tsp-avatar {
   grid-area: av;
   position: relative;
   width: 40px;
   height: 40px;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--pc) 32%, transparent);
-  background: color-mix(in srgb, var(--pc) 16%, var(--surface));
-  color: color-mix(in srgb, var(--pc) 64%, var(--text));
-  font-size: 0.8125rem;
-  font-weight: 750;
 }
 
 /* Mini chama no canto: acesa = garantiu hoje. Selo com a cor da superfície

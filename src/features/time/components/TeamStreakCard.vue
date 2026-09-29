@@ -20,7 +20,7 @@ import RailCard from '@/features/time/components/RailCard.vue'
 import RankMedal from '@/features/time/components/RankMedal.vue'
 import type { TeamStreakSummary } from '@/features/time/composables/useTeamTime'
 import type { StreakTierKey } from '@/service/streak/streak-service'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 const props = defineProps<{ summary: TeamStreakSummary }>()
 
@@ -136,14 +136,13 @@ function leaderAria(p: (typeof leaders.value)[number]): string {
         :key="p.userId"
         class="tsc-top-row"
         :class="{ 'tsc-top-row--me': p.isMe }"
-        :style="{ '--pc': avatarTone(p.userName) }"
       >
         <!-- Leitor de tela ouve a frase inteira; o desenho da linha fica mudo. -->
         <span class="tsc-sr">{{ leaderAria(p) }}</span>
         <span class="tsc-medal" aria-hidden="true">
           <RankMedal :place="p.place" :size="22" />
         </span>
-        <span class="tsc-avatar" aria-hidden="true">{{ initials(p.userName) }}</span>
+        <PersonAvatar :id="p.userId" class="tsc-avatar" :name="p.userName" :size="30" variant="soft" decorative />
         <!-- Duas linhas: numa só o rail de 340px cortava o nome em "Ni..."
              (pior ainda com o aumento de fonte). -->
         <span class="tsc-who" aria-hidden="true">
@@ -348,19 +347,9 @@ function leaderAria(p: (typeof leaders.value)[number]): string {
   display: inline-flex;
 }
 
+/* PersonAvatar de 30px: foto, ou iniciais no tom estável da pessoa. */
 .tsc-avatar {
-  width: 30px;
-  height: 30px;
   flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--pc) 16%, var(--surface));
-  color: color-mix(in srgb, var(--pc) 64%, var(--text));
-  border: 1px solid color-mix(in srgb, var(--pc) 32%, transparent);
-  font-size: 0.75rem;
-  font-weight: 750;
 }
 
 .tsc-who {

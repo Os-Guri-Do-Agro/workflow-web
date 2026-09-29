@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, type Component } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, type Component } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   Check,
   Sun,
@@ -21,6 +22,7 @@ import {
   Send,
   Eye,
   EyeOff,
+  UserRound,
 } from 'lucide-vue-next'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
@@ -37,6 +39,7 @@ import { accents } from '@/plugins/tokens'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 import IdleDiagnostics from '@/features/settings/components/IdleDiagnostics.vue'
 import WorkScheduleCard from '@/features/settings/components/WorkScheduleCard.vue'
+import ProfileAvatarCard from '@/features/settings/components/ProfileAvatarCard.vue'
 
 const { success: toastSuccess, error: toastError } = useToast()
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -418,6 +421,12 @@ interface Secao {
 
 const SECOES: Secao[] = [
   {
+    id: 'perfil',
+    label: 'Seu perfil',
+    icon: UserRound,
+    termos: 'perfil foto avatar imagem retrato trocar remover conta nome',
+  },
+  {
     id: 'aparencia',
     label: 'Aparência',
     icon: Palette,
@@ -450,8 +459,31 @@ const SECOES: Secao[] = [
   },
 ]
 
-const secaoAtiva = ref('aparencia')
+const secaoAtiva = ref('perfil')
 const busca = ref('')
+
+/**
+ * Âncora na URL abre a seção dela (`/settings#perfil`, do "Trocar foto" do menu
+ * do avatar). Sem isto o router rolaria até um card escondido pelo `v-show` e
+ * nada aconteceria na tela. Vale também com a tela já aberta (só o hash muda).
+ */
+const route = useRoute()
+watch(
+  () => route.hash,
+  (hash) => {
+    let id = (hash ?? '').replace(/^#/, '')
+    try {
+      id = decodeURIComponent(id)
+    } catch {
+      // Hash malformado: compara com o texto cru.
+    }
+    if (SECOES.some((s) => s.id === id)) {
+      secaoAtiva.value = id
+      busca.value = ''
+    }
+  },
+  { immediate: true },
+)
 
 /** Sem acento e sem caixa: quem digita "aparencia" quer achar "Aparência". */
 const normalizar = (s: string) =>
@@ -486,7 +518,7 @@ function irPara(id: string) {
   <div class="settings-page">
     <div class="settings-header">
       <h1 class="settings-title">Configurações</h1>
-      <p class="settings-sub">Aparência e preferências</p>
+      <p class="settings-sub">Perfil, aparência e preferências</p>
     </div>
 
     <div class="settings-shell">
@@ -523,6 +555,19 @@ function irPara(id: string) {
         <p v-if="buscando && !secoesEncontradas.length" class="settings-empty">
           Nada encontrado para "{{ busca }}".
         </p>
+
+      <!-- Seu perfil: a foto que aparece para o time em todo o Nevo. `id` é a
+           âncora do "Trocar foto" do menu do avatar (tabindex para o foco ir
+           junto com a rolagem). -->
+      <section
+        v-show="mostra('perfil')"
+        id="perfil"
+        class="settings-card settings-card--anchor"
+        tabindex="-1"
+        aria-label="Seu perfil"
+      >
+        <ProfileAvatarCard />
+      </section>
 
       <!-- Appearance: theme + accent + density -->
       <div v-show="mostra('aparencia')" class="settings-card">
@@ -1237,6 +1282,16 @@ function irPara(id: string) {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 16px 18px;
+}
+
+/* Alvo de âncora: recebe o foco da rolagem sem desenhar anel no card todo. */
+.settings-card--anchor:focus {
+  outline: none;
+}
+
+.settings-card--anchor:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .card-section-title {

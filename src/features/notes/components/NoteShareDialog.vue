@@ -9,6 +9,7 @@ import {
   Copy, Link2, Loader2, Search, Trash2, UserPlus, X,
 } from 'lucide-vue-next'
 import userService from '@/service/user/user-service'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { getApiErrorMessage } from '@/service/api'
 import { useToast } from '@/composables/useToast'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -131,10 +132,6 @@ function invitedLabel(iso: string): string {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
-function initials(name: string): string {
-  return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('')
-}
-
 const panel = ref<HTMLElement | null>(null)
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') open.value = false
@@ -182,7 +179,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
             <ul v-if="results.length" class="share__results">
               <li v-for="u in results" :key="u.id">
                 <button type="button" class="share__result" @click="invite(u.id)">
-                  <span class="share__avatar">{{ initials(u.name) }}</span>
+                  <PersonAvatar :id="u.id" class="share__avatar" :name="u.name" :size="30" variant="soft" decorative />
                   <span class="share__person">
                     <strong>{{ u.name }}</strong>
                     <small>{{ u.email }}</small>
@@ -200,7 +197,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
             <span class="share__label">Com acesso</span>
             <ul class="share__people">
               <li v-for="p in people.data.value ?? []" :key="p.user.id" class="share__row">
-                <span class="share__avatar">{{ initials(p.user.name) }}</span>
+                <PersonAvatar
+                  :id="p.user.id"
+                  class="share__avatar"
+                  :name="p.user.name"
+                  :size="30"
+                  variant="soft"
+                  decorative
+                />
                 <span class="share__person">
                   <strong>{{ p.user.name }}</strong>
                   <small>
@@ -431,17 +435,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   font-size: 12px;
 }
 
+/* A pessoa é o PersonAvatar de 30px (foto ou iniciais no tom dela). */
 .share__avatar {
-  display: inline-grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
   flex-shrink: 0;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 20%, var(--surface-3));
-  color: var(--text);
-  font-size: 11px;
-  font-weight: 700;
 }
 
 .share__person {

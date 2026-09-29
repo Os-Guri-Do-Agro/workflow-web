@@ -8,6 +8,7 @@ import type { CommentPayload, MentionedUser } from '@/service/realtime/realtime-
 import { useToast } from '@/composables/useToast'
 import userService from '@/service/user/user-service'
 import { getUserToken } from '@/utils/authContent'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 const props = defineProps<{
   entityType: CommentEntityType
@@ -123,15 +124,6 @@ function onMentionKeydown(e: KeyboardEvent) {
 
 function authorName(comment: CommentPayload) {
   return comment.author?.name || comment.author?.email || 'Colaborador'
-}
-
-function initials(name: string) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || 'C'
 }
 
 function formatDate(value: string) {
@@ -260,7 +252,14 @@ async function react(comment: CommentPayload, emoji: string) {
         class="comment-card"
         :class="{ 'comment-card--mentioned': isMentioned(comment) }"
       >
-        <div class="comment-avatar">{{ initials(authorName(comment)) }}</div>
+        <PersonAvatar
+          :id="comment.authorId || comment.author?.id"
+          class="comment-avatar"
+          :name="authorName(comment)"
+          :size="32"
+          variant="soft"
+          decorative
+        />
         <div class="comment-body">
           <div class="comment-meta">
             <strong>{{ authorName(comment) }}</strong>
@@ -536,16 +535,9 @@ async function react(comment: CommentPayload, emoji: string) {
   gap: 12px;
 }
 
+/* O autor é o PersonAvatar de 32px (foto ou iniciais no tom da pessoa). */
 .comment-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 800;
+  align-self: start;
 }
 
 .comment-body {

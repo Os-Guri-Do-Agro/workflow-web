@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { MoreHorizontal, Pencil, Trash2, Download, Copy, Image as ImageIcon } from 'lucide-vue-next'
 import VariableTypeChip from './VariableTypeChip.vue'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 
 const { density } = useUiPreferences()
@@ -65,15 +66,8 @@ const updatedRelative = computed(() => {
   return new Date(at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
 })
 
-const editorInitials = computed(() => {
-  const name = props.variable.updatedBy?.name || ''
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-})
+/** Quem editou por último (a pessoa sai pelo PersonAvatar, com foto). */
+const editorName = computed(() => props.variable.updatedBy?.name?.trim() || '')
 </script>
 
 <template>
@@ -111,7 +105,15 @@ const editorInitials = computed(() => {
     </div>
 
     <div class="row-updated">
-      <div v-if="editorInitials" class="row-avatar-small">{{ editorInitials }}</div>
+      <PersonAvatar
+        v-if="editorName"
+        :id="variable.updatedBy?.id"
+        class="row-avatar-small"
+        :name="editorName"
+        :size="22"
+        variant="soft"
+        :title="`Editado por ${editorName}`"
+      />
       <span class="row-updated-text">{{ updatedRelative }}</span>
     </div>
 
@@ -297,17 +299,7 @@ const editorInitials = computed(() => {
 }
 
 .row-avatar-small {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--text);
+  flex: none;
 }
 
 .row-updated-text {

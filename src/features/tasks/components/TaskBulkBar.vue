@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from 'reka-ui'
 import { Check, ChevronDown, Loader2, Minus, Trash2, X } from 'lucide-vue-next'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { ACTIVITY_PRIORITIES, ACTIVITY_STATUSES, type PriorityLevel } from '../task-meta'
 import type { ActivityStatus } from '../activity-types'
 
@@ -131,9 +131,7 @@ const personModel = (state: BulkPerson['state']) =>
             :model-value="personModel(person.state)"
             @select="emit('person', person)"
           >
-            <span class="avatar" :style="{ '--av': avatarTone(person.name) }" aria-hidden="true">
-              {{ initials(person.name) }}
-            </span>
+            <PersonAvatar :id="person.id" :name="person.name" :size="20" decorative />
             <span class="menu-row__label">{{ person.name }}</span>
             <span class="menu-row__check" aria-hidden="true">
               <Check v-if="person.state === 'all'" :size="14" :stroke-width="2" />
@@ -407,19 +405,5 @@ const personModel = (state: BulkPerson['state']) =>
   padding: 8px 10px;
   font-size: 12px;
   color: var(--text-3);
-}
-
-/* Iniciais de 10px no disco de 20px: a mesma exceção aceita no card. */
-.task-bulk-menu .avatar {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--av);
-  color: var(--surface);
-  font-size: 10px;
-  font-weight: 600;
-  flex: none;
 }
 </style>

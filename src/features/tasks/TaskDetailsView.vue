@@ -10,7 +10,6 @@ import { useToast } from '@/composables/useToast'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { normalizePriority } from '@/utils/priority'
 import { PRIORITY_OPTIONS, priorityLevel, prioritySpec, statusSpec } from '@/features/tasks/task-meta'
-import { avatarTone, initials } from '@/utils/avatar'
 import {
   AlertCircle,
   ArrowLeft,
@@ -44,6 +43,7 @@ import {
   todayDateOnly,
 } from '@/utils/date'
 import Pill from '@/components/ui/Pill.vue'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import TagInput from '@/components/ui/TagInput.vue'
@@ -711,10 +711,6 @@ const updateSubtask = async () => {
   }
 }
 
-// Iniciais de pessoa vêm do util compartilhado: a mesma pessoa precisa aparecer
-// com as MESMAS iniciais aqui, no board e no ranking da equipe.
-const getUserInitials = (name: string) => initials(name)
-
 // ─── Descrição: derivada em `computed`, NUNCA chamada do template ────────────
 //
 // Converter/sanitizar HTML é O(tamanho do documento). Chamado direto no template,
@@ -753,12 +749,6 @@ const getStatusConfig = (status: string) => statusSpec(status)
 const statusConfig = computed(() => getStatusConfig(activityInfo.value?.status ?? 'TODO'))
 
 const getPriorityMeta = (priority: unknown) => prioritySpec(priority)
-
-// Tom de PESSOA sai dos tokens `--avatar-1..6` (util compartilhado), não das
-// cores de status. Pintar responsável com verde de "concluído" ou vermelho de
-// "bloqueado" criava significado falso dentro do mesmo card, e a tela com 4+
-// responsáveis virava confete.
-const getUserTone = (name: string) => avatarTone(name)
 
 const toggleSubtaskStatus = async (task: any) => {
   const previousStatus = task.status
@@ -923,18 +913,15 @@ const onSubtaskFilePick = (e: Event) => {
                   </Pill>
                 </div>
                 <div v-if="task.responsibles?.length" class="avatar-row">
-                  <span
+                  <PersonAvatar
                     v-for="r in task.responsibles"
+                    :id="r.userId"
                     :key="r.userId"
-                    class="avatar"
+                    :name="r.user.name"
+                    :size="22"
+                    variant="soft"
                     :title="r.user.name"
-                    :style="{
-                      background: `color-mix(in srgb, ${getUserTone(r.user.name)} 20%, var(--surface-2))`,
-                      color: `color-mix(in srgb, ${getUserTone(r.user.name)} 64%, var(--text))`,
-                    }"
-                  >
-                    {{ getUserInitials(r.user.name) }}
-                  </span>
+                  />
                 </div>
               </div>
 
@@ -1050,16 +1037,7 @@ const onSubtaskFilePick = (e: Event) => {
                     class="responsible-chip"
                     :title="r.user.name"
                   >
-                    <span
-                      class="avatar avatar--sm"
-                      aria-hidden="true"
-                      :style="{
-                        background: `color-mix(in srgb, ${getUserTone(r.user.name)} 20%, var(--surface-3))`,
-                        color: `color-mix(in srgb, ${getUserTone(r.user.name)} 64%, var(--text))`,
-                      }"
-                    >
-                      {{ getUserInitials(r.user.name) }}
-                    </span>
+                    <PersonAvatar :id="r.userId" :name="r.user.name" :size="20" variant="soft" decorative />
                     <span class="responsible-name">{{ r.user.name }}</span>
                   </span>
                 </div>
@@ -1524,16 +1502,7 @@ const onSubtaskFilePick = (e: Event) => {
                   class="responsible-chip"
                   :title="r.user.name"
                 >
-                  <span
-                    class="avatar avatar--sm"
-                    aria-hidden="true"
-                    :style="{
-                      background: `color-mix(in srgb, ${getUserTone(r.user.name)} 20%, var(--surface-3))`,
-                      color: `color-mix(in srgb, ${getUserTone(r.user.name)} 64%, var(--text))`,
-                    }"
-                  >
-                    {{ getUserInitials(r.user.name) }}
-                  </span>
+                  <PersonAvatar :id="r.userId" :name="r.user.name" :size="20" variant="soft" decorative />
                   <span class="responsible-name">{{ r.user.name }}</span>
                 </span>
               </div>
@@ -1962,24 +1931,6 @@ const onSubtaskFilePick = (e: Event) => {
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
-}
-
-.avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.avatar--sm {
-  width: 20px;
-  height: 20px;
-  font-size: 8.5px;
 }
 
 .meta-panel {

@@ -31,7 +31,7 @@ import { taskKey } from '@/features/tasks/task-key'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import type { BoardLane } from '@/features/tasks/board-lanes'
 import type { ActivityStatus } from '@/features/tasks/activity-types'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 const props = defineProps<{
   lanes: BoardLane<KanbanTask>[]
@@ -176,14 +176,14 @@ const onEnd = () => {
             @click="emit('toggle-lane', lane.key)"
           >
             <ChevronDown class="swim__chev" :size="16" :stroke-width="1.8" aria-hidden="true" />
-            <span
+            <PersonAvatar
               v-if="lane.name"
+              :id="lane.key"
               class="swim__avatar"
-              :style="{ '--av': avatarTone(lane.name) }"
-              aria-hidden="true"
-            >
-              {{ initials(lane.name) }}
-            </span>
+              :name="lane.name"
+              :size="24"
+              decorative
+            />
             <span v-else class="swim__avatar swim__avatar--none" aria-hidden="true">
               <UserRound :size="14" :stroke-width="1.8" />
             </span>
@@ -396,23 +396,16 @@ const onEnd = () => {
   transform: rotate(-90deg);
 }
 
-/* 24px com as iniciais em 12px (o mínimo de texto da spec cabe no disco). */
-.swim__avatar {
+/* O avatar da pessoa é o PersonAvatar (24px, iniciais em 12px: o mínimo de
+   texto da spec cabe no disco); a regra aqui desenha só o disco neutro da
+   linha "Sem responsável". */
+.swim__avatar--none {
   flex: none;
   width: 24px;
   height: 24px;
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: var(--av);
-  color: var(--surface);
-  font-size: 12px;
-  line-height: 1;
-  font-weight: 600;
-  user-select: none;
-}
-
-.swim__avatar--none {
   background: var(--surface-3);
   color: var(--text-3);
 }

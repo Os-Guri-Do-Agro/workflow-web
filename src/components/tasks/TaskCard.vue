@@ -41,7 +41,7 @@ import {
   Trash2,
 } from 'lucide-vue-next'
 import { tagColorVar, type TagLike } from '@/components/ui/tag-palette'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { ACTIVITY_STATUSES, dueSignal, prioritySpec } from '@/features/tasks/task-meta'
 import type { ActivityStatus } from '@/features/tasks/activity-types'
 import { isOccurrenceId } from '@/features/tasks/recurring/recurrence-types'
@@ -148,10 +148,10 @@ const people = computed(() =>
         !props.omitPerson ||
         ((r.userId ?? r.user.id) !== props.omitPerson && r.user.name !== props.omitPerson),
     )
-    .map((r) => r.user.name),
+    .map((r) => ({ id: r.userId ?? r.user.id ?? null, name: r.user.name })),
 )
 const shownPeople = computed(() => people.value.slice(0, MAX_AVATARS))
-const extraPeople = computed(() => people.value.slice(MAX_AVATARS))
+const extraPeople = computed(() => people.value.slice(MAX_AVATARS).map((p) => p.name))
 
 const due = computed(() => dueSignal(props.task.dueDate, isDone.value))
 const priority = computed(() => prioritySpec(props.task.priorityNumber))
@@ -399,15 +399,16 @@ function cancelFromKey() {
           <component :is="priority.icon" :size="14" />
         </span>
         <span v-if="people.length" class="avatars">
-          <span
-            v-for="(name, i) in shownPeople"
-            :key="`${i}-${name}`"
+          <PersonAvatar
+            v-for="(person, i) in shownPeople"
+            :id="person.id"
+            :key="`${i}-${person.id ?? person.name}`"
             class="avatar"
-            :style="{ '--av': avatarTone(name) }"
-            :title="name"
-          >
-            {{ initials(name) }}
-          </span>
+            :name="person.name"
+            :size="20"
+            ring
+            :title="person.name"
+          />
           <span v-if="extraPeople.length" class="avatar avatar--more" :title="extraPeople.join(', ')">
             +{{ extraPeople.length }}
           </span>
@@ -708,38 +709,22 @@ function cancelFromKey() {
   display: inline-flex;
 }
 
-/* ── Avatares: disco de 20px no tom da pessoa, sem anel colorido ── */
+/* ── Avatares: PersonAvatar de 20px (foto ou iniciais no tom), sem anel colorido ── */
 /* O disco de 20px sobra 2px para cima e para baixo da linha de 16px, sobre o
-   padding do card: sem isso a linha de meta cresceria 4px em todo card. */
+   padding do card: sem isso a linha de meta cresceria 4px em todo card.
+   As iniciais de 10px são a ÚNICA letra abaixo de 12px do card, de propósito:
+   duas iniciais num disco de 20px. O nome inteiro está no title. Aumentar o
+   disco para 24px custaria 8px de altura em todo card. */
 .avatars {
   display: flex;
   align-items: center;
   margin-block: -2px;
-}
-
-.avatar {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--av);
-  color: var(--surface);
   /* O aro na cor do card separa os discos sobrepostos sem cor extra. */
-  box-shadow: 0 0 0 1.5px var(--surface);
-  /* A ÚNICA letra abaixo de 12px do card, de propósito: são duas iniciais
-     dentro de um disco de 20px (o do protótipo aprovado usa 9,5px). Em 12px
-     elas não cabem e o disco vizinho as cobre; o nome inteiro está no title.
-     Aumentar o disco para 24px custaria 8px de altura em todo card. */
-  font-size: 10px;
-  line-height: 1;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  user-select: none;
+  --pa-ring-color: var(--surface);
 }
 
-.card:hover .avatar {
-  box-shadow: 0 0 0 1.5px var(--surface-2);
+.card:hover .avatars {
+  --pa-ring-color: var(--surface-2);
 }
 
 .avatar + .avatar {
@@ -747,8 +732,19 @@ function cancelFromKey() {
 }
 
 .avatar--more {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
   background: var(--surface-3);
   color: var(--text-2);
+  box-shadow: 0 0 0 1.5px var(--pa-ring-color);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
 /* ── "…": por cima do canto, sem reservar espaço no título ── */

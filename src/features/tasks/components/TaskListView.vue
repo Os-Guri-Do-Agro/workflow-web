@@ -36,7 +36,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { tagColorVar } from '@/components/ui/tag-palette'
 import activityService from '@/service/activities/activity-service'
 import { useToast } from '@/composables/useToast'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { safeStorage } from '@/utils/safe-storage'
 import {
   ACTIVITY_STATUSES,
@@ -144,13 +144,13 @@ interface ListRow {
   tags: Array<{ id: string; name: string; color: string }>
   extraTags: string[]
   sub: { done: number; total: number } | null
-  people: string[]
+  people: Array<{ id: string | null; name: string }>
   extraPeople: string[]
 }
 
 function toRow(task: TaskListTask, status: ActivityStatus): ListRow {
   const tags = (task.tags ?? []).map((link) => link.tag)
-  const people = (task.responsibles ?? []).map((r) => r.user.name)
+  const people = (task.responsibles ?? []).map((r) => ({ id: r.userId ?? r.user.id ?? null, name: r.user.name }))
   const subtasks = task.subtasks ?? []
   return {
     task,
@@ -168,7 +168,7 @@ function toRow(task: TaskListTask, status: ActivityStatus): ListRow {
       ? { done: subtasks.filter((s) => s.status === 'DONE').length, total: subtasks.length }
       : null,
     people: people.slice(0, MAX_AVATARS),
-    extraPeople: people.slice(MAX_AVATARS),
+    extraPeople: people.slice(MAX_AVATARS).map((p) => p.name),
   }
 }
 
@@ -884,15 +884,16 @@ watch(confirmOpen, (open) => {
               </span>
 
               <span class="c-people" role="gridcell">
-                <span
-                  v-for="(name, i) in row.people"
-                  :key="`${i}-${name}`"
+                <PersonAvatar
+                  v-for="(person, i) in row.people"
+                  :id="person.id"
+                  :key="`${i}-${person.id ?? person.name}`"
                   class="avatar"
-                  :style="{ '--av': avatarTone(name) }"
-                  :title="name"
-                >
-                  {{ initials(name) }}
-                </span>
+                  :name="person.name"
+                  :size="20"
+                  ring
+                  :title="person.name"
+                />
                 <span v-if="row.extraPeople.length" class="avatar avatar--more" :title="row.extraPeople.join(', ')">
                   +{{ row.extraPeople.length }}
                 </span>
@@ -1264,28 +1265,14 @@ watch(confirmOpen, (open) => {
   color: var(--due-soon);
 }
 
-/* ── Pessoas: discos de 20px, até 2 e "+N" ── */
+/* ── Pessoas: PersonAvatar de 20px, até 2 e "+N" ── */
+/* A exceção aceita da spec: duas iniciais num disco de 20px não cabem em
+   12px (ficam em 10px). O nome inteiro está no title. */
 .c-people {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-}
-
-.avatar {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--av);
-  color: var(--surface);
-  box-shadow: 0 0 0 1.5px var(--surface);
-  /* A exceção aceita da spec: duas iniciais num disco de 20px não cabem em
-     12px. O nome inteiro está no title. */
-  font-size: 10px;
-  line-height: 1;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  --pa-ring-color: var(--surface);
 }
 
 .avatar + .avatar {
@@ -1293,8 +1280,18 @@ watch(confirmOpen, (open) => {
 }
 
 .avatar--more {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
   background: var(--surface-3);
   color: var(--text-2);
+  box-shadow: 0 0 0 1.5px var(--pa-ring-color);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .list-empty {

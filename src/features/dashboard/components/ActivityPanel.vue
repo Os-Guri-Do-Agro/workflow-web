@@ -7,7 +7,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { CircleDot } from 'lucide-vue-next'
 import Skeleton from '@/components/ui/Skeleton.vue'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { useBacklog } from '@/composables/useBacklog'
 import {
   statusMeta,
@@ -30,9 +30,8 @@ const recentActivities = computed(() => {
   return backlog.value.slice(0, 12).map((item) => ({
     title: item.activityTitle,
     author: item.changedBy?.name || 'Sistema',
-    // Identidade tokenizada por pessoa (mesma função do board e do ranking).
-    tone: avatarTone(item.changedBy?.name || 'Sistema'),
-    initials: initials(item.changedBy?.name || 'Sistema'),
+    // A pessoa pelo PersonAvatar (foto ou iniciais no tom, como no board).
+    authorId: item.changedBy?.id ?? null,
     time: new Date(item.changedAt).toLocaleString('pt-BR', {
       day: '2-digit',
       month: 'short',
@@ -66,7 +65,7 @@ const recentActivities = computed(() => {
           class="act-item"
         >
           <span class="act-rail" :style="{ background: statusMeta[a.status]?.color }" />
-          <div class="act-avatar" :style="{ '--tone': a.tone }">{{ a.initials }}</div>
+          <PersonAvatar :id="a.authorId" class="act-avatar" :name="a.author" :size="26" variant="soft" decorative />
           <div class="act-info">
             <span class="act-title">{{ a.title }}</span>
             <span class="act-meta">
@@ -172,19 +171,8 @@ const recentActivities = computed(() => {
   flex-shrink: 0;
 }
 
-/* Tinta e texto derivados do tom da pessoa (--avatar-1..6), padrão do board. */
+/* A pessoa é o PersonAvatar de 26px (foto, ou tinta e texto no tom dela). */
 .act-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--tone) 22%, var(--surface-2));
-  border: 1px solid color-mix(in srgb, var(--tone) 38%, transparent);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  color: color-mix(in srgb, var(--tone) 72%, var(--text));
   flex-shrink: 0;
 }
 

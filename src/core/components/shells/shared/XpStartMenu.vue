@@ -7,6 +7,7 @@ import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { getUserToken } from '@/utils/authContent'
 import { clearSession } from '@/service/api'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 /*
  * Menu Iniciar do easter egg Windows XP (tema Luna).
@@ -28,14 +29,6 @@ const { firstMonth } = useNavQuarters()
 // Usuário do JWT (mesmo caminho do UserMenu). Sem token → "Usuário".
 const user = getUserToken()
 const userName = computed(() => user?.name || 'Usuário')
-const userInitials = computed(() =>
-  (user?.name || 'U')
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2),
-)
 
 interface MenuLink {
   label: string
@@ -94,7 +87,11 @@ function shutDown(): void {
   <div class="xp-startmenu" role="menu" aria-label="Menu Iniciar">
     <!-- Header azul com usuário -->
     <header class="xp-sm-header">
-      <div class="xp-sm-avatar">{{ userInitials }}</div>
+      <!-- Quadro de "foto do usuário" do XP: moldura branca Luna em volta do
+           PersonAvatar (foto, ou iniciais no tom da pessoa). -->
+      <div class="xp-sm-avatar">
+        <PersonAvatar :id="user?.sub" :name="userName" :size="34" shape="rounded" decorative />
+      </div>
       <span class="xp-sm-username">{{ userName }}</span>
     </header>
 
@@ -188,12 +185,10 @@ function shutDown(): void {
   border-radius: 5px;
   background: linear-gradient(180deg, #ffd479, #e9973a);
   border: 2px solid rgba(255, 255, 255, 0.85);
-  color: #5a3300;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 14px;
+  overflow: hidden;
   flex-shrink: 0;
 }
 

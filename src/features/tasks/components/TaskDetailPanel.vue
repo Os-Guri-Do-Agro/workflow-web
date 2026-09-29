@@ -53,7 +53,7 @@ import backlogService, { type BacklogEntry } from '@/service/backlog/backlog-ser
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { getUserToken } from '@/utils/authContent'
 import { useToast } from '@/composables/useToast'
-import { avatarTone, initials } from '@/utils/avatar'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import {
   dateOnlyInMonth,
   dueDatePatchValue,
@@ -417,7 +417,9 @@ const subtaskRows = computed(() =>
       sub,
       done,
       key: taskKey(sub, props.companyName),
-      person: sub.responsibles?.[0]?.user.name ?? null,
+      person: sub.responsibles?.[0]
+        ? { id: sub.responsibles[0].userId ?? sub.responsibles[0].user.id ?? null, name: sub.responsibles[0].user.name }
+        : null,
       due: dueSignal(sub.dueDate, done),
       // Em andamento e em teste aparecem pelo ícone; A fazer e Concluído já
       // estão ditos pelo círculo da esquerda.
@@ -831,9 +833,7 @@ onBeforeUnmount(() => {
                         class="person"
                         :title="r.user.name"
                       >
-                        <span class="avatar" :style="{ '--av': avatarTone(r.user.name) }" aria-hidden="true">
-                          {{ initials(r.user.name) }}
-                        </span>
+                        <PersonAvatar :id="r.userId ?? r.user.id" :name="r.user.name" :size="20" decorative />
                         {{ firstName(r.user.name) }}
                       </span>
                     </template>
@@ -849,9 +849,7 @@ onBeforeUnmount(() => {
                       :model-value="responsibleIds.includes(m.value)"
                       @select="(e: Event) => { keepOpen(e); toggleResponsible(m.value) }"
                     >
-                      <span class="avatar" :style="{ '--av': avatarTone(m.label) }" aria-hidden="true">
-                        {{ initials(m.label) }}
-                      </span>
+                      <PersonAvatar :id="m.value" :name="m.label" :size="20" decorative />
                       <span class="menu-row__label">{{ m.label }}</span>
                       <DropdownMenuItemIndicator class="menu-row__check">
                         <Check :size="14" :stroke-width="2" />
@@ -1099,14 +1097,13 @@ onBeforeUnmount(() => {
                     <FileText :size="12" :stroke-width="1.6" aria-hidden="true" />
                     {{ sub._count.docs }}
                   </span>
-                  <span
+                  <PersonAvatar
                     v-if="person"
-                    class="avatar"
-                    :style="{ '--av': avatarTone(person) }"
-                    :title="person"
-                  >
-                    {{ initials(person) }}
-                  </span>
+                    :id="person.id"
+                    :name="person.name"
+                    :size="20"
+                    :title="person.name"
+                  />
                   <span
                     v-if="subDue"
                     class="subtask__due"
@@ -1478,21 +1475,8 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.avatar {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--av);
-  color: var(--surface);
-  /* A exceção aceita do card: duas iniciais num disco de 20px. */
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  flex: none;
-  user-select: none;
-}
+/* Os avatares (PersonAvatar de 20px) têm iniciais de 10px: a exceção aceita
+   do card, duas iniciais num disco de 20px. */
 
 .muted {
   color: var(--text-3);
@@ -1902,18 +1886,5 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   font-size: 12px;
   color: var(--text-3);
-}
-
-.task-panel-menu .avatar {
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--av);
-  color: var(--surface);
-  font-size: 10px;
-  font-weight: 600;
-  flex: none;
 }
 </style>
