@@ -491,7 +491,7 @@ export const RECURSOS: Recurso[] = [
   },
   {
     nome: 'Screely',
-    url: 'https://www.screely.com/',
+    url: 'https://screely.app/',
     categoria: 'mockup',
     tier: 2,
     licenca: 'livre',
