@@ -1,25 +1,24 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, toRaw } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Columns3,
   History,
-  SlidersHorizontal,
   Plus,
-  X,
-  Inbox,
   CloudOff,
   RefreshCw,
-  CalendarDays,
-  Repeat,
-  Bookmark,
+  ChevronLeft,
+  ChevronRight,
+  Keyboard,
 } from 'lucide-vue-next'
 import TaskForm, { type TaskFormSubtask } from '@/components/tasks/TaskForm.vue'
 import { plainToHtml } from '@/features/tasks/description-html'
 import AppDialog from '@/components/ui/AppDialog.vue'
-import KanbanBoard from '@/components/tasks/KanbanBoard.vue'
-import AppSelect from '@/components/ui/AppSelect.vue'
-import TagChip from '@/components/ui/TagChip.vue'
+import KanbanBoard, { type KanbanMovePayload } from '@/components/tasks/KanbanBoard.vue'
+import TaskLanes from '@/components/tasks/TaskLanes.vue'
+import TaskBoardToolbar from '@/features/tasks/components/TaskBoardToolbar.vue'
+import TaskDetailPanel from '@/features/tasks/components/TaskDetailPanel.vue'
+import TaskListView from '@/features/tasks/components/TaskListView.vue'
+import TaskShortcutsDialog from '@/features/tasks/components/TaskShortcutsDialog.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -34,7 +33,20 @@ import { useCompanyBoards } from '@/composables/useCompanyBoards'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { useBacklog } from '@/composables/useBacklog'
 import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
-import { useTaskFilterMemory } from '@/features/tasks/composables/useTaskFilterMemory'
+import { useBoardFilters } from '@/features/tasks/composables/useBoardFilters'
+import { useTaskKeyboard } from '@/features/tasks/composables/useTaskKeyboard'
+import {
+  useQuickCreate,
+  type QuickCreatePerson,
+  type QuickCreateTarget,
+} from '@/features/tasks/composables/useQuickCreate'
+import { groupByPerson, NOBODY_LANE } from '@/features/tasks/board-lanes'
+import { isPendingTaskId } from '@/features/tasks/pending-task'
+import { taskKey } from '@/features/tasks/task-key'
+import { statusSpec } from '@/features/tasks/task-meta'
+import { resolveDropIndex } from '@/features/tasks/board-order'
+import type { ActivityDetail } from '@/features/tasks/activity-types'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import { useQueryClient } from '@tanstack/vue-query'
 // ── Repetição (ver docs/specs/tarefas-recorrentes-frontend.md)
@@ -73,7 +85,9 @@ import {
 type BoardStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
 
 interface TaskResponsible {
-  user: { name: string }
+  /** Card real traz o id; o de rotina só o nome. */
+  userId?: string
+  user: { id?: string; name: string }
 }
 
 interface BoardTaskTag {
@@ -91,6 +105,10 @@ interface BoardTask {
   /** Linha da pivot, como a API devolve. O filtro casa por `slug`. */
   tags?: Array<{ tag: BoardTaskTag }>
   dueDate?: string | null
+  /** Vem com os escalares da atividade; é o que alimenta "Atualizadas 24h". */
+  updatedAt?: string
+  /** Rotina que materializou a tarefa (modo API). */
+  recurrenceId?: string | null
   subtasks?: Array<{ id: string; title: string; status: string }>
   /** Presente só nos cards gerados por uma repetição (protótipo, §recorrência). */
   recurrence?: string
@@ -158,6 +176,9 @@ interface RawMonth {
 }
 
 interface RawQuarter {
+  id?: string
+  /** A API manda `label` ("Q3"). Ler `name` era o que sumia com o trimestre. */
+  label?: string
   name?: string
   months?: RawMonth[]
 }
@@ -178,11 +199,51 @@ const queryClient = useQueryClient()
 
 const dialog = ref(false)
 const creating = ref(false)
-const selectedUser = ref<string>('')
-const currentTab = ref<'board' | 'agenda' | 'backlog'>('board')
+
+// ── Vista na URL (`?vista=lista`, `agenda`, `historico`) ──
+// O link abre na mesma vista e o F5 não devolve para o Board, que é o padrão e
+// não aparece na URL.
+type TasksTab = 'board' | 'list' | 'agenda' | 'history'
+const TAB_PARAM: Record<TasksTab, string | null> = {
+  board: null,
+  list: 'lista',
+  agenda: 'agenda',
+  history: 'historico',
+}
+const tabFromQuery = (value: unknown): TasksTab =>
+  (Object.keys(TAB_PARAM) as TasksTab[]).find((t) => TAB_PARAM[t] !== null && TAB_PARAM[t] === value) ??
+  'board'
+const currentTab = ref<TasksTab>(tabFromQuery(route.query.vista))
+
+// URL → vista: voltar/avançar do navegador e link colado.
+watch(
+  () => route.query.vista,
+  (value) => {
+    const tab = tabFromQuery(value)
+    if (tab !== currentTab.value) currentTab.value = tab
+  },
+)
+
+// Vista → URL por `replace`: trocar de vista não é navegar (o voltar sai do
+// board ou fecha o painel, como nos filtros).
+watch(currentTab, (tab) => {
+  const param = TAB_PARAM[tab]
+  const current = typeof route.query.vista === 'string' ? route.query.vista : null
+  if (current === param) return
+  const query = { ...route.query }
+  if (param) query.vista = param
+  else delete query.vista
+  void router.replace({ query })
+})
 const members = ref<CompanyMember[]>([])
 const isWorkerRole = ref(false)
-const { success: showSuccess, error: showError } = useToast()
+/**
+ * O papel chega de `/user/me`, depois do mount. Até lá o painel não se declara
+ * "só leitura": abrir por link direto (`?task=`) piscava os campos de
+ * desabilitado para editável (quem decide até lá é o papel do token).
+ */
+const roleResolved = ref(false)
+const { success: showSuccess, error: showError, info: showInfo } = useToast()
 const formActivity = ref<ActivityFormModel>(EMPTY_FORM())
 
 // Local mutable tasks ref for optimistic drag-and-drop updates
@@ -192,6 +253,13 @@ const STATUSES: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
 
 // ── Reactive query keys ──
 const companyId = computed(() => localStorage.getItem('activeCompany') ?? '')
+
+// Nome da empresa ativa: é dele que sai o prefixo da chave do card (`PJ-K7Q2XM`).
+// A lista de empresas chega pelo AppShell; até lá a chave aparece sem prefixo.
+const workspace = useWorkspaceStore()
+const companyName = computed(
+  () => workspace.companies.find((c) => c.id === companyId.value)?.name ?? '',
+)
 const monthId = computed(() => route.params.month as string)
 
 // ── Vue Query — data loads independently, no blocking ──
@@ -205,6 +273,15 @@ const { data: quartersData } = useCompanyQuarters(companyId)
 const { data: backlogData } = useBacklog(companyId)
 
 /**
+ * De onde o card saiu na última mudança otimista de coluna ou de mês que veio
+ * por `applyPanelPatch` (painel e massa da Lista). É o que faz o rollback
+ * devolver o card ao MESMO lugar: sem isto, a coluna antiga recebia o card no
+ * fim, e o card que tinha ido para outro mês não voltava mais (não havia de
+ * onde tirá-lo). `task` só existe quando o card saiu do board (troca de mês).
+ */
+const patchOrigin = new Map<string, { status: BoardStatus; index: number; task?: BoardTask }>()
+
+/**
  * Sync da query para o ref local (que o arraste otimista muta).
  *
  * Os cards VIRTUAIS são retirados aqui: com a API de rotinas, o servidor manda
@@ -213,33 +290,59 @@ const { data: backlogData } = useBacklog(companyId)
  * não tem linha no banco mexeria numa posição que não existe. Elas voltam ao
  * quadro por `boardOccurrences`, já colapsadas em uma linha por regra.
  */
-watch(
-  tasksData,
-  (val) => {
-    if (!val) return
-    const real = { ...val } as BoardColumns
-    for (const status of STATUSES) {
-      real[status] = (val[status] ?? []).filter((t: BoardTask) => !isBoardVirtualCard(t))
-    }
-    tasks.value = real
-  },
-  { immediate: true },
-)
+function syncFromQuery(val: unknown) {
+  if (!val) return
+  const source = val as BoardColumns
+  const real = { ...source } as BoardColumns
+  for (const status of STATUSES) {
+    // Cópia rasa de cada card: o `data` do Vue Query é readonly (profundo), e
+    // escrever num card dele falhava em silêncio. O board precisa mexer no
+    // card na hora (renomear no próprio card, patch do painel); o refetch
+    // traz a verdade do servidor por cima logo depois.
+    real[status] = (source[status] ?? [])
+      .filter((t: BoardTask) => !isBoardVirtualCard(t))
+      .map((t: BoardTask) => ({ ...toRaw(t) }))
+  }
+  tasks.value = real
+  // A tela voltou a ser a do servidor: nenhum rollback pendente vale mais.
+  patchOrigin.clear()
+}
+
+watch(tasksData, (val) => syncFromQuery(val), { immediate: true })
 
 const loading = computed(() => tasksLoading.value)
 
 const backLog = computed(() => backlogData.value ?? [])
 
-/** Mês atual + nome do trimestre que o contém (eyebrow do header). */
-const currentMonthInfo = computed<{ month: RawMonth; quarterName: string | null } | null>(() => {
+const quartersList = computed<RawQuarter[]>(() => {
   const raw = quartersData.value as RawQuarter[] | { data?: RawQuarter[] } | undefined
-  const quarters: RawQuarter[] = Array.isArray(raw) ? raw : (raw?.data ?? [])
-  for (const quarter of quarters) {
+  return Array.isArray(raw) ? raw : (raw?.data ?? [])
+})
+
+/** Mês atual + rótulo do trimestre que o contém (vai no breadcrumb, não num eyebrow). */
+const currentMonthInfo = computed<{ month: RawMonth; quarterName: string | null } | null>(() => {
+  for (const quarter of quartersList.value) {
     const month = quarter.months?.find((m) => m.id === monthId.value)
-    if (month) return { month, quarterName: quarter.name ?? null }
+    if (month) return { month, quarterName: quarter.label ?? quarter.name ?? null }
   }
   return null
 })
+
+/**
+ * Meses em sequência, na ordem do menu lateral (trimestres por rótulo, meses
+ * por número, como a API já devolve). É o que o `‹ Setembro ›` percorre: do
+ * último mês de um trimestre ele passa para o primeiro do seguinte.
+ */
+const monthSequence = computed(() =>
+  quartersList.value.flatMap((q) => (q.months ?? []).map((m) => ({ id: m.id, name: m.name }))),
+)
+const monthIndex = computed(() => monthSequence.value.findIndex((m) => m.id === monthId.value))
+const prevMonth = computed(() =>
+  monthIndex.value > 0 ? monthSequence.value[monthIndex.value - 1] ?? null : null,
+)
+const nextMonth = computed(() =>
+  monthIndex.value >= 0 ? monthSequence.value[monthIndex.value + 1] ?? null : null,
+)
 
 // ── Repetição: o mês do board em calendário de verdade ──────────────────────
 //
@@ -335,18 +438,52 @@ const occurrenceToBoardTask = (occurrence: BoardOccurrence): BoardTask => ({
  * As geradas entram no FIM de cada coluna. Card virtual não tem ordem manual
  * (não existe linha no servidor para gravá-la), e intercalá-las pela data faria
  * a ordem que a pessoa arrumou à mão mudar sozinha a cada refetch.
+ *
+ * Os otimistas da criação inline (S4) vêm logo depois dos reais, que é onde o
+ * card de verdade vai ficar quando o POST voltar. Moram fora de `tasks`: o
+ * refetch substitui aquele ref inteiro e os apagaria no meio do caminho.
  */
+// ── Criação inline (spec board-tarefas-redesign, D5) ──
+const quickCreate = useQuickCreate({
+  tasks,
+  monthId,
+  responsibleFor: (target) => quickCreateResponsible(target),
+  onQueued: (card, target) => void nextTick(() => warnIfHidden(card.id, target.status)),
+  onCreated: (card, target) => announceCreated(card, target),
+  refresh: () => refreshTasks(),
+})
+const { composer, restore: composerRestore } = quickCreate
+
 const boardTasks = computed<BoardColumns>(() => {
   const merged = { TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] } as BoardColumns
-  for (const status of STATUSES) merged[status] = [...(tasks.value[status] ?? [])]
+  for (const status of STATUSES) {
+    merged[status] = [...(tasks.value[status] ?? []), ...quickCreate.pending.value[status]]
+  }
   for (const occurrence of boardOccurrences.value) {
     merged[occurrence.status].push(occurrenceToBoardTask(occurrence))
   }
   return merged
 })
 
-const refreshTasks = () =>
-  queryClient.refetchQueries({ queryKey: ['boards', monthId.value] })
+/**
+ * Traz o board do servidor E reaplica em `tasks`, mesmo quando nada mudou lá.
+ *
+ * O `watch(tasksData)` sozinho não basta para desfazer um otimismo: com o
+ * structural sharing do Vue Query, um refetch igual ao cache devolve a MESMA
+ * referência, o watch não roda e o card ficava onde a escrita recusada o
+ * deixou (título, coluna, mês). Aqui a cópia local é refeita do cache depois
+ * de todo refetch pedido, e isso vale também quando o próprio refetch falha:
+ * o cache guarda o último estado que o servidor confirmou, que é o que a tela
+ * deve mostrar depois de uma escrita recusada. Lê do cache, e não do
+ * `tasksData`, porque o observador do Vue Query só publica no próximo tique.
+ */
+const refreshTasks = async () => {
+  const key = ['boards', monthId.value] as const
+  await queryClient.refetchQueries({ queryKey: key })
+  // Trocou de mês no meio do caminho: o cache pedido já não é o da tela.
+  if (key[1] !== monthId.value) return
+  syncFromQuery(queryClient.getQueryData(key))
+}
 
 const findMembers = async () => {
   const id = localStorage.getItem('activeCompany')
@@ -396,7 +533,7 @@ const createRecurrence = async () => {
       showSuccess('Repetição atualizada')
     } else {
       await createTemplate(template, responsibleUserIds)
-      showSuccess(`Repetição criada — ${describeRule(template.rule).toLowerCase()}`)
+      showSuccess(`Repetição criada: ${describeRule(template.rule).toLowerCase()}`)
     }
   } catch (error: unknown) {
     // O formulário FICA ABERTO no erro: fechar levaria junto o que a pessoa
@@ -526,7 +663,7 @@ const createActivity = async () => {
     await refreshTasks()
     formActivity.value = EMPTY_FORM()
     dialog.value = false
-    showSuccess('Atividade criada com sucesso')
+    showSuccess('Tarefa criada')
   } catch (error: unknown) {
     showError(apiErrorMessage(error, 'Erro ao criar atividade'))
   } finally {
@@ -536,10 +673,14 @@ const createActivity = async () => {
 
 onMounted(async () => {
   isWorkerRole.value = (await getInfoAuth()) || false
+  roleResolved.value = true
   findMembers()
   if (route.query.new === '1') {
     dialog.value = true
-    router.replace({ path: route.path })
+    // Tira só o `new`: os filtros da URL continuam valendo.
+    const query = { ...route.query }
+    delete query.new
+    void router.replace({ query })
   }
   void migrateRecurrences()
 })
@@ -572,158 +713,31 @@ const migrateRecurrences = async () => {
   }
 }
 
-// ── Filters ──
-const filterPriority = ref<number | null>(null)
-const filterStatus = ref<string | null>(null)
-
-/**
- * Filtro por tag, guardado na URL (`?tags=cms,infra`).
- *
- * Só este filtro persiste na URL, e de propósito: "me manda o board só do CMS"
- * é o recorte que as pessoas compartilham por link. Responsável e prioridade
- * continuam efêmeros como sempre foram; espalhar tudo pela query string
- * transformaria a URL num despejo de estado de UI.
- *
- * Guardamos o SLUG, não o id: o link continua legível e sobrevive a rename.
- */
-const filterTags = ref<string[]>(parseTagsParam(route.query.tags))
-
-function parseTagsParam(value: unknown): string[] {
-  if (typeof value !== 'string' || !value.trim()) return []
-  return value.split(',').map((s) => s.trim()).filter(Boolean)
-}
-
-watch(filterTags, (next) => {
-  const query = { ...route.query }
-  if (next.length) query.tags = next.join(',')
-  else delete query.tags
-  void router.replace({ query })
-})
-
-// Voltar/avançar no navegador tem que refletir no filtro, senão a URL e a tela
-// discordam depois de um botão de voltar.
-watch(
-  () => route.query.tags,
-  (value) => {
-    const next = parseTagsParam(value)
-    if (next.join(',') !== filterTags.value.join(',')) filterTags.value = next
-  },
+// ── Filtros (toolbar sempre à vista, spec board-tarefas-redesign D8) ──
+//
+// Estado, URL, memória por empresa e predicados moram em `useBoardFilters`.
+// Os filtros rodam sobre `boardTasks`, que é COMPUTADO do mesmo `tasks` que o
+// arraste e o realtime mutam: nenhuma cópia de card fica para trás.
+/** Membros como `{ id, name }` (a API manda `{ userId, user }`; o tipo antigo, `{ id, name }`). */
+const memberPeople = computed(() =>
+  members.value
+    .map((member) => {
+      const raw = member as CompanyMember & { userId?: string; user?: { id?: string; name?: string } }
+      return { id: raw.user?.id ?? raw.userId ?? raw.id ?? '', name: raw.user?.name ?? raw.name ?? '' }
+    })
+    .filter((m) => m.id && m.name),
 )
 
-/** Todas as tags presentes no board carregado, para os chips do filtro. */
-const boardTags = computed(() => {
-  const seen = new Map<string, { id: string; name: string; slug: string; color: string | null }>()
-  for (const status of STATUSES) {
-    for (const task of boardTasks.value[status] ?? []) {
-      for (const link of task.tags ?? []) {
-        if (!seen.has(link.tag.slug)) seen.set(link.tag.slug, link.tag)
-      }
-    }
-  }
-  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
-})
-
-function toggleTagFilter(slug: string): void {
-  filterTags.value = filterTags.value.includes(slug)
-    ? filterTags.value.filter((s) => s !== slug)
-    : [...filterTags.value, slug]
-}
-
-const priorityOptions = [
-  { value: null, label: 'Todas' },
-  { value: 0, label: 'P0' },
-  { value: 1, label: 'P1' },
-  { value: 2, label: 'P2' },
-  { value: 3, label: 'P3' },
-  { value: 4, label: 'P4' },
-  { value: 5, label: 'P5' },
-]
-
-const filteredTasks = computed<BoardColumns>(() => {
-  const result = { TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] } as BoardColumns
-  // Itera SÓ os status: a resposta do board carrega `monthId` junto das
-  // colunas, e um Object.entries cru vazaria essa chave para o board.
-  for (const status of STATUSES) {
-    let arr: BoardTask[] = boardTasks.value[status] || []
-    if (selectedUser.value) {
-      arr = arr.filter((t) => t.responsibles?.some((r) => r.user.name === selectedUser.value))
-    }
-    if (filterPriority.value !== null) {
-      arr = arr.filter((t) => t.priorityNumber === filterPriority.value)
-    }
-    if (filterTags.value.length) {
-      // E, não OU: marcar "cms" e "urgente" mostra o que é as duas coisas. Com
-      // OU, cada tag adicionada AUMENTARIA a lista, que é o oposto de filtrar.
-      arr = arr.filter((t) => {
-        const slugs = new Set((t.tags ?? []).map((link) => link.tag.slug))
-        return filterTags.value.every((slug) => slugs.has(slug))
-      })
-    }
-    if (filterStatus.value !== null && status !== filterStatus.value) {
-      arr = []
-    }
-    result[status] = arr
-  }
-  return result
-})
-
-const activeFiltersCount = computed(() => {
-  let c = 0
-  if (selectedUser.value) c++
-  if (filterPriority.value !== null) c++
-  if (filterStatus.value !== null) c++
-  c += filterTags.value.length
-  return c
-})
-
-const clearFilters = () => {
-  selectedUser.value = ''
-  filterPriority.value = null
-  filterStatus.value = null
-  // Limpa a URL junto: filtro invisível continuar na query string é o caminho
-  // certo para alguém compartilhar um link que mostra menos do que ele viu.
-  filterTags.value = []
-}
-
-/**
- * "Lembrar filtro": guarda o recorte por empresa e restaura na próxima visita.
- *
- * Desligar limpa a tela junto, e não só o registro. Se desmarcar apenas parasse
- * de gravar, a pessoa continuaria olhando um board filtrado depois de dizer que
- * não quer mais filtro guardado — e a ação pareceria não ter feito nada.
- */
-const { remember: rememberFilters, setRemember } = useTaskFilterMemory(
+const filters = useBoardFilters({
+  route,
+  router,
   companyId,
-  {
-    user: selectedUser,
-    priority: filterPriority,
-    status: filterStatus,
-    tags: filterTags,
-  },
-  { urlHasTags: () => parseTagsParam(route.query.tags).length > 0 },
-)
-
-const toggleRememberFilters = () => {
-  const next = !rememberFilters.value
-  setRemember(next)
-  if (!next) clearFilters()
-}
-
-const allUsers = computed<string[]>(() => {
-  const users = new Set<string>()
-  for (const status of STATUSES) {
-    for (const task of boardTasks.value[status] ?? []) {
-      task.responsibles?.forEach((r) => users.add(r.user.name))
-    }
-  }
-  return Array.from(users).sort()
+  companyName,
+  columns: boardTasks,
+  members: memberPeople,
 })
 
-const userItems = computed<{ label: string; value: string }[]>(() => [
-  { label: 'Todos', value: '' },
-  ...allUsers.value.map((u) => ({ label: u, value: u })),
-])
-
+const filteredTasks = computed<BoardColumns>(() => filters.filtered.value)
 
 // Soma SÓ as colunas de status: a resposta do board também carrega `monthId`,
 // e um Object.values cru contava essa chave como "1 atividade" a mais.
@@ -731,19 +745,7 @@ const totalTasks = computed(() =>
   STATUSES.reduce((acc, s) => acc + (boardTasks.value[s]?.length ?? 0), 0),
 )
 
-/**
- * Pulso do mês: distribuição das atividades por status, direto nos tokens de
- * cor de status. Alimenta a barra segmentada + legenda do header.
- */
-const statusPulse = computed(() => {
-  const defs: { key: BoardStatus; label: string; token: string }[] = [
-    { key: 'TODO', label: 'A fazer', token: 'var(--status-todo)' },
-    { key: 'IN_PROGRESS', label: 'Em andamento', token: 'var(--status-prog)' },
-    { key: 'IN_TESTING', label: 'Em teste', token: 'var(--status-test)' },
-    { key: 'DONE', label: 'Concluído', token: 'var(--status-done)' },
-  ]
-  return defs.map((d) => ({ ...d, count: boardTasks.value[d.key]?.length ?? 0 }))
-})
+const toolbar = ref<InstanceType<typeof TaskBoardToolbar> | null>(null)
 
 /** Remove a atividade de todas as colunas locais e devolve o objeto (ou null). */
 const removeFromColumns = (taskId: string): BoardTask | null => {
@@ -758,8 +760,8 @@ const removeFromColumns = (taskId: string): BoardTask | null => {
 }
 
 // ── Arraste: update otimista (splice na posição) + persistência via /move ──
-const handleMove = async (payload: { taskId: string; status: string; position: number }) => {
-  const { taskId, status, position } = payload
+const handleMove = async (payload: KanbanMovePayload) => {
+  const { taskId, status } = payload
 
   // Card gerado por repetição: a mudança é do DIA, não do modelo. Mover a
   // segunda-feira para "Concluído" não pode dar a semana inteira como feita.
@@ -767,7 +769,7 @@ const handleMove = async (payload: { taskId: string; status: string; position: n
   // No modo LOCAL isso vira um override e nada sai para o servidor. No modo
   // REMOTO cai no caminho normal de propósito: `PATCH /activity/:id/move`
   // aceita o id virtual `rec:<regra>:<data>` e MATERIALIZA a ocorrência dentro
-  // da mesma transação — o card é arrastado e fica onde foi solto, e o refetch
+  // da mesma transação: o card é arrastado e fica onde foi solto, e o refetch
   // o traz de volta já como atividade real.
   if (isOccurrenceId(taskId) && !recurrenceIsRemote) {
     void setOccurrenceStatus(taskId, status as BoardStatus)
@@ -775,11 +777,19 @@ const handleMove = async (payload: { taskId: string; status: string; position: n
   }
 
   const movedTask = removeFromColumns(taskId)
-  const target = tasks.value[status as BoardStatus]
-  if (movedTask && target) {
-    const idx = Math.max(0, Math.min(position, target.length))
-    target.splice(idx, 0, movedTask)
-  }
+  const target = tasks.value[status as BoardStatus] ?? []
+
+  // O índice que o board manda é o da lista VISÍVEL. Com filtro ligado, a
+  // coluna completa tem cards escondidos no meio, e aplicar o índice visível
+  // nela gravava a posição errada. A posição absoluta sai do vizinho que a
+  // pessoa viu (ver `board-order.ts`); sem filtro, as duas contas coincidem.
+  const position = resolveDropIndex(
+    target.map((t) => t.id),
+    payload.visibleIds,
+    taskId,
+    payload.position,
+  )
+  if (movedTask) target.splice(position, 0, movedTask)
 
   try {
     await activityService.moveActivity(taskId, { status, position })
@@ -811,7 +821,7 @@ const applyRemoteMove = (p: ActivityMovedPayload) => {
 useActivityBoardRealtime(applyRemoteMove, refreshTasks)
 
 // ── Rename task (inline editing) ──
-const handleRenameTask = async (taskId: string, newTitle: string) => {
+const handleRenameTask = async (taskId: string, newTitle: string, previousTitle?: string) => {
   // Renomear um card gerado muda o MODELO: o título é dele, não de uma data.
   // Vale para todas as repetições, e a pessoa precisa saber disso.
   //
@@ -822,7 +832,7 @@ const handleRenameTask = async (taskId: string, newTitle: string) => {
   if (occurrence) {
     try {
       await updateTemplate(occurrence.templateId, { title: newTitle })
-      showSuccess('Título alterado na repetição — vale para todas as datas')
+      showSuccess('Título alterado na repetição. Vale para todas as datas.')
     } catch (error: unknown) {
       showError(apiErrorMessage(error, 'Erro ao renomear a repetição'))
       await refreshTasks()
@@ -834,7 +844,11 @@ const handleRenameTask = async (taskId: string, newTitle: string) => {
     await activityService.patchActivity(taskId, { title: newTitle })
   } catch {
     showError('Erro ao renomear atividade')
-    await refreshTasks() // revert
+    // O card já mostrava o nome recusado (otimista do próprio card): volta na
+    // hora, e o refetch a seguir confirma com o que o servidor tem.
+    const card = findBoardTask(taskId)?.task
+    if (card && previousTitle !== undefined && card.title === newTitle) card.title = previousTitle
+    await refreshTasks()
   }
 }
 
@@ -861,19 +875,44 @@ const openDeleteConfirm = (task: BoardTask) => {
 
 const deleteTask = async () => {
   if (!taskToDelete.value) return
-  deleting.value = taskToDelete.value.id
+  const id = taskToDelete.value.id
+  deleting.value = id
   try {
-    await activityService.deleteActivity(taskToDelete.value.id)
+    await activityService.deleteActivity(id)
     await refreshTasks()
     confirmDelete.value = false
-    showSuccess('Atividade excluída')
+    showSuccess('Tarefa excluída')
+    // Excluída pelo "…" do painel: o painel não pode ficar aberto sobre nada.
+    if (openTaskId.value === id) closePanel()
   } catch (error: unknown) {
-    showError(apiErrorMessage(error, 'Erro ao deletar'))
+    showError(apiErrorMessage(error, 'Erro ao excluir'))
   } finally {
     deleting.value = null
     taskToDelete.value = null
   }
 }
+
+// ── Painel de detalhe sobre o board (spec board-tarefas-redesign, D9) ──────
+//
+// A tarefa aberta vive na URL (`?task=`), como no `/board`: o link é
+// compartilhável, sobrevive ao F5 e o voltar do navegador fecha o painel. O
+// board continua montado atrás, com filtro, scroll e colunas intactos. A página
+// cheia (`/tasks/:month/:taskId`) continua existindo: é o "Abrir em página" do
+// painel, e os links antigos seguem valendo.
+const openTaskId = computed(() =>
+  typeof route.query.task === 'string' && route.query.task ? route.query.task : null,
+)
+
+/**
+ * `true` quando fomos NÓS que empilhamos a entrada `?task=` no histórico. Aí o
+ * X e o Esc fecham voltando, e o "voltar" do navegador faz exatamente a mesma
+ * coisa. Quem chegou por link direto não tem para onde voltar dentro do board:
+ * fecha por `replace`, sem sair da tela.
+ */
+let panelPushed = false
+
+/** Troca por J/K: o painel novo entra sem animação (senão pisca a cada tecla). */
+const panelSwitching = ref(false)
 
 const openDetails = (activity: { id: string }) => {
   // Card gerado não tem página de detalhe: ele não existe no servidor. O que a
@@ -882,29 +921,355 @@ const openDetails = (activity: { id: string }) => {
     recurrenceManager.value = true
     return
   }
-  router.push(`/tasks/${route.params.month}/${activity.id}`)
+  // Card otimista da criação inline: a tarefa ainda não existe no servidor.
+  if (isPendingTaskId(activity.id)) return
+  if (openTaskId.value === activity.id) return
+  panelSwitching.value = false
+  panelPushed = true
+  void router.push({ query: { ...route.query, task: activity.id } })
 }
 
-const monthName = computed(() => currentMonthInfo.value?.month.name || 'Carregando...')
-const quarterName = computed(() => currentMonthInfo.value?.quarterName)
-
-const statusLabels: Record<string, string> = {
-  TODO: 'A Fazer', IN_PROGRESS: 'Em Progresso', IN_TESTING: 'Em Teste', DONE: 'Concluído',
-}
-// Cores de status vêm dos tokens do design system (theme-aware), não de hex.
-const statusColors: Record<string, string> = {
-  TODO: 'var(--status-todo)',
-  IN_PROGRESS: 'var(--status-prog)',
-  IN_TESTING: 'var(--status-test)',
-  DONE: 'var(--status-done)',
+function closePanel() {
+  if (!openTaskId.value) return
+  if (panelPushed) {
+    router.back()
+    return
+  }
+  const query = { ...route.query }
+  delete query.task
+  void router.replace({ query })
 }
 
-const sortedHistory = computed(() =>
-  [...backLog.value].sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime()),
+function focusCard(id: string) {
+  document
+    .querySelector<HTMLElement>(`.board-wrap [data-id="${CSS.escape(id)}"]`)
+    ?.focus({ preventScroll: false })
+}
+
+// Fechou (X, Esc, scrim ou voltar do navegador): o foco volta para o card da
+// tarefa que estava aberta, que depois de J/K não é a do primeiro clique.
+watch(openTaskId, (id, previous) => {
+  if (id) return
+  panelPushed = false
+  panelSwitching.value = false
+  if (previous) void nextTick(() => focusCard(previous))
+})
+
+/**
+ * J/K e setas com o painel aberto trocam a tarefa. A ordem é a mesma do foco no
+ * board (a que a pessoa VÊ, tirada do DOM, sem rotina virtual e sem card
+ * otimista) e mora no `useTaskKeyboard`, um caminho só para os dois casos.
+ * `replace`: trocar de tarefa não empilha histórico, então um "voltar" fecha o
+ * painel em vez de refazer o caminho card por card.
+ */
+function switchPanelTo(id: string) {
+  panelSwitching.value = true
+  void router.replace({ query: { ...route.query, task: id } })
+}
+
+const findBoardTask = (id: string): { task: BoardTask; status: BoardStatus } | null => {
+  for (const status of STATUSES) {
+    const task = (tasks.value[status] ?? []).find((t) => t.id === id)
+    if (task) return { task, status }
+  }
+  return null
+}
+
+/** Rótulo da rotina que materializou a tarefa aberta (linha "Rotina" do painel). */
+const openTaskRecurrenceLabel = computed(() => {
+  const id = openTaskId.value
+  const task = id ? findBoardTask(id)?.task : null
+  if (!task?.recurrenceId) return null
+  const template = templateById(task.recurrenceId)
+  return template ? describeRule(template.rule) : null
+})
+
+/**
+ * O painel grava campo a campo e manda cada patch para cá (otimista, depois o
+ * confirmado e, se falhar, o rollback). Aplicar no `tasks` local é o que faz o
+ * card mudar na mesma hora, sem esperar o refetch que o painel também dispara.
+ *
+ * Status vai para o FIM da coluna nova, o mesmo lugar que o eco do realtime
+ * (`activity:moved` com `position: null`) põe.
+ */
+const applyPanelPatch = (id: string, patch: Partial<ActivityDetail>) => {
+  let found = findBoardTask(id)
+  const origin = patchOrigin.get(id)
+  // Resposta confirmada (traz o `updatedAt` do servidor): a mudança otimista
+  // valeu e não há mais para onde voltar.
+  const confirmed = !!patch.updatedAt && (patch.status !== undefined || patch.monthId !== undefined)
+  if (!found) {
+    // Rollback de uma troca de mês que falhou: o card tinha saído deste board e
+    // volta para a coluna e a posição de onde saiu.
+    if (origin?.task && patch.monthId === monthId.value) {
+      const column = tasks.value[origin.status]
+      column.splice(Math.min(origin.index, column.length), 0, origin.task)
+      patchOrigin.delete(id)
+      found = findBoardTask(id)
+    } else if (confirmed) {
+      patchOrigin.delete(id)
+    }
+    if (!found) return
+  }
+  const { task, status } = found
+  if (patch.title !== undefined) task.title = patch.title
+  if (patch.priorityNumber !== undefined) task.priorityNumber = patch.priorityNumber
+  if (patch.dueDate !== undefined) task.dueDate = patch.dueDate
+  if (patch.updatedAt) task.updatedAt = patch.updatedAt
+  if (patch.tags !== undefined) task.tags = patch.tags ?? []
+  if (patch.subtasks !== undefined) {
+    // O `3/6` do card sai daqui: marcar uma subtarefa no painel já o atualiza.
+    task.subtasks = (patch.subtasks ?? []).map((s) => ({ id: s.id, title: s.title, status: s.status }))
+  }
+  if (patch.responsibles !== undefined) {
+    task.responsibles = (patch.responsibles ?? []).map((r) => ({
+      userId: r.userId,
+      user: { id: r.user.id, name: r.user.name },
+    }))
+  }
+  if (patch.monthId && patch.monthId !== monthId.value) {
+    // Foi para outro mês: sai deste board (o refetch dos dois meses confirma).
+    // Guarda o card e o lugar dele: se o servidor recusar, o rollback volta aqui.
+    const index = tasks.value[status].indexOf(task)
+    const removed = removeFromColumns(id)
+    if (removed) patchOrigin.set(id, { status: origin?.status ?? status, index: origin?.index ?? index, task: removed })
+    return
+  }
+  const nextStatus = patch.status as BoardStatus | undefined
+  if (nextStatus && nextStatus !== status && STATUSES.includes(nextStatus)) {
+    const index = tasks.value[status].indexOf(task)
+    const moved = removeFromColumns(id)
+    if (moved) {
+      const column = tasks.value[nextStatus]
+      if (origin && !origin.task && origin.status === nextStatus) {
+        // Voltou para a coluna de onde a mudança otimista o tirou (rollback):
+        // mesma posição, e não o fim da coluna.
+        column.splice(Math.min(origin.index, column.length), 0, moved)
+        patchOrigin.delete(id)
+      } else {
+        column.push(moved)
+        if (!origin) patchOrigin.set(id, { status, index })
+      }
+    }
+  }
+  if (confirmed) patchOrigin.delete(id)
+}
+
+/**
+ * O lozenge do painel troca a coluna pelo mesmo caminho do "Mover para" do card:
+ * `PATCH /move` no fim da coluna nova, que grava o histórico, renumera a coluna e
+ * avisa o realtime com a posição final. O `PATCH /status` não renumera: o card
+ * ia para o fim e, no refetch, pulava para a posição antiga dele. O servidor
+ * limita a posição ao tamanho da coluna, então o comprimento local basta.
+ */
+const writePanelStatus = (id: string, status: string): Promise<ActivityDetail> =>
+  activityService.moveActivity(id, {
+    status,
+    position: tasks.value[status as BoardStatus]?.length ?? 0,
+  })
+
+const deleteFromPanel = (task: { id: string; title: string }) => {
+  openDeleteConfirm(findBoardTask(task.id)?.task ?? task)
+}
+
+// ── Agrupar por pessoa (spec board-tarefas-redesign, D12) ──────────────────
+// As linhas saem das colunas JÁ FILTRADAS, que saem do mesmo `tasks` que o
+// arraste e o realtime mutam: nada é cópia (realtime e `applyRemoteMove`
+// continuam valendo). Linhas recolhidas valem até sair da tela.
+const groupedByPerson = computed(() => filters.groupBy.value === 'person')
+
+const lanes = computed(() =>
+  groupedByPerson.value
+    ? groupByPerson(filteredTasks.value, filters.personKey, filters.isMe)
+    : [],
 )
 
-const formatDate = (date: string) =>
-  new Date(date).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+const collapsedLanes = ref<string[]>([])
+
+function toggleLane(key: string) {
+  collapsedLanes.value = collapsedLanes.value.includes(key)
+    ? collapsedLanes.value.filter((k) => k !== key)
+    : [...collapsedLanes.value, key]
+}
+
+// Trocar o agrupamento tira o campo de criação de onde ele estava.
+watch(groupedByPerson, () => quickCreate.close())
+
+// ── Criação inline: onde abre, quem nasce responsável, avisos ──────────────
+/** Quem tinha o foco quando o campo abriu (o card do C, o "+" da coluna...). */
+let composerOpener: HTMLElement | null = null
+
+/**
+ * Abre o campo inline. No board simples, na coluna; agrupado, na célula da
+ * linha (que é expandida se estiver recolhida).
+ */
+function openComposer(status: BoardStatus, laneKey: string | null = null) {
+  if (!isWorkerRole.value) return
+  composerOpener = document.activeElement as HTMLElement | null
+  if (laneKey) collapsedLanes.value = collapsedLanes.value.filter((k) => k !== laneKey)
+  quickCreate.open({ status, laneKey })
+}
+
+/** Linha em que o C cria: a do card em foco, a sua, ou a primeira. */
+function keyboardLaneKey(): string | null {
+  const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
+    '[data-lane-key]',
+  )?.dataset.laneKey
+  if (focused && lanes.value.some((l) => l.key === focused)) return focused
+  return lanes.value.find((l) => l.isMe)?.key ?? lanes.value[0]?.key ?? null
+}
+
+/** C: criar inline na primeira coluna (o formulário completo é o botão). */
+function createFromKeyboard() {
+  if (!isWorkerRole.value) return
+  // Mês vazio não tem colunas na tela: vai o formulário completo.
+  if (totalTasks.value === 0) {
+    dialog.value = true
+    return
+  }
+  currentTab.value = 'board'
+  if (!groupedByPerson.value) {
+    openComposer('TODO')
+    return
+  }
+  const laneKey = keyboardLaneKey()
+  if (laneKey) openComposer('TODO', laneKey)
+  else dialog.value = true // agrupado e o filtro escondeu todas as linhas
+}
+
+function onComposerCancel(status: BoardStatus, reason: 'escape' | 'blur') {
+  const target = composer.value
+  const opener = composerOpener
+  composerOpener = null
+  quickCreate.close()
+  if (reason !== 'escape') return
+  // Esc devolve o foco para quem abriu; se ele sumiu (o próprio "Criar"
+  // vira o campo), para o "Criar" daquela coluna ou o "+" daquela linha.
+  void nextTick(() => {
+    if (opener?.isConnected && boardWrap.value?.contains(opener)) {
+      opener.focus()
+      return
+    }
+    const selector = target?.laneKey
+      ? `[data-lane-create="${CSS.escape(target.laneKey)}"]`
+      : `[data-create="${status}"]`
+    boardWrap.value?.querySelector<HTMLElement>(selector)?.focus()
+  })
+}
+
+/**
+ * Membro da empresa pela chave da linha. A chave é o id; quem só aparece em
+ * rotina também chega como id, porque o `personKey` resolve o nome pelos
+ * membros (`memberPeople`).
+ */
+function memberPerson(id: string | null | undefined): QuickCreatePerson | null {
+  if (!id) return null
+  const member = memberPeople.value.find((m) => m.id === id)
+  return member ? { id: member.id, name: member.name } : null
+}
+
+/**
+ * Quem nasce responsável. No board simples, quem criou (como no protótipo
+ * aprovado: com "Só minhas" ligado a tarefa não some da tela). Agrupado, o dono
+ * da linha onde o campo abriu; em "Sem responsável", ninguém.
+ */
+function quickCreateResponsible(target: QuickCreateTarget): QuickCreatePerson | null {
+  if (target.laneKey) return target.laneKey === NOBODY_LANE ? null : memberPerson(target.laneKey)
+  return memberPerson(filters.me.id)
+}
+
+/** Criou com um filtro que esconde a tarefa: avisa, senão parece que não criou. */
+function warnIfHidden(id: string, status: BoardStatus) {
+  if ((filteredTasks.value[status] ?? []).some((t) => t.id === id)) return
+  showInfo('Tarefa criada, mas o filtro ligado a esconde. "Limpar filtros" mostra de novo.')
+}
+
+/** Anúncio para leitor de tela: o card aparece sem mudar o foco do campo. */
+const liveMessage = ref('')
+
+function announceCreated(card: BoardTask, target: QuickCreateTarget) {
+  const key = taskKey(card, companyName.value)
+  liveMessage.value = `${key ? `${key} criada` : 'Tarefa criada'} em ${statusLabel(target.status)}`
+}
+
+// ── Teclado do board (spec D10; os atalhos moram em `useTaskKeyboard`) ─────
+// Só C, / e ? valem fora do Board: a Lista cuida do próprio J/K/X/Enter. Com o
+// painel aberto, J/K e ↑/↓ trocam a tarefa. Tudo ignorado com foco em campo de
+// texto, com modificador (Ctrl+C é copiar) e com menu ou diálogo na frente.
+const boardWrap = ref<HTMLElement | null>(null)
+const shortcutsOpen = ref(false)
+
+useTaskKeyboard({
+  boardActive: () => currentTab.value === 'board',
+  root: () => boardWrap.value,
+  openTaskId: () => openTaskId.value,
+  grouped: () => groupedByPerson.value,
+  blocked: () => confirmDelete.value || dialog.value || shortcutsOpen.value,
+  onCreate: createFromKeyboard,
+  onSearch: () => toolbar.value?.focusSearch(),
+  onHelp: () => {
+    shortcutsOpen.value = true
+  },
+  onOpen: (id) => openDetails({ id }),
+  onSwitchPanel: switchPanelTo,
+  onExpandLanes: () => {
+    collapsedLanes.value = []
+  },
+  onCollapseLanes: () => {
+    collapsedLanes.value = lanes.value.map((l) => l.key)
+  },
+})
+
+/**
+ * `‹ Setembro ›`: leva o recorte junto ("Só minhas" em setembro segue em
+ * outubro), e a vista também (quem está na Lista continua na Lista).
+ */
+const goToMonth = (id: string) => {
+  const vista = TAB_PARAM[currentTab.value]
+  void router.push({
+    path: `/tasks/${id}`,
+    query: { ...filters.filterQuery.value, ...(vista ? { vista } : {}) },
+  })
+}
+
+/**
+ * Formulário completo com a coluna já escolhida: é o "+" da vista Lista. No
+ * Board, o "+" e o "Criar" da coluna abrem a criação inline (`openComposer`).
+ * O rascunho que estiver no formulário continua (fechar o diálogo não apaga o
+ * que a pessoa digitou); só a coluna de destino muda.
+ */
+const openCreateIn = (status: BoardStatus) => {
+  if (!isWorkerRole.value) return
+  formActivity.value = { ...formActivity.value, initialStatus: status }
+  dialog.value = true
+}
+
+const monthName = computed(() => currentMonthInfo.value?.month.name ?? '')
+
+// Rótulo e cor de status saem do task-meta, a mesma fonte das colunas.
+const statusLabel = (status: string) => statusSpec(status).label
+const statusColor = (status: string) => statusSpec(status).token
+
+/** Um formatador para o Histórico inteiro (antes, um `toLocaleString` por entrada a cada render). */
+const HISTORY_DATE = new Intl.DateTimeFormat('pt-BR', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+/**
+ * O Histórico já ordenado (mais recente primeiro) e com a data formatada UMA
+ * vez por carga do `/backlog`, não a cada render. Com milhares de entradas,
+ * formatar no template custava centenas de ms por tecla na busca e por J/K.
+ */
+const sortedHistory = computed(() =>
+  backLog.value
+    .map((entry) => ({ entry, at: new Date(entry.changedAt).getTime() }))
+    .sort((a, b) => b.at - a.at)
+    .map(({ entry, at }) => ({ ...entry, when: Number.isFinite(at) ? HISTORY_DATE.format(at) : '' })),
+)
 
 // ── Repetição: gerenciador e ações de modelo ────────────────────────────────
 
@@ -956,7 +1321,7 @@ const removeRecurrence = async (template: RecurringTemplate) => {
     // nasceram dela continuam lá, com o tempo e os comentários que receberam.
     showSuccess(
       kept > 0
-        ? `Repetição excluída — ${kept} tarefa${kept > 1 ? 's' : ''} já criada${kept > 1 ? 's' : ''} continua${kept > 1 ? 'm' : ''} no quadro`
+        ? `Repetição excluída. ${kept} tarefa${kept > 1 ? 's' : ''} já criada${kept > 1 ? 's' : ''} continua${kept > 1 ? 'm' : ''} no quadro.`
         : 'Repetição excluída',
     )
   } catch (error: unknown) {
@@ -983,19 +1348,11 @@ const toggleRecurrence = async (template: RecurringTemplate) => {
 const moveRecurrenceToNextMonth = async (template: RecurringTemplate) => {
   try {
     const landed = await moveToMonth(template.id, shiftMonthKey(monthCalendarKey.value, 1))
-    if (landed) showSuccess(`Prazo movido — a tarefa foi para ${monthLabel(landed)}`)
+    if (landed) showSuccess(`Prazo movido: a tarefa foi para ${monthLabel(landed)}`)
   } catch (error: unknown) {
     showError(apiErrorMessage(error, 'Não foi possível mover o prazo'))
   }
 }
-
-const showFilters = ref(false)
-
-// Filtro restaurado da memória abre o painel sozinho, uma vez, e só quando ele
-// de fato esconde alguma coisa. Recorte guardado agindo em silêncio é a receita
-// do "o board está vazio, o time parou de trabalhar": a pessoa não lembra que
-// ligou aquilo semanas atrás e a causa fica fora da tela.
-if (rememberFilters.value && activeFiltersCount.value > 0) showFilters.value = true
 
 // Alturas fake do skeleton: colunas com "cargas" diferentes leem como um board
 // de verdade carregando, não como quatro barras genéricas.
@@ -1009,197 +1366,157 @@ const skeletonLanes = [
 
 <template>
   <div class="tasks-page">
-    <!-- Header -->
-    <div class="tasks-header">
-      <div class="tasks-heading">
-        <p v-if="quarterName" class="tasks-eyebrow">{{ quarterName }}</p>
-        <h1 class="tasks-title">{{ monthName }}</h1>
-        <div class="tasks-meta">
-          <span class="tasks-sub">
-            {{ totalTasks }} {{ totalTasks === 1 ? 'atividade' : 'atividades' }}
-          </span>
-          <template v-if="totalTasks > 0">
-            <div class="pulse" role="img" :aria-label="statusPulse.map((s) => `${s.count} ${s.label}`).join(', ')">
-              <span
-                v-for="seg in statusPulse"
-                :key="seg.key"
-                v-show="seg.count > 0"
-                class="pulse__seg"
-                :style="{ flexGrow: seg.count, background: seg.token }"
-                :title="`${seg.count} ${seg.label}`"
-              />
-            </div>
-            <div class="pulse-legend" aria-hidden="true">
-              <span v-for="seg in statusPulse" :key="seg.key" class="pulse-legend__item" :title="seg.label">
-                <span class="pulse-legend__dot" :style="{ background: seg.token }" />
-                {{ seg.count }}
-              </span>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <div class="header-actions">
-        <!-- View toggle -->
-        <div class="view-toggle">
-          <button
-            class="view-btn"
-            :class="{ active: currentTab === 'board' }"
-            @click="currentTab = 'board'"
-          >
-            <Columns3 :size="14" />
-            Board
-          </button>
-          <!-- Agenda: o mesmo mês visto por dia. É onde as tarefas geradas por
-               repetição aparecem no calendário, e onde uma data pode ser
-               dispensada sem mexer na regra. -->
-          <button
-            class="view-btn"
-            :class="{ active: currentTab === 'agenda' }"
-            @click="currentTab = 'agenda'"
-          >
-            <CalendarDays :size="14" />
-            Agenda
-          </button>
-          <button
-            class="view-btn"
-            :class="{ active: currentTab === 'backlog' }"
-            @click="currentTab = 'backlog'"
-          >
-            <History :size="14" />
-            Backlog
-          </button>
-        </div>
-
-        <!-- Repetições do mês. Um diálogo, e não uma tela: recorrência é uma
-             propriedade da tarefa, e uma entrada própria na navegação criaria
-             dois lugares para procurar a mesma tarefa. -->
+    <!-- Cabeçalho enxuto: o mês com ‹ ›, as vistas, as rotinas e o criar. O
+         contexto (Tarefas / Q3) mora no breadcrumb da topbar, não num eyebrow
+         em cima do título. A contagem por status já está em cada coluna. -->
+    <header class="board-head">
+      <div class="month-nav">
         <button
-          class="filter-toggle-btn"
-          :class="{ active: recurrenceManager }"
-          title="Tarefas que se repetem sozinhas"
-          @click="recurrenceManager = true"
+          type="button"
+          class="icon-btn hit"
+          :disabled="!prevMonth"
+          :aria-label="prevMonth ? `Mês anterior, ${prevMonth.name}` : 'Não há mês anterior'"
+          :title="prevMonth?.name"
+          @click="prevMonth && goToMonth(prevMonth.id)"
         >
-          <Repeat :size="14" />
-          Recorrentes
-          <span v-if="recurringCount > 0" class="filter-badge">{{ recurringCount }}</span>
+          <ChevronLeft :size="16" :stroke-width="1.8" />
         </button>
-
-        <!-- Filter toggle -->
+        <h1 class="board-title">{{ monthName || 'Carregando…' }}</h1>
         <button
-          class="filter-toggle-btn"
-          :class="{ active: showFilters }"
-          @click="showFilters = !showFilters"
+          type="button"
+          class="icon-btn hit"
+          :disabled="!nextMonth"
+          :aria-label="nextMonth ? `Próximo mês, ${nextMonth.name}` : 'Não há próximo mês'"
+          :title="nextMonth?.name"
+          @click="nextMonth && goToMonth(nextMonth.id)"
         >
-          <SlidersHorizontal :size="14" />
-          Filtros
-          <span v-if="activeFiltersCount > 0" class="filter-badge">{{ activeFiltersCount }}</span>
-        </button>
-
-        <!-- New activity -->
-        <button
-          v-if="isWorkerRole"
-          class="new-activity-btn press"
-          @click="dialog = true"
-        >
-          <Plus :size="15" />
-          Nova Atividade
+          <ChevronRight :size="16" :stroke-width="1.8" />
         </button>
       </div>
-    </div>
 
-    <!-- Filter bar -->
-    <Transition name="slide">
-      <div v-if="showFilters" class="filter-bar">
-        <!-- User -->
-        <div class="filter-group">
-          <label class="filter-label">Responsável</label>
-          <div class="filter-select-wrap">
-            <AppSelect
-              v-model="selectedUser"
-              :items="userItems"
-              placeholder="Todos"
-              label="Filtrar por responsável"
-              density="compact"
-            />
-          </div>
-        </div>
+      <div class="views" role="group" aria-label="Vista">
+        <button
+          type="button"
+          class="views__btn hit"
+          :aria-pressed="currentTab === 'board'"
+          @click="currentTab = 'board'"
+        >
+          Board
+        </button>
+        <!-- Lista (D11): as mesmas tarefas filtradas, uma por linha, com
+             seleção múltipla e edição em massa. -->
+        <button
+          type="button"
+          class="views__btn hit"
+          :aria-pressed="currentTab === 'list'"
+          @click="currentTab = 'list'"
+        >
+          Lista
+        </button>
+        <!-- Agenda: o mesmo mês visto por dia. É onde as tarefas geradas por
+             repetição aparecem no calendário, e onde uma data pode ser
+             dispensada sem mexer na regra. -->
+        <button
+          type="button"
+          class="views__btn hit"
+          :aria-pressed="currentTab === 'agenda'"
+          @click="currentTab = 'agenda'"
+        >
+          Agenda
+        </button>
+        <!-- "Histórico" (D13): é o registro de mudanças de status da empresa,
+             não um backlog. O nome antigo prometia outra coisa. -->
+        <button
+          type="button"
+          class="views__btn hit"
+          :aria-pressed="currentTab === 'history'"
+          @click="currentTab = 'history'"
+        >
+          Histórico
+        </button>
+      </div>
 
-        <!-- Priority -->
-        <div class="filter-group">
-          <label class="filter-label">Prioridade</label>
-          <div class="filter-chips">
-            <button
-              v-for="p in priorityOptions"
-              :key="String(p.value)"
-              class="filter-chip"
-              :class="{ active: filterPriority === p.value }"
-              @click="filterPriority = p.value"
-            >
-              {{ p.label }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Tags: só as que existem no board carregado. Combinam por E. -->
-        <div v-if="boardTags.length" class="filter-group filter-group--wide">
-          <label class="filter-label">Tags</label>
-          <div class="filter-chips">
-            <TagChip
-              v-for="tag in boardTags"
-              :key="tag.id"
-              :tag="tag"
-              size="md"
-              interactive
-              :active="filterTags.includes(tag.slug)"
-              @select="toggleTagFilter(tag.slug)"
-            />
-          </div>
-        </div>
-
-        <!-- Ações do filtro: lembrar e limpar, ancoradas à direita -->
-        <div class="filter-actions">
-          <!-- Memória do recorte. Fica AQUI, junto dos campos, e não em
-               Configurações: filtro que persiste sem a pessoa lembrar que ligou
-               vira "o board está vazio, o time parou de trabalhar". O botão à
-               vista é o que mantém a causa visível ao lado do efeito. -->
+      <!-- Agrupar (D12): opção de exibição do Board, não filtro. Vai para a
+           URL (`agrupar=pessoa`) e para o "Lembrar filtro". -->
+      <div v-show="currentTab === 'board'" class="group-by" role="group" aria-label="Agrupar o board">
+        <span class="group-by__label" aria-hidden="true">Agrupar</span>
+        <div class="views">
           <button
             type="button"
-            class="remember-switch"
-            role="switch"
-            :aria-checked="rememberFilters"
-            :title="
-              rememberFilters
-                ? 'Este recorte volta na próxima vez que você abrir. Desmarcar limpa o filtro.'
-                : 'Guardar este recorte para não refazê-lo toda vez'
-            "
-            @click="toggleRememberFilters"
+            class="views__btn hit"
+            :aria-pressed="!groupedByPerson"
+            @click="filters.setGroupBy('none')"
           >
-            <span class="remember-track" aria-hidden="true">
-              <span class="remember-thumb" />
-            </span>
-            <span class="remember-label">
-              <Bookmark :size="11" />
-              Lembrar filtro
-            </span>
+            Nenhum
           </button>
-
           <button
-            v-if="activeFiltersCount > 0"
-            class="clear-filters-btn"
-            @click="clearFilters"
+            type="button"
+            class="views__btn hit"
+            :aria-pressed="groupedByPerson"
+            @click="filters.setGroupBy('person')"
           >
-            <X :size="12" />
-            Limpar filtros
+            Pessoa
           </button>
         </div>
       </div>
-    </Transition>
 
-    <!-- Corpo: skeleton → erro → board/backlog -->
+      <span class="head-spacer" />
+
+      <button
+        type="button"
+        class="icon-btn hit"
+        aria-label="Atalhos do teclado"
+        aria-keyshortcuts="?"
+        title="Atalhos do teclado (?)"
+        @click="shortcutsOpen = true"
+      >
+        <Keyboard :size="16" :stroke-width="1.8" />
+      </button>
+
+      <!-- Repetições do mês. Um diálogo, e não uma tela: recorrência é uma
+           propriedade da tarefa, e uma entrada própria na navegação criaria
+           dois lugares para procurar a mesma tarefa. -->
+      <button
+        type="button"
+        class="btn hit"
+        title="Tarefas que se repetem sozinhas"
+        @click="recurrenceManager = true"
+      >
+        Rotinas
+        <span v-if="recurringCount > 0" class="btn__count">{{ recurringCount }}</span>
+      </button>
+
+      <!-- Formulário completo. O C cria inline na primeira coluna (S4), por
+           isso a tecla não aparece aqui: ela faz outra coisa. -->
+      <button
+        v-if="isWorkerRole"
+        type="button"
+        class="btn btn--primary hit"
+        title="Criar com todos os campos: responsáveis, prazo, tags e documento"
+        @click="dialog = true"
+      >
+        Nova tarefa
+      </button>
+    </header>
+
+    <!-- Toolbar SEMPRE à vista no Board (D8). Na Agenda e no Histórico ela não
+         filtra nada, e um filtro que não age mentiria sobre a tela. No mês
+         vazio também sai (só chips zerados), a não ser que haja filtro ligado
+         para desligar. -->
+    <TaskBoardToolbar
+      v-show="
+        (currentTab === 'board' || currentTab === 'list') &&
+        (totalTasks > 0 || filters.activeCount.value > 0)
+      "
+      ref="toolbar"
+      class="board-toolbar"
+      :filters="filters"
+    />
+
+    <!-- Corpo: skeleton → erro → board/agenda/histórico -->
     <div class="tasks-body">
       <!-- Loading: skeleton em forma de board (nada de spinner no meio da tela) -->
-      <div v-if="loading" class="skel-board" aria-label="Carregando atividades" aria-busy="true">
+      <div v-if="loading" class="skel-board" aria-label="Carregando tarefas" aria-busy="true">
         <div v-for="(lane, li) in skeletonLanes" :key="li" class="skel-lane">
           <div class="skel-lane__head">
             <Skeleton type="block" height="20px" />
@@ -1222,7 +1539,7 @@ const skeletonLanes = [
         description="A conexão com o servidor falhou. Verifique sua internet e tente de novo."
       >
         <template #action>
-          <button class="retry-btn press" @click="refetchBoards()">
+          <button class="btn hit" @click="refetchBoards()">
             <RefreshCw :size="14" />
             Tentar de novo
           </button>
@@ -1231,29 +1548,85 @@ const skeletonLanes = [
 
       <template v-else>
         <!-- Board view -->
-        <div v-show="currentTab === 'board'" class="board-wrap">
+        <div v-show="currentTab === 'board'" ref="boardWrap" class="board-wrap">
           <EmptyState
             v-if="totalTasks === 0"
-            :icon="Inbox"
-            title="Mês sem atividades"
-            description="Tudo limpo por aqui. Crie a primeira atividade para começar o planejamento do mês."
+            :title="monthName ? `Nenhuma tarefa em ${monthName.toLowerCase()}.` : 'Nenhuma tarefa neste mês.'"
           >
-            <template #action>
-              <button v-if="isWorkerRole" class="new-activity-btn press" @click="dialog = true">
-                <Plus :size="15" />
-                Nova Atividade
+            <template v-if="isWorkerRole" #action>
+              <button type="button" class="btn btn--primary hit" @click="dialog = true">
+                <Plus :size="14" :stroke-width="2" />
+                Criar tarefa
               </button>
             </template>
           </EmptyState>
-          <KanbanBoard
-            v-else
-            :tasks="filteredTasks"
+          <!-- Agrupado por pessoa (D12): linhas por responsável; arraste só
+               dentro da linha. -->
+          <TaskLanes
+            v-else-if="groupedByPerson"
+            :lanes="lanes"
             :readonly="!isWorkerRole"
+            :company-name="companyName"
+            :collapsed-keys="collapsedLanes"
+            :composer="composer?.laneKey ? { laneKey: composer.laneKey, status: composer.status } : null"
+            :composer-restore="composerRestore"
             @move-task="handleMove"
             @open-details="openDetails"
             @delete-task="openDeleteConfirm"
             @rename-task="handleRenameTask"
             @show-occurrences="currentTab = 'agenda'"
+            @toggle-lane="toggleLane"
+            @create-in="(status, laneKey) => openComposer(status, laneKey)"
+            @quick-create="(_status, title) => quickCreate.submit(title)"
+            @composer-cancel="onComposerCancel"
+          />
+          <KanbanBoard
+            v-else
+            :tasks="filteredTasks"
+            :readonly="!isWorkerRole"
+            :company-name="companyName"
+            :composer-status="composer && !composer.laneKey ? composer.status : null"
+            :composer-restore="composerRestore"
+            @move-task="handleMove"
+            @open-details="openDetails"
+            @delete-task="openDeleteConfirm"
+            @rename-task="handleRenameTask"
+            @show-occurrences="currentTab = 'agenda'"
+            @create-in="(status) => openComposer(status)"
+            @quick-create="(_status, title) => quickCreate.submit(title)"
+            @composer-cancel="onComposerCancel"
+          />
+        </div>
+
+        <!-- Lista (D11). Montada só quando está à vista: as linhas não ficam no
+             DOM atrás do Board, e a seleção começa vazia a cada visita. -->
+        <div v-if="currentTab === 'list'" class="list-wrap">
+          <EmptyState
+            v-if="totalTasks === 0"
+            :title="monthName ? `Nenhuma tarefa em ${monthName.toLowerCase()}.` : 'Nenhuma tarefa neste mês.'"
+          >
+            <template v-if="isWorkerRole" #action>
+              <button type="button" class="btn btn--primary hit" @click="dialog = true">
+                <Plus :size="14" :stroke-width="2" />
+                Criar tarefa
+              </button>
+            </template>
+          </EmptyState>
+          <TaskListView
+            v-else
+            :tasks="filteredTasks"
+            :company-name="companyName"
+            :readonly="!isWorkerRole"
+            :members="members"
+            :quarters="quartersList"
+            :month-id="monthId"
+            :open-task-id="openTaskId"
+            :apply-patch="applyPanelPatch"
+            :write-status="writePanelStatus"
+            :refresh="refreshTasks"
+            @open="openDetails"
+            @create-in="openCreateIn"
+            @switch-panel="switchPanelTo"
           />
         </div>
 
@@ -1270,12 +1643,15 @@ const skeletonLanes = [
           />
         </div>
 
-        <!-- Backlog view -->
-        <div v-show="currentTab === 'backlog'" class="backlog-panel">
+        <!-- Histórico: mudanças de status da empresa, da mais recente para a mais
+             antiga. `v-if`, e não `v-show`: escondido, ele era redesenhado a
+             cada render do board (uma tecla na busca, um J/K), e com milhares
+             de entradas isso custava centenas de ms por tecla. -->
+        <div v-if="currentTab === 'history'" class="backlog-panel">
           <div v-if="sortedHistory.length === 0" class="backlog-empty">
             <History :size="36" class="backlog-empty-icon" />
-            <span>Nenhum histórico encontrado</span>
-            <span class="backlog-empty-sub">Alterações de status aparecerão aqui</span>
+            <span>Nenhuma mudança de status registrada</span>
+            <span class="backlog-empty-sub">Cada troca de coluna aparece aqui</span>
           </div>
 
           <div v-else class="backlog-list">
@@ -1286,7 +1662,7 @@ const skeletonLanes = [
             >
               <div
                 class="backlog-dot"
-                :style="{ backgroundColor: statusColors[entry.newStatus] || 'var(--text-4)' }"
+                :style="{ backgroundColor: statusColor(entry.newStatus) }"
               />
               <div class="backlog-info">
                 <span class="backlog-title">{{ entry.activityTitle }}</span>
@@ -1295,17 +1671,17 @@ const skeletonLanes = [
                   <span
                     v-if="entry.previousStatus"
                     class="backlog-status-badge"
-                    :style="{ color: statusColors[entry.previousStatus] }"
-                  >{{ statusLabels[entry.previousStatus] }}</span>
+                    :style="{ color: statusColor(entry.previousStatus) }"
+                  >{{ statusLabel(entry.previousStatus) }}</span>
                   <span v-else>Novo</span>
                   →
                   <span
                     class="backlog-status-badge"
-                    :style="{ color: statusColors[entry.newStatus] }"
-                  >{{ statusLabels[entry.newStatus] }}</span>
+                    :style="{ color: statusColor(entry.newStatus) }"
+                  >{{ statusLabel(entry.newStatus) }}</span>
                 </span>
               </div>
-              <span class="backlog-time">{{ formatDate(entry.changedAt) }}</span>
+              <span class="backlog-time">{{ entry.when }}</span>
             </div>
           </div>
         </div>
@@ -1316,7 +1692,7 @@ const skeletonLanes = [
     <ConfirmDialog
       v-model="confirmDelete"
       danger
-      title="Excluir atividade"
+      title="Excluir tarefa"
       :message="`Tem certeza que deseja excluir “${taskToDelete?.title ?? ''}”? Essa ação não pode ser desfeita.`"
       confirm-label="Excluir"
       :loading="!!deleting"
@@ -1326,7 +1702,7 @@ const skeletonLanes = [
     <!-- Create task dialog (casca AppDialog; o TaskForm põe header/corpo/footer) -->
     <AppDialog
       v-model="dialog"
-      :label="editingRecurrenceId ? 'Editar repetição' : 'Nova atividade'"
+      :label="editingRecurrenceId ? 'Editar repetição' : 'Nova tarefa'"
       size="lg"
       :loading="creating"
     >
@@ -1353,6 +1729,32 @@ const skeletonLanes = [
       @toggle="toggleRecurrence"
       @move-to-next-month="moveRecurrenceToNextMonth"
     />
+
+    <!-- Ajuda do teclado (tecla ?) -->
+    <TaskShortcutsDialog v-model="shortcutsOpen" :grouped="groupedByPerson" />
+
+    <!-- Criação inline: o card aparece acima do campo e o foco fica no campo;
+         quem usa leitor de tela ouve que a tarefa foi criada. -->
+    <p class="sr-only" aria-live="polite">{{ liveMessage }}</p>
+
+    <!-- Detalhe em painel sobre o board (D9). `key` por tarefa: trocar por J/K
+         desmonta o painel anterior, e o autosave pendente dele grava na tarefa
+         certa (o id nunca muda por baixo de uma gravação em voo). -->
+    <TaskDetailPanel
+      v-if="openTaskId"
+      :key="openTaskId"
+      :task-id="openTaskId"
+      :company-id="companyId"
+      :company-name="companyName"
+      :readonly="roleResolved && !isWorkerRole"
+      :recurrence-label="openTaskRecurrenceLabel"
+      :instant="panelSwitching"
+      :write-status="writePanelStatus"
+      :apply-patch="applyPanelPatch"
+      deletable
+      @close="closePanel"
+      @delete="deleteFromPanel"
+    />
   </div>
 </template>
 
@@ -1365,9 +1767,20 @@ const skeletonLanes = [
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 20px 28px 0;
+  /* 24px dos lados: com a sidebar de 248px, sobram 1144px em 1440, o exato das
+     quatro colunas de 280px mais três vãos de 8px (spec board-tarefas, D5).
+     Em cima, duas faixas de 44px (o alvo mínimo da spec) uma sobre a outra,
+     sem se sobrepor: o cabeçalho em 0..44 e a toolbar em 44..88. É o menor
+     topo possível com alvos de 44px em duas linhas; o 1º card fica em 88px
+     mais os 36px do cabeçalho da coluna. */
+  padding: 6px 24px 0;
   max-width: 1600px;
-  margin: 0 auto;
+  /*
+   * Ancorada à esquerda, como Dashboard, Meu tempo e Drive. Centralizada, ela
+   * descolava da sidebar em monitor largo, e trocar de aba parecia mover a
+   * página inteira: o board era a única tela que fazia isso.
+   */
+  margin: 0;
   width: 100%;
 }
 
@@ -1383,408 +1796,199 @@ const skeletonLanes = [
   min-height: 0;
 }
 
-/* ─── Header ─── */
-.tasks-header {
+.list-wrap {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 14px;
+  flex-direction: column;
+}
+
+/* ─── Alvo de 44px com desenho de 32px ───
+   A área de clique cresce para cima e para baixo sem ocupar altura no layout
+   (acessibilidade 50+ da spec). Cada controle da linha fecha exatamente a
+   faixa de 44px dela, e a faixa da toolbar começa onde a do cabeçalho acaba:
+   nenhum clique perto de um botão cai no vizinho de cima ou de baixo. */
+.hit {
+  position: relative;
+}
+
+/* O ::after se mede pela caixa de padding: num botão com borda de 1px, 7px
+   para cada lado dão os 44px contados da borda de fora. */
+.hit::after {
+  content: '';
+  position: absolute;
+  inset: -7px 0;
+}
+
+/* ─── Cabeçalho ─── */
+.board-head {
+  display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 32px;
+  /* 6 + 32 + 12 = 50: a toolbar começa 6px depois do fim da faixa de 44px. */
+  margin-bottom: 12px;
   flex-shrink: 0;
 }
 
-.tasks-eyebrow {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-4);
-  margin: 0 0 2px;
-}
-
-.tasks-title {
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-  margin: 0;
-}
-
-.tasks-meta {
+.month-nav {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 7px;
-  min-height: 16px;
+  gap: 2px;
 }
 
-.tasks-sub {
-  font-size: 12.5px;
-  color: var(--text-3);
+.board-title {
+  margin: 0 4px;
+  min-width: 96px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
   white-space: nowrap;
 }
 
-/* Pulso do mês: distribuição por status em barra segmentada */
-.pulse {
-  display: flex;
-  gap: 2px;
-  width: 180px;
-  height: 5px;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.pulse__seg {
-  flex-basis: 0;
-  min-width: 3px;
-  border-radius: 999px;
-  transition: flex-grow 420ms var(--motion-ease);
-}
-
-.pulse-legend {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.pulse-legend__item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11.5px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--text-3);
+  cursor: pointer;
 }
 
-.pulse-legend__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+.icon-btn.hit::after {
+  inset: -7px;
 }
 
-.header-actions {
+.icon-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.views {
+  display: flex;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: visible;
+}
+
+.views__btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.views__btn.hit::after {
+  inset: -8px 0;
+}
+
+.views__btn:hover {
+  color: var(--text);
+}
+
+.views__btn[aria-pressed='true'] {
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.head-spacer {
+  flex: 1 1 0;
+}
+
+/* "Agrupar  Nenhum | Pessoa": o rótulo fora da caixa, o segmentado igual ao
+   das vistas. */
+.group-by {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
-/* ─── View toggle ─── */
-.view-toggle {
-  display: flex;
-  align-items: center;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 3px;
-  gap: 2px;
-}
-
-.view-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 26px;
-  font-size: 12.5px;
-  font-weight: 500;
+.group-by__label {
+  font-size: 13px;
   color: var(--text-3);
-  padding: 0 10px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  transition:
-    color var(--motion-fast) var(--motion-ease),
-    background var(--motion-fast) var(--motion-ease),
-    box-shadow var(--motion-fast) var(--motion-ease);
   white-space: nowrap;
 }
 
-.view-btn:hover {
-  color: var(--text-2);
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.view-btn.active {
-  color: var(--text);
-  background: var(--surface);
-  font-weight: 600;
-  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--border);
-}
-
-/* ─── Filter toggle button ─── */
-.filter-toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-3);
-  background: var(--surface-2);
-  padding: 0 11px;
-  border-radius: 9px;
-  border: 1px solid var(--border);
-  cursor: pointer;
-  transition:
-    color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
-}
-
-.filter-toggle-btn:hover, .filter-toggle-btn.active {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-.filter-badge {
-  font-size: 10px;
-  font-weight: 700;
-  background: var(--accent);
-  color: var(--accent-fg);
-  padding: 0 5px;
-  border-radius: 999px;
-  min-width: 16px;
-  text-align: center;
-  line-height: 16px;
-}
-
-/* ─── New activity btn ─── */
-.new-activity-btn {
+.btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 32px;
-  font-size: 12.5px;
-  font-weight: 650;
-  background: var(--accent);
-  color: var(--accent-fg);
-  padding: 0 14px;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--accent) 78%, black);
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  transition: filter var(--motion-fast);
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
   white-space: nowrap;
+  cursor: pointer;
 }
 
-.new-activity-btn:hover {
+.btn:hover {
+  background: var(--surface-2);
+}
+
+.btn__count {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.btn--primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 500;
+}
+
+.btn--primary:hover {
+  background: var(--accent);
   filter: brightness(1.06);
 }
 
-/* ─── Retry (estado de erro) ─── */
-.retry-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 32px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  padding: 0 14px;
-  cursor: pointer;
-  transition: border-color var(--motion-fast), background var(--motion-fast);
+.icon-btn:focus-visible,
+.views__btn:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-.retry-btn:hover {
-  background: var(--surface-3);
-}
-
-/* ─── Filter bar ─── */
-.filter-bar {
-  display: flex;
-  align-items: flex-end;
-  gap: 16px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  flex-wrap: wrap;
+.board-toolbar {
+  margin-bottom: 6px;
   flex-shrink: 0;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-/* A lista de tags cresce com o uso: ocupa a largura que sobrar e quebra em
-   linha, em vez de espremer os outros filtros. */
-.filter-group--wide {
-  flex: 1 1 260px;
-  min-width: 0;
-}
-
-.filter-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.filter-select-wrap {
-  min-width: 160px;
-}
-
-.filter-chips {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.filter-chip {
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid transparent;
-  padding: 4px 10px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.1s ease;
-}
-
-.filter-chip:hover {
-  color: var(--text-2);
-  background: var(--border);
-}
-
-.filter-chip.active {
-  color: var(--text);
-  background: var(--surface);
-  border-color: var(--border-strong);
-  font-weight: 600;
-}
-
-/* As duas ações do filtro num bloco só: com `flex-wrap` na barra, dois
-   `margin-left: auto` soltos se separariam em linhas diferentes quando a barra
-   quebrasse. */
-.filter-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  align-self: flex-end;
-}
-
-.remember-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 9px 4px 6px;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  cursor: pointer;
-  color: var(--text-3);
-  font-size: 11.5px;
-  font-weight: 550;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition:
-    color var(--motion-fast),
-    border-color var(--motion-fast),
-    background var(--motion-fast);
-}
-
-.remember-switch:hover {
-  color: var(--text-2);
-  background: var(--surface-3);
-}
-
-.remember-switch[aria-checked='true'] {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-.remember-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.remember-track {
-  position: relative;
-  width: 26px;
-  height: 15px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--surface-3);
-  border: 1px solid var(--border-strong);
-  transition:
-    background var(--motion-fast),
-    border-color var(--motion-fast);
-}
-
-.remember-switch[aria-checked='true'] .remember-track {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.remember-thumb {
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--motion) var(--motion-ease);
-}
-
-.remember-switch[aria-checked='true'] .remember-thumb {
-  transform: translateX(11px);
-  background: var(--accent-fg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .remember-thumb {
-    transition: none;
-  }
-}
-
-.clear-filters-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11.5px;
-  color: var(--text-3);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: color 0.12s;
-}
-
-.clear-filters-btn:hover {
-  color: var(--text-2);
-}
-
-/* ─── Slide transition ─── */
-.slide-enter-active, .slide-leave-active {
-  transition: all 0.15s ease;
-  overflow: hidden;
-}
-.slide-enter-from, .slide-leave-to {
-  max-height: 0;
-  opacity: 0;
-  margin-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-.slide-enter-to, .slide-leave-from {
-  max-height: 200px;
-  opacity: 1;
 }
 
 /* ─── Skeleton board ─── */
@@ -1792,15 +1996,15 @@ const skeletonLanes = [
   flex: 1;
   min-height: 0;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   overflow: hidden;
 }
 
 .skel-lane {
-  flex: 1 1 0;
-  min-width: 252px;
-  max-width: 384px;
+  flex: 0 0 280px;
   padding: 6px 8px 0;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
 }
 
 .skel-lane__head {
@@ -1809,8 +2013,8 @@ const skeletonLanes = [
 }
 
 .skel-card {
-  margin-bottom: 8px;
-  border-radius: 12px;
+  margin-bottom: 6px;
+  border-radius: var(--radius-sm);
 }
 
 /* ─── Agenda (mês por dia) ─── */
@@ -1916,15 +2120,11 @@ const skeletonLanes = [
 /* ─── Mobile ─── */
 @media (max-width: 640px) {
   .tasks-page {
-    padding: 14px 14px 0;
+    padding: 10px 14px 0;
   }
 
-  .tasks-title {
-    font-size: 20px;
-  }
-
-  .pulse {
-    width: 120px;
+  .head-spacer {
+    display: none;
   }
 }
 </style>

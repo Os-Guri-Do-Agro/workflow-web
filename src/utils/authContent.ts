@@ -62,7 +62,8 @@ export async function isActiveCompanyAdmin(): Promise<boolean> {
 export async function getInfoAuth() {
   // Lê o token na hora da chamada — capturar em escopo de módulo congelava o
   // estado do boot (sem token) e escondia botões até o F5 pós-login.
-  if (!getUserToken()) return false
+  const token = getUserToken()
+  if (!token) return false
   const activeCompanyId = localStorage.getItem('activeCompany')
   try {
     const response = await userService.getInfoAuth()
@@ -70,7 +71,13 @@ export async function getInfoAuth() {
     if (!compareRole) return false
     return EDITOR_ROLES.includes(compareRole.role as CompanyRole)
   } catch {
-    // Check de papel: falha de rede não deve propagar e travar onMounted das views.
-    return false
+    // Check de papel: falha de rede não deve propagar e travar onMounted das
+    // views. E não pode virar "só leitura": o `/user/me` falhar não diz nada
+    // sobre o papel. Sem a resposta, vale o papel do token (o mesmo que a tela
+    // já usava até aqui); o backend continua sendo quem autoriza cada escrita.
+    // Antes a falha devolvia `false` e o painel aberto virava leitura no meio
+    // da digitação, descartando o rascunho da descrição.
+    const fromToken = token.companies?.find((company) => company.companyId === activeCompanyId)
+    return !!fromToken && EDITOR_ROLES.includes(fromToken.role)
   }
 }

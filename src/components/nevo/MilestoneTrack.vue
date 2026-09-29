@@ -8,10 +8,15 @@
  *   calcula pelo recorde). Lista vazia usa os 5 marcos locais pelo `best`.
  * - `current`: sequência atual (quanto falta para o próximo marco).
  * - `best`: recorde (conquista não se perde quando a sequência quebra).
+ * - `nextDays`: `StreakMe.nextMilestone.days`, o MESMO próximo marco do palco
+ *   da home e do popover do chip. Sem ele, vale a mesma regra da API.
  *
- * Conquistado: chama colorida + check. Não conquistado: chama cinza. O
- * próximo marco (o primeiro ainda não conquistado) mostra "Faltam N dias" com
- * anel de progresso em volta da chama.
+ * Duas leituras separadas, cada uma com a sua régua:
+ * - conquista, pelo RECORDE: chama colorida + check; não conquistado, cinza;
+ * - próximo marco, pela sequência ATUAL: o primeiro acima dela, com anel de
+ *   progresso e "Faltam N dias". Depois de uma quebra ele pode ser um marco já
+ *   conquistado (check + anel, "para repetir"): é o que o palco e o chip dizem
+ *   e o que a comemoração vai festejar.
  *
  * Usado em: StreakHero (home).
  */
@@ -33,6 +38,8 @@ const props = defineProps<{
   milestones: readonly StreakMilestone[]
   current: number
   best: number
+  /** Próximo marco da API (`null` = todos passados); omitido, calcula igual à API. */
+  nextDays?: number | null
 }>()
 
 const source = computed<StreakMilestone[]>(() => {
@@ -44,20 +51,34 @@ const source = computed<StreakMilestone[]>(() => {
 
 const items = computed(() => {
   const withReach = source.value.map((m) => ({ ...m, reached: m.reached || props.best >= m.days }))
-  const nextDays = withReach.find((m) => !m.reached)?.days ?? null
+  // Próximo marco = o primeiro ACIMA da sequência atual, a regra do
+  // `nextMilestone` da API (usado no palco e no chip). A conquista continua
+  // vindo do recorde; as duas réguas não se misturam.
+  const nextDays =
+    props.nextDays !== undefined
+      ? props.nextDays
+      : (withReach.find((m) => m.days > props.current)?.days ?? null)
   return withReach.map((m) => {
     const meta: NevoMilestone | null = milestoneOf(m.key)
     const isNext = m.days === nextDays
     const remaining = Math.max(0, m.days - props.current)
-    const stateText = m.reached
-      ? 'conquistado'
-      : isNext
-        ? `próximo marco, ${remainingLabel(remaining).toLowerCase()}`
-        : 'ainda não conquistado'
+    const remainingText = remainingLabel(remaining).toLowerCase()
+    const stateText =
+      m.reached && isNext
+        ? `conquistado; próximo marco de novo, ${remainingText}`
+        : m.reached
+          ? 'conquistado'
+          : isNext
+            ? `próximo marco, ${remainingText}`
+            : 'ainda não conquistado'
     return {
       ...m,
       isNext,
       remaining,
+      // Já conquistado e de novo à frente: "Faltam 2 dias para repetir".
+      nextText: m.reached
+        ? `${remainingLabel(remaining)} para repetir`
+        : remainingLabel(remaining),
       progress: Math.max(0, Math.min(100, (props.current / m.days) * 100)),
       flame: meta?.flame ?? 'seq-basico',
       blurb: meta?.blurb ?? '',
@@ -106,7 +127,8 @@ watch(
             :stroke="4"
             aria-hidden="true"
           >
-            <NevoFlame :sprite="m.flame" :lit="false" :size="34" />
+            <!-- Conquistado antes (pelo recorde): a chama segue acesa no anel. -->
+            <NevoFlame :sprite="m.flame" :lit="m.reached" :size="34" />
           </ProgressRing>
           <NevoFlame v-else :sprite="m.flame" :lit="m.reached" :size="52" />
           <span v-if="m.reached" class="mtrack__badge">
@@ -116,7 +138,7 @@ watch(
 
         <span class="mtrack__days" aria-hidden="true">{{ daysLabel(m.days) }}</span>
         <span class="mtrack__label" aria-hidden="true">{{ m.label }}</span>
-        <span v-if="m.isNext" class="mtrack__next" aria-hidden="true">{{ remainingLabel(m.remaining) }}</span>
+        <span v-if="m.isNext" class="mtrack__next" aria-hidden="true">{{ m.nextText }}</span>
         <span v-else class="mtrack__blurb" aria-hidden="true">{{ m.blurb }}</span>
       </li>
     </ol>
@@ -201,7 +223,8 @@ watch(
   justify-content: center;
   border-radius: 999px;
   border: 2px solid var(--surface);
-  background: var(--success);
+  /* Mesmo verde do dia garantido (5,7:1 no claro; o --success dá 2,6:1). */
+  background: var(--streak-done);
   color: var(--surface);
 }
 

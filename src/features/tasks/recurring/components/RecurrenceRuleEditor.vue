@@ -175,7 +175,7 @@ function toggleEnd(): void {
           </option>
         </select>
         <p class="hint">
-          Dias 29, 30 e 31 não existem em todo mês — use <strong>último dia</strong> para
+          Dias 29, 30 e 31 não existem em todo mês. Use <strong>último dia</strong> para
           a tarefa nunca sumir em fevereiro.
         </p>
       </div>
@@ -268,7 +268,7 @@ function toggleEnd(): void {
         <span class="preview-caption">Próximas:</span>
         <span v-for="date in upcoming" :key="date" class="preview-pill">{{ dayLabel(date) }}</span>
         <span v-if="!upcoming.length" class="preview-empty">
-          Nenhuma data cai nessa regra — revise os campos acima.
+          Nenhuma data cai nessa regra. Revise os campos acima.
         </span>
       </div>
     </div>

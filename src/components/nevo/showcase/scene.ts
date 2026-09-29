@@ -85,9 +85,14 @@ const TEAM_SIZE = 1.5
  * `high-performance` pede a GPU dedicada quando existe. Alguns drivers recusam
  * o contexto com esse pedido; aí tenta de novo sem preferência. Se falhar de
  * novo, a exceção sobe e o componente mostra o pôster em CSS.
+ *
+ * `failIfMajorPerformanceCaveat`: renderização por software (GPU bloqueada, VM,
+ * área de trabalho remota) recusa o contexto em vez de rodar a cena na CPU, a
+ * 10 a 19 quadros por segundo, disputando com a home. Mesmo pedido da sonda
+ * `hasWebGL2` do componente.
  */
 function createRenderer(canvas: HTMLCanvasElement): WebGLRenderer {
-  const params = { canvas, antialias: true, alpha: true }
+  const params = { canvas, antialias: true, alpha: true, failIfMajorPerformanceCaveat: true }
   try {
     return new WebGLRenderer({ ...params, powerPreference: 'high-performance' })
   } catch {

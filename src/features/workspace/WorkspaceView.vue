@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStores'
 import dashboardService from '@/service/dashboard/dashboard-service'
 import { stripHtmlPreview } from '@/utils/html-preview'
 import { dateOnlyDiffDays } from '@/utils/date'
+import { priorityLevel, prioritySpec } from '@/features/tasks/task-meta'
 import { useToast } from '@/composables/useToast'
 
 const router = useRouter()
@@ -59,9 +60,11 @@ const filteredActivities = computed(() => {
     activities = activities.filter(a => a.companyId === selectedCompanyId.value)
   }
   
-  // Ordenar: prioridade alta primeiro, depois por data
+  // Ordenar: prioridade alta primeiro (escala crescente do task-meta, D3),
+  // depois por data
   return activities.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority
+    const byPriority = priorityLevel(b.priority) - priorityLevel(a.priority)
+    if (byPriority) return byPriority
     if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
     return 0
   }).slice(0, 20) // Limitar a 20 atividades
@@ -149,7 +152,7 @@ function formatDate(dateString: string | null): string {
 }
 
 function getPriorityLabel(priority: number): string {
-  return `P${priority}`
+  return prioritySpec(priority).label
 }
 </script>
 
@@ -758,10 +761,6 @@ function getPriorityLabel(priority: number): string {
   background: color-mix(in srgb, var(--err) 10%, transparent);
   color: var(--err);
 }
-
-.priority-0 { background: color-mix(in srgb, var(--err) 15%, transparent); color: var(--err); }
-.priority-1 { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
-.priority-2 { background: color-mix(in srgb, var(--info) 15%, transparent); color: var(--info); }
 
 .company-badge {
   font-size: 10px;

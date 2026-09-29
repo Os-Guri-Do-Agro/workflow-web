@@ -31,7 +31,7 @@ Research feito por 6 leitores paralelos (relatórios no scratchpad da sessão de
 
 **Padrões a seguir:**
 - Serviço tipado no molde de `src/service/time/time-service.ts` (interfaces exportadas, `tzOffset: new Date().getTimezoneOffset()` em toda chamada, override opcional de `x-company-id`).
-- Vue Query com chaves que carregam `companyId` (troca de empresa faz `removeQueries()`; `src/stores/authStores.ts:10-19`).
+- Vue Query com chaves que carregam `companyId` (troca de empresa faz `removeQueries()`; `src/stores/authStores.ts:10-19`). Atualização de 2026-09-26: passou a `resetQueries()` (poupando `['streak','me']` e `['time','current']`), porque remover deixava os observadores montados presos numa Query fora do cache.
 - Widget de topbar: trigger 44x44 no molde de `InboxBell.vue:173-203`; popover com **reka-ui `PopoverRoot` + `PopoverPortal`** (painel no `body`, z-index 3000, estilo global não scoped, como `styles/menus.css`). Portal é obrigatório: dentro da topbar o modo XP pinta texto branco (`xp.css:141-148`) e a barra do XP tem z 900/1000.
 - Componentes em `core/components/shells/shared` **não importam de `features/*`** (`src/CLAUDE.md:614`).
 - gsap e three.js **nunca no chunk de entrada**: `defineAsyncComponent` + `useLazyLoad` (padrão `DashboardView.vue:20-23`). **Proibido `manualChunks`** (`vite.config.ts:22-44`).
@@ -343,8 +343,12 @@ interface StreakTeam {
 - **D10, colaboração no `/me`:** o feed é lido desde o início do `recent` (35 dias), para dias antigos também poderem aparecer como perfeitos. No `/team`, a leitura vai de segunda menos 1 dia.
 - **D13 refinada:** um dia em que os membros ativos só descansaram, sem ninguém garantir, é neutro: não soma nem quebra. Assim um fim de semana parado não rende +2. Hoje soma quando nenhum ativo está pendente e pelo menos um garantiu.
 - **Segurança extra no `/team`:** além do guard, que confia na lista de empresas do token (válido por 7 dias), o service confere no banco se quem pergunta ainda é membro. Se não for, responde 403.
+- **D2 estendida (revisão adversarial, 2026-09-26):** a regra do `createdAt` (a entrada só conta para o dia D se `createdAt` cair até o fim de D+1) vale para **toda entrada fechada**, e não só para `MANUAL`. O `PATCH /time/entries/:id` deixa mudar o `startedAt` de qualquer entrada sem mexer em `source` nem em `createdAt`, então puxar uma entrada `TIMER` para um dia passado consertava a sequência quebrada. O timer legítimo não é afetado: nasce com `startedAt` = `createdAt`, e o `stop` não mexe no início.
+- **D13 refinada, atividade por dia (revisão adversarial, 2026-09-26):** o membro só entra na conta do dia X se garantiu algum dia em [X-13, X]. Antes a atividade era decidida uma vez só, pelos 14 dias contados de hoje, e cobrada de todos os dias passados: quem voltava depois de semanas, ou o membro novo que garantia o primeiro dia, fazia o time despencar (ex.: de 60 para 1) justamente ao garantir o dia. Agora a entrada ou a volta de alguém nunca reescreve o passado do time. Custo aceito: quem para de garantir quebra o time nos dias úteis em que ainda era ativo (até 13 dias depois do último dia garantido), e essa quebra fica registrada; ela não some quando a pessoa sai da janela de 14 dias. O `summary.active` continua sendo "ativos hoje".
+- **`?tzOffset=` vazio (revisão adversarial, 2026-09-26):** parâmetro vazio ou só com espaço conta como ausente e cai no fallback 180. Antes a conversão implícita do `ValidationPipe` o transformava em 0 (UTC).
 
 ## Change Log
 
 - 2026-09-25 v0.1: criação, decisões D1-D15, contrato da API.
 - 2026-09-25 v0.2: refinamentos de D2, D3, D10 e D13 e checagem de membro no banco, decididos na implementação da API.
+- 2026-09-26 v0.3: correções da revisão adversarial na API: D2 vale para toda entrada fechada, D13 decide a atividade por dia, `?tzOffset=` vazio cai em 180.

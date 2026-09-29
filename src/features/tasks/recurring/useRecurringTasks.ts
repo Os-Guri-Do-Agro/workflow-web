@@ -169,13 +169,14 @@ export function useRecurringTasks(monthKey: Ref<string>, companyId: Ref<string>)
         out.push(buildOccurrence(template, date))
       }
     }
-    // Ordem estável: dia, depois prioridade (P0 primeiro), depois título. Sem o
+    // Ordem estável: dia, depois prioridade (a mais urgente primeiro; escala
+    // crescente do task-meta, D3), depois título. Sem o
     // desempate por título, dois cards de mesma prioridade trocariam de lugar a
     // cada render e a lista pareceria instável.
     return out.sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
-        a.priorityNumber - b.priorityNumber ||
+        b.priorityNumber - a.priorityNumber ||
         a.title.localeCompare(b.title),
     )
   })
@@ -276,7 +277,7 @@ export function useRecurringTasks(monthKey: Ref<string>, companyId: Ref<string>)
     return out.sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
-        a.priorityNumber - b.priorityNumber ||
+        b.priorityNumber - a.priorityNumber ||
         a.title.localeCompare(b.title),
     )
   })

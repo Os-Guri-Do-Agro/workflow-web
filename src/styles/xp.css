@@ -342,18 +342,18 @@ html[data-xp='true'] .app-select__trigger {
    muda aqui). !important pelo mesmo motivo do topo do arquivo: os tokens do
    tema são inline style no <html>. */
 html[data-xp='true'] {
-  --streak-flame: #c2410c !important;
+  --streak-flame: #af3a0a !important;
   --streak-flame-soft: rgba(234, 88, 12, 0.1) !important;
   --streak-off: #878d97 !important;
   --streak-rest: #4f6485 !important;
-  --streak-perfect: #9a5b06 !important;
+  --streak-perfect: #8c5205 !important;
   --streak-missed: #a86a70 !important;
   --streak-done: #067647 !important;
-  --tier-basico: #c2410c !important;
-  --tier-progresso: #b45309 !important;
+  --tier-basico: #af3a0a !important;
+  --tier-progresso: #9f4807 !important;
   --tier-determinado: #3b5b9a !important;
   --tier-especialista: #6d28d9 !important;
-  --tier-lendario: #9a5b06 !important;
+  --tier-lendario: #8c5205 !important;
   --nevo-floor: rgba(11, 11, 12, 0.16) !important;
 }
 
@@ -368,4 +368,31 @@ html[data-xp='true'] .command-shell > .topbar,
 html[data-xp='true'] .focus-shell .slim-top,
 html[data-xp='true'] .canvas-shell > .topnav {
   --streak-flame: #ffa24d;
+}
+
+/* ─── Board de tarefas (spec board-tarefas-redesign) ────────────────────────
+   Mesmo motivo da sequência acima: a paleta Luna é clara, então no Modo XP os
+   tokens do board valem o tema claro mesmo com o tema escuro ligado. Sem isto
+   o poço da coluna ficava quase preto dentro da janela bege e o ícone de "A
+   fazer" (branco translúcido) sumia no card branco. Os avatares entram junto:
+   o card desenha as iniciais na cor da superfície, que aqui é sempre branca. */
+html[data-xp='true'] {
+  --surface-sunken: #e3e0ce !important;
+  --shadow-raised: 1px 1px 0 rgba(0, 0, 0, 0.18), 0 0 0 1px #aca899 !important;
+  --radius-xs: 2px !important;
+  --radius-md: 4px !important;
+  --task-status-todo: rgba(26, 26, 26, 0.5) !important;
+  --task-status-prog: #2563eb !important;
+  --task-status-test: #7c3aed !important;
+  --task-status-done: #15803d !important;
+  --prio-urgent: #d92d20 !important;
+  --prio-high: #b54708 !important;
+  --due-late: #d92d20 !important;
+  --due-soon: #b54708 !important;
+  --avatar-1: #3e63b8 !important;
+  --avatar-2: #0f8177 !important;
+  --avatar-3: #6d4fc1 !important;
+  --avatar-4: #b34a6e !important;
+  --avatar-5: #96690f !important;
+  --avatar-6: #35793f !important;
 }

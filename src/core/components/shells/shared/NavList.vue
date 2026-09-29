@@ -16,6 +16,7 @@ import {
   Milestone,
   Paintbrush,
   Link2,
+  BookOpen,
   QrCode,
   ScanText,
   type LucideIcon,
@@ -31,14 +32,18 @@ const { density } = useUiPreferences()
 // v-list aceita 'compact' | 'comfortable' | 'default'. Mapeamos direto.
 const listDensity = computed(() => (density.value === 'comfortable' ? 'comfortable' : 'compact'))
 
+export type NavSectionName = 'Trabalho' | 'Empresa' | 'Pessoal' | 'Ferramentas'
+
 export type NavItem = {
   title: string
   icon: LucideIcon
   to?: string
   children?: NavItem[]
   role?: 'WORKER' | 'ADMIN'
-  section?: 'Trabalho' | 'Pessoal' | 'Ferramentas'
+  section?: NavSectionName
 }
+
+type NavSection = { name: NavSectionName; items: NavItem[] }
 
 const { quarters } = useNavQuarters()
 const workspace = useWorkspaceStore()
@@ -56,6 +61,11 @@ function userMeetsRole(required?: string): boolean {
   return (ROLE_RANK[active] ?? -1) >= (ROLE_RANK[required] ?? -1)
 }
 
+/**
+ * TRABALHO é o dia a dia de execução: o que a pessoa abre várias vezes por dia.
+ * Tarefas entra entre Board e Roadmap (ver `workItems`), porque só existe
+ * depois que os trimestres carregam.
+ */
 const mainItems = computed<NavItem[]>(() => [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/dashboard', section: 'Trabalho' },
   { title: 'Board', icon: Columns3, to: '/board', section: 'Trabalho' },
@@ -64,12 +74,24 @@ const mainItems = computed<NavItem[]>(() => [
     ? [{ title: 'Canvas', icon: Paintbrush, to: '/boards', section: 'Trabalho' } as NavItem]
     : []),
   { title: 'Roadmap', icon: Milestone, to: '/roadmap', section: 'Trabalho' },
-  { title: 'Drive', icon: HardDrive, to: '/drive', section: 'Trabalho' },
-  { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Trabalho' },
-  // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
-  { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Trabalho' },
-  { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Trabalho' },
 ])
+
+/**
+ * EMPRESA reúne os recursos e a administração da empresa: não é execução do
+ * dia, é o que a empresa guarda (arquivos, erros relatados, segredos) e quem
+ * faz parte dela. Morava tudo em "Trabalho", que tinha oito itens
+ * misturando as duas coisas.
+ */
+const companyItems = computed<NavItem[]>(() => {
+  const items: NavItem[] = [
+    { title: 'Drive', icon: HardDrive, to: '/drive', section: 'Empresa' },
+    { title: 'Bug reports', icon: Bug, to: '/bug-reports', role: 'WORKER', section: 'Empresa' },
+    // Repos: oculto da sidebar por enquanto (acesso ainda via URL direta /repos)
+    { title: 'Variáveis', icon: KeyRound, to: '/variables', section: 'Empresa' },
+    { title: 'Usuários', icon: Users, to: '/company-users', role: 'ADMIN', section: 'Empresa' },
+  ]
+  return items.filter((i) => userMeetsRole(i.role))
+})
 
 /**
  * Ferramentas de INTEGRAÇÃO: o que a empresa consome de fora do workflow, via
@@ -81,6 +103,7 @@ const toolsItems = computed<NavItem[]>(() => [
   { title: 'QR Codes', icon: QrCode, to: '/qr', section: 'Ferramentas' },
   { title: 'Encurtador', icon: Link2, to: '/links', section: 'Ferramentas' },
   { title: 'OCR Digital', icon: ScanText, to: '/ocr', section: 'Ferramentas' },
+  { title: 'Biblioteca', icon: BookOpen, to: '/recursos', section: 'Ferramentas' },
   // Tokens das duas ferramentas acima. Só para quem é ADMIN de alguma empresa
   // (a página é agregada; não depende da empresa ativa).
   ...(isAdminAnywhere.value
@@ -129,21 +152,43 @@ const personalItems = computed<NavItem[]>(() => [
 const workItems = computed<NavItem[]>(() => {
   const items = [...mainItems.value]
   if (taskItem.value) {
-    const idx = items.findIndex((i) => i.to === '/variables')
+    const idx = items.findIndex((i) => i.to === '/roadmap')
     items.splice(idx >= 0 ? idx : items.length, 0, taskItem.value)
   }
   return items.filter((i) => userMeetsRole(i.role))
 })
 
-defineExpose({ workItems, personalItems, toolsItems })
+/**
+ * Ordem das seções: execução, empresa, pessoal e, por último, as ferramentas de
+ * integração. Seção sem item para o papel da pessoa não desenha nem o rótulo.
+ */
+const sections = computed<NavSection[]>(() =>
+  [
+    { name: 'Trabalho' as const, items: workItems.value },
+    { name: 'Empresa' as const, items: companyItems.value },
+    { name: 'Pessoal' as const, items: personalItems.value },
+    { name: 'Ferramentas' as const, items: toolsItems.value },
+  ].filter((s) => s.items.length > 0),
+)
+
+defineExpose({ workItems, companyItems, personalItems, toolsItems })
 </script>
 
 <template>
   <div class="nav-sections" :class="`nav-sections--${density}`">
-    <div class="nav-section">
-      <div class="nav-eyebrow">Trabalho</div>
-      <v-list nav :density="listDensity" class="nav-list">
-        <template v-for="item in workItems" :key="item.title">
+    <!-- A ordem vem de `sections` (Ferramentas sempre por último). O rótulo
+         "Empresa" não leva o nome da empresa ativa: o seletor do topo já mostra
+         qual é, e o Drive abre no escopo Pessoal, então o nome prometeria um
+         filtro que a tela não aplica. -->
+    <div v-for="section in sections" :key="section.name" class="nav-section">
+      <div :id="`nav-eyebrow-${section.name}`" class="nav-eyebrow">{{ section.name }}</div>
+      <v-list
+        nav
+        :density="listDensity"
+        class="nav-list"
+        :aria-labelledby="`nav-eyebrow-${section.name}`"
+      >
+        <template v-for="item in section.items" :key="item.title">
           <v-list-item
             v-if="!item.children"
             :to="item.to"
@@ -213,47 +258,6 @@ defineExpose({ workItems, personalItems, toolsItems })
         </template>
       </v-list>
     </div>
-
-    <div class="nav-section">
-      <div class="nav-eyebrow">Pessoal</div>
-      <v-list nav :density="listDensity" class="nav-list">
-        <v-list-item
-          v-for="item in personalItems"
-          :key="item.title"
-          :to="item.to"
-          :value="item.title"
-          rounded="lg"
-          class="nav-item"
-          color="secondary"
-        >
-          <template #prepend>
-            <component :is="item.icon" :size="15" class="nav-icon" />
-          </template>
-          <v-list-item-title class="nav-label">{{ item.title }}</v-list-item-title>
-        </v-list-item>
-      </v-list>
-    </div>
-
-    <!-- Integração via API (QR, OCR): seção própria, sempre por último. -->
-    <div class="nav-section">
-      <div class="nav-eyebrow">Ferramentas</div>
-      <v-list nav :density="listDensity" class="nav-list">
-        <v-list-item
-          v-for="item in toolsItems"
-          :key="item.title"
-          :to="item.to"
-          :value="item.title"
-          rounded="lg"
-          class="nav-item"
-          color="secondary"
-        >
-          <template #prepend>
-            <component :is="item.icon" :size="15" class="nav-icon" />
-          </template>
-          <v-list-item-title class="nav-label">{{ item.title }}</v-list-item-title>
-        </v-list-item>
-      </v-list>
-    </div>
   </div>
 </template>
 
@@ -271,8 +275,9 @@ defineExpose({ workItems, personalItems, toolsItems })
   gap: 18px;
 }
 
+/* 44px: alvo de toque mínimo do modo pensado para quem precisa de mais área. */
 .nav-sections--comfortable .nav-item {
-  min-height: 42px !important;
+  min-height: 44px !important;
 }
 
 .nav-sections--compact .nav-item {
@@ -286,10 +291,10 @@ defineExpose({ workItems, personalItems, toolsItems })
 }
 
 .nav-eyebrow {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-4);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 6px 8px 4px;
 }

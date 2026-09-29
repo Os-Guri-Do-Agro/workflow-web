@@ -2,10 +2,10 @@
  * Capítulos da vitrine 3D (spec sequencia-diaria-nevo, T8).
  *
  * Arquivo SEM dependência de three.js nem de gsap de propósito: o overlay
- * (`NevoShowcase.vue`) precisa dos títulos para desenhar a legenda e o
- * indicador antes, e às vezes em vez, da cena carregar (sem WebGL, movimento
- * reduzido). Se isto morasse em `timeline.ts`, o gsap e o three entrariam no
- * chunk do componente e todo mundo baixaria a cena só para ler cinco títulos.
+ * (`NevoShowcase.vue`) precisa dos títulos para desenhar a legenda antes da
+ * cena carregar, e o indicador de capítulos no movimento reduzido. Se isto
+ * morasse em `timeline.ts`, o gsap e o three entrariam no chunk do componente
+ * e todo mundo baixaria a cena só para ler cinco títulos.
  *
  * Os tempos são em segundos na timeline de 22 s que roda em loop. `poster` é o
  * instante, relativo ao início do capítulo, em que a cena está "assentada"
@@ -21,6 +21,15 @@ export interface ShowcaseChapter {
   start: number
   end: number
   poster: number
+  /**
+   * Onde a legenda fica no palco 16:9 ESTREITO (de 561 a 760px, o tamanho da
+   * vitrine na coluna da home). O enquadramento da timeline foi pensado para o
+   * palco largo; no estreito a legenda ocupa metade da largura e, em cima,
+   * cobria o assunto dos capítulos 2 a 5 (o número no celular, a chama dos
+   * marcos, o confete). Embaixo à esquerda só tem o teclado e a base do
+   * notebook. No capítulo 1 embaixo à esquerda é o Nevo, então ela fica em cima.
+   */
+  captionNarrow: 'top' | 'bottom'
 }
 
 export const SHOWCASE_DURATION = 22
@@ -33,6 +42,7 @@ export const SHOWCASE_CHAPTERS: readonly ShowcaseChapter[] = [
     start: 0,
     end: 4.4,
     poster: 1.4,
+    captionNarrow: 'top',
   },
   {
     id: 'sequencia',
@@ -41,6 +51,7 @@ export const SHOWCASE_CHAPTERS: readonly ShowcaseChapter[] = [
     start: 4.4,
     end: 8.8,
     poster: 3.9,
+    captionNarrow: 'bottom',
   },
   {
     id: 'missoes',
@@ -49,6 +60,7 @@ export const SHOWCASE_CHAPTERS: readonly ShowcaseChapter[] = [
     start: 8.8,
     end: 13.2,
     poster: 4.1,
+    captionNarrow: 'bottom',
   },
   {
     id: 'time',
@@ -57,6 +69,7 @@ export const SHOWCASE_CHAPTERS: readonly ShowcaseChapter[] = [
     start: 13.2,
     end: 17.6,
     poster: 3.6,
+    captionNarrow: 'bottom',
   },
   {
     id: 'todo-dia',
@@ -65,6 +78,7 @@ export const SHOWCASE_CHAPTERS: readonly ShowcaseChapter[] = [
     start: 17.6,
     end: 22,
     poster: 1.5,
+    captionNarrow: 'bottom',
   },
 ]
 
@@ -77,11 +91,12 @@ export function chapterAt(t: number): number {
 /**
  * Subtítulo com os dados reais quando existem. A vitrine é um vídeo de
  * produto, mas a legenda falando do número da própria pessoa e do time dela é
- * o que faz parecer "o meu Workflow" e não um anúncio genérico. Sem dados (API
+ * o que faz parecer "o meu Nevo" e não um anúncio genérico. Sem dados (API
  * fora, time vazio), fica a frase padrão do capítulo.
  *
- * Frases curtas de propósito (cabem numa linha a 400px): a legenda fica no
- * canto de cima e, com duas linhas, cobriria as chamas do capítulo 4.
+ * Frases curtas de propósito (cabem numa linha a 400px): no palco largo a
+ * legenda fica no canto de cima e, com duas linhas, cobriria as chamas do
+ * capítulo 4. No palco estreito ela desce (ver `captionNarrow`).
  */
 export function chapterSubtitle(
   chapter: ShowcaseChapter,

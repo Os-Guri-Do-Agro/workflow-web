@@ -15,10 +15,11 @@ import { computed } from 'vue'
 import CountUp from '@/components/ui/CountUp.vue'
 import ProgressRing from '@/components/ui/ProgressRing.vue'
 import NevoFlame from '@/components/nevo/NevoFlame.vue'
-import { daysLabel } from '@/components/nevo/nevo-assets'
+import { daysLabel, litTone, tierForDays } from '@/components/nevo/nevo-assets'
 import RailCard from '@/features/time/components/RailCard.vue'
 import RankMedal from '@/features/time/components/RankMedal.vue'
 import type { TeamStreakSummary } from '@/features/time/composables/useTeamTime'
+import type { StreakTierKey } from '@/service/streak/streak-service'
 import { avatarTone, initials } from '@/utils/avatar'
 
 const props = defineProps<{ summary: TeamStreakSummary }>()
@@ -61,8 +62,15 @@ const teamNote = computed(() => {
   return props.summary.byCompany.length ? `${base} No grupo, vale a empresa com a menor sequência.` : base
 })
 
+/**
+ * O nível sai dos dias seguidos pela mesma régua da API (D8, `tierForDays`):
+ * o resumo do top não carrega o nível, e a chama acesa de cada um segue o dele.
+ */
 const leaders = computed(() =>
-  props.summary.top.map((p, i) => ({ ...p, place: (i + 1) as 1 | 2 | 3 })),
+  props.summary.top.map((p, i) => {
+    const tier: StreakTierKey = tierForDays(p.current)?.key ?? 'none'
+    return { ...p, place: (i + 1) as 1 | 2 | 3, tier, tone: litTone(tier) }
+  }),
 )
 
 function pointsWord(n: number): string {
@@ -70,7 +78,12 @@ function pointsWord(n: number): string {
 }
 
 function leaderAria(p: (typeof leaders.value)[number]): string {
-  const hoje = p.securedToday ? 'hoje já garantiu' : 'hoje ainda não garantiu'
+  // Descanso não é pendência (D4): mesma frase da linha da Equipe (`streakAria`).
+  const hoje = p.securedToday
+    ? 'hoje já garantiu'
+    : p.todayIsRest
+      ? 'hoje é dia de descanso'
+      : 'hoje ainda não garantiu'
   const quem = p.isMe ? `${p.userName} (você)` : p.userName
   return `${p.place}º lugar: ${quem}, ${p.pointsWeek} ${pointsWord(p.pointsWeek)} na semana, sequência de ${daysLabel(p.current)}, ${hoje}`
 }
@@ -98,7 +111,9 @@ function leaderAria(p: (typeof leaders.value)[number]): string {
     <div class="tsc-team" :class="{ 'tsc-team--lit': teamLit }">
       <NevoFlame :lit="teamLit" :live="teamLit" :size="36" />
       <div class="tsc-team-text">
-        <span class="tsc-team-lbl">Time em chamas</span>
+        <!-- "Time em chamas" só com a chama acesa; apagada, o nome neutro (mesma
+             copy do painel da home). -->
+        <span class="tsc-team-lbl">{{ teamLit ? 'Time em chamas' : 'Sequência do time' }}</span>
         <span class="tsc-team-val">
           <CountUp :value="summary.teamStreak" />
           {{ summary.teamStreak === 1 ? 'dia' : 'dias' }}
@@ -133,8 +148,12 @@ function leaderAria(p: (typeof leaders.value)[number]): string {
              (pior ainda com o aumento de fonte). -->
         <span class="tsc-who" aria-hidden="true">
           <span class="tsc-name-text" :title="p.userName">{{ p.userName }}</span>
-          <span class="tsc-streak" :class="{ 'tsc-streak--lit': p.securedToday }">
-            <NevoFlame :lit="p.securedToday" :live="p.securedToday" :size="15" />
+          <span
+            class="tsc-streak"
+            :class="{ 'tsc-streak--lit': p.securedToday }"
+            :style="{ '--streak-lit': p.tone }"
+          >
+            <NevoFlame :lit="p.securedToday" :live="p.securedToday" :tier="p.tier" :size="15" />
             {{ daysLabel(p.current) }}
             <span v-if="p.isMe" class="tsc-you">Você</span>
           </span>
@@ -374,7 +393,7 @@ function leaderAria(p: (typeof leaders.value)[number]): string {
 }
 
 .tsc-streak--lit {
-  color: var(--streak-flame);
+  color: var(--streak-lit, var(--streak-flame));
 }
 
 .tsc-you {

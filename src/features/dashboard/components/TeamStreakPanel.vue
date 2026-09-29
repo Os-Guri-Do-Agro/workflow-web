@@ -29,7 +29,7 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import NevoFlame from '@/components/nevo/NevoFlame.vue'
 import NevoSprite from '@/components/nevo/NevoSprite.vue'
 import StreakWeek from '@/components/nevo/StreakWeek.vue'
-import { daysLabel, tierTone } from '@/components/nevo/nevo-assets'
+import { daysLabel, tierToneText } from '@/components/nevo/nevo-assets'
 import { useStreakTeam } from '@/composables/useStreak'
 import type { StreakTeamMember } from '@/service/streak/streak-service'
 import { avatarTone, initials } from '@/utils/avatar'
@@ -92,7 +92,7 @@ const rows = computed<Row[]>(() => {
       rank,
       firstName: firstNameOf(member.user.name),
       tone: avatarTone(member.user.name),
-      tierColor: member.tier.key === 'none' ? 'var(--text-3)' : tierTone(member.tier.key),
+      tierColor: tierToneText(member.tier.key),
       initials: initials(member.user.name),
       medal: rank <= 3 && member.points.week > 0 ? (rank as 1 | 2 | 3) : null,
       gapBefore: !!prev && rank - prev.rank > 1,
@@ -212,8 +212,9 @@ const summaryText = computed(() => {
 
             <span class="tsp-avatar" :style="{ '--pc': row.tone }" aria-hidden="true">
               {{ row.initials }}
+              <!-- Acesa, a chama é a do nível da pessoa (roxo no Especialista...). -->
               <span class="tsp-avatar-flame">
-                <NevoFlame :lit="row.member.securedToday" :size="14" />
+                <NevoFlame :lit="row.member.securedToday" :tier="row.member.tier.key" :size="14" />
               </span>
             </span>
 
@@ -663,9 +664,15 @@ const summaryText = computed(() => {
 }
 
 /* ─── Largura do painel ──────────────────────────────────────────────────── */
+/*
+ * Cortes em REM, não em px: com o Aumento de fonte (perfil 50+) o texto cresce
+ * e um corte fixo deixava a semana e os pontos ao lado do nome, que virava
+ * "Nicolas..." com o selo "Você". Tem que ser rem: numa container query o `em`
+ * mede a fonte do próprio .tsp (13px fixos herdados do body) e não escalaria.
+ */
 
-/* Estreito: pontos e semana descem para baixo do nome. */
-@container tsp (max-width: 419px) {
+/* Estreito: pontos e semana descem para baixo do nome (448px na fonte normal). */
+@container tsp (max-width: 28rem) {
   .tsp-row {
     grid-template-columns: 26px 40px minmax(0, 1fr);
     grid-template-areas:
@@ -694,8 +701,9 @@ const summaryText = computed(() => {
   }
 }
 
-/* Painel na largura toda (sem vitrine ao lado): duas colunas de pessoas. */
-@container tsp (min-width: 820px) {
+/* Painel na largura toda (sem vitrine ao lado): duas colunas de pessoas
+   (832px na fonte normal; com fonte maior, só quando cabem de verdade). */
+@container tsp (min-width: 52rem) {
   .tsp-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

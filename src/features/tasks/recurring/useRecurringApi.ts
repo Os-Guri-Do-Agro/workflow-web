@@ -203,7 +203,7 @@ export function useRecurringApi(args: UseRecurringApiArgs) {
     return out.sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
-        a.priorityNumber - b.priorityNumber ||
+        b.priorityNumber - a.priorityNumber ||
         a.title.localeCompare(b.title),
     )
   })
@@ -262,7 +262,7 @@ export function useRecurringApi(args: UseRecurringApiArgs) {
     return out.sort(
       (a, b) =>
         a.date.localeCompare(b.date) ||
-        a.priorityNumber - b.priorityNumber ||
+        b.priorityNumber - a.priorityNumber ||
         a.title.localeCompare(b.title),
     )
   })

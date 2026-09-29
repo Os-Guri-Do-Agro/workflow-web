@@ -19,10 +19,18 @@
  * Estados: carregando (esqueleto com a mesma geometria), erro (linha compacta
  * com "Tentar de novo"), sem rota na API (não renderiza: a home volta a ser
  * como era antes da sequência).
+ *
+ * O Nevo do palco é um botão ("Pedir uma dica ao Nevo"):
+ * - clique: uma dica curta do produto no balão (`NEVO_TIPS`), com a pose
+ *   `dando-dica`, e anúncio educado para leitor de tela;
+ * - ponteiro ou foco em cima: reage feliz com um pulinho (~1,2 s);
+ * - parado nos humores pendente e novo: a cada 12 a 20 s olha para um lado e
+ *   para o outro. Desligado com movimento reduzido e com a aba oculta.
+ * A chama grande segue o nível quando acesa (`NevoFlame` com `tier`).
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useElementSize } from '@vueuse/core'
+import { useDocumentVisibility, useElementSize, useMediaQuery } from '@vueuse/core'
 import {
   CircleAlert,
   CircleCheck,
@@ -48,19 +56,26 @@ import MilestoneTrack from '@/components/nevo/MilestoneTrack.vue'
 import { useStreak } from '@/composables/useStreak'
 import {
   NEVO_MILESTONES,
+  NEVO_TIPS,
+  POINTS_RULES,
   daysLabel,
+  firstTipIndex,
+  litTone,
   milestoneTone,
-  moodFor,
+  nevoSrc,
   remainingLabel,
   tierOf,
   tierTone,
+  tierToneText,
   type NevoMood,
   type NevoMoodKey,
   type NevoSpriteName,
 } from '@/components/nevo/nevo-assets'
 
 const router = useRouter()
-const { streak, isLoading, isFetching, isError, available, refetch, mood: baseMood } = useStreak()
+// O humor já vem com a regra "quebra antiga não é notícia" (moodFor): a home,
+// o chip e qualquer outra tela dizem a mesma coisa.
+const { streak, isLoading, isFetching, isError, available, refetch, mood } = useStreak()
 
 // ─── Largura do módulo (tamanho do Nevo e da chama) ──────────────────────────
 // O layout em si é CSS (container query); aqui só o que é prop numérica. Os
@@ -86,30 +101,6 @@ const flameSize = computed(() => (layout.value === 'wide' ? 84 : 56))
 const discSize = computed(() => Math.round(spriteSize.value * 1.22))
 
 // ─── Humor ────────────────────────────────────────────────────────────────────
-/** Até quantos dias depois da quebra o Nevo ainda fala dela ("Ops... que pena"). */
-const BROKEN_RECENT_DAYS = 7
-
-function daysBetween(from: string, to: string): number {
-  // Meio-dia local nas duas pontas: horário de verão não empurra a conta.
-  const a = new Date(`${from}T12:00:00`).getTime()
-  const b = new Date(`${to}T12:00:00`).getTime()
-  if (Number.isNaN(a) || Number.isNaN(b)) return 0
-  return Math.round((b - a) / 86_400_000)
-}
-
-/**
- * O humor base vem do `useStreak`. Aqui só um ajuste: sequência que quebrou há
- * muito tempo não é mais notícia. Depois de uma semana o Nevo para de lamentar
- * e volta a convidar como se fosse o começo (spec: "broken" só se recente).
- */
-const mood = computed<NevoMood>(() => {
-  const s = streak.value
-  const m = baseMood.value
-  if (m.key !== 'broken' || !s?.brokenOn) return m
-  if (daysBetween(s.brokenOn, s.date) <= BROKEN_RECENT_DAYS) return m
-  return moodFor({ ...s, previous: 0, brokenOn: null })
-})
-
 /** Fala curta do Nevo no balão (primeira pessoa, sem repetir o título). */
 const SPEECH: Record<NevoMoodKey, string> = {
   perfect: 'Cumpriu tudo hoje. Que orgulho!',
@@ -121,7 +112,9 @@ const SPEECH: Record<NevoMoodKey, string> = {
   fresh: 'Oi! Eu sou o Nevo.',
   loading: 'Passando um café...',
 }
-const speech = computed(() => SPEECH[mood.value.key])
+/** À noite (22h às 5h, dia por garantir) o Nevo está com sono. */
+const NIGHT_SPEECH = 'Uaaah... que soninho.'
+const speech = computed(() => (mood.value.night ? NIGHT_SPEECH : SPEECH[mood.value.key]))
 
 /**
  * Próximo passo claro em todo estado que pede ação. Quebrou: "Retomar hoje";
@@ -135,6 +128,10 @@ const cta = computed<{ label: string; primary: boolean; icon: LucideIcon } | nul
     case 'fresh':
       return { label: 'Começar agora', primary: true, icon: Play }
     case 'pending':
+      // Madrugada: o Nevo manda descansar; botão de cronômetro ali brigava
+      // com a própria mensagem. Das 22h à meia-noite (`at-risk`) ele fica.
+      if (mood.value.night) return null
+      return { label: 'Abrir o cronômetro', primary: false, icon: Timer }
     case 'at-risk':
       return { label: 'Abrir o cronômetro', primary: false, icon: Timer }
     default:
@@ -181,8 +178,13 @@ const current = computed(() => streak.value?.current ?? 0)
 const unit = computed(() => (current.value === 1 ? 'dia seguido' : 'dias seguidos'))
 
 const tierKey = computed(() => streak.value?.tier.key ?? 'none')
+/** Tinta do nível: borda, fundo e disco (decoração). */
 const tone = computed(() => tierTone(tierKey.value))
+/** Tom do nível quando vira TEXTO: sem nível, cinza de texto e não o da chama apagada. */
+const toneText = computed(() => tierToneText(tierKey.value))
 const tierFlame = computed<NevoSpriteName>(() => tierOf(tierKey.value)?.flame ?? 'fogo-normal')
+/** Tom da chama acesa do nível (o "+N" que sobe ao lado do número). */
+const litToneValue = computed(() => litTone(tierKey.value))
 
 /**
  * Nível Lendário: a chama dourada (`fogo-aura`) atrás do Nevo, como no mock
@@ -218,22 +220,194 @@ const nextMilestone = computed(() => {
 
 const reachedMilestones = computed(() => streak.value?.milestones.filter((m) => m.reached).length ?? 0)
 
-const POINTS_HELP =
-  'Pontos da semana: tarefa concluída +10, foco +1 a cada 3 minutos, colaboração +3, dia garantido +15 e dia perfeito +10.'
+const POINTS_HELP = `Pontos da semana: ${POINTS_RULES}.`
 
-// ─── "+1" quando a sequência sobe com a tela aberta ──────────────────────────
+// ─── "+N" quando a sequência sobe com a tela aberta ──────────────────────────
 // Micro-comemoração local (a grande é o StreakCelebration do shell). Só quando
 // o número SOBE depois do primeiro carregamento, nunca na chegada da página.
-const bump = ref(0)
+// O selo mostra QUANTO subiu: a sequência pode saltar vários dias de uma vez
+// quando ontem é garantido depois (entrada manual até D+1, timer esquecido
+// parado hoje) e fecha o buraco que a tinha quebrado.
+const bump = ref<{ id: number; delta: number } | null>(null)
 watch(
   () => streak.value?.current,
   (now, before) => {
     // `before` indefinido = primeira chegada dos dados (ou cache ao voltar
     // para a home): não é "subiu agora", é só a página abrindo.
     if (now === undefined || before === undefined) return
-    if (now > before) bump.value++
+    if (now > before) bump.value = { id: (bump.value?.id ?? 0) + 1, delta: now - before }
   },
 )
+
+// ─── O Nevo vivo no palco ─────────────────────────────────────────────────────
+// Tudo aqui é troca de pose (sprites que já existem) + CSS/Web Animations: nada
+// de gsap. Prioridade da pose: dica > reação ao ponteiro/foco > olhadinha >
+// humor do dia.
+const reduced = useMediaQuery('(prefers-reduced-motion: reduce)')
+const visibility = useDocumentVisibility()
+const nevoRef = ref<{ hop: () => void } | null>(null)
+
+type StagePose = Pick<NevoMood, 'pose' | 'motion'>
+
+/** Dica aberta no balão; `tipSeq` refaz a entrada do balão a cada clique. */
+const tip = ref<string | null>(null)
+const tipSeq = ref(0)
+let nextTip = firstTipIndex()
+let tipTimer: number | undefined
+const TIP_MS = 9000
+
+/** Reação ao ponteiro/foco: feliz, com um pulinho. */
+const reacting = ref(false)
+let reactTimer: number | undefined
+const REACT_MS = 1200
+
+/** Olhadinha para os lados quando está parado esperando. */
+const glance = ref<'left' | 'right' | null>(null)
+let glanceTimer: number | undefined
+let glanceStepTimer: number | undefined
+const GLANCE_STEP_MS = 750
+
+const stage = computed<StagePose>(() => {
+  // `idle` em todas: com `walk`/`run` o NevoSprite ignora a pose (usa os
+  // frames do flipbook), e a troca não apareceria no nível Em progresso.
+  if (tip.value) return { pose: 'dando-dica', motion: 'idle' }
+  if (reacting.value) return { pose: 'happy', motion: 'idle' }
+  if (glance.value) {
+    return { pose: glance.value === 'left' ? 'olhar-esquerda' : 'olhar-direita', motion: 'idle' }
+  }
+  return { pose: mood.value.pose, motion: mood.value.motion }
+})
+
+function showTip() {
+  tip.value = NEVO_TIPS[nextTip % NEVO_TIPS.length] ?? null
+  nextTip = (nextTip + 1) % NEVO_TIPS.length
+  tipSeq.value++
+  // A dica ganha da reação: o pulinho do hover não fica por cima dela.
+  window.clearTimeout(reactTimer)
+  reacting.value = false
+  stopGlance()
+  window.clearTimeout(tipTimer)
+  tipTimer = window.setTimeout(() => {
+    tip.value = null
+    scheduleGlance()
+  }, TIP_MS)
+}
+
+function react() {
+  if (reacting.value || tip.value) return
+  reacting.value = true
+  stopGlance()
+  nevoRef.value?.hop()
+  window.clearTimeout(reactTimer)
+  reactTimer = window.setTimeout(() => {
+    reacting.value = false
+    scheduleGlance()
+  }, REACT_MS)
+}
+
+/** Só nos humores de espera, de dia, com a aba à vista e movimento liberado. */
+const canGlance = computed(
+  () =>
+    (mood.value.key === 'pending' || mood.value.key === 'fresh') &&
+    !mood.value.night &&
+    !reduced.value &&
+    visibility.value === 'visible' &&
+    layout.value !== 'tiny',
+)
+
+function stopGlance() {
+  window.clearTimeout(glanceTimer)
+  window.clearTimeout(glanceStepTimer)
+  glance.value = null
+}
+
+function scheduleGlance() {
+  window.clearTimeout(glanceTimer)
+  if (!canGlance.value) return
+  // 12 a 20 s: espaçado o bastante para ser um gesto, não um tique.
+  glanceTimer = window.setTimeout(runGlance, 12_000 + Math.random() * 8_000)
+}
+
+function runGlance() {
+  if (!canGlance.value) return
+  if (reacting.value || tip.value) {
+    scheduleGlance()
+    return
+  }
+  glance.value = 'left'
+  glanceStepTimer = window.setTimeout(() => {
+    glance.value = 'right'
+    glanceStepTimer = window.setTimeout(() => {
+      glance.value = null
+      scheduleGlance()
+    }, GLANCE_STEP_MS)
+  }, GLANCE_STEP_MS)
+}
+
+watch(
+  canGlance,
+  (ok) => {
+    stopGlance()
+    if (ok) scheduleGlance()
+  },
+  { immediate: true },
+)
+
+/**
+ * A dica costuma ocupar uma linha a mais que a fala do humor. O palco cabe na
+ * altura da coluna de texto ao lado (ver `spriteSize`), então essa linha extra
+ * empurrava a home inteira para baixo e de volta quando a dica sumia. Enquanto
+ * a dica está aberta, o Nevo encolhe exatamente a diferença de altura do
+ * balão (a troca de pose disfarça). A medida roda depois do DOM atualizar e
+ * antes do navegador pintar (`flush: 'post'`), então nada pisca.
+ */
+const bubbleEl = ref<HTMLElement | null>(null)
+const speechHeight = ref(0)
+const tipShrink = ref(0)
+
+// `bubbleEl` entre as fontes: com a sequência já em cache (o chip buscou
+// antes), a fala nasce pronta e só a chegada do elemento dispara a medida.
+watch(
+  [tip, speech, spriteSize, layout, bubbleEl],
+  () => {
+    const h = bubbleEl.value?.offsetHeight ?? 0
+    if (!tip.value) {
+      speechHeight.value = h
+      tipShrink.value = 0
+      return
+    }
+    tipShrink.value = speechHeight.value ? Math.max(0, h - speechHeight.value) : 0
+  },
+  { flush: 'post' },
+)
+
+/** Nunca menos de 70% do tamanho normal (dica muito longa num palco estreito). */
+const actorSize = computed(() =>
+  Math.max(Math.round(spriteSize.value * 0.7), spriteSize.value - tipShrink.value),
+)
+
+/**
+ * As poses de reação chegam decodificadas antes do primeiro uso: trocar para
+ * um sprite que ainda não baixou deixava o palco vazio por um quadro.
+ */
+const STAGE_POSES: readonly NevoSpriteName[] = ['olhar-esquerda', 'olhar-direita', 'happy', 'dando-dica']
+let preloadTimer: number | undefined
+onMounted(() => {
+  preloadTimer = window.setTimeout(() => {
+    for (const name of STAGE_POSES) {
+      const img = new Image()
+      img.src = nevoSrc(name)
+      img.decode?.().catch(() => {})
+    }
+  }, 1200)
+})
+
+onBeforeUnmount(() => {
+  window.clearTimeout(tipTimer)
+  window.clearTimeout(reactTimer)
+  window.clearTimeout(preloadTimer)
+  stopGlance()
+})
 
 // ─── Evolução e marcos (abas) ────────────────────────────────────────────────
 // As duas trilhas lado a lado pediriam ~1.530px de faixa (5 cartões de 148px
@@ -270,10 +444,11 @@ function onTabKey(e: KeyboardEvent) {
     v-if="available"
     id="sequencia"
     ref="root"
+    tabindex="-1"
     v-reveal="1"
     class="bento-cell sh"
     :class="[`sh--${layout}`, { 'is-loading': isLoading, 'is-error': isError && !streak }]"
-    :style="{ '--sh-tone': tone }"
+    :style="{ '--sh-tone': tone, '--sh-tone-text': toneText, '--sh-lit': litToneValue }"
     aria-label="Sua sequência"
     :aria-busy="isLoading ? 'true' : undefined"
   >
@@ -319,21 +494,23 @@ function onTabKey(e: KeyboardEvent) {
 
     <!-- ─── Pronto ─────────────────────────────────────────────────────────── -->
     <template v-else-if="streak">
+      <!-- A dica do Nevo é lida aqui: o balão é visual (aria-hidden). -->
+      <p class="sr-only" aria-live="polite">{{ tip ? `Dica do Nevo: ${tip}` : '' }}</p>
       <div class="sh-grid">
         <!-- Número grande: chama + dias seguidos + nível -->
         <div class="sh-count">
-          <NevoFlame class="sh-flame" live :lit="streak.securedToday" :size="flameSize" />
+          <NevoFlame class="sh-flame" live :lit="streak.securedToday" :tier="tierKey" :size="flameSize" />
           <p class="sh-number">
             <span class="sr-only">{{ current }} {{ unit }}</span>
             <span class="sh-number-value" aria-hidden="true">
               <CountUp :value="current" :duration="0.9" />
-              <span v-if="bump" :key="bump" class="sh-bump">+1</span>
+              <span v-if="bump" :key="bump.id" class="sh-bump">+{{ bump.delta }}</span>
             </span>
             <span class="sh-unit" aria-hidden="true">{{ unit }}</span>
           </p>
           <div class="sh-tier">
             <span class="sh-tier-eyebrow">Nível do Nevo</span>
-            <span class="sh-tier-pill" :class="{ 'is-none': tierKey === 'none' }">
+            <span class="sh-tier-pill">
               <NevoFlame :sprite="tierFlame" :lit="tierKey !== 'none'" :size="18" />
               {{ streak.tier.label }}
             </span>
@@ -344,6 +521,10 @@ function onTabKey(e: KeyboardEvent) {
         <div class="sh-mood">
           <h2 class="sh-title">{{ mood.title }}</h2>
           <p class="sh-msg">{{ mood.message }}</p>
+          <!-- Sem balão no estreito: a dica do clique no Nevo aparece aqui. -->
+          <p v-if="tip && layout !== 'wide'" :key="`tip-n-${tipSeq}`" class="sh-tip" aria-hidden="true">
+            <strong>Dica do Nevo:</strong> {{ tip }}
+          </p>
           <div v-if="cta" class="sh-cta">
             <button
               v-if="cta.primary"
@@ -382,22 +563,39 @@ function onTabKey(e: KeyboardEvent) {
 
         <!-- Palco do Nevo -->
         <div v-if="layout !== 'tiny'" class="sh-stage">
-          <p v-if="layout === 'wide'" :key="`speech-${mood.key}`" class="sh-bubble" aria-hidden="true">
-            {{ speech }}
+          <p
+            v-if="layout === 'wide'"
+            ref="bubbleEl"
+            :key="tip ? `tip-${tipSeq}` : `speech-${mood.key}-${mood.night ? 'n' : 'd'}`"
+            class="sh-bubble"
+            :class="{ 'is-tip': !!tip }"
+            aria-hidden="true"
+          >
+            <template v-if="tip"><strong>Dica:</strong> {{ tip }}</template>
+            <template v-else>{{ speech }}</template>
           </p>
           <div class="sh-actor" :style="{ '--sh-disc': `${discSize}px` }">
             <span class="sh-disc" aria-hidden="true" />
             <span v-if="legendary" class="sh-aura" aria-hidden="true">
               <NevoFlame sprite="fogo-aura" :size="auraSize" />
             </span>
-            <NevoSprite
-              :key="`nevo-${mood.key}`"
-              class="sh-nevo"
-              :pose="mood.pose"
-              :motion="mood.motion"
-              :size="spriteSize"
-              floor
-            />
+            <button
+              type="button"
+              class="sh-nevo-btn"
+              aria-label="Pedir uma dica ao Nevo"
+              @click="showTip"
+              @pointerenter="react"
+              @focus="react"
+            >
+              <NevoSprite
+                ref="nevoRef"
+                :key="`nevo-${mood.key}`"
+                :pose="stage.pose"
+                :motion="stage.motion"
+                :size="actorSize"
+                floor
+              />
+            </button>
           </div>
           <div v-if="layout === 'wide'" class="sh-next" :style="{ '--sh-next-tone': nextMilestone?.tone }">
             <ProgressRing
@@ -507,6 +705,7 @@ function onTabKey(e: KeyboardEvent) {
               :milestones="streak.milestones"
               :current="streak.current"
               :best="streak.best"
+              :next-days="streak.nextMilestone?.days ?? null"
             />
           </Transition>
         </div>
@@ -542,6 +741,13 @@ function onTabKey(e: KeyboardEvent) {
 .sh.is-error {
   gap: 0;
   padding: 14px 18px;
+}
+
+/* Alvo da âncora `/#sequencia` ("Ver minha jornada" no chip): recebe o foco
+   por código para o teclado e o leitor de tela continuarem daqui. É região,
+   não controle: sem anel em volta do módulo inteiro. */
+.sh:focus {
+  outline: none;
 }
 
 /* ─── Grade principal ────────────────────────────────────────────────────── */
@@ -677,15 +883,18 @@ function onTabKey(e: KeyboardEvent) {
   white-space: nowrap;
 }
 
-/* "+1" que sobe e some ao lado do número quando a sequência cresce. */
+/* "+N" que sobe e some ao lado do número quando a sequência cresce. Ancorado
+   pela ESQUERDA, colado no último dígito: "+12" cresce para o vão ao lado (no
+   alto, acima de "dias seguidos") e não por cima do número. */
 .sh-bump {
   position: absolute;
   top: -0.1em;
-  right: -0.9em;
+  left: calc(100% - 0.2em);
+  white-space: nowrap;
   font-size: 1rem;
   font-weight: 800;
   letter-spacing: 0;
-  color: var(--streak-flame);
+  color: var(--sh-lit, var(--streak-flame));
   opacity: 0;
   animation: sh-bump 1.4s var(--motion-ease) both;
 }
@@ -715,14 +924,10 @@ function onTabKey(e: KeyboardEvent) {
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--sh-tone) 45%, var(--border));
   background: color-mix(in srgb, var(--sh-tone) 13%, var(--surface));
-  color: var(--sh-tone);
+  color: var(--sh-tone-text);
   font-size: 0.875rem;
   font-weight: 750;
   white-space: nowrap;
-}
-
-.sh-tier-pill.is-none {
-  color: var(--text-3);
 }
 
 /*
@@ -967,8 +1172,47 @@ function onTabKey(e: KeyboardEvent) {
   bottom: 0;
 }
 
-.sh-nevo {
+/* O Nevo é um botão (dica no clique). Sem fundo nem borda: o alvo é o próprio
+   mascote, bem acima dos 44x44. Posicionado para ficar à frente do disco e da
+   aura, que são absolutos e vêm antes no DOM. */
+.sh-nevo-btn {
   position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sh-nevo-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+/* Dica no estreito: nota chapada com hairline, sem faixa lateral. */
+.sh-tip {
+  margin: 6px 0 0;
+  max-width: 56ch;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  animation: sh-bubble-in 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.sh-tip strong,
+.sh-bubble strong {
+  font-weight: 750;
 }
 
 .sh-next {
@@ -1097,8 +1341,10 @@ function onTabKey(e: KeyboardEvent) {
   font-variant-numeric: tabular-nums;
 }
 
+/* `--sh-tone-text`, não `--sh-tone`: sem nível o tom é o da chama apagada,
+   cor de ícone que como texto dava 3,3:1 no claro ("Sem sequência", "0 de 5"). */
 .sh-tab.is-active .sh-tab-meta {
-  color: var(--sh-tone);
+  color: var(--sh-tone-text);
 }
 
 .sh-track-panel {
@@ -1196,11 +1442,12 @@ function onTabKey(e: KeyboardEvent) {
 
 @media (prefers-reduced-motion: reduce) {
   .sh-bubble,
+  .sh-tip,
   .sh-aura {
     animation: none;
   }
 
-  /* O "+1" é só movimento; parado ele vira ruído ao lado do número. */
+  /* O "+N" é só movimento; parado ele vira ruído ao lado do número. */
   .sh-bump {
     display: none;
   }

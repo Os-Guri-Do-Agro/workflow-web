@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { LucideIcon } from 'lucide-vue-next'
+import type { Component } from 'vue'
 
 withDefaults(
   defineProps<{
-    icon?: LucideIcon
+    /** Ícone Lucide ou um dos ícones de tarefa do `task-meta` (ambos aceitam `size`). */
+    icon?: Component
     color?: string
     variant?: 'soft' | 'outline' | 'solid'
     size?: 'sm' | 'md'

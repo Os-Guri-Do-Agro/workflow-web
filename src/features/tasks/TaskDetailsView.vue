@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useToast } from '@/composables/useToast'
 import { useCompanyQuarters } from '@/composables/useCompanyQuarters'
 import { normalizePriority } from '@/utils/priority'
+import { PRIORITY_OPTIONS, priorityLevel, prioritySpec, statusSpec } from '@/features/tasks/task-meta'
 import { avatarTone, initials } from '@/utils/avatar'
 import {
   AlertCircle,
@@ -21,8 +22,6 @@ import {
   Circle,
   Clock,
   FileText,
-  Flag,
-  FlaskConical,
   Info,
   Lightbulb,
   ListChecks,
@@ -35,7 +34,6 @@ import {
   Tag as TagIcon,
   Trash2,
   X,
-  type LucideIcon,
 } from 'lucide-vue-next'
 import {
   dateOnlyInMonth,
@@ -84,7 +82,7 @@ function buildActivityMovePayload(activity: any, monthId: string) {
   return {
     title: activity.title,
     description: activity.description || '',
-    priorityNumber: normalizePriority(activity.priorityNumber, 1),
+    priorityNumber: normalizePriority(activity.priorityNumber, 0),
     monthId,
     responsibleUserIds: getResponsibleUserIds(activity),
   }
@@ -135,7 +133,7 @@ const members = ref<any[]>([])
 const formSubtask = ref({
   title: '',
   description: '',
-  priorityNumber: 1,
+  priorityNumber: 0,
   dueDate: '',
   responsibleUserIds: [] as string[],
   attachment: null as File | null,
@@ -190,7 +188,7 @@ const createQuickSubtask = async () => {
       // O texto do campo é plano; `plainToHtml` dá a ele a mesma forma que o
       // editor de descrição produz, para a leitura não precisar de dois casos.
       description: plainToHtml(quickSubtaskDescription.value),
-      priorityNumber: 1,
+      priorityNumber: 0,
       dueDate: dateOnlyToUtcNoonIso(todayDateOnly()),
       monthId: activeMonthId.value,
       parentId: taskId.value,
@@ -381,7 +379,7 @@ const createSubtask = async () => {
     const created = await activityService.postActivity({
       title: formSubtask.value.title,
       description: formSubtask.value.description || '',
-      priorityNumber: normalizePriority(formSubtask.value.priorityNumber, 1),
+      priorityNumber: normalizePriority(formSubtask.value.priorityNumber, 0),
       dueDate: formSubtask.value.dueDate
         ? dateOnlyToUtcNoonIso(formSubtask.value.dueDate)
         : dateOnlyToUtcNoonIso(todayDateOnly()),
@@ -403,7 +401,7 @@ const createSubtask = async () => {
     formSubtask.value = {
       title: '',
       description: '',
-      priorityNumber: 1,
+      priorityNumber: 0,
       dueDate: '',
       responsibleUserIds: [],
       attachment: null,
@@ -436,13 +434,38 @@ const showEditActivityModal = ref(false)
 const formActivity = ref({
   title: '',
   description: '',
-  priorityNumber: 1,
+  priorityNumber: 0,
   dueDate: '',
   quarterId: '',
   monthId: '',
   responsibleUserIds: [] as string[],
   attachment: null as File | null,
 })
+
+/**
+ * `v-model` de prioridade por NÍVEL que guarda o número CRU.
+ *
+ * O select só tem os 5 níveis (0 a 4; Urgente cobre 4 e 5, D3 da spec
+ * board-tarefas-redesign). Os formulários guardam o número que veio do servidor
+ * (ou da sugestão da IA, que também grava 1 a 5) e o select mostra o nível dele:
+ * - tarefa com 5 abre como "Urgente" e, sem a pessoa mexer, salva 5 (antes o
+ *   formulário já abria com 4 e rebaixava a tarefa em silêncio);
+ * - "Aplicar sugestão" com 5 mostra "Urgente" (antes o select não achava a
+ *   opção 5 e mostrava o placeholder "Sem prioridade", gravando 5 escondido).
+ * Escolher outro nível grava o nível escolhido.
+ */
+function priorityByLevel(form: { value: { priorityNumber: number } }) {
+  return computed<number>({
+    get: () => priorityLevel(form.value.priorityNumber),
+    set: (level) => {
+      if (level === priorityLevel(form.value.priorityNumber)) return
+      form.value.priorityNumber = level
+    },
+  })
+}
+
+const activityPriority = priorityByLevel(formActivity)
+const subtaskPriority = priorityByLevel(formSubtask)
 
 const formQuarterMonths = computed(() => {
   const quarter = quartersList.value.find((q: any) => q.id === formActivity.value.quarterId)
@@ -562,7 +585,7 @@ const openEditActivityModal = () => {
   formActivity.value = {
     title: activityInfo.value.title,
     description: activityInfo.value.description || '',
-    priorityNumber: activityInfo.value.priorityNumber ?? 1,
+    priorityNumber: normalizePriority(activityInfo.value.priorityNumber, 0),
     dueDate: activityInfo.value.dueDate ? isoToDateOnly(activityInfo.value.dueDate) : '',
     quarterId: quarter?.id ?? '',
     monthId,
@@ -587,7 +610,7 @@ const updateActivity = async () => {
     const updated = await activityService.patchActivity(taskId.value, {
       title: formActivity.value.title,
       description: formActivity.value.description || '',
-      priorityNumber: normalizePriority(formActivity.value.priorityNumber, 1),
+      priorityNumber: normalizePriority(formActivity.value.priorityNumber, 0),
       dueDate: dueDatePatchValue(formActivity.value.dueDate),
       monthId: newMonthId,
       responsibleUserIds: formActivity.value.responsibleUserIds,
@@ -635,7 +658,7 @@ const openSubtaskModal = (task: any) => {
   formSubtask.value = {
     title: task.title,
     description: task.description || '',
-    priorityNumber: task.priorityNumber ?? 1,
+    priorityNumber: normalizePriority(task.priorityNumber, 0),
     dueDate: task.dueDate ? isoToDateOnly(task.dueDate) : '',
     responsibleUserIds: task.responsibles?.map((r: any) => r.userId) ?? [],
     attachment: null,
@@ -664,7 +687,7 @@ const updateSubtask = async () => {
     await activityService.patchActivity(selectedSubtask.value.id, {
       title: formSubtask.value.title,
       description: formSubtask.value.description || '',
-      priorityNumber: normalizePriority(formSubtask.value.priorityNumber, 1),
+      priorityNumber: normalizePriority(formSubtask.value.priorityNumber, 0),
       // Campo vazio limpa a data (null explicito), não mantém a antiga.
       dueDate: dueDatePatchValue(formSubtask.value.dueDate),
       monthId: activeMonthId.value,
@@ -723,31 +746,13 @@ const responsibles = computed(() => activityInfo.value?.responsibles ?? [])
 
 const pageMonthLabel = computed(() => currentMonthData.value?.name ?? 'Mês')
 
-type StatusSpec = { token: string; label: string; icon: LucideIcon }
-const STATUS_MAP: Record<string, StatusSpec> = {
-  TODO: { token: 'var(--status-todo)', label: 'A fazer', icon: Circle },
-  IN_PROGRESS: { token: 'var(--status-prog)', label: 'Em andamento', icon: Clock },
-  IN_TESTING: { token: 'var(--status-test)', label: 'Em teste', icon: FlaskConical },
-  TESTING: { token: 'var(--status-test)', label: 'Em teste', icon: FlaskConical },
-  DONE: { token: 'var(--status-done)', label: 'Concluído', icon: CheckCircle2 },
-}
-const STATUS_FALLBACK: StatusSpec = STATUS_MAP.TODO!
-
-const getStatusConfig = (status: string): StatusSpec => STATUS_MAP[status] ?? STATUS_FALLBACK
+// Status e prioridade: a fonte única (task-meta). Esta tela tinha a escala
+// DECRESCENTE (P0 vermelho = crítica), oposta à do formulário e do board.
+const getStatusConfig = (status: string) => statusSpec(status)
 
 const statusConfig = computed(() => getStatusConfig(activityInfo.value?.status ?? 'TODO'))
 
-const PRIORITY_META: Record<number, { label: string; token: string }> = {
-  0: { label: 'P0', token: 'var(--err)' },
-  1: { label: 'P1', token: 'var(--warn)' },
-  2: { label: 'P2', token: 'var(--info)' },
-  3: { label: 'P3', token: 'var(--text-3)' },
-  4: { label: 'P4', token: 'var(--text-3)' },
-  5: { label: 'P5', token: 'var(--text-3)' },
-}
-const PRIORITY_FALLBACK = { label: 'P?', token: 'var(--text-3)' }
-
-const getPriorityMeta = (priority: number) => PRIORITY_META[priority] ?? PRIORITY_FALLBACK
+const getPriorityMeta = (priority: unknown) => prioritySpec(priority)
 
 // Tom de PESSOA sai dos tokens `--avatar-1..6` (util compartilhado), não das
 // cores de status. Pintar responsável com verde de "concluído" ou vermelho de
@@ -899,7 +904,7 @@ const onSubtaskFilePick = (e: Event) => {
               <div class="subtask-body clickable" @click="openSubtaskModal(task)">
                 <div class="subtask-top">
                   <span class="subtask-title">{{ task.title }}</span>
-                  <Pill :color="getPriorityMeta(task.priorityNumber).token" size="sm">
+                  <Pill :icon="getPriorityMeta(task.priorityNumber).icon" :color="getPriorityMeta(task.priorityNumber).token" size="sm">
                     {{ getPriorityMeta(task.priorityNumber).label }}
                   </Pill>
                 </div>
@@ -1013,7 +1018,7 @@ const onSubtaskFilePick = (e: Event) => {
             <div class="meta-row">
               <dt>Prioridade</dt>
               <dd>
-                <Pill :icon="Flag" :color="getPriorityMeta(activityInfo.priorityNumber).token">
+                <Pill :icon="getPriorityMeta(activityInfo.priorityNumber).icon" :color="getPriorityMeta(activityInfo.priorityNumber).token">
                   {{ getPriorityMeta(activityInfo.priorityNumber).label }}
                 </Pill>
               </dd>
@@ -1191,7 +1196,7 @@ const onSubtaskFilePick = (e: Event) => {
 
         <div v-if="suggest.suggestedPriority" class="suggest-section">
           <span class="suggest-label">Prioridade Sugerida:</span>
-          <Pill :color="getPriorityMeta(suggest.suggestedPriority).token">
+          <Pill :icon="getPriorityMeta(suggest.suggestedPriority).icon" :color="getPriorityMeta(suggest.suggestedPriority).token">
             {{ getPriorityMeta(suggest.suggestedPriority).label }}
           </Pill>
         </div>
@@ -1225,10 +1230,16 @@ const onSubtaskFilePick = (e: Event) => {
       </div>
 
       <div class="field-row">
-        <label class="field">
+        <div class="field">
           <span class="view-label">Prioridade</span>
-          <input v-model="formActivity.priorityNumber" class="field-input" type="number" />
-        </label>
+          <AppSelect
+            v-model="activityPriority"
+            :items="PRIORITY_OPTIONS"
+            density="compact"
+            placeholder="Sem prioridade"
+            label="Prioridade"
+          />
+        </div>
         <label class="field">
           <span class="view-label">Data de Entrega</span>
           <input
@@ -1345,10 +1356,16 @@ const onSubtaskFilePick = (e: Event) => {
       </div>
 
       <div class="field-row">
-        <label class="field">
+        <div class="field">
           <span class="view-label">Prioridade</span>
-          <input v-model="formSubtask.priorityNumber" class="field-input" type="number" />
-        </label>
+          <AppSelect
+            v-model="subtaskPriority"
+            :items="PRIORITY_OPTIONS"
+            density="compact"
+            placeholder="Sem prioridade"
+            label="Prioridade da subtarefa"
+          />
+        </div>
         <label class="field">
           <span class="view-label">Data de Entrega</span>
           <input v-model="formSubtask.dueDate" class="field-input" type="date" />
@@ -1473,7 +1490,7 @@ const onSubtaskFilePick = (e: Event) => {
             <Pill :icon="getStatusConfig(selectedSubtask.status).icon" :color="getStatusConfig(selectedSubtask.status).token">
               {{ getStatusConfig(selectedSubtask.status).label }}
             </Pill>
-            <Pill :icon="Flag" :color="getPriorityMeta(selectedSubtask.priorityNumber).token">
+            <Pill :icon="getPriorityMeta(selectedSubtask.priorityNumber).icon" :color="getPriorityMeta(selectedSubtask.priorityNumber).token">
               {{ getPriorityMeta(selectedSubtask.priorityNumber).label }}
             </Pill>
           </div>
@@ -1550,10 +1567,16 @@ const onSubtaskFilePick = (e: Event) => {
           </div>
 
           <div class="field-row">
-            <label class="field">
+            <div class="field">
               <span class="view-label">Prioridade</span>
-              <input v-model="formSubtask.priorityNumber" class="field-input" type="number" />
-            </label>
+              <AppSelect
+                v-model="subtaskPriority"
+                :items="PRIORITY_OPTIONS"
+                density="compact"
+                placeholder="Sem prioridade"
+                label="Prioridade da subtarefa"
+              />
+            </div>
             <label class="field">
               <span class="view-label">Data de Entrega</span>
               <input v-model="formSubtask.dueDate" class="field-input" type="date" />

@@ -114,10 +114,13 @@ const { editor } = useTaskDescriptionEditor({
   },
 })
 
-/** Grava agora o que estiver pendente. Sem rascunho sujo, é no-op. */
-function flush() {
+/**
+ * Grava agora o que estiver pendente. Sem rascunho sujo, é no-op.
+ * `force`: grava mesmo com o campo já desabilitado (ver o `watch` do `disabled`).
+ */
+function flush(force = false) {
   clearTimer()
-  if (!dirty.value || props.disabled) return
+  if (!dirty.value || (props.disabled && !force)) return
   dirty.value = false
   // `getHTML()` serializa o documento: caro, mas aqui roda UMA vez por pausa na
   // digitação, não por tecla.
@@ -197,9 +200,22 @@ watch(
   { immediate: true },
 )
 
+// `false` no segundo argumento: por padrão o TipTap emite `update` ao trocar a
+// editabilidade, e o autosave tratava isso como edição. O campo que abria só
+// leitura e virava editável (papel carregado depois do mount) gravava sozinho o
+// HTML normalizado pelo esquema, e um `<h3>` vindo de outro cliente virava `<p>`.
+//
+// Virou leitura com rascunho ainda não gravado (o papel chegou no meio da
+// digitação): grava ANTES de travar. Descartar calado era perder texto; se o
+// papel for mesmo de leitura, o servidor recusa e o erro aparece no toast, com
+// o texto ainda na tela.
 watch(
   () => props.disabled,
-  (value) => editor.value?.setEditable(!value),
+  (value) => {
+    if (value && dirty.value) flush(true)
+    if (value) bubble.value?.closeLink()
+    editor.value?.setEditable(!value, false)
+  },
 )
 
 function onFocusIn() {
@@ -211,6 +227,7 @@ function onFocusIn() {
  * atalho do TipTap porque quem tem a referência do menu é este componente.
  */
 function onKeydown(event: KeyboardEvent) {
+  if (props.disabled) return
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
     void bubble.value?.openLink()
@@ -233,7 +250,11 @@ defineExpose({ flush, reset, dirty })
     :class="[`task-desc--${variant}`, { 'task-desc--disabled': disabled }]"
     :style="{ '--task-desc-min-h': minHeight }"
   >
-    <TaskDescriptionBubbleMenu v-if="!disabled" ref="bubble" :editor="editor" />
+    <!-- Sempre montado: o menu do TipTap move o próprio elemento para fora do
+         componente, e desmontá-lo quando o campo vira leitura quebrava o patch
+         do Vue (o painel inteiro parava de responder). Com o editor só leitura,
+         o `shouldShow` do menu devolve false. -->
+    <TaskDescriptionBubbleMenu ref="bubble" :editor="editor" />
 
     <EditorContent
       class="task-prose task-desc__field"

@@ -103,6 +103,10 @@ export interface ActivityDetail {
   /** Nem toda resposta traz o mês expandido; o escalar `monthId` sempre vem. */
   month?: { id: string; name: string } | null
   parentId?: string | null
+  /** Regra que gerou a tarefa (rotina materializada). `null` na tarefa avulsa. */
+  recurrenceId?: string | null
+  /** Data da rotina que virou esta tarefa (`YYYY-MM-DD` ou ISO). */
+  occurrenceDate?: string | null
   responsibles?: ActivityResponsible[]
   attachments?: ActivityAttachment[]
   subtasks?: ActivitySubtask[]

@@ -18,8 +18,9 @@
  *   palco, flutua e cai por ~3 s. Dois sprites de confete parados ficam no
  *   palco (o render já traz o sombreamento; nada de glow).
  * - Fecha com o botão Continuar, Esc, clique no fundo e sozinho em 7 s (o
- *   tempo pausa com o ponteiro sobre o cartão). Foco vai para o botão e volta
- *   para onde estava. Anúncio `aria-live="polite"`.
+ *   tempo pausa com o ponteiro sobre o cartão e com a aba oculta). Foco vai
+ *   para o botão e volta para onde estava (ou para o botão do popover que o
+ *   continha). Anúncio `aria-live="polite"`.
  * - Movimento reduzido: sem confete voando, sem pulo, chamas paradas (os
  *   sprites de confete do palco ficam, parados).
  *
@@ -31,7 +32,7 @@ import { useMediaQuery } from '@vueuse/core'
 import { useStreakCelebration } from '@/composables/useStreakCelebration'
 import NevoFlame from './NevoFlame.vue'
 import NevoSprite from './NevoSprite.vue'
-import { daysLabel, milestoneTone, nevoSize, nevoSrc } from './nevo-assets'
+import { daysLabel, milestoneTone, nevoSize, nevoSrc, tierForDays } from './nevo-assets'
 
 const { state, close } = useStreakCelebration()
 const reduced = useMediaQuery('(prefers-reduced-motion: reduce)')
@@ -45,7 +46,10 @@ const DESC_ID = 'nevo-celebration-desc'
 
 const title = computed(() => {
   if (state.kind === 'milestone' && state.milestone) {
-    return `Marco de ${state.milestone.days} dias: ${state.milestone.label}`
+    // Já conquistado numa sequência anterior (a trilha mostra o check): é volta.
+    return state.repeat
+      ? `De volta ao marco de ${state.milestone.days} dias: ${state.milestone.label}`
+      : `Marco de ${state.milestone.days} dias: ${state.milestone.label}`
   }
   return state.kind === 'perfect' ? 'Dia perfeito!' : 'Dia garantido!'
 })
@@ -121,9 +125,42 @@ function resumeTimer() {
   startTimer(Math.max(1500, remaining))
 }
 
+// A festa só abre com a aba à vista (ver `useStreakCelebration`), mas a pessoa
+// pode trocar de aba com ela aberta: o tempo para e volta junto com a aba.
+function onVisibility() {
+  if (document.hidden) pauseTimer()
+  else resumeTimer()
+}
+
 // ─── Foco ─────────────────────────────────────────────────────────────────────
 const cta = ref<HTMLButtonElement | null>(null)
 let lastFocus: HTMLElement | null = null
+
+/**
+ * Para onde o foco volta quando a festa fecha. Foco dentro de um popover (o do
+ * StreakChip faz o refetch que dispara a festa): o CTA recebe o foco, o reka
+ * fecha o popover por "foco fora" e o painel sai do DOM. O ponto de volta passa
+ * a ser o botão que abre o popover, que continua na topbar (`aria-controls`
+ * aponta para o painel).
+ */
+function returnTarget(): HTMLElement | null {
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const pop = active?.closest<HTMLElement>('[role="dialog"][id]:not(.ncel__card)')
+  const trigger = pop
+    ? document.querySelector<HTMLElement>(`[aria-controls="${CSS.escape(pop.id)}"]`)
+    : null
+  return trigger ?? active
+}
+
+/**
+ * Último recurso quando o ponto de volta sumiu (a rota mudou com a festa
+ * aberta): o chip da sequência, que existe em todo shell, e não o <body>, onde
+ * o próximo Tab recomeçaria do topo sem nenhum aviso.
+ */
+function fallbackFocus(): HTMLElement | null {
+  const chips = document.querySelectorAll<HTMLElement>('.streak-trigger')
+  return [...chips].find((el) => el.offsetParent !== null) ?? null
+}
 
 function onKeydown(e: KeyboardEvent) {
   if (!state.open) return
@@ -208,8 +245,9 @@ async function launchConfetti() {
 // ─── Abrir / fechar ───────────────────────────────────────────────────────────
 function onOpen(first: boolean) {
   if (first) {
-    lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    lastFocus = returnTarget()
     document.addEventListener('keydown', onKeydown, true)
+    document.addEventListener('visibilitychange', onVisibility)
   }
   const t = title.value
   announcement.value = `${t}${/[.!?]$/.test(t) ? '' : '.'} ${subtitle.value}`
@@ -225,8 +263,10 @@ function onClosed() {
   confettiTl?.kill()
   confettiTl = null
   document.removeEventListener('keydown', onKeydown, true)
+  document.removeEventListener('visibilitychange', onVisibility)
   // Devolve o foco só se o elemento ainda existe (a rota pode ter mudado).
-  if (lastFocus && document.contains(lastFocus)) lastFocus.focus()
+  const back = lastFocus && document.contains(lastFocus) ? lastFocus : fallbackFocus()
+  back?.focus({ preventScroll: true })
   lastFocus = null
   // Limpa depois do fechamento para a mesma frase poder ser anunciada de novo.
   window.setTimeout(() => {
@@ -270,6 +310,7 @@ onBeforeUnmount(() => {
   clearTimer()
   confettiTl?.kill()
   document.removeEventListener('keydown', onKeydown, true)
+  document.removeEventListener('visibilitychange', onVisibility)
 })
 </script>
 
@@ -329,7 +370,7 @@ onBeforeUnmount(() => {
           </div>
 
           <p class="ncel__count">
-            <NevoFlame live :size="46" />
+            <NevoFlame live :tier="tierForDays(state.current)?.key" :size="46" />
             <span class="ncel__count-text" aria-hidden="true">
               <span class="ncel__num">{{ state.current }}</span>
               <span class="ncel__unit">{{ unitLabel }}</span>

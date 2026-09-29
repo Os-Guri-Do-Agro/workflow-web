@@ -15,7 +15,7 @@ import streakService, {
 } from '@/service/streak/streak-service'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useCurrentUser } from '@/composables/useCurrentUser'
-import { streakKeys } from '@/composables/useStreak'
+import { streakKeys, useStreak, withMyStreak } from '@/composables/useStreak'
 import {
   buildPulseBars,
   type PulseBar,
@@ -94,6 +94,8 @@ export interface TeamStreakLeader {
   isMe: boolean
   current: number
   securedToday: boolean
+  /** Descanso hoje (fim de semana ou feriado): não é pendência (D4). */
+  todayIsRest: boolean
   pointsWeek: number
 }
 
@@ -356,9 +358,16 @@ export function useTeamTime(
       .filter((r): r is { companyId: string; data: CompanyReport } => !!r.data),
   )
 
+  // A minha linha vem do `/me`, sem o cache de 30 s da equipe no servidor (ver
+  // `withMyStreak`): o card do rail e a lista batem com o chip na hora.
+  const { streak: myStreak } = useStreak()
+
   const streakTeams = computed(() =>
     streakQueries.value
-      .map((q, i) => ({ companyId: targetIds.value[i], data: q.data as StreakTeam | undefined }))
+      .map((q, i) => {
+        const data = q.data as StreakTeam | undefined
+        return { companyId: targetIds.value[i], data: data ? withMyStreak(data, myStreak.value) : undefined }
+      })
       .filter((t): t is { companyId: string; data: StreakTeam } => !!t.data && !!t.companyId),
   )
 
@@ -593,6 +602,7 @@ export function useTeamTime(
         isMe: m.isMe,
         current: m.current,
         securedToday: m.securedToday,
+        todayIsRest: m.todayIsRest,
         pointsWeek: m.points.week,
       }))
 

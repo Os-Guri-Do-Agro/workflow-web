@@ -4,41 +4,62 @@
  *
  * Props:
  * - `sprite`: chama fixa (ex.: `seq-constancia` de um marco). Sem ela, usa a
- *   chama comum (`fogo-normal`).
- * - `live`: chama viva. Sem `sprite`, roda o flipbook `NEVO_FLIPBOOKS.flame`
- *   (3 frames) com uma tremulação leve de escala; com `sprite`, só tremula.
+ *   chama comum (`fogo-normal`) ou a do nível (`tier`).
+ * - `tier`: nível de quem é dono da chama. ACESA, segue o nível: sem nível e
+ *   Básico ficam na laranja animada; de Em progresso para cima vira a
+ *   chama-cristal do nível (`tierLitFlame`: laranja-dourado, azul, roxo,
+ *   dourado). Apagada continua cinza, igual para todo mundo.
+ * - `live`: chama viva. A laranja roda o flipbook `NEVO_FLIPBOOKS.flame`
+ *   (3 frames) com uma tremulação leve de escala; sprite único (cristal do
+ *   nível ou `sprite` fixo) é estático no arquivo, então tremula só em CSS:
+ *   escala e inclinação leves a partir da base. Nunca brilho em volta.
  * - `lit`: acesa (padrão). `false` = apagada: cinza total, opacidade baixa e
  *   sem animação (dia ainda não garantido, marco não conquistado).
  * - `size`: altura em px (padrão 32).
  * - `alt`: vazio (padrão) = decorativa.
  *
- * Movimento reduzido: estática (`fogo-normal` ou o `sprite` informado).
+ * Movimento reduzido: estática (`fogo-normal`, o cristal do nível ou o
+ * `sprite` informado).
  *
- * Usado em: chip da topbar, StreakWeek (hoje pendente), MilestoneTrack,
- * StreakCelebration, painel da equipe.
+ * Usado em: chip da topbar e popover, StreakHero, StreakWeek (hoje pendente),
+ * MilestoneTrack, StreakCelebration, painel da equipe, Equipe do /time.
  */
 import { computed } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
-import { NEVO_FLIPBOOKS, nevoSize, nevoSrc, type NevoSpriteName } from './nevo-assets'
+import type { StreakTierKey } from '@/service/streak/streak-service'
+import {
+  NEVO_FLIPBOOKS,
+  nevoSize,
+  nevoSrc,
+  tierLitFlame,
+  type NevoSpriteName,
+} from './nevo-assets'
 
 const props = withDefaults(
   defineProps<{
     sprite?: NevoSpriteName
+    tier?: StreakTierKey | null
     live?: boolean
     lit?: boolean
     size?: number
     alt?: string
   }>(),
-  { sprite: undefined, live: false, lit: true, size: 32, alt: '' },
+  { sprite: undefined, tier: null, live: false, lit: true, size: 32, alt: '' },
 )
 
 const reduced = useMediaQuery('(prefers-reduced-motion: reduce)')
 
 const animated = computed(() => props.live && props.lit && !reduced.value)
 
+/** Sprite único: o fixo informado ou, acesa, o cristal do nível. */
+const single = computed<NevoSpriteName | null>(
+  () => props.sprite ?? (props.lit ? tierLitFlame(props.tier) : null),
+)
+
 const frames = computed<readonly NevoSpriteName[]>(() => {
-  if (animated.value && !props.sprite) return NEVO_FLIPBOOKS.flame
-  return [props.sprite ?? 'fogo-normal']
+  if (single.value) return [single.value]
+  if (animated.value) return NEVO_FLIPBOOKS.flame
+  return ['fogo-normal']
 })
 
 /** Mesma regra do NevoSprite: escala única pela maior altura, alinhado pelo pé. */
@@ -64,13 +85,20 @@ const layout = computed(() => {
 })
 
 const flipbookOn = computed(() => layout.value.frames.length > 1)
+/** Viva e de frame único: tremula com inclinação (o flipbook já tem movimento próprio). */
+const sway = computed(() => animated.value && !flipbookOn.value)
 const decorative = computed(() => !props.alt)
 </script>
 
 <template>
   <span
     class="nflame"
-    :class="{ 'nflame--live': animated, 'nflame--off': !lit, 'nflame--flipbook': flipbookOn }"
+    :class="{
+      'nflame--live': animated,
+      'nflame--sway': sway,
+      'nflame--off': !lit,
+      'nflame--flipbook': flipbookOn,
+    }"
     :style="{ width: `${layout.width}px`, height: `${layout.height}px` }"
     :role="decorative ? undefined : 'img'"
     :aria-label="decorative ? undefined : alt"
@@ -151,6 +179,13 @@ const decorative = computed(() => !props.alt)
   animation: nflame-flicker 1.4s ease-in-out infinite;
 }
 
+/* Frame único (cristal do nível, chama de marco): o arquivo é parado, então o
+   movimento vem todo daqui. Escala e inclinação leves, com a base fixa, num
+   ciclo um pouco mais lento que a laranja para não parecer tremor. */
+.nflame--sway .nflame__body {
+  animation: nflame-sway 2.2s ease-in-out infinite;
+}
+
 @keyframes nflame-frames {
   0% {
     opacity: 1;
@@ -176,6 +211,25 @@ const decorative = computed(() => !props.alt)
   }
   75% {
     transform: scale(1.02, 0.99);
+  }
+}
+
+@keyframes nflame-sway {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1, 1);
+  }
+  20% {
+    transform: rotate(-2deg) scale(1.02, 0.98);
+  }
+  45% {
+    transform: rotate(1.5deg) scale(0.98, 1.04);
+  }
+  70% {
+    transform: rotate(-1deg) scale(1.01, 0.99);
+  }
+  85% {
+    transform: rotate(0.6deg) scale(0.995, 1.015);
   }
 }
 

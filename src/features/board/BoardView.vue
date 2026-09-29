@@ -1,24 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import {
-  Search,
-  Calendar,
-  User,
-  LayoutGrid,
-  AlertCircle,
-  X,
-} from 'lucide-vue-next'
+import { Search, User, X } from 'lucide-vue-next'
 import { useWorkspaceStore, type ActivityItem } from '@/stores/workspaceStores'
 import { getUserToken } from '@/utils/authContent'
-import { dateOnlyDiffDays, isOverdue as isDueDateOverdue } from '@/utils/date'
 import { useToast } from '@/composables/useToast'
 import activityService from '@/service/activities/activity-service'
 import { useActivityBoardRealtime } from '@/composables/useActivityBoardRealtime'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import AppSelect from '@/components/ui/AppSelect.vue'
-import TagChip from '@/components/ui/TagChip.vue'
+import TaskCard, { type TaskCardTask } from '@/components/tasks/TaskCard.vue'
+import TaskColumn from '@/components/tasks/TaskColumn.vue'
 import TaskDetailPanel from '@/features/tasks/components/TaskDetailPanel.vue'
+import { ACTIVITY_STATUSES, PRIORITY_OPTIONS, priorityLevel } from '@/features/tasks/task-meta'
+import { taskKey } from '@/features/tasks/task-key'
+import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
 
 const { error: showError, success: showSuccess } = useToast()
 
@@ -51,22 +47,12 @@ const draggedTask = ref<ActivityItem | null>(null)
 
 type ColumnStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
 
-const columns: { id: ColumnStatus; title: string; token: string }[] = [
-  { id: 'TODO', title: 'A fazer', token: 'var(--status-todo)' },
-  { id: 'IN_PROGRESS', title: 'Em andamento', token: 'var(--status-prog)' },
-  { id: 'IN_TESTING', title: 'Em teste', token: 'var(--status-test)' },
-  { id: 'DONE', title: 'Concluído', token: 'var(--status-done)' },
-]
+// Colunas, rótulos, ícones e escala de prioridade vêm do task-meta: a mesma
+// fonte do board do mês. Antes esta tela tinha a própria escala (P0 = Crítica),
+// oposta à do formulário, e a mesma tarefa trocava de cor ao mudar de tela.
+const columns = ACTIVITY_STATUSES
 
-type PrioritySpec = { label: string; token: string }
-const priorityMeta: Record<number, PrioritySpec> = {
-  0: { label: 'P0', token: 'var(--err)' },
-  1: { label: 'P1', token: 'var(--warn)' },
-  2: { label: 'P2', token: 'var(--info)' },
-  3: { label: 'P3', token: 'var(--text-3)' },
-}
-const PRIORITY_FALLBACK: PrioritySpec = { label: 'P?', token: 'var(--text-3)' }
-const prio = (p: number): PrioritySpec => priorityMeta[p] ?? PRIORITY_FALLBACK
+const { isCollapsed, canCollapse, toggle: toggleCollapsed } = useCollapsedColumns()
 
 const allActivities = computed(() => {
   let activities = workspace.workspaceData?.activities || []
@@ -84,7 +70,9 @@ const allActivities = computed(() => {
   }
 
   if (filterPriority.value !== null) {
-    activities = activities.filter((a) => a.priority === filterPriority.value)
+    // Por NÍVEL: "Urgente" pega 4 e 5 (task-meta, D3).
+    const level = priorityLevel(filterPriority.value)
+    activities = activities.filter((a) => priorityLevel(a.priority) === level)
   }
 
   if (filterPerson.value) {
@@ -137,14 +125,36 @@ function toggleTagFilter(slug: string): void {
     : [...filterTags.value, slug]
 }
 
-const getColumnTasks = (status: string) => {
-  return allActivities.value
-    .filter((a) => a.status === status)
-    .sort((a, b) => {
-      if (a.priority !== b.priority) return a.priority - b.priority
-      if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-      return 0
-    })
+// Urgente primeiro, depois o prazo mais perto. Aqui não existe ordem manual:
+// `position` é por (mês, status) e este board mistura meses e empresas. Antes a
+// ordem era crescente pelo número, e o 0 padrão subia ao topo como "crítico".
+const columnTasks = computed(() => {
+  const byStatus = {} as Record<ColumnStatus, ActivityItem[]>
+  for (const column of columns) {
+    byStatus[column.value] = allActivities.value
+      .filter((a) => a.status === column.value)
+      .sort((a, b) => {
+        const byPriority = priorityLevel(b.priority) - priorityLevel(a.priority)
+        if (byPriority) return byPriority
+        if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+        if (a.dueDate || b.dueDate) return a.dueDate ? -1 : 1
+        return 0
+      })
+  }
+  return byStatus
+})
+
+/** O item achatado do `/dashboard/workspace` no formato do card único. */
+function toCard(a: ActivityItem): TaskCardTask {
+  return {
+    id: a.id,
+    title: a.title,
+    priorityNumber: a.priority,
+    dueDate: a.dueDate,
+    responsibles: (a.responsibles ?? []).map((r) => ({ userId: r.id, user: { name: r.name } })),
+    tags: (a.tags ?? []).map((tag) => ({ tag })),
+    _count: { docs: a.docCount ?? 0, attachments: a.attachmentCount ?? 0 },
+  }
 }
 
 const companies = computed(() => {
@@ -245,10 +255,7 @@ const companyItems = computed(() => [
 
 const priorityItems: { label: string; value: number | null }[] = [
   { label: 'Todas prioridades', value: null },
-  { label: 'P0 · Crítica', value: 0 },
-  { label: 'P1 · Alta', value: 1 },
-  { label: 'P2 · Média', value: 2 },
-  { label: 'P3 · Baixa', value: 3 },
+  ...PRIORITY_OPTIONS,
 ]
 
 const hasFilters = computed(
@@ -312,8 +319,9 @@ function readFiltersFromUrl() {
   filterCompany.value = str(q.empresa)
   filterPerson.value = str(q.pessoa)
   filterMonth.value = str(q.mes)
+  // Aceita 0 a 5 (links antigos) e guarda o NÍVEL: 5 vira "Urgente" (4).
   const p = str(q.prioridade)
-  filterPriority.value = p !== null && /^[0-3]$/.test(p) ? Number(p) : null
+  filterPriority.value = p !== null && /^[0-5]$/.test(p) ? priorityLevel(p) : null
 }
 
 watch(
@@ -343,7 +351,7 @@ async function loadData() {
   loading.value = !workspace.workspaceData?.activities?.length
   try {
     await workspace.fetchWorkspace()
-  } catch (err) {
+  } catch {
     showError('Erro ao carregar atividades')
   } finally {
     loading.value = false
@@ -356,7 +364,7 @@ onMounted(() => {
 })
 
 // ── Realtime: reflete arraste feito em outras abas/usuários na visão agregada ──
-// A store é reativa; setar .status faz getColumnTasks reordenar sozinho. Match
+// A store é reativa; setar .status faz columnTasks reordenar sozinho. Match
 // por id cobre todas as empresas do workspace (o usuário recebe eventos de todas).
 function applyRemoteMove(p: ActivityMovedPayload) {
   const activity = workspace.workspaceData?.activities.find((a) => a.id === p.activityId)
@@ -410,22 +418,23 @@ function closeTask() {
   router.replace({ query })
 }
 
-function formatDate(date: string | null) {
-  if (!date) return 'Sem prazo'
-  const days = dateOnlyDiffDays(date)
-
-  if (days < 0) return `Atrasada ${Math.abs(days)}d`
-  if (days === 0) return 'Hoje'
-  if (days === 1) return 'Amanhã'
-  return `${days}d`
-}
-
-function isOverdue(activity: any) {
-  if (activity.status === 'DONE') return false
-  return isDueDateOverdue(activity.dueDate)
+/**
+ * Quem pode mexer no card: o papel na empresa DO CARD (o /board mistura
+ * empresas), o `myRole` que o servidor manda junto. Resposta antiga sem o campo
+ * cai no papel do token, a mesma regra do painel. VIEWER vê, abre e não move.
+ */
+function canEditTask(task: ActivityItem): boolean {
+  const role: string | undefined =
+    task.myRole ??
+    getUserToken()?.companies?.find((c) => c.companyId === task.companyId)?.role
+  return role === 'ADMIN' || role === 'WORKER'
 }
 
 async function updateTaskStatus(task: ActivityItem, newStatus: ColumnStatus) {
+  if (task.status === newStatus) return
+  // Guarda também aqui (e não só no card): o arraste nativo e o "Mover para"
+  // chegam por caminhos diferentes, e nenhum deles pode gravar sem permissão.
+  if (!canEditTask(task)) return
   const previousStatus = task.status
   // Update otimista: o card move na hora.
   task.status = newStatus
@@ -439,8 +448,19 @@ async function updateTaskStatus(task: ActivityItem, newStatus: ColumnStatus) {
   }
 }
 
+// Arraste HTML5 nativo, só de status: sem ordem manual neste board (ver acima).
+const overColumn = ref<ColumnStatus | null>(null)
+
 function handleDragStart(task: ActivityItem) {
+  if (!canEditTask(task)) return
   draggedTask.value = task
+}
+
+// Soltar fora de qualquer coluna (ou apertar Esc) também encerra o arraste; sem
+// isto o card de origem ficava como lugar vazio até o próximo arraste.
+function handleDragEnd() {
+  draggedTask.value = null
+  overColumn.value = null
 }
 
 function handleDrop(columnId: ColumnStatus) {
@@ -448,7 +468,7 @@ function handleDrop(columnId: ColumnStatus) {
   if (task && task.status !== columnId) {
     updateTaskStatus(task, columnId)
   }
-  draggedTask.value = null
+  handleDragEnd()
 }
 
 </script>
@@ -458,10 +478,6 @@ function handleDrop(columnId: ColumnStatus) {
     <!-- Header -->
     <header class="page-header">
       <div class="header-main">
-        <span class="eyebrow">
-          <LayoutGrid :size="11" />
-          Board
-        </span>
         <h1 class="page-title">Visão geral</h1>
         <p class="page-sub">
           {{ allActivities.length }} atividades · {{ workspace.workspaceData?.companies?.length || 0 }} empresa(s)
@@ -542,119 +558,51 @@ function handleDrop(columnId: ColumnStatus) {
       </div>
     </div>
 
-    <!-- Kanban -->
+    <!-- Kanban: as mesmas colunas e o mesmo card do board do mês -->
     <div class="kanban">
-      <section
+      <TaskColumn
         v-for="column in columns"
-        :key="column.id"
-        class="col"
-        :class="{ 'col--drop': draggedTask && draggedTask.status !== column.id }"
+        :key="column.value"
+        :status="column.value"
+        :count="columnTasks[column.value].length"
+        :collapsible="canCollapse(column.value)"
+        :collapsed="isCollapsed(column.value)"
+        :over="!!draggedTask && overColumn === column.value && draggedTask.status !== column.value"
+        @toggle-collapse="toggleCollapsed(column.value)"
+        @dragenter="overColumn = column.value"
         @dragover.prevent
-        @drop.prevent="handleDrop(column.id)"
+        @drop.prevent="handleDrop(column.value)"
       >
-        <header class="col-header">
-          <div class="col-title-row">
-            <span class="col-dot" :style="{ background: column.token }" />
-            <span class="col-title">{{ column.title }}</span>
-            <span class="col-count">{{ getColumnTasks(column.id).length }}</span>
-          </div>
-          <div class="col-bar">
-            <div
-              class="col-bar-fill"
-              :style="{
-                width: `${Math.round((getColumnTasks(column.id).length / (allActivities.length || 1)) * 100)}%`,
-                background: column.token,
-              }"
-            />
-          </div>
-        </header>
-
         <div class="col-body">
           <template v-if="loading">
             <div v-for="i in 3" :key="i" class="card-skel" />
           </template>
 
-          <template v-else-if="!getColumnTasks(column.id).length">
-            <div class="empty">
-              <span class="empty-dot" :style="{ background: column.token }" />
-              <span class="empty-label">Sem atividades</span>
-            </div>
-          </template>
+          <p v-else-if="!columnTasks[column.value].length" class="col-empty">Nenhuma tarefa</p>
 
           <template v-else>
-            <article
-              v-for="task in getColumnTasks(column.id)"
+            <TaskCard
+              v-for="task in columnTasks[column.value]"
               :key="task.id"
-              class="card"
-              :class="{
-                'card--overdue': isOverdue(task),
-                'card--mine': task.isMine,
-                'card--drag': draggedTask?.id === task.id,
-              }"
-              draggable="true"
+              :task="toCard(task)"
+              :status="column.value"
+              :task-key="taskKey(task, task.companyName)"
+              :context="task.companyName"
+              :renamable="false"
+              :deletable="false"
+              :readonly="!canEditTask(task)"
+              :active-tags="filterTags"
+              :dragging="draggedTask?.id === task.id"
+              :draggable="canEditTask(task) ? 'true' : 'false'"
               @dragstart="handleDragStart(task)"
-              @click="openTask(task)"
-            >
-              <div class="card-top">
-                <span class="company-chip" :title="task.companyName">
-                  <img src="/brand/caneca-circulo.svg" alt="" class="company-logo" draggable="false" />
-                  <span class="company-name">{{ task.companyName }}</span>
-                </span>
-                <span
-                  class="priority-chip"
-                  :style="{
-                    color: prio(task.priority).token,
-                    background: `color-mix(in srgb, ${prio(task.priority).token} 14%, transparent)`,
-                  }"
-                >
-                  {{ prio(task.priority).label }}
-                </span>
-              </div>
-
-              <h3 class="card-title">{{ task.title }}</h3>
-
-              <!-- Tags: até 3 chips, o resto vira +N. O board agregado mistura
-                   empresas, e a cor da tag é por empresa. -->
-              <div v-if="task.tags?.length" class="card-tags">
-                <TagChip
-                  v-for="tag in task.tags.slice(0, 3)"
-                  :key="tag.id"
-                  :tag="tag"
-                  interactive
-                  :active="filterTags.includes(tag.slug)"
-                  @select.stop="toggleTagFilter(tag.slug)"
-                />
-                <span v-if="task.tags.length > 3" class="card-tags__more">
-                  +{{ task.tags.length - 3 }}
-                </span>
-              </div>
-
-              <div class="card-meta">
-                <span class="meta" :class="{ 'meta--overdue': isOverdue(task) }">
-                  <AlertCircle v-if="isOverdue(task)" :size="11" />
-                  <Calendar v-else :size="11" />
-                  {{ formatDate(task.dueDate) }}
-                </span>
-                <span v-if="task.responsibles?.length" class="meta">
-                  <User :size="11" />
-                  {{
-                    task.responsibles.filter((r: any) => r.isMe).length
-                      ? 'Eu'
-                      : task.responsibles[0]?.name
-                  }}
-                  <span v-if="task.responsibles.length > 1" class="more">
-                    +{{ task.responsibles.length - 1 }}
-                  </span>
-                </span>
-              </div>
-
-              <footer class="card-foot">
-                <span class="quarter">{{ task.quarter }} · {{ task.month }}</span>
-              </footer>
-            </article>
+              @dragend="handleDragEnd"
+              @open="openTask(task)"
+              @move="updateTaskStatus(task, $event)"
+              @tag="toggleTagFilter"
+            />
           </template>
         </div>
-      </section>
+      </TaskColumn>
     </div>
 
     <TaskDetailPanel
@@ -690,17 +638,6 @@ function handleDrop(columnId: ColumnStatus) {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .page-title {
@@ -841,109 +778,50 @@ function handleDrop(columnId: ColumnStatus) {
   color: var(--text);
 }
 
-/* ---- Kanban ---- */
+/* ---- Kanban: poços de 280px lado a lado (TaskColumn) ---- */
 .kanban {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  container: task-board / inline-size;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
   flex: 1;
   min-height: 0;
   overflow-x: auto;
-}
-
-.col {
-  display: flex;
-  flex-direction: column;
-  min-width: 260px;
-  min-height: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  transition:
-    border-color var(--motion-fast) var(--motion-ease),
-    background var(--motion-fast) var(--motion-ease);
-}
-
-/* Coluna de destino durante o arraste: além da cor, um anel do acento deixa
-   claro onde o card vai cair, mesmo em tela grande com o cursor longe. */
-.col--drop {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
-}
-
-.col-header {
-  padding: 12px 12px 10px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.col-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.col-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.col-title {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.005em;
-  flex: 1;
-}
-
-.col-count {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  background: var(--surface-2);
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-variant-numeric: tabular-nums;
-}
-
-.col-bar {
-  height: 2px;
-  background: var(--surface-2);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.col-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  transition: width var(--motion) var(--motion-ease);
+  scrollbar-width: thin;
 }
 
 .col-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 10px;
+  padding: 0 6px 6px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   scrollbar-width: thin;
 }
 
+.col-empty {
+  margin: 0;
+  padding: 18px 0 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+}
+
 .card-skel {
-  height: 92px;
+  flex: none;
+  height: 64px;
   background: linear-gradient(
     90deg,
-    var(--surface-2) 0%,
-    color-mix(in srgb, var(--surface-2) 60%, var(--surface-3)) 50%,
-    var(--surface-2) 100%
+    var(--surface) 0%,
+    var(--surface-2) 50%,
+    var(--surface) 100%
   );
   background-size: 200% 100%;
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-raised);
   animation: shimmer 1.4s ease infinite;
 }
 
@@ -956,209 +834,7 @@ function handleDrop(columnId: ColumnStatus) {
   }
 }
 
-.empty {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px;
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
-  border: 1px dashed var(--border);
-}
-
-.empty-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  opacity: 0.6;
-}
-
-.empty-label {
-  font-size: 11.5px;
-  color: var(--text-3);
-  font-weight: 500;
-}
-
-/* ---- Card ---- */
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 11px 12px;
-  /* Elevação: cor de base + gradiente de luz + fio claro na borda de cima.
-     No escuro é isso que levanta o card, já que sombra preta sobre fundo
-     escuro praticamente não aparece. */
-  background-color: var(--surface-2);
-  background-image: var(--elev-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow:
-    var(--shadow-sm),
-    inset 0 1px 0 var(--elev-hi);
-  cursor: grab;
-  position: relative;
-  transition:
-    border-color var(--motion-fast) var(--motion-ease),
-    background-color var(--motion-fast) var(--motion-ease),
-    box-shadow var(--motion) var(--motion-ease),
-    transform var(--motion) var(--motion-ease);
-}
-
-.card:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.card:hover {
-  border-color: var(--border-strong);
-  background-color: var(--surface-3);
-  /* Sobe 2px e ganha sombra: o card "descola" da coluna em vez de só mudar de cor. */
-  transform: translateY(-2px);
-  box-shadow:
-    var(--shadow),
-    inset 0 1px 0 var(--elev-hi);
-}
-
-.card:active {
-  cursor: grabbing;
-}
-
-.card--mine {
-  border-left: 2px solid var(--accent);
-}
-
-.card--overdue {
-  border-left: 2px solid var(--err);
-}
-
-/* Card sendo arrastado: fica "erguido" e levemente torto, e some a sombra de
-   repouso para não competir com a coluna de destino, que acende embaixo.
-   A dupla classe é proposital: durante o arraste o cursor está sobre o card,
-   então `:hover` continua casando e, com a mesma especificidade, quem vencesse
-   dependeria da ordem no arquivo. */
-.card.card--drag {
-  opacity: 0.5;
-  transform: rotate(2deg) scale(1.02);
-  box-shadow: var(--shadow-overlay);
-  border-color: var(--accent);
-  cursor: grabbing;
-}
-
-.card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.company-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 65%;
-  font-size: 11px;
-  color: var(--text-2);
-  overflow: hidden;
-}
-
-.company-logo {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.company-name {
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.priority-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  flex-shrink: 0;
-}
-
-.card-title {
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.45;
-  color: var(--text);
-  margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  margin: 0 0 7px;
-}
-
-.card-tags__more {
-  color: var(--text-4);
-  font-size: 10.5px;
-  font-weight: 600;
-}
-
-.card-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--text-3);
-}
-
-.meta--overdue {
-  color: var(--err);
-  font-weight: 600;
-}
-
-.more {
-  font-size: 10px;
-  color: var(--text-4);
-  font-weight: 500;
-}
-
-.card-foot {
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-}
-
-.quarter {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-4);
-}
-
 /* ---- Responsive ---- */
-@media (max-width: 1200px) {
-  .kanban {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 760px) {
   .page-header,
   .toolbar {
@@ -1172,25 +848,17 @@ function handleDrop(columnId: ColumnStatus) {
     margin-left: 0;
     flex-wrap: wrap;
   }
+}
+
+@media (max-width: 640px) {
   .kanban {
-    grid-template-columns: 1fr;
+    scroll-snap-type: x mandatory;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .card,
-  .col,
-  .search-input,
-  .col-bar-fill {
+  .search-input {
     transition-duration: 1ms;
-  }
-  /* Quem pediu menos movimento continua tendo o feedback, só que por cor e
-     sombra: o deslocamento vertical é o que incomoda, não o destaque. */
-  .card:hover {
-    transform: none;
-  }
-  .card--drag {
-    transform: none;
   }
   .card-skel {
     animation-duration: 2s;

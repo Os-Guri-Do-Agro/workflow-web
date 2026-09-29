@@ -22,7 +22,7 @@ const resolving = ref(false)
 let installed = false
 
 export function useAbandonedEntry() {
-  const { invalidateAll } = useTimeTracking()
+  const { afterEntryChange } = useTimeTracking()
 
   async function check(): Promise<void> {
     try {
@@ -40,7 +40,9 @@ export function useAbandonedEntry() {
     try {
       await timeService.resolveEntry(entry.entry.id, action, endedAt)
       pending.value = null
-      await invalidateAll()
+      // Descartar ou fechar o timer largado mexe no foco do dia: a sequência
+      // entra junto (ver `afterEntryChange`).
+      await afterEntryChange()
     } finally {
       resolving.value = false
     }

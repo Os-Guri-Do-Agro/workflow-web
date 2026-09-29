@@ -30,7 +30,7 @@ import TaskDescriptionEditor from '@/features/tasks/components/TaskDescriptionEd
 // Mesma exceção de boundary do editor acima: `components/tasks/` já é domínio
 // de tarefa, e recorrência é um campo da tarefa — não uma feature vizinha.
 import RecurrenceRuleEditor from '@/features/tasks/recurring/components/RecurrenceRuleEditor.vue'
-import { ACTIVITY_STATUSES } from '@/features/tasks/task-meta'
+import { ACTIVITY_PRIORITIES, ACTIVITY_STATUSES, priorityLevel } from '@/features/tasks/task-meta'
 import type { ActivityStatus } from '@/features/tasks/activity-types'
 import type { RecurrenceRule } from '@/features/tasks/recurring/recurrence-types'
 import { monthKeyOf, monthLabel } from '@/features/tasks/recurring/recurrence-engine'
@@ -142,14 +142,10 @@ const form = computed({
 const attachmentError = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-const priorities = [
-  { value: 0, label: 'P0', tone: 'var(--text-3)' },
-  { value: 1, label: 'P1', tone: 'var(--info)' },
-  { value: 2, label: 'P2', tone: 'var(--info)' },
-  { value: 3, label: 'P3', tone: 'var(--warn)' },
-  { value: 4, label: 'P4', tone: 'var(--err)' },
-  { value: 5, label: 'P5', tone: 'var(--err)' },
-]
+// Escala única (task-meta, D3): Sem prioridade, Baixa, Média, Alta e Urgente.
+// O chip aceso compara NÍVEL, então uma rotina antiga gravada com 5 acende
+// "Urgente" em vez de nenhum.
+const selectedPriority = computed(() => priorityLevel(props.modelValue.priorityNumber))
 
 /** Espelho de `ATTACHMENT_MAX_BYTES` do servidor, que é quem manda. */
 const MAX_BYTES = 25 * 1024 * 1024
@@ -479,7 +475,7 @@ const submit = () => {
           <Plus :size="17" />
         </span>
         <div>
-          <h2 class="head-title">{{ props.editing ? 'Editar repetição' : 'Nova atividade' }}</h2>
+          <h2 class="head-title">{{ props.editing ? 'Editar repetição' : 'Nova tarefa' }}</h2>
           <p class="head-sub">
             {{
               props.editing
@@ -529,29 +525,31 @@ const submit = () => {
         />
       </div>
 
-      <!-- Priority + Due date row -->
-      <div class="row">
-        <div class="field flex-1">
-          <span class="label">
-            <Flag :size="12" />
-            Prioridade
-          </span>
-          <div class="prio-row">
-            <button
-              v-for="p in priorities"
-              :key="p.value"
-              type="button"
-              class="prio-chip"
-              :class="{ 'prio-chip--active': Number(form.priorityNumber) === p.value }"
-              :style="{ '--prio-c': p.tone } as Record<string, string>"
-              @click="emit('update:modelValue', { ...form, priorityNumber: p.value })"
-            >
-              {{ p.label }}
-            </button>
-          </div>
+      <!-- Prioridade: linha inteira, porque os cinco níveis têm nome (não "P0
+           a P5") e não cabem na metade da largura. -->
+      <div class="field">
+        <span class="label">
+          <Flag :size="12" />
+          Prioridade
+        </span>
+        <div class="prio-row" role="group" aria-label="Prioridade">
+          <button
+            v-for="p in ACTIVITY_PRIORITIES"
+            :key="p.value"
+            type="button"
+            class="prio-chip"
+            :class="{ 'prio-chip--active': selectedPriority === p.value }"
+            :aria-pressed="selectedPriority === p.value"
+            @click="emit('update:modelValue', { ...form, priorityNumber: p.value })"
+          >
+            <component :is="p.icon" :size="14" />
+            {{ p.label }}
+          </button>
         </div>
+      </div>
 
-        <label class="field flex-1">
+      <div class="row">
+        <label class="field field--half">
           <span class="label">
             <CalendarDays :size="12" />
             {{ isRecurring ? 'Começa em' : 'Entrega' }}
@@ -876,7 +874,7 @@ const submit = () => {
         >
           <Loader2 v-if="props.loading" :size="13" class="spin" />
           <Plus v-else :size="13" />
-          {{ props.loading ? 'Criando…' : props.editing ? 'Salvar alterações' : 'Criar atividade' }}
+          {{ props.loading ? 'Criando…' : props.editing ? 'Salvar alterações' : 'Criar tarefa' }}
         </button>
       </div>
     </footer>
@@ -988,6 +986,12 @@ const submit = () => {
   min-width: 0;
 }
 
+/* Data sozinha na linha: metade da largura, como era ao lado da prioridade. */
+.field--half {
+  flex: 0 1 calc(50% - 6px);
+  min-width: 0;
+}
+
 .label {
   display: inline-flex;
   align-items: center;
@@ -1044,16 +1048,21 @@ const submit = () => {
 }
 
 .prio-chip {
-  flex: 1;
-  min-width: 40px;
-  padding: 8px 6px;
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text-2);
   font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background var(--motion-fast) var(--motion-ease),
@@ -1067,9 +1076,15 @@ const submit = () => {
 }
 
 .prio-chip--active {
-  background: color-mix(in srgb, var(--prio-c) 14%, transparent);
-  border-color: var(--prio-c);
-  color: var(--prio-c);
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--text);
+}
+
+.prio-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* Status inicial */

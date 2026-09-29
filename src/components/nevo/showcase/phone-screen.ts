@@ -271,8 +271,19 @@ export function createPhoneScreen(onDirty: () => void): PhoneScreen {
   // A Geist pode chegar depois do primeiro desenho: redesenha quando carregar.
   void document.fonts?.ready.then(bump)
 
+  /**
+   * Número mostrado no quadro. D5: com hoje pendente a sequência conta até
+   * ontem; garantir o dia soma +1, então o número sobe junto com a chama de
+   * hoje. Sem isso a tela dizia "Dia garantido!" com o número parado (0 dias
+   * consecutivos no usuário novo). Usado no desenho e na chave de redesenho.
+   */
+  function shownCount(f: PhoneFrame): number {
+    const base = Math.round(clamp01(f.count) * data.current)
+    return base + (!data.todaySecured && clamp01(f.todayLit) >= 1 ? 1 : 0)
+  }
+
   function draw(f: PhoneFrame) {
-    const shown = Math.round(clamp01(f.count) * data.current)
+    const shown = shownCount(f)
     ctx.clearRect(0, 0, PHONE_W, PHONE_H)
     ctx.fillStyle = P.bg
     ctx.fillRect(0, 0, PHONE_W, PHONE_H)
@@ -342,7 +353,8 @@ export function createPhoneScreen(onDirty: () => void): PhoneScreen {
     ctx.textBaseline = 'middle'
     ctx.fillStyle = P.text2
     ctx.font = font(500, 30)
-    ctx.fillText(data.current === 1 ? 'dia consecutivo' : 'dias consecutivos', 196, 474)
+    // Singular/plural pelo número DESENHADO (0 vira 1 quando hoje acende).
+    ctx.fillText(shown === 1 ? 'dia consecutivo' : 'dias consecutivos', 196, 474)
     drawSprite(ctx, 'idle', 432, 232, 272)
     const lit = clamp01(f.todayLit)
     ctx.fillStyle = P.text
@@ -529,7 +541,7 @@ export function createPhoneScreen(onDirty: () => void): PhoneScreen {
     },
     drawFrame(f) {
       lastFrame = f
-      const shown = Math.round(clamp01(f.count) * data.current)
+      const shown = shownCount(f)
       // Quantiza o que anima para só redesenhar quando o pixel muda de fato.
       const mq = Math.round(f.missions * 12)
       const lq = Math.round(clamp01(f.todayLit) * 10)

@@ -208,10 +208,12 @@ const md = computed(() => props.size === 'md')
   background: var(--streak-missed);
 }
 
-/* Garantido: verde chapado, check na cor da superfície. */
+/* Garantido: verde chapado, check na cor da superfície. `--streak-done` e não
+   `--success`: no claro o verde do --success dá só 2,6:1 como objeto gráfico
+   (círculo contra o branco e check branco sobre ele); no escuro é o mesmo. */
 .is-secured .sweek__dot {
-  border-color: var(--success);
-  background: var(--success);
+  border-color: var(--streak-done);
+  background: var(--streak-done);
   color: var(--surface);
   animation: sweek-pop 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
   animation-delay: calc(var(--sweek-i) * 40ms);

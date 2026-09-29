@@ -2,7 +2,7 @@
 /**
  * NevoShowcase: a vitrine 3D da home (spec sequencia-diaria-nevo, T8), no
  * estilo dos vídeos de produto do Rotato. Notebook e celular com a interface
- * do Workflow, câmera com keyframes, o Nevo correndo, legendas por capítulo,
+ * do Nevo, câmera com keyframes, o Nevo correndo, legendas por capítulo,
  * tudo em loop de 22 s.
  *
  * Carregamento em três degraus, do mais leve ao mais pesado:
@@ -19,10 +19,20 @@
  *
  * Movimento reduzido: um quadro estático do capítulo 1; o indicador de
  * capítulos continua clicável (troca de quadro sem animar) e o botão de tocar
- * some. Perdeu o contexto WebGL: volta para o pôster em CSS.
+ * some. Perdeu o contexto WebGL: volta para o pôster em CSS e, quando o
+ * navegador devolve a GPU, remonta a cena num canvas novo.
+ *
+ * Renderização por software (GPU bloqueada, VM, área de trabalho remota): o
+ * contexto é pedido com `failIfMajorPerformanceCaveat`, e aí vale o pôster. Na
+ * CPU a cena rodava a 10 a 19 quadros por segundo disputando com a home.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useDocumentVisibility, useMediaQuery, useResizeObserver } from '@vueuse/core'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  useDevicePixelRatio,
+  useDocumentVisibility,
+  useMediaQuery,
+  useResizeObserver,
+} from '@vueuse/core'
 import { Pause, Play } from 'lucide-vue-next'
 import type { StreakMe, StreakTeam } from '@/service/streak/streak-service'
 import { nevoSrc } from '@/components/nevo/nevo-assets'
@@ -47,6 +57,8 @@ const visibility = useDocumentVisibility()
 const stageRef = ref<HTMLElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const chaptersRef = ref<HTMLElement | null>(null)
+/** Troca a cada remontagem da cena: o canvas antigo (contexto perdido) sai do DOM. */
+const canvasKey = ref(0)
 
 type Status = 'loading' | 'ready' | 'fallback'
 const status = ref<Status>('loading')
@@ -55,7 +67,8 @@ const userPaused = ref(!props.autoplay)
 const inView = ref(false)
 /**
  * A legenda troca sozinha a cada 4 s: anunciar isso no leitor de tela seria
- * falar sem parar. Só vira região viva depois que a pessoa escolhe um capítulo.
+ * falar sem parar. Só vira região viva quando a PESSOA escolhe um capítulo, e
+ * volta a ficar muda na primeira troca feita pelo playback (ver `onChapter`).
  */
 const userNavigated = ref(false)
 
@@ -66,6 +79,16 @@ let lastProgress = '0'
 
 const total = SHOWCASE_CHAPTERS.length
 const chapter = computed(() => SHOWCASE_CHAPTERS[chapterIndex.value] ?? SHOWCASE_CHAPTERS[0]!)
+
+/**
+ * Posição da legenda no palco estreito, do capítulo que ESTÁ na tela. Troca no
+ * `before-enter` da legenda nova (e não junto com o capítulo): com `out-in`, a
+ * legenda que sai termina de sumir no lugar dela, sem pular de canto.
+ */
+const captionLow = ref(chapter.value.captionNarrow === 'bottom')
+function onCaptionEnter() {
+  captionLow.value = chapter.value.captionNarrow === 'bottom'
+}
 const subtitle = computed(() => chapterSubtitle(chapter.value, props.streak, props.team))
 const canPlay = computed(() => status.value === 'ready' && !reduced.value)
 const running = computed(
@@ -99,11 +122,25 @@ useResizeObserver(stageRef, (entries) => {
   if (box) handle?.resize(box.width, box.height)
 })
 
-/** WebGL2 (o three atual não roda em WebGL1). Contexto de teste é descartado na hora. */
+// Trocar de monitor (1x para 2x) muda o DPR sem mudar o tamanho em CSS, e o
+// ResizeObserver não dispara: o buffer ficava no DPR antigo (borrado no 2x, ou
+// pixels demais no 1x) até o próximo resize. O `resize` da cena relê o DPR.
+const { pixelRatio } = useDevicePixelRatio()
+watch(pixelRatio, () => {
+  const el = stageRef.value
+  if (el) handle?.resize(el.clientWidth, el.clientHeight)
+})
+
+/**
+ * WebGL2 (o three atual não roda em WebGL1) com GPU de verdade: renderização
+ * por software (SwiftShader, WARP, llvmpipe) responde `null` com
+ * `failIfMajorPerformanceCaveat` e fica o pôster. O contexto de teste é
+ * descartado na hora.
+ */
 function hasWebGL2(): boolean {
   try {
     const probe = document.createElement('canvas')
-    const gl = probe.getContext('webgl2')
+    const gl = probe.getContext('webgl2', { failIfMajorPerformanceCaveat: true })
     if (!gl) return false
     gl.getExtension('WEBGL_lose_context')?.loseContext()
     return true
@@ -112,10 +149,79 @@ function hasWebGL2(): boolean {
   }
 }
 
-function toFallback() {
+/**
+ * Canvas cujo contexto caiu, esperando o navegador devolver a GPU. O three
+ * cancela o `webglcontextlost` (é o que autoriza a restauração), mas a cena já
+ * foi descartada: o contexto restaurado nesse canvas ficaria vivo e sem uso.
+ */
+let lostCanvas: HTMLCanvasElement | null = null
+
+function forgetLostCanvas() {
+  lostCanvas?.removeEventListener('webglcontextrestored', onContextRestored)
+  lostCanvas = null
+}
+
+/** A GPU voltou: solta o contexto velho e remonta a cena num canvas novo. */
+function onContextRestored() {
+  const old = lostCanvas
+  forgetLostCanvas()
+  try {
+    old?.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext()
+  } catch {
+    // Sem a extensão: o canvas já saiu do DOM e o coletor leva o contexto.
+  }
+  if (unmounted) return
+  status.value = 'loading'
+  canvasKey.value++
+  void nextTick(startScene)
+}
+
+function toFallback(lost = false) {
+  if (lost && canvasRef.value && !lostCanvas) {
+    lostCanvas = canvasRef.value
+    lostCanvas.addEventListener('webglcontextrestored', onContextRestored)
+  }
   status.value = 'fallback'
+  // O pôster é o quadro do capítulo 1: a legenda volta para ele.
+  chapterIndex.value = 0
+  userNavigated.value = false
   handle?.dispose()
   handle = null
+}
+
+async function startScene() {
+  const el = stageRef.value
+  try {
+    const { createShowcase } = await import('./scene')
+    if (unmounted || !canvasRef.value) return
+    const h = createShowcase(canvasRef.value, {
+      onReady: () => {
+        if (!unmounted) status.value = 'ready'
+      },
+      onContextLost: () => {
+        if (!unmounted) toFallback(true)
+      },
+    })
+    handle = h
+    h.onChapter((i) => {
+      // Troca que a pessoa pediu: `goTo` já gravou `i` antes do seek. Índice
+      // diferente = o playback avançou sozinho, e a legenda volta a ser muda.
+      if (i !== chapterIndex.value) userNavigated.value = false
+      chapterIndex.value = i
+    })
+    // Progresso do capítulo vai direto para uma variável CSS, sem passar pela
+    // reatividade: 60 atualizações por segundo não precisam re-renderizar nada.
+    h.onProgress((_, p) => {
+      lastProgress = p.toFixed(3)
+      chaptersRef.value?.style.setProperty('--chapter-p', lastProgress)
+    })
+    h.setData(props.streak, props.team)
+    if (el) h.resize(el.clientWidth, el.clientHeight)
+    // Quem liga o laço é o `watch(running)`: `onReady` põe o status em 'ready'
+    // (também na remontagem depois de perder o contexto).
+  } catch {
+    if (!unmounted) toFallback()
+  }
 }
 
 onMounted(async () => {
@@ -136,38 +242,14 @@ onMounted(async () => {
     status.value = 'fallback'
     return
   }
-  try {
-    const { createShowcase } = await import('./scene')
-    if (unmounted || !canvasRef.value) return
-    const h = createShowcase(canvasRef.value, {
-      onReady: () => {
-        if (!unmounted) status.value = 'ready'
-      },
-      onContextLost: () => {
-        if (!unmounted) toFallback()
-      },
-    })
-    handle = h
-    h.onChapter((i) => {
-      chapterIndex.value = i
-    })
-    // Progresso do capítulo vai direto para uma variável CSS, sem passar pela
-    // reatividade: 60 atualizações por segundo não precisam re-renderizar nada.
-    h.onProgress((_, p) => {
-      lastProgress = p.toFixed(3)
-      chaptersRef.value?.style.setProperty('--chapter-p', lastProgress)
-    })
-    h.setData(props.streak, props.team)
-    if (el) h.resize(el.clientWidth, el.clientHeight)
-  } catch {
-    if (!unmounted) toFallback()
-  }
+  await startScene()
 })
 
 onBeforeUnmount(() => {
   unmounted = true
   observer?.disconnect()
   observer = null
+  forgetLostCanvas()
   handle?.dispose()
   handle = null
 })
@@ -194,9 +276,17 @@ const posterLabel = computed(() => {
     ref="stageRef"
     class="showcase"
     :class="{ 'is-ready': status === 'ready', 'is-reduced': reduced }"
-    aria-label="Vitrine animada do Workflow"
+    aria-label="Vitrine animada do Nevo"
   >
-    <canvas ref="canvasRef" class="showcase-canvas" aria-hidden="true" />
+    <!-- Fora do DOM no pôster: um contexto que o navegador restaurar num canvas
+         sem cena não fica vivo à toa (a remontagem usa um canvas novo). -->
+    <canvas
+      v-if="status !== 'fallback'"
+      :key="canvasKey"
+      ref="canvasRef"
+      class="showcase-canvas"
+      aria-hidden="true"
+    />
 
     <!-- Pôster em CSS: aparece enquanto a cena carrega e fica de vez sem WebGL. -->
     <Transition name="showcase-fade">
@@ -215,10 +305,18 @@ const posterLabel = computed(() => {
       </div>
     </Transition>
 
-    <div class="showcase-caption" :aria-live="userNavigated ? 'polite' : 'off'">
-      <Transition name="caption-swap" mode="out-in">
+    <div
+      class="showcase-caption"
+      :class="{ 'is-low': captionLow }"
+      :aria-live="userNavigated ? 'polite' : 'off'"
+    >
+      <Transition name="caption-swap" mode="out-in" @before-enter="onCaptionEnter">
         <div :key="chapter.id">
-          <p class="caption-step">Capítulo {{ chapterIndex + 1 }} de {{ total }}</p>
+          <!-- "Capítulo N de 5" só com os controles na tela: no pôster (sem
+               WebGL, carregando) prometia uma sequência que não dá para navegar. -->
+          <p v-if="status === 'ready'" class="caption-step">
+            Capítulo {{ chapterIndex + 1 }} de {{ total }}
+          </p>
           <p class="caption-title">{{ chapter.title }}</p>
           <p class="caption-sub">{{ subtitle }}</p>
         </div>
@@ -527,6 +625,20 @@ const posterLabel = computed(() => {
 .play-btn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+/*
+ * Palco 16:9 estreito (a vitrine na coluna da home, ~614px a 1440): a legenda
+ * ocupa metade da largura e, em cima, cobria o assunto dos capítulos 2 a 5.
+ * Nesses ela desce para o canto de baixo à esquerda (teclado e base do
+ * notebook), ao lado dos controles, sem encostar neles (~270px de pílula).
+ */
+@container (min-width: 561px) and (max-width: 760px) {
+  .showcase-caption.is-low {
+    top: auto;
+    bottom: 14px;
+    max-width: min(400px, calc(100% - 314px));
+  }
 }
 
 /* Contêiner estreito (celular, coluna lateral): legenda em cima, controles embaixo. */

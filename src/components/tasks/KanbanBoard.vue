@@ -1,202 +1,131 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+/**
+ * Board do mês (spec board-tarefas-redesign, S1). Quatro colunas de
+ * `TaskColumn` com `TaskCard` dentro, arrastáveis pelo Sortable
+ * (vue-draggable-plus): troca de coluna e reordenação.
+ *
+ * O que NÃO pode quebrar, e por quê:
+ * - durante o arraste a prop nova é ignorada (o `watch` abaixo): o Sortable
+ *   mexe na lista local e um refetch no meio devolveria o card para trás;
+ * - o `move-task` leva a ordem VISÍVEL da coluna de destino, porque com filtro
+ *   ligado o índice do Sortable é o da lista filtrada, e quem traduz para o
+ *   índice absoluto é o TasksView (`resolveDropIndex`);
+ * - card virtual de rotina (`rec:*`) não tem chave e o clique é do chamador
+ *   (abre o gerenciador de rotinas).
+ *
+ * S4: "Criar" no rodapé de cada coluna (logo depois do último card, como no
+ * Jira) e o "+" do cabeçalho abrem o campo inline no lugar; quem cria é o
+ * TasksView. O card otimista (`tmp:*`) não arrasta nem abre. "Ordenar por
+ * prioridade" reordena só a tela desta coluna e desliga a reordenação dentro
+ * dela (soltar ali só troca a coluna), porque a ordem vista deixa de ser a
+ * gravada. Colunas e cards levam `data-nav-col` para o teclado (J/K e setas).
+ */
+import { computed, ref, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
-import {
-  Circle,
-  CircleDashed,
-  CircleDot,
-  CircleCheck,
-  Check,
-  Calendar,
-  ChevronDown,
-  ChevronRight,
-  FileText,
-  TriangleAlert,
-  Paperclip,
-  Trash2,
-  Inbox,
-  Repeat,
-} from 'lucide-vue-next'
-import type { LucideIcon } from 'lucide-vue-next'
-import TagChip from '@/components/ui/TagChip.vue'
-import { formatDateOnly, isOverdue } from '@/utils/date'
-// Iniciais e tom da pessoa vêm do util compartilhado: o ranking da equipe usa
-// os mesmos, então a mesma pessoa tem a mesma cor no board e no /time.
-import { avatarTone, initials as getUserInitials } from '@/utils/avatar'
+import { usePreferredReducedMotion } from '@vueuse/core'
+import { Plus } from 'lucide-vue-next'
+import TaskCard, { type TaskCardTask } from './TaskCard.vue'
+import TaskColumn from './TaskColumn.vue'
+import TaskQuickCreate from './TaskQuickCreate.vue'
+import { ACTIVITY_STATUSES, priorityLevel, statusSpec } from '@/features/tasks/task-meta'
+import { taskKey } from '@/features/tasks/task-key'
+import { isPendingTaskId } from '@/features/tasks/pending-task'
+import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
+import type { ActivityStatus } from '@/features/tasks/activity-types'
 
-// Shapes locais de propósito: o board é um componente compartilhado e não deve
-// depender de tipos de `features/*` (regra de boundary do projeto). Campos
-// opcionais porque cada chamador envia o subconjunto que a API dele devolve.
-export interface KanbanTaskResponsible {
-  userId?: string
-  user: { name: string }
+export type KanbanTask = TaskCardTask
+export type KanbanApiStatus = ActivityStatus
+
+export interface KanbanMovePayload {
+  taskId: string
+  status: ActivityStatus
+  /** Índice na lista VISÍVEL (ou `MAX_SAFE_INTEGER` = fim da coluna, pelo menu). */
+  position: number
+  /** Ordem visível da coluna de destino depois da soltura. Ausente no "Mover para". */
+  visibleIds?: string[]
 }
-
-export interface KanbanTaskSubtask {
-  id: string
-  title: string
-  status: string
-}
-
-export interface KanbanTaskAttachment {
-  filename: string
-  url: string
-  mimeType?: string | null
-}
-
-export interface KanbanTaskTag {
-  id: string
-  name: string
-  slug: string
-  color: string | null
-}
-
-export interface KanbanTask {
-  id: string
-  title?: string
-  priorityNumber?: number
-  dueDate?: string | null
-  responsibles?: KanbanTaskResponsible[]
-  subtasks?: KanbanTaskSubtask[]
-  attachments?: KanbanTaskAttachment[]
-  /** A API devolve a linha da pivot; o card quer a tag. */
-  tags?: Array<{ tag: KanbanTaskTag }>
-  /** Contadores, nunca o conteúdo: markdown de spec não trafega em board. */
-  _count?: { docs?: number; attachments?: number }
-  /**
-   * Rótulo curto da repetição que gerou este card ("Toda semana · seg").
-   * Ausente na tarefa comum — o board não sabe o que é recorrência, só mostra
-   * a etiqueta que o chamador mandou.
-   */
-  recurrence?: string
-  /**
-   * Quantas outras datas da mesma repetição existem no período e não estão no
-   * quadro. O board mostra uma linha por regra; sem este número, colapsar as
-   * datas esconderia informação em vez de organizá-la.
-   */
-  recurrenceHidden?: number
-  /**
-   * Dessas escondidas, quantas já venceram sem ninguém encostar. Subconjunto de
-   * `recurrenceHidden`: um card não pode esconder que a rotina parou de ser
-   * feita, senão quem está uma semana atrás vê o mesmo quadro de quem está em dia.
-   */
-  recurrenceOverdue?: number
-}
-
-export type KanbanApiStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
-type ColumnKey = 'todo' | 'in-progress' | 'testing' | 'done'
 
 interface Props {
-  tasks: Partial<Record<KanbanApiStatus, KanbanTask[]>> | null | undefined
+  tasks: Partial<Record<ActivityStatus, KanbanTask[]>> | null | undefined
   readonly?: boolean
+  /** Nome da empresa ativa: dá o prefixo da chave (`PJ-K7Q2XM`). */
+  companyName?: string | null
+  /** Coluna com o campo de criação inline aberto (ou nenhuma). */
+  composerStatus?: ActivityStatus | null
+  /** Título devolvido ao campo quando a criação falhou. */
+  composerRestore?: { title: string; nonce: number } | null
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  // Único evento de arraste: cobre troca de coluna (@add) e reordenação (@update).
-  'move-task': [payload: { taskId: string; status: string; position: number }]
+  // Único evento de arraste: cobre troca de coluna (@add), reordenação
+  // (@update) e o "Mover para" do menu do card.
+  'move-task': [payload: KanbanMovePayload]
   'open-details': [task: KanbanTask]
   'delete-task': [task: KanbanTask]
-  'rename-task': [taskId: string, title: string]
-  /** "+17 no mês": quem chama decide para onde levar (hoje, a aba Agenda). */
+  /** `previous`: o título antes do otimista, para o chamador desfazer se o servidor recusar. */
+  'rename-task': [taskId: string, title: string, previous: string]
+  /** "+17 no mês" / "2 atrasadas": quem chama decide para onde levar (a Agenda). */
   'show-occurrences': [task: KanbanTask]
+  /** "Criar", "+" e "Criar tarefa aqui": abrir o campo inline nesta coluna. */
+  'create-in': [status: ActivityStatus]
+  /** Enter no campo inline. */
+  'quick-create': [status: ActivityStatus, title: string]
+  /** Esc no campo, ou saiu dele vazio. */
+  'composer-cancel': [status: ActivityStatus, reason: 'escape' | 'blur']
 }>()
 
-// ── Inline editing ──
-const editingTaskId = ref<string | null>(null)
-const editingTitle = ref('')
-
-const startEditing = (task: KanbanTask, e: Event) => {
-  e.stopPropagation()
-  editingTaskId.value = task.id
-  editingTitle.value = task.title ?? ''
-}
-
-const commitEdit = (task: KanbanTask) => {
-  const newTitle = editingTitle.value.trim()
-  if (newTitle && newTitle !== task.title) {
-    task.title = newTitle // optimistic
-    emit('rename-task', task.id, newTitle)
-  }
-  editingTaskId.value = null
-}
-
-const cancelEdit = () => {
-  editingTaskId.value = null
-}
-
-interface ColumnDef {
-  status: ColumnKey
-  apiStatus: KanbanApiStatus
-  title: string
-  token: string
-  icon: LucideIcon
-}
-
-// Cor de cada coluna vem dos tokens de status do design system (theme-aware),
-// não de hex solto: a mesma família azul/laranja/violeta/verde do resto do app.
-const columns: ColumnDef[] = [
-  { status: 'todo', apiStatus: 'TODO', title: 'A Fazer', token: 'var(--status-todo)', icon: Circle },
-  { status: 'in-progress', apiStatus: 'IN_PROGRESS', title: 'Em Andamento', token: 'var(--status-prog)', icon: CircleDashed },
-  { status: 'testing', apiStatus: 'IN_TESTING', title: 'Em Teste', token: 'var(--status-test)', icon: CircleDot },
-  { status: 'done', apiStatus: 'DONE', title: 'Concluído', token: 'var(--status-done)', icon: CircleCheck },
-]
+const columns = ACTIVITY_STATUSES
 
 const isDragging = ref(false)
-const dragOverColumn = ref<string | null>(null)
-const columnActivities = ref<Record<ColumnKey, KanbanTask[]>>({
-  todo: [],
-  'in-progress': [],
-  testing: [],
-  done: [],
+const dragOverColumn = ref<ActivityStatus | null>(null)
+const columnActivities = ref<Record<ActivityStatus, KanbanTask[]>>({
+  TODO: [],
+  IN_PROGRESS: [],
+  IN_TESTING: [],
+  DONE: [],
 })
+
+// ── Ordenar por prioridade (só na tela, some ao recarregar) ──
+const sortedColumns = ref<ActivityStatus[]>([])
+const isSorted = (status: ActivityStatus) => sortedColumns.value.includes(status)
+
+/** Maior prioridade primeiro; empate fica na ordem manual (sort estável). */
+const byPriority = (list: KanbanTask[]) =>
+  [...list].sort((a, b) => priorityLevel(b.priorityNumber) - priorityLevel(a.priorityNumber))
+
+function syncColumns() {
+  columns.forEach((col) => {
+    const list = props.tasks?.[col.value] || []
+    columnActivities.value[col.value] = isSorted(col.value) ? byPriority(list) : list
+  })
+}
 
 watch(
   () => props.tasks,
   () => {
-    if (!isDragging.value) {
-      columns.forEach((col) => {
-        columnActivities.value[col.status] = props.tasks?.[col.apiStatus] || []
-      })
-    }
+    if (!isDragging.value) syncColumns()
   },
   { immediate: true, deep: true },
 )
 
-const MAX_AVATARS = 3
-
-/** Nomes escondidos atrás do "+N" — viram tooltip para não perder informação. */
-const extraNames = (task: KanbanTask) =>
-  (task.responsibles ?? [])
-    .slice(MAX_AVATARS)
-    .map((r) => r.user.name)
-    .join(', ')
-
-// Prioridade sinaliza pela COR DO PONTO, não pelo texto: P4/P5 em texto vermelho
-// por card inteiro vira fadiga de alarme quando o mês tem muitos bloqueantes.
-const getPriorityColor = (priority: number) => {
-  const colors: Record<number, string> = {
-    0: 'var(--success)',
-    1: 'var(--info)',
-    2: 'var(--warn)',
-    3: 'var(--warn)',
-    4: 'var(--err)',
-    5: 'var(--err)',
-  }
-  return colors[priority] ?? 'var(--text-4)'
+function toggleSort(status: ActivityStatus) {
+  sortedColumns.value = isSorted(status)
+    ? sortedColumns.value.filter((s) => s !== status)
+    : [...sortedColumns.value, status]
+  syncColumns()
 }
 
-const getPriorityLabel = (priority: number) => {
-  const labels: Record<number, string> = {
-    0: 'Baixíssima',
-    1: 'Baixa',
-    2: 'Média',
-    3: 'Alta',
-    4: 'Crítica',
-    5: 'Bloqueante',
-  }
-  return labels[priority] ?? 'Sem prioridade'
-}
+const { isCollapsed, canCollapse, toggle: toggleCollapsed } = useCollapsedColumns()
+
+// Reordenar e soltar continuam animados (FLIP do Sortable, curto). Quem pediu
+// menos movimento recebe a troca seca.
+const reducedMotion = usePreferredReducedMotion()
+const sortAnimation = computed(() => (reducedMotion.value === 'reduce' ? 0 : 150))
+
+const canCreate = computed(() => !props.readonly)
+
+const keyOf = (task: KanbanTask) => taskKey(task, props.companyName)
 
 /** Subconjunto do SortableEvent que o handler realmente lê. */
 interface DragEndEvent {
@@ -204,45 +133,36 @@ interface DragEndEvent {
   newIndex?: number
 }
 
-// Arraste (add=cruzou coluna, update=reordenou na mesma): emite um único
-// move-task com o índice de destino (newIndex) p/ persistir a ordem manual.
-const onMove = (evt: DragEndEvent, apiStatus: KanbanApiStatus) => {
+// Arraste (add = cruzou coluna, update = reordenou na mesma). O vue-draggable-plus
+// já aplicou a soltura no v-model quando este handler roda, então a lista local
+// da coluna É a ordem visível que a pessoa acabou de ver.
+const onMove = (evt: DragEndEvent, status: ActivityStatus) => {
   const taskId = evt.item?.dataset?.id
   if (!taskId) return
-  const position = typeof evt.newIndex === 'number' ? evt.newIndex : 0
-  emit('move-task', { taskId, status: apiStatus, position })
+  // Coluna "Ordenada por prioridade": a ordem vista não é a gravada, então o
+  // lugar onde o card caiu nela não diz nada sobre a ordem manual. Soltar ali
+  // só troca a coluna, e o card vai para o FIM da ordem manual (como o
+  // "Mover para"); gravar o índice visto punha o card numa posição arbitrária.
+  if (isSorted(status)) {
+    emit('move-task', { taskId, status, position: Number.MAX_SAFE_INTEGER })
+    return
+  }
+  const visibleIds = columnActivities.value[status].map((t) => t.id)
+  const at = visibleIds.indexOf(taskId)
+  const position = at !== -1 ? at : typeof evt.newIndex === 'number' ? evt.newIndex : 0
+  emit('move-task', { taskId, status, position, visibleIds })
 }
 
-const getImageAttachment = (task: KanbanTask) =>
-  task.attachments?.find(
-    (a) =>
-      a.mimeType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|avif)$/i.test(a.filename),
-  )?.url
+// "Mover para" do menu do card: vai para o FIM da coluna de destino.
+const onMenuMove = (task: KanbanTask, status: ActivityStatus) => {
+  emit('move-task', { taskId: task.id, status, position: Number.MAX_SAFE_INTEGER })
+}
 
-/** Quantos chips cabem antes de o card virar uma nuvem de tags. */
-const MAX_TAGS = 3
-
-const visibleTags = (task: KanbanTask) =>
-  (task.tags ?? []).slice(0, MAX_TAGS).map((link) => link.tag)
-
-const extraTagCount = (task: KanbanTask) =>
-  Math.max((task.tags?.length ?? 0) - MAX_TAGS, 0)
-
-const extraTagNames = (task: KanbanTask) =>
-  (task.tags ?? [])
-    .slice(MAX_TAGS)
-    .map((link) => link.tag.name)
-    .join(', ')
-
-/**
- * Contadores do card. Preferem `_count` (o que a API manda agora) e caem no
- * array carregado quando o chamador não passa `_count`: o board agregado do
- * `/board` e o mensal têm payloads diferentes.
- */
-const attachmentCount = (task: KanbanTask) =>
-  task._count?.attachments ?? task.attachments?.length ?? 0
-
-const docCount = (task: KanbanTask) => task._count?.docs ?? 0
+const onRename = (task: KanbanTask, title: string) => {
+  const previous = task.title ?? ''
+  task.title = title // otimista: o card já mostra o nome novo
+  emit('rename-task', task.id, title, previous)
+}
 
 const onStart = () => {
   isDragging.value = true
@@ -250,1157 +170,210 @@ const onStart = () => {
 const onEnd = () => {
   isDragging.value = false
   dragOverColumn.value = null
+  // O que chegou durante o arraste (realtime, refetch) foi ignorado para o
+  // Sortable não perder o card no meio do gesto. Arraste cancelado (soltou no
+  // mesmo lugar) não muda a prop depois, então nada ressincronizava: o dado
+  // novo só aparecia na próxima mudança. Soltura de verdade já mudou `tasks`
+  // no `move-task`, e ressincronizar aqui é o mesmo resultado, mais cedo.
+  syncColumns()
 }
 
-const onEnterColumn = (status: string) => {
+const onEnterColumn = (status: ActivityStatus) => {
   if (isDragging.value) dragOverColumn.value = status
 }
-const onLeaveColumn = () => {
-  // limpa só no onEnd pra não piscar
-}
-
-const openDeleteConfirm = (task: KanbanTask) => {
-  emit('delete-task', task)
-}
-
-const getSubtaskProgress = (task: KanbanTask) => {
-  if (!task.subtasks?.length) return null
-  const done = task.subtasks.filter((s) => s.status === 'DONE').length
-  return { done, total: task.subtasks.length }
-}
-
-const subtaskPercent = (task: KanbanTask) => {
-  const p = getSubtaskProgress(task)
-  return p && p.total > 0 ? Math.round((p.done / p.total) * 100) : 0
-}
-
-const isAllDone = (task: KanbanTask) => {
-  const p = getSubtaskProgress(task)
-  return !!p && p.done === p.total
-}
-
-// Anel de progresso (SVG): r=9 → circunferência ~56.55. O offset "esvazia" o
-// traço proporcionalmente ao que falta.
-const RING_CIRC = 2 * Math.PI * 9
-const ringOffset = (pct: number) => RING_CIRC * (1 - pct / 100)
-
-// Abrir por teclado só quando o próprio card está focado (`.self`): evita que
-// Enter durante a edição do título, ou em botões internos, abra os detalhes.
-const openByKey = (task: KanbanTask) => emit('open-details', task)
-
-// ── Subtasks expand/collapse ──
-const expandedTasks = ref<Set<string>>(new Set())
-
-const toggleExpand = (taskId: string) => {
-  if (expandedTasks.value.has(taskId)) {
-    expandedTasks.value.delete(taskId)
-  } else {
-    expandedTasks.value.add(taskId)
-  }
-  expandedTasks.value = new Set(expandedTasks.value)
-}
-
-const isExpanded = (taskId: string) => expandedTasks.value.has(taskId)
 </script>
 
 <template>
   <div class="board" :class="{ 'board--dragging': isDragging }">
-    <section
+    <TaskColumn
       v-for="column in columns"
-      :key="column.status"
-      class="lane"
-      :class="{ 'lane--over': isDragging && dragOverColumn === column.status }"
-      :style="{ '--col': column.token }"
-      :aria-label="`${column.title}, ${columnActivities[column.status]?.length || 0} atividades`"
+      :key="column.value"
+      :status="column.value"
+      :count="columnActivities[column.value]?.length || 0"
+      :can-create="canCreate"
+      :collapsible="canCollapse(column.value)"
+      :collapsed="isCollapsed(column.value)"
+      :over="isDragging && dragOverColumn === column.value"
+      sortable
+      :sorted="isSorted(column.value)"
+      @create="emit('create-in', column.value)"
+      @toggle-collapse="toggleCollapsed(column.value)"
+      @toggle-sort="toggleSort(column.value)"
     >
-      <!-- Column header: fora do scroll, sempre visível -->
-      <header class="lane__head">
-        <span class="lane__badge" aria-hidden="true">
-          <component :is="column.icon" :size="13" />
-        </span>
-        <h2 class="lane__title">{{ column.title }}</h2>
-        <span class="lane__count" :key="columnActivities[column.status]?.length || 0">
-          {{ columnActivities[column.status]?.length || 0 }}
-        </span>
-      </header>
-
-      <!-- Fio de luz: identidade da coluna sem pintar um painel inteiro -->
-      <div class="lane__rule" aria-hidden="true" />
-
-      <!-- Drop zone com scroll próprio: a coluna cheia rola, a vazia não vira slab -->
+      <!-- Corpo com scroll próprio. Parado, a lista tem a altura dos cards e o
+           "Criar" vem logo depois do último; arrastando, a lista cresce até o
+           fim da coluna para a coluna inteira (até vazia) ser alvo de soltura. -->
       <div class="lane__scroll">
         <VueDraggable
-          v-model="columnActivities[column.status]"
+          v-model="columnActivities[column.value]"
           class="lane__list"
+          :data-nav-col="column.value"
           group="activities"
-          :animation="220"
+          :animation="sortAnimation"
+          easing="cubic-bezier(0.2, 0.9, 0.3, 1.08)"
           :disabled="props.readonly"
+          :sort="!isSorted(column.value)"
+          filter=".no-drag"
+          :prevent-on-filter="false"
           ghost-class="drag-ghost"
           chosen-class="drag-chosen"
           drag-class="drag-moving"
           @start="onStart"
           @end="onEnd"
-          @add="(evt) => onMove(evt, column.apiStatus)"
-          @update="(evt) => onMove(evt, column.apiStatus)"
-          @dragenter="onEnterColumn(column.status)"
-          @dragleave="onLeaveColumn"
+          @add="(evt) => onMove(evt, column.value)"
+          @update="(evt) => onMove(evt, column.value)"
+          @dragenter="onEnterColumn(column.value)"
         >
-          <!-- Task card -->
-          <article
-            v-for="(task, i) in columnActivities[column.status]"
+          <TaskCard
+            v-for="task in columnActivities[column.value]"
             :key="task.id"
-            :data-id="task.id"
-            class="card"
-            :class="{ 'card--done': column.status === 'done' }"
-            :style="{ '--i': i }"
-            role="button"
-            tabindex="0"
-            :aria-label="task.title"
-            @click="emit('open-details', task)"
-            @keydown.enter.self="openByKey(task)"
-            @keydown.space.self.prevent="openByKey(task)"
-          >
-            <!-- cover image: inset com raio próprio, nunca sangrando na borda -->
-            <div v-if="getImageAttachment(task)" class="card__cover">
-              <img :src="getImageAttachment(task)" alt="" loading="lazy" />
-            </div>
-
-            <div class="card__main">
-              <!-- top row -->
-              <div class="card__top">
-                <input
-                  v-if="editingTaskId === task.id"
-                  v-model="editingTitle"
-                  class="card__title-input"
-                  @keydown.enter="commitEdit(task)"
-                  @keydown.esc="cancelEdit"
-                  @blur="commitEdit(task)"
-                  @click.stop
-                  autofocus
-                />
-                <h3
-                  v-else
-                  class="card__title"
-                  @dblclick="startEditing(task, $event)"
-                >
-                  {{ task.title }}
-                </h3>
-                <button
-                  v-if="!props.readonly"
-                  class="card__kill"
-                  aria-label="Excluir atividade"
-                  @click.stop="openDeleteConfirm(task)"
-                >
-                  <Trash2 :size="13" />
-                </button>
-              </div>
-
-              <!-- tags: no máximo 3 chips, o resto vira +N para o card não
-                   crescer sem limite -->
-              <div v-if="task.tags?.length" class="card__tags">
-                <TagChip v-for="tag in visibleTags(task)" :key="tag.id" :tag="tag" />
-                <span
-                  v-if="extraTagCount(task)"
-                  class="card__tags-more"
-                  :title="extraTagNames(task)"
-                >
-                  +{{ extraTagCount(task) }}
-                </span>
-              </div>
-
-              <!-- Linha da REPETIÇÃO, separada da meta de propósito.
-                   Um card gerado carrega até três etiquetas (a regra, a dívida
-                   e o contador do mês) que juntas são mais largas que a coluna.
-                   Misturadas com prazo e prioridade, elas espremiam a linha
-                   inteira e o prazo quebrava em três linhas. Aqui elas têm a
-                   largura do card para si, e o card comum não muda em nada:
-                   a linha só existe quando veio de uma regra. -->
-              <div
-                v-if="task.recurrence || task.recurrenceOverdue || task.recurrenceHidden"
-                class="card__rule"
-              >
-                <!-- Nasceu de uma repetição. A pessoa precisa distinguir o que
-                     ela escreveu do que a regra gerou: sem isso, um card que
-                     reaparece sozinho parece tarefa duplicada. -->
-                <span v-if="task.recurrence" class="repeats" :title="task.recurrence">
-                  <Repeat :size="11" />
-                  <span class="repeats__text">{{ task.recurrence }}</span>
-                </span>
-
-                <!-- A dívida da rotina: datas que já venceram e ninguém tocou.
-                     Vem ANTES do contador neutro de propósito — é a informação
-                     que muda o que a pessoa faz agora. Nunca vira card novo:
-                     atrasar não pode ser motivo para o quadro inchar. -->
-                <button
-                  v-if="task.recurrenceOverdue"
-                  type="button"
-                  class="late-dates press"
-                  :title="`${task.recurrenceOverdue} data(s) desta repetição já venceram sem ninguém encostar — ver na agenda`"
-                  @click.stop="emit('show-occurrences', task)"
-                >
-                  <TriangleAlert :size="10" />
-                  {{ task.recurrenceOverdue }}
-                  {{ task.recurrenceOverdue === 1 ? 'atrasada' : 'atrasadas' }}
-                </button>
-
-                <!-- As outras datas da mesma regra, que não ocupam o quadro. O
-                     número é a prova de que nada sumiu, e o clique é o caminho
-                     para vê-las: um card colapsado sem saída seria informação
-                     escondida, não organizada. -->
-                <button
-                  v-if="task.recurrenceHidden"
-                  type="button"
-                  class="more-dates press"
-                  :title="`Mais ${task.recurrenceHidden} data(s) desta repetição neste mês — ver na agenda`"
-                  @click.stop="emit('show-occurrences', task)"
-                >
-                  +{{ task.recurrenceHidden }} no mês
-                  <ChevronRight :size="10" />
-                </button>
-              </div>
-
-              <!-- Meta: os FATOS à esquerda (quebram em quantas linhas
-                   precisarem) e as PESSOAS à direita (nunca encolhem). O
-                   espaçador de antes era `flex: 1` numa linha sem `wrap`, então
-                   quando faltava espaço quem cedia era o conteúdo: o prazo
-                   virava uma coluna de três linhas e a etiqueta da regra era
-                   cortada no meio da palavra. -->
-              <div class="card__meta">
-                <div class="card__facts">
-                  <span
-                    v-if="task.priorityNumber !== undefined"
-                    class="prio"
-                    :title="getPriorityLabel(task.priorityNumber)"
-                    :style="{ '--pc': getPriorityColor(task.priorityNumber) }"
-                  >
-                    <span class="prio__dot" aria-hidden="true" />
-                    P{{ task.priorityNumber }}
-                  </span>
-
-                  <span
-                    v-if="task.dueDate"
-                    class="due"
-                    :class="{ 'due--overdue': isOverdue(task.dueDate) && column.status !== 'done' }"
-                  >
-                    <Calendar :size="11" />
-                    {{ formatDateOnly(task.dueDate, { month: 'short', year: undefined }) }}
-                  </span>
-
-                  <span
-                    v-if="attachmentCount(task)"
-                    class="chipcount"
-                    :title="`${attachmentCount(task)} arquivo(s)`"
-                  >
-                    <Paperclip :size="11" />
-                    {{ attachmentCount(task) }}
-                  </span>
-
-                  <!-- "tem spec aqui dentro": o número, nunca o conteúdo -->
-                  <span
-                    v-if="docCount(task)"
-                    class="chipcount"
-                    :title="`${docCount(task)} documento(s)`"
-                  >
-                    <FileText :size="11" />
-                    {{ docCount(task) }}
-                  </span>
-                </div>
-
-                <div class="card__people">
-                  <!-- progress ring (também é o gatilho de expandir) -->
-                  <button
-                    v-if="task.subtasks?.length"
-                    class="ring-btn"
-                    :class="{ 'ring-btn--complete': isAllDone(task), 'ring-btn--open': isExpanded(task.id) }"
-                    :aria-expanded="isExpanded(task.id)"
-                    :aria-label="`${getSubtaskProgress(task)!.done} de ${getSubtaskProgress(task)!.total} subtarefas`"
-                    @click.stop="toggleExpand(task.id)"
-                  >
-                    <svg class="ring" viewBox="0 0 22 22" width="18" height="18" aria-hidden="true">
-                      <circle class="ring__track" cx="11" cy="11" r="9" />
-                      <circle
-                        class="ring__fill"
-                        cx="11"
-                        cy="11"
-                        r="9"
-                        :stroke-dasharray="RING_CIRC"
-                        :style="{ strokeDashoffset: ringOffset(subtaskPercent(task)) }"
-                      />
-                    </svg>
-                    <span class="ring-btn__frac">
-                      {{ getSubtaskProgress(task)!.done }}/{{ getSubtaskProgress(task)!.total }}
-                    </span>
-                    <ChevronDown :size="12" class="ring-btn__chev" />
-                  </button>
-
-                  <!-- responsáveis: tinta suave por pessoa, empilhados; o stack
-                       abre em leque no hover para ler cada inicial -->
-                  <div v-if="task.responsibles?.length" class="crew">
-                    <div
-                      v-for="(responsible, ai) in task.responsibles.slice(0, MAX_AVATARS)"
-                      :key="responsible.userId ?? responsible.user.name"
-                      class="crew__avatar"
-                      :title="responsible.user.name"
-                      :style="{ '--pc': avatarTone(responsible.user.name), zIndex: MAX_AVATARS - ai }"
-                    >
-                      {{ getUserInitials(responsible.user.name) }}
-                    </div>
-                    <div
-                      v-if="task.responsibles.length > MAX_AVATARS"
-                      class="crew__avatar crew__avatar--extra"
-                      :title="extraNames(task)"
-                    >
-                      +{{ task.responsibles.length - MAX_AVATARS }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- subtasks checklist (sem caixa cinza; expande suave) -->
-              <Transition name="exp">
-                <div v-if="task.subtasks?.length && isExpanded(task.id)" class="exp" @click.stop>
-                  <ul class="checklist">
-                    <li
-                      v-for="subtask in task.subtasks"
-                      :key="subtask.id"
-                      class="ci"
-                      :class="{ 'ci--done': subtask.status === 'DONE' }"
-                    >
-                      <span class="ci__box" aria-hidden="true">
-                        <Check v-if="subtask.status === 'DONE'" :size="11" />
-                      </span>
-                      <span class="ci__label">{{ subtask.title }}</span>
-                    </li>
-                  </ul>
-                </div>
-              </Transition>
-            </div>
-          </article>
+            :task="task"
+            :status="column.value"
+            :task-key="keyOf(task)"
+            :readonly="props.readonly"
+            :pending="isPendingTaskId(task.id)"
+            @open="emit('open-details', task)"
+            @rename="onRename(task, $event)"
+            @delete="emit('delete-task', task)"
+            @move="onMenuMove(task, $event)"
+            @show-occurrences="emit('show-occurrences', task)"
+          />
         </VueDraggable>
 
-        <div
-          v-if="(columnActivities[column.status]?.length || 0) === 0 && !isDragging"
+        <p
+          v-if="!canCreate && (columnActivities[column.value]?.length || 0) === 0 && !isDragging"
           class="lane__empty"
           aria-hidden="true"
         >
-          <Inbox :size="18" />
-          <span>Nada por aqui</span>
+          Nenhuma tarefa
+        </p>
+
+        <div
+          v-if="canCreate"
+          v-show="!isDragging"
+          class="lane__foot"
+          :class="{ 'lane__foot--after': (columnActivities[column.value]?.length || 0) > 0 }"
+        >
+          <TaskQuickCreate
+            v-if="composerStatus === column.value"
+            :label="statusSpec(column.value).label"
+            :restore="composerRestore"
+            @submit="emit('quick-create', column.value, $event)"
+            @cancel="emit('composer-cancel', column.value, $event)"
+          />
+          <button
+            v-else
+            type="button"
+            class="lane__create"
+            :data-create="column.value"
+            :aria-label="`Criar tarefa em ${statusSpec(column.value).label}`"
+            @click="emit('create-in', column.value)"
+          >
+            <Plus :size="14" :stroke-width="1.8" aria-hidden="true" />
+            Criar
+          </button>
         </div>
       </div>
-    </section>
+    </TaskColumn>
   </div>
 </template>
 
 <style scoped>
 /*
- * Board estilo Linear: NENHUM painel gigante por coluna. A coluna é definida
- * pelo header + fio de luz na cor do status; o corpo tem scroll PRÓPRIO.
- * Sem isso, `align-items: stretch` + scroll de página fazia a coluna com 19
- * cards esticar as vizinhas em slabs vazios de milhares de pixels — a
- * sensação exata de "sistema pobre".
+ * Board estilo Jira: quatro poços neutros de 280px lado a lado, cada um com
+ * scroll próprio. Sem painel colorido por coluna, sem régua, sem fade.
  */
 .board {
-  --spring: cubic-bezier(0.34, 1.42, 0.5, 1);
-  --spring-soft: cubic-bezier(0.4, 0.9, 0.3, 1);
+  container: task-board / inline-size;
   height: 100%;
   min-height: 0;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: stretch;
+  padding-bottom: 16px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
 }
 
-/* ── Lane (coluna etérea: sem painel, com well que aparece na interação) ── */
-.lane {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 252px;
-  max-width: 384px;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--radius-lg);
-  padding: 6px 4px 0;
+/* O próprio container não se consulta: a fita com snap no celular é por viewport. */
+@media (max-width: 640px) {
+  .board {
+    scroll-snap-type: x mandatory;
+  }
 }
 
-/* Well: invisível em repouso, sobe a 3% no hover e acende no drag-over.
-   A estrutura aparece quando importa, sem pintar quatro caixas o dia todo. */
-.lane::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: color-mix(in srgb, var(--col) 4%, transparent);
-  opacity: 0;
-  transition: opacity var(--motion) var(--motion-ease);
-  pointer-events: none;
-}
-
-.lane:hover::before {
-  opacity: 0.7;
-}
-
-.lane--over::before {
-  opacity: 1;
-  background: color-mix(in srgb, var(--col) 7%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--col) 28%, transparent);
-}
-
-/* ── Lane header ────────────────────────────────────────────── */
-.lane__head {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px 9px;
-  flex-shrink: 0;
-}
-
-.lane__badge {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  color: color-mix(in srgb, var(--col) 82%, var(--text));
-  background: color-mix(in srgb, var(--col) 9%, transparent);
-  flex-shrink: 0;
-}
-
-.lane__title {
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  color: var(--text);
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lane__count {
-  font-size: 12px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-3);
-  animation: count-pop 260ms var(--spring);
-}
-
-@keyframes count-pop {
-  0% { transform: scale(0.5); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-/* Régua da coluna: hairline discreta, colorida só no primeiro trecho.
-   Sem glow — a cor é sinal, não luminária. */
-.lane__rule {
-  height: 2px;
-  border-radius: 999px;
-  margin: 0 8px 4px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--col) 55%, transparent),
-    color-mix(in srgb, var(--col) 18%, transparent) 34%,
-    var(--border) 70%
-  );
-  flex-shrink: 0;
-  transition: background var(--motion) var(--motion-ease);
-}
-
-/* ── Corpo com scroll próprio ───────────────────────────────── */
 .lane__scroll {
   position: relative;
-  z-index: 1;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 4px 18px;
+  padding: 0 6px 6px;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--text-4) 30%, transparent) transparent;
-  /* Fade nas bordas: os cards "nascem" e "morrem" suave em vez de cortar seco. */
-  mask-image: linear-gradient(180deg, transparent 0, #000 8px, #000 calc(100% - 14px), transparent);
 }
 
 .lane__list {
-  /* Ocupa a altura toda para a coluna INTEIRA ser drop zone, mesmo vazia. */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Arrastando, a altura toda é alvo de soltura, mesmo com a coluna vazia. */
+.board--dragging .lane__list {
   min-height: 100%;
 }
 
-.card {
-  margin-bottom: 8px;
-}
-.card:last-child {
-  margin-bottom: 0;
-}
-
 .lane__empty {
-  position: absolute;
-  inset: 8px 4px 18px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: color-mix(in srgb, var(--col) 36%, var(--text-4));
+  margin: 0;
+  padding: 18px 0 12px;
+  text-align: center;
   font-size: 12px;
-  font-weight: 500;
-  pointer-events: none;
+  line-height: 16px;
+  color: var(--text-3);
 }
 
-/* ── Card ───────────────────────────────────────────────────── */
-.card {
+/* O rodapé fica a 6px do último card, o mesmo vão entre cards. */
+.lane__foot--after {
+  margin-top: 6px;
+}
+
+/* 36px de desenho; o ::after fecha 44px de alvo sem ocupar altura (os 4px de
+   cima caem no vão depois do último card, os de baixo no padding da coluna). */
+.lane__create {
   position: relative;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-  transition:
-    transform 240ms var(--spring),
-    border-color var(--motion) var(--motion-ease),
-    box-shadow var(--motion) var(--motion-ease);
-  will-change: transform;
-  /* Entrada escalonada com mola; delay tetado em 8 posições p/ colunas longas
-     não ficarem "pingando" por segundos. */
-  animation: card-in 420ms var(--spring) backwards;
-  animation-delay: calc(min(var(--i, 0), 8) * 38ms);
 }
 
-/* Brilho de topo (elevação do design system). */
-.card::before {
+.lane__create::after {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--elev-1);
-  opacity: 0.8;
-  pointer-events: none;
-  z-index: 0;
+  inset: -4px 0;
 }
 
-@keyframes card-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--col) 30%, var(--border-strong));
-  box-shadow: var(--shadow);
-}
-
-.card:focus-visible {
-  outline: none;
-  border-color: color-mix(in srgb, var(--col) 60%, var(--border-strong));
-  box-shadow:
-    var(--shadow),
-    0 0 0 2px color-mix(in srgb, var(--col) 60%, transparent);
-}
-
-.card:active {
-  transform: translateY(0) scale(0.995);
-}
-
-/* Concluído: card assenta — some o alarme, fica o registro. */
-.card--done .card__title {
-  color: var(--text-2);
-}
-
-.card--done {
-  background: color-mix(in srgb, var(--surface) 88%, var(--bg));
-}
-
-.card__cover {
-  position: relative;
-  z-index: 1;
-  margin: 6px 6px 0;
-  height: 92px;
-  overflow: hidden;
-  border-radius: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-
-.card__cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  transition: transform var(--motion-slow) var(--spring-soft);
-}
-
-.card:hover .card__cover img {
-  transform: scale(1.04);
-}
-
-.card__main {
-  position: relative;
-  z-index: 1;
-  padding: 11px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-/* card top */
-.card__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.card__title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.4;
-  letter-spacing: -0.008em;
-  margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  flex: 1;
-  /* Título colado sem espaço ("aaaaaaaaaaaa…") não tem onde quebrar: sem isto
-     ele empurrava a lixeira para fora do card em vez de reticenciar. */
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.card__title-input {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  padding: 3px 6px;
-  font-family: inherit;
-  outline: none;
-  min-width: 0;
-}
-
-.card__kill {
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  color: var(--text-4);
-  cursor: pointer;
-  flex-shrink: 0;
-  opacity: 0;
-  transform: translateX(3px);
-  transition:
-    opacity var(--motion-fast),
-    transform var(--motion-fast) var(--spring),
-    color var(--motion-fast),
-    background var(--motion-fast),
-    border-color var(--motion-fast);
-}
-
-.card:hover .card__kill,
-.card:focus-within .card__kill {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.card__kill:hover {
-  color: var(--err);
-  border-color: color-mix(in srgb, var(--err) 32%, var(--border));
-  background: color-mix(in srgb, var(--err) 12%, transparent);
-}
-
-.card__kill:focus-visible {
-  opacity: 1;
-  transform: none;
-  outline: 2px solid var(--err);
-  outline-offset: 1px;
-}
-
-/* meta: UMA linha — prio, prazo, anel, avatares */
-/* Meta em dois grupos com contratos OPOSTOS: os fatos cedem espaço quebrando
-   linha, as pessoas não cedem nunca. Antes era uma linha só, sem `wrap`, com um
-   espaçador `flex: 1` — e quando o conteúdo não cabia quem encolhia era o texto,
-   não o layout: o prazo virava uma coluna de três linhas. */
-.card__meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 22px;
-}
-
-.card__facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  /* linha menor que a coluna: quando quebra, as duas fileiras leem como um
-     bloco só, não como dois assuntos diferentes */
-  gap: 4px 9px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-/* Anel e avatares são âncora do card: largura previsível, sempre à direita.
-   `flex-shrink: 0` aqui é o que impede o stack de avatares de ser esmagado
-   quando a esquerda enche. */
-.card__people {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
-/* A linha da repetição: até três etiquetas, com a largura do card só para elas. */
-.card__rule {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
-
-.card__tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-}
-
-.card__tags-more {
-  flex-shrink: 0;
-  white-space: nowrap;
-  color: var(--text-4);
-  font-size: 10.5px;
-  font-weight: 600;
-}
-
-/* Contador discreto de arquivo/documento: presença, não destaque. */
-.chipcount {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--text-4);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-/* prioridade: sinal na cor do PONTO; o texto fica neutro (sem gritaria) */
-.prio {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--text-3);
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.prio__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--pc);
-}
-
-/* `nowrap` não é cosmético: sem ele o flex espremia o chip até "10 de set."
-   virar três linhas empilhadas de uma letra e meia. */
-.due {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-3);
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.due svg {
-  flex-shrink: 0;
-}
-
-.due--overdue {
-  color: var(--err);
-  font-weight: 600;
-}
-
-/* Etiqueta de card gerado por repetição.
-   O teto era 130px fixos, o que cortava "Toda semana · seg" em "Toda semar" —
-   uma frase que existe para a pessoa CONFERIR a regra não pode ser ilegível.
-   Agora ela usa até a largura do card e, quando não cabe ao lado das outras
-   etiquetas, desce para a linha de baixo em vez de encolher. */
-.repeats {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  padding: 1px 7px;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 11%, transparent);
-  border-radius: 999px;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-/* A reticência mora no texto, não no chip: no chip ela comeria o padding
-   direito e o ícone perderia o arredondamento. */
-.repeats__text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.repeats svg {
-  flex-shrink: 0;
-}
-
-/* Dívida da rotina. Âmbar e não vermelho de propósito: o vermelho já é do prazo
-   vencido DESTE card (`.due--overdue`), e dois vermelhos lado a lado apagam a
-   diferença entre "esta tarefa venceu" e "outras N ficaram para trás". */
-.late-dates {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 6px;
-  font-size: 10.5px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 13%, transparent);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    border-color var(--motion-fast),
-    background var(--motion-fast);
-}
-
-.late-dates:hover {
-  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
-  background: color-mix(in srgb, var(--warn) 20%, transparent);
-}
-
-.late-dates svg {
-  flex-shrink: 0;
-}
-
-/* Irmão discreto do `.repeats`: mesma família visual, sem borda nem fundo, para
-   ler como "e tem mais" e não como uma segunda etiqueta de igual peso. */
-.more-dates {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 1px 5px 1px 6px;
-  font-size: 10.5px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-3);
-  background: transparent;
-  border: 1px dashed var(--border);
-  border-radius: 999px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    color var(--motion-fast),
-    border-color var(--motion-fast),
-    background var(--motion-fast);
-}
-
-.more-dates:hover {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
-.more-dates svg {
-  flex-shrink: 0;
-}
-
-/* ── Anel de progresso ──────────────────────────────────────── */
-.ring-btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 6px 2px 2px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-3);
-  font-size: 10.5px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition:
-    background var(--motion-fast),
-    border-color var(--motion-fast),
-    color var(--motion-fast);
-}
-
-.ring-btn:hover {
-  background: var(--surface-2);
-  border-color: var(--border);
-  color: var(--text-2);
-}
-
-.ring-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.ring {
-  flex-shrink: 0;
-  overflow: visible;
-}
-
-.ring__track {
-  fill: none;
-  stroke: color-mix(in srgb, var(--text-4) 26%, transparent);
-  stroke-width: 3;
-}
-
-.ring__fill {
-  fill: none;
-  stroke: var(--status-done);
-  stroke-width: 3;
-  stroke-linecap: round;
-  transform: rotate(-90deg);
-  transform-origin: 11px 11px;
-  transition: stroke-dashoffset 620ms var(--spring-soft);
-}
-
-.ring-btn--complete {
-  color: var(--status-done);
-}
-
-.ring-btn__chev {
-  color: var(--text-4);
-  transition: transform var(--motion) var(--spring);
-}
-
-.ring-btn--open .ring-btn__chev {
-  transform: rotate(180deg);
-}
-
-/* ── Checklist (expansão sem caixa cinza) ───────────────────── */
-.exp {
-  display: grid;
-  grid-template-rows: 1fr;
-}
-
-.checklist {
-  min-height: 0;
-  overflow: hidden;
-  list-style: none;
-  margin: 0;
-  padding: 9px 2px 1px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  border-top: 1px solid var(--border);
-}
-
-.ci {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 12px;
-  color: var(--text-2);
-}
-
-.ci__box {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 5px;
-  border: 1.5px solid var(--border-strong);
-  color: #fff;
-  transition:
-    background var(--motion-fast),
-    border-color var(--motion-fast);
-}
-
-.ci--done .ci__box {
-  background: var(--status-done);
-  border-color: var(--status-done);
-}
-
-.ci--done .ci__label {
-  color: var(--text-4);
-  text-decoration: line-through;
-}
-
-.ci__label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.exp-enter-active,
-.exp-leave-active {
-  transition:
-    grid-template-rows 320ms var(--spring-soft),
-    opacity 220ms var(--motion-ease);
-}
-
-.exp-enter-from,
-.exp-leave-to {
-  grid-template-rows: 0fr;
-  opacity: 0;
-}
-
-/* ── Responsáveis (dentro da linha de meta) ─────────────────────
-   Cor como TINTA, não como luz: fundo é o tom da pessoa a 16% sobre a
-   superfície, iniciais no mesmo tom puxado pro texto, hairline no tom.
-   Sem sombra colorida, sem chapado saturado com texto branco. O anel
-   na cor do card corta a sobreposição limpa; no hover o stack abre em
-   leque (mola) pra ler todas as iniciais. */
-.crew {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.crew__avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  background: color-mix(in srgb, var(--pc) 16%, var(--surface));
-  color: color-mix(in srgb, var(--pc) 64%, var(--text));
-  border: 1px solid color-mix(in srgb, var(--pc) 32%, transparent);
-  box-shadow: 0 0 0 2px var(--surface);
-  flex-shrink: 0;
-  cursor: default;
-  user-select: none;
-  transition: margin 260ms var(--spring);
-}
-
-.crew__avatar + .crew__avatar {
-  margin-left: -6px;
-}
-
-.crew:hover .crew__avatar + .crew__avatar {
-  margin-left: 3px;
-}
-
-/* O "+N" é informação (quantos faltam), não decoração: fica ACIMA do stack
-   para nunca ser soterrado pelo avatar vizinho. */
-.crew__avatar--extra {
+.lane__create:hover {
   background: var(--surface-3);
-  color: var(--text-3);
-  border-color: var(--border);
-  font-size: 8.5px;
-  font-variant-numeric: tabular-nums;
-  position: relative;
-  z-index: 4;
+  color: var(--text);
 }
 
-/* ── Estados de arraste ─────────────────────────────────────── */
-.drag-ghost {
-  opacity: 0.45 !important;
-  background: color-mix(in srgb, var(--col) 9%, var(--surface-2)) !important;
-  border: 1.5px dashed color-mix(in srgb, var(--col) 55%, var(--accent)) !important;
-  border-radius: 12px !important;
-  box-shadow: none !important;
+.lane__create:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
-.drag-ghost::before {
-  display: none;
-}
-
-.drag-chosen {
-  cursor: grabbing !important;
-  transform: rotate(2deg) scale(1.04) !important;
-  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.48) !important;
-  z-index: 9999 !important;
-  border-color: var(--accent) !important;
-}
-
-.drag-moving {
-  cursor: grabbing !important;
-}
-
-/* Notebook de 1280: com 252px de coluna as quatro somavam ~40px a mais que a
-   área útil e o board nascia com scroll horizontal, escondendo parte da última
-   coluna. Estreitar um pouco faz as quatro caberem inteiras. */
-@media (max-width: 1400px) {
-  .lane {
-    min-width: 228px;
-  }
-}
-
-/* ── Mobile: colunas em fita com snap (padrão de kanban touch) ── */
-@media (max-width: 640px) {
-  .board {
-    scroll-snap-type: x mandatory;
-    gap: 10px;
-    padding-bottom: 4px;
-  }
-
-  .lane {
-    flex: 0 0 84vw;
-    max-width: 320px;
-    scroll-snap-align: start;
-  }
-}
-
-/* ── Menos movimento ────────────────────────────────────────── */
-@media (prefers-reduced-motion: reduce) {
-  .card,
-  .lane__count {
-    animation: none !important;
-  }
-  .card:hover {
-    transform: none;
-  }
-  .card:hover .card__cover img {
-    transform: none;
-  }
-  .ring__fill,
-  .exp-enter-active,
-  .exp-leave-active,
-  .crew__avatar {
-    transition: none;
-  }
+.board--dragging .lane__list {
+  cursor: grabbing;
 }
 </style>

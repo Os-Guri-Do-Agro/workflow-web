@@ -232,7 +232,8 @@ watch(
 }
 
 .ttrack__badge--done {
-  background: var(--success);
+  /* Mesmo verde do dia garantido (5,7:1 no claro; o --success dá 2,6:1). */
+  background: var(--streak-done);
   color: var(--surface);
 }
 

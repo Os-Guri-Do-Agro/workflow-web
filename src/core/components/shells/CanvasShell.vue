@@ -20,7 +20,12 @@ import {
   QrCode,
   ScanText,
   Plug,
+  Bug,
+  Users,
+  Timer,
+  BookOpen,
 } from 'lucide-vue-next'
+import { useWorkspaceStore } from '@/stores/workspaceStores'
 import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
@@ -42,43 +47,102 @@ const emit = defineEmits<{
 const route = useRoute()
 const isAdminAnywhere = useIsAdminAnywhere()
 const router = useRouter()
+const workspace = useWorkspaceStore()
 
 const { quarters, firstMonth } = useNavQuarters()
 
-// Canvas (`/boards`) só aparece com a feature flag ligada (ver feature-flags.ts).
-const tabs = computed(() => [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/board', icon: Columns3, label: 'Board' },
-  ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas' }] : []),
-  { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
-  { to: '/drive', icon: HardDrive, label: 'Drive' },
-  { to: '/variables', icon: KeyRound, label: 'Variáveis' },
-  { to: '/notes', icon: StickyNote, label: 'Notas' },
-  { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
-  // Ferramentas de integração por último (o Canvas não tem seções; a ordem diz).
-  { to: '/qr', icon: QrCode, label: 'QR Codes' },
-  { to: '/links', icon: Link2, label: 'Encurtador' },
-  { to: '/ocr', icon: ScanText, label: 'OCR Digital' },
-  // Tokens das ferramentas: só ADMIN de alguma empresa (página agregada).
-  ...(isAdminAnywhere.value
-    ? [{ to: '/public-access', icon: Plug, label: 'Acessos Públicos' }]
-    : []),
-])
+// Mesma regra de papel do NavList e do FocusShell: item que a rota barraria
+// (Usuários para quem não é ADMIN) nem aparece.
+const ROLE_RANK: Record<string, number> = { WORKER: 0, ADMIN: 1 }
 
-const dockItems = computed(() => {
-  const items: Array<{ to: string; icon: Component }> = [
-    { to: '/dashboard', icon: LayoutDashboard },
-    { to: '/board', icon: Columns3 },
-    ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush }] : []),
-    { to: '/roadmap', icon: Milestone },
+function userMeetsRole(required?: 'WORKER' | 'ADMIN'): boolean {
+  if (!required) return true
+  const active = workspace.activeRole
+  if (!active) return false
+  return (ROLE_RANK[active] ?? -1) >= (ROLE_RANK[required] ?? -1)
+}
+
+type NavGroupName = 'Trabalho' | 'Empresa' | 'Pessoal' | 'Ferramentas'
+type TabItem = { to: string; icon: Component; label: string; role?: 'WORKER' | 'ADMIN' }
+type TabGroup = { name: NavGroupName; items: TabItem[] }
+
+/**
+ * As mesmas seções do NavList, na mesma ordem, como grupos da faixa de abas
+ * separados por um traço (o Canvas não tem rótulo de seção). Tarefas é de
+ * Trabalho, mas fica fixa ao lado da faixa: ver o comentário no template.
+ * Grupo sem item para o papel da pessoa não aparece.
+ */
+const tabGroups = computed<TabGroup[]>(() => {
+  const groups: TabGroup[] = [
+    {
+      name: 'Trabalho',
+      items: [
+        { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+        { to: '/board', icon: Columns3, label: 'Board' },
+        // Canvas (`/boards`) só aparece com a feature flag ligada (ver feature-flags.ts).
+        ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas' }] : []),
+        { to: '/roadmap', icon: Milestone, label: 'Roadmap' },
+      ],
+    },
+    {
+      name: 'Empresa',
+      items: [
+        { to: '/drive', icon: HardDrive, label: 'Drive' },
+        { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER' },
+        { to: '/variables', icon: KeyRound, label: 'Variáveis' },
+        { to: '/company-users', icon: Users, label: 'Usuários', role: 'ADMIN' },
+      ],
+    },
+    {
+      name: 'Pessoal',
+      items: [
+        { to: '/time', icon: Timer, label: 'Meu tempo' },
+        { to: '/notes', icon: StickyNote, label: 'Notas' },
+        { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
+      ],
+    },
+    {
+      // Ferramentas de integração por último, como nos outros shells.
+      name: 'Ferramentas',
+      items: [
+        { to: '/qr', icon: QrCode, label: 'QR Codes' },
+        { to: '/links', icon: Link2, label: 'Encurtador' },
+        { to: '/ocr', icon: ScanText, label: 'OCR Digital' },
+        { to: '/recursos', icon: BookOpen, label: 'Biblioteca' },
+        // Tokens das ferramentas: só ADMIN de alguma empresa (página agregada).
+        ...(isAdminAnywhere.value
+          ? [{ to: '/public-access', icon: Plug, label: 'Acessos Públicos' }]
+          : []),
+      ],
+    },
   ]
-  if (firstMonth.value) items.push({ to: `/tasks/${firstMonth.value.id}`, icon: ListTodo })
-  items.push(
-    { to: '/drive', icon: HardDrive },
-    { to: '/variables', icon: KeyRound },
-    { to: '/notes', icon: StickyNote },
-  )
-  return items
+  return groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => userMeetsRole(i.role)) }))
+    .filter((g) => g.items.length > 0)
+})
+
+/**
+ * Dock: atalhos mais usados, na ordem das seções e com o mesmo traço entre
+ * grupos (Trabalho, depois Empresa, depois Pessoal).
+ */
+const dockGroups = computed<TabItem[][]>(() => {
+  const work: TabItem[] = [
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/board', icon: Columns3, label: 'Board' },
+    ...(CANVAS_ENABLED ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas' }] : []),
+  ]
+  if (firstMonth.value) {
+    work.push({ to: `/tasks/${firstMonth.value.id}`, icon: ListTodo, label: 'Tarefas' })
+  }
+  work.push({ to: '/roadmap', icon: Milestone, label: 'Roadmap' })
+  return [
+    work,
+    [
+      { to: '/drive', icon: HardDrive, label: 'Drive' },
+      { to: '/variables', icon: KeyRound, label: 'Variáveis' },
+    ],
+    [{ to: '/notes', icon: StickyNote, label: 'Notas' }],
+  ]
 })
 
 const isActive = (to: string) => {
@@ -141,19 +205,30 @@ const onTabsWheel = (event: WheelEvent) => {
 
         <!-- A faixa rola; "Tarefas" fica fixa ao lado dela. O menu de Tarefas
              abre para fora da barra e seria recortado por um container com
-             overflow, então ele não pode viver dentro da faixa rolável. -->
+             overflow, então ele não pode viver dentro da faixa rolável. Por
+             ser de Trabalho, ela encosta no fim visível da faixa, que começa
+             justamente pelos itens de Trabalho. -->
         <div class="nav-row">
           <nav class="tabs" aria-label="Navegação principal" @wheel="onTabsWheel">
-            <button
-              v-for="tab in tabs"
-              :key="tab.to"
-              class="tab"
-              :class="{ 'tab--active': isActive(tab.to) }"
-              @click="router.push(tab.to)"
+            <div
+              v-for="group in tabGroups"
+              :key="group.name"
+              class="tab-group"
+              role="group"
+              :aria-label="group.name"
             >
-              <component :is="tab.icon" :size="14" />
-              <span>{{ tab.label }}</span>
-            </button>
+              <button
+                v-for="tab in group.items"
+                :key="tab.to"
+                class="tab"
+                :class="{ 'tab--active': isActive(tab.to) }"
+                :aria-current="isActive(tab.to) ? 'page' : undefined"
+                @click="router.push(tab.to)"
+              >
+                <component :is="tab.icon" :size="14" />
+                <span>{{ tab.label }}</span>
+              </button>
+            </div>
           </nav>
 
           <!-- Tarefas with quarter/month dropdown -->
@@ -228,16 +303,22 @@ const onTabsWheel = (event: WheelEvent) => {
 
     <!-- Floating dock -->
     <div class="dock">
-      <button
-        v-for="item in dockItems"
-        :key="item.to"
-        class="dock-btn"
-        :class="{ 'dock-btn--active': isActive(item.to) }"
-        @click="router.push(item.to)"
-      >
-        <component :is="item.icon" :size="15" />
-      </button>
-      <div class="dock-sep" />
+      <template v-for="(group, gi) in dockGroups" :key="gi">
+        <div v-if="gi > 0" class="dock-sep" aria-hidden="true" />
+        <button
+          v-for="item in group"
+          :key="item.to"
+          class="dock-btn"
+          :class="{ 'dock-btn--active': isActive(item.to) }"
+          :title="item.label"
+          :aria-label="item.label"
+          :aria-current="isActive(item.to) ? 'page' : undefined"
+          @click="router.push(item.to)"
+        >
+          <component :is="item.icon" :size="15" />
+        </button>
+      </template>
+      <div class="dock-sep" aria-hidden="true" />
       <button class="dock-btn dock-btn--accent" title="Assistente" @click="emit('open-command-palette')">
         <Sparkles :size="15" />
       </button>
@@ -307,6 +388,23 @@ const onTabsWheel = (event: WheelEvent) => {
 
 .tabs::-webkit-scrollbar {
   display: none;
+}
+
+.tab-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+/* Divisória entre seções: traço vertical curto e neutro, só entre grupos. */
+.tab-group + .tab-group::before {
+  content: '';
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 6px;
+  background: var(--border);
 }
 
 .nav-actions {

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { ChevronRight, FolderPlus } from 'lucide-vue-next'
+import { FolderPlus } from 'lucide-vue-next'
 import { useCompanyCreation } from '@/composables/useCompanyCreation'
+import { useNavQuarters } from '@/composables/useNavQuarters'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import { taskKey } from '@/features/tasks/task-key'
 import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
@@ -27,8 +29,50 @@ const workspace = useWorkspaceStore()
 // Só ADMIN cria empresa (regra do backend); WORKER veria um botão que sempre 403.
 const canCreateCompany = computed(() => workspace.isAdmin)
 
-const breadcrumbs = computed(() => {
+const { quarters } = useNavQuarters()
+
+interface Crumb {
+  label: string
+  /** Com destino, o crumb vira link (ex.: voltar do detalhe para o mês). */
+  to?: string
+  /** Chave da tarefa: mono, como no card e no painel. */
+  mono?: boolean
+}
+
+/**
+ * Tarefas / Q3 / Setembro / PJ-K7Q2XM (spec board-tarefas-redesign, S2). Antes
+ * era "Tarefas > Mês > Detalhes": o crumb não dizia em que mês nem em que
+ * tarefa a pessoa estava. O mês e o trimestre saem da mesma lista do menu
+ * lateral; a chave, do id da tarefa (da página cheia ou do painel `?task=`).
+ */
+function taskCrumbs(): Crumb[] {
+  const monthId = typeof route.params.month === 'string' ? route.params.month : ''
+  const taskId =
+    typeof route.params.taskId === 'string' && route.params.taskId
+      ? route.params.taskId
+      : typeof route.query.task === 'string' && route.query.task
+        ? route.query.task
+        : ''
+  const crumbs: Crumb[] = [{ label: 'Tarefas' }]
+  const quarter = quarters.value.find((q) => q.months.some((m) => m.id === monthId))
+  const month = quarter?.months.find((m) => m.id === monthId)
+  if (quarter) crumbs.push({ label: quarter.label })
+  if (month) crumbs.push({ label: month.name, to: taskId ? `/tasks/${month.id}` : undefined })
+  else if (monthId) crumbs.push({ label: 'Mês' })
+  if (taskId) {
+    const key = taskKey({ id: taskId }, workspace.activeCompany?.name)
+    if (key) crumbs.push({ label: key, mono: true })
+  }
+  return crumbs
+}
+
+const breadcrumbs = computed<Crumb[]>(() => {
   const path = route.path
+  if (path.startsWith('/tasks/')) return taskCrumbs()
+  return plainCrumbs(path).map((label) => ({ label }))
+})
+
+function plainCrumbs(path: string): string[] {
   // Rótulos IGUAIS aos do menu lateral (shared/NavList.vue): o crumb confirma
   // onde a pessoa clicou, e nome diferente do menu parece outra tela. Rota que
   // não está aqui caía no fallback, e o /time mostrava um nome antigo do app.
@@ -56,13 +100,6 @@ const breadcrumbs = computed(() => {
     '/public-access': 'Acessos Públicos',
   }
   if (routes[path]) return [routes[path]]
-  if (path.startsWith('/tasks/')) {
-    const parts = path.split('/')
-    const items = ['Tarefas']
-    if (parts[2]) items.push('Mês')
-    if (parts[3]) items.push('Detalhes')
-    return items
-  }
   if (path.startsWith('/relatorio/')) return ['Tarefas', 'Relatório']
   if (CANVAS_ENABLED && path.startsWith('/boards/')) return ['Canvas', 'Board']
   if (path.startsWith('/notes/')) return ['Notas', 'Editor']
@@ -71,7 +108,7 @@ const breadcrumbs = computed(() => {
   // Nome do produto (o mesmo do título da aba e do BrandMark), para rota sem
   // rótulo próprio, como a página de "não encontrado".
   return ['Nevo']
-})
+}
 
 // Glossário de jargão em PT-BR simples (acessibilidade 50+). Quando um crumb é
 // um termo técnico, mostramos uma explicação amigável no tooltip (title).
@@ -95,18 +132,27 @@ function crumbTooltip(crumb: string): string | undefined {
       <BrandMark />
       <CompanySwitcher variant="compact" />
       <div class="topbar-sep" />
-      <div class="breadcrumbs">
+      <nav class="breadcrumbs" aria-label="Você está em">
         <template v-for="(crumb, i) in breadcrumbs" :key="i">
-          <ChevronRight v-if="i > 0" :size="12" class="crumb-sep" />
+          <span v-if="i > 0" class="crumb-sep" aria-hidden="true">/</span>
+          <RouterLink v-if="crumb.to" :to="crumb.to" class="crumb crumb--link">
+            {{ crumb.label }}
+          </RouterLink>
           <span
+            v-else
             class="crumb"
-            :class="{ 'crumb--active': i === breadcrumbs.length - 1, 'crumb--glossary': crumbTooltip(crumb) }"
-            :title="crumbTooltip(crumb)"
+            :class="{
+              'crumb--active': i === breadcrumbs.length - 1,
+              'crumb--glossary': crumbTooltip(crumb.label),
+              'crumb--mono': crumb.mono,
+            }"
+            :title="crumbTooltip(crumb.label)"
+            :aria-current="i === breadcrumbs.length - 1 ? 'page' : undefined"
           >
-            {{ crumb }}
+            {{ crumb.label }}
           </span>
         </template>
-      </div>
+      </nav>
       <div class="spacer" />
       <CmdKButton variant="full" @open="$emit('open-command-palette')" />
       <HelpButton />
@@ -180,7 +226,29 @@ function crumbTooltip(crumb: string): string | undefined {
 
 .crumb-sep {
   color: var(--text-4);
-  opacity: 0.5;
+}
+
+.crumb--link {
+  color: var(--text-3);
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+}
+
+.crumb--link:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.crumb--link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.crumb--mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .crumb {

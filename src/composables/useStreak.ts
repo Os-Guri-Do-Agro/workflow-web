@@ -1,7 +1,12 @@
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/vue-query'
 import { computed, onScopeDispose, ref, toValue, type MaybeRefOrGetter } from 'vue'
-import streakService from '@/service/streak/streak-service'
+import streakService, {
+  type StreakMe,
+  type StreakTeam,
+  type StreakTeamMember,
+} from '@/service/streak/streak-service'
 import { localDayKey, moodFor } from '@/components/nevo/nevo-assets'
+import { timeKeys } from '@/composables/useTimeTracking'
 import { useActiveCompanyId } from '@/stores/authStores'
 import { safeStorage } from '@/utils/safe-storage'
 import { onTabVisible } from '@/utils/tab-visibility'
@@ -70,10 +75,42 @@ function tickClock() {
   const now = new Date()
   clockHour.value = now.getHours()
   const today = localDayKey(now)
-  if (today === lastDay) return
-  lastDay = today
-  // Prefixo `['streak']`: me e equipe mudam juntos na virada.
-  void clockClient?.invalidateQueries({ queryKey: streakKeys.all })
+  if (today !== lastDay) {
+    lastDay = today
+    // Prefixo `['streak']`: me e equipe mudam juntos na virada.
+    void clockClient?.invalidateQueries({ queryKey: streakKeys.all })
+    return
+  }
+  checkFocusGoal(today)
+}
+
+// ─── Meta de foco batida com o cronômetro RODANDO ────────────────────────────
+// Pela D2 o timer aberto (começado hoje) já conta no dia, então o dia vira
+// garantido no minuto 30 com o timer ainda rodando. Nenhum evento marca esse
+// instante (só `time:started`/`time:stopped`): sem isto o chip, a missão de
+// foco e a festa esperavam o polling de 5 min. O mesmo tique de 60 s confere se
+// a meta já deve ter sido batida desde o último dado e pede o `/me` uma vez.
+let focusNudgedFor = 0
+
+function checkFocusGoal(today: string) {
+  const client = clockClient
+  if (!client) return
+  const s = client.getQueryData<StreakMe>(streakKeys.me())
+  const updatedAt = client.getQueryState(streakKeys.me())?.dataUpdatedAt ?? 0
+  if (!s || s.securedToday || !updatedAt || updatedAt === focusNudgedFor) return
+  const focus = s.missions.find((m) => m.key === 'focus')
+  if (!focus || focus.done) return
+  // Timer aberto E começado hoje: um esquecido desde ontem não soma (D2
+  // refinada), e sem esta checagem o pedido se repetiria a cada minuto.
+  const entry = client.getQueryData<{ startedAt?: unknown; endedAt?: unknown } | null>(
+    timeKeys.current,
+  )
+  if (!entry || typeof entry.startedAt !== 'string' || entry.endedAt) return
+  if (localDayKey(new Date(entry.startedAt)) !== today) return
+  const dueAt = updatedAt + Math.max(0, focus.target - focus.current) * 60 * 1000
+  if (Date.now() < dueAt) return
+  focusNudgedFor = updatedAt
+  void client.invalidateQueries({ queryKey: streakKeys.me() })
 }
 
 function acquireClock(client: QueryClient) {
@@ -136,7 +173,67 @@ export function useStreak() {
 }
 
 /**
+ * A MINHA linha da equipe com os números do `/me`.
+ *
+ * O `/streak/team` responde de um cache de 30 s no servidor (por empresa, fuso
+ * e dia, compartilhado por todo mundo da empresa), e o `/streak/me` não tem
+ * cache. Logo depois de garantir o dia, o refetch da equipe podia trazer a foto
+ * de antes: a home dizia "Dia garantido!" e o painel logo abaixo, "ainda não
+ * garantiu hoje". A minha linha passa a vir do `/me` (mesmo dia civil), e o
+ * resumo de "quantos garantiram" acompanha. Colegas continuam vindo da equipe
+ * (o `useRealtimeQuerySync` rebusca a equipe de novo quando o cache vence).
+ *
+ * Devolve o MESMO objeto quando nada muda, para não disparar quem observa.
+ */
+export function withMyStreak(team: StreakTeam, me: StreakMe | null | undefined): StreakTeam {
+  if (!me || me.date !== team.date) return team
+  const idx = team.members.findIndex((m) => m.isMe)
+  const old = team.members[idx]
+  if (!old) return team
+  const mine: StreakTeamMember = {
+    ...old,
+    current: me.current,
+    best: me.best,
+    securedToday: me.securedToday,
+    todayIsRest: me.todayIsRest,
+    tier: { key: me.tier.key, label: me.tier.label },
+    week: me.week.map(({ date, secured, rest, perfect, isToday }) => ({
+      date,
+      secured,
+      rest,
+      perfect,
+      isToday,
+    })),
+    points: { week: me.points.week },
+  }
+  const same =
+    mine.current === old.current &&
+    mine.best === old.best &&
+    mine.securedToday === old.securedToday &&
+    mine.todayIsRest === old.todayIsRest &&
+    mine.tier.key === old.tier.key &&
+    mine.points.week === old.points.week &&
+    JSON.stringify(mine.week) === JSON.stringify(old.week)
+  if (same) return team
+
+  const members = team.members.slice()
+  members[idx] = mine
+  // Mesma ordem da API: pontos da semana, depois sequência, depois nome.
+  members.sort(
+    (a, b) =>
+      b.points.week - a.points.week || b.current - a.current || a.user.name.localeCompare(b.user.name),
+  )
+  const delta = Number(mine.securedToday) - Number(old.securedToday)
+  return {
+    ...team,
+    members,
+    summary: { ...team.summary, securedToday: Math.max(0, team.summary.securedToday + delta) },
+  }
+}
+
+/**
  * Sequência da equipe (membros da empresa, ranking de pontos, sequência do time).
+ * A linha de quem está logado vem do `/me` (ver `withMyStreak`).
  *
  * `companyId`:
  * - omitido: usa a empresa ativa (store + localStorage, mesmo padrão da inbox);
@@ -167,11 +264,15 @@ export function useStreakTeam(companyId?: MaybeRefOrGetter<string | null>) {
   acquireClock(queryClient)
   onScopeDispose(releaseClock)
 
+  // Mesma consulta do chip e da home (o Vue Query deduplica).
+  const { streak: me } = useStreak()
+  const team = computed(() => (query.data.value ? withMyStreak(query.data.value, me.value) : undefined))
+
   const available = computed(() => !isUnavailable(query.error.value))
   const isError = computed(() => query.isError.value && available.value)
 
   return {
-    team: query.data,
+    team,
     companyId: resolvedCompanyId,
     isLoading: query.isLoading,
     isFetching: query.isFetching,

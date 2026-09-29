@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Casca da vitrine 3D na home (spec sequencia-diaria-nevo, T7): card "O
- * Workflow em movimento" que monta o `NevoShowcase` (three.js + GSAP, T8).
+ * Nevo em movimento" que monta o `NevoShowcase` (three.js + GSAP, T8). O nome
+ * do produto que a pessoa vê é "Nevo" (aba, login, logo).
  *
  * O peso fica fora do caminho crítico em dois degraus:
  * 1. `defineAsyncComponent`: o componente da vitrine (e, por dentro dele, o
@@ -18,7 +19,7 @@
  * linha discreta com "Mostrar vitrine". Quem lembra a escolha é a home (ela
  * precisa do valor para reorganizar a grade); aqui só se pede a troca.
  */
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, ref } from 'vue'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import ErrorBoundary from '@/components/ui/ErrorBoundary.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -60,9 +61,20 @@ const { target, isVisible } = useLazyLoad()
 const shownByUser = ref(false)
 const mountShowcase = computed(() => isVisible.value || shownByUser.value)
 
+// O botão acionado some junto com o ramo do v-if: sem levar o foco para o
+// botão que aparece no lugar, ele caía no <body> e o anel de foco sumia.
+const hideBtn = ref<HTMLButtonElement | null>(null)
+const showBtn = ref<HTMLButtonElement | null>(null)
+
+function hide() {
+  emit('update:hidden', true)
+  void nextTick(() => showBtn.value?.focus())
+}
+
 function show() {
   shownByUser.value = true
   emit('update:hidden', false)
+  void nextTick(() => hideBtn.value?.focus())
 }
 
 // Mesmas consultas do hero e do painel do time (o Vue Query deduplica): a
@@ -75,10 +87,10 @@ const { team } = useStreakTeam()
   <section v-if="!hidden" v-reveal="2" class="bento-cell ss" aria-labelledby="ss-title">
     <header class="ss-head">
       <div class="ss-copy">
-        <h2 id="ss-title" class="ss-title">O Workflow em movimento</h2>
+        <h2 id="ss-title" class="ss-title">O Nevo em movimento</h2>
         <p class="ss-sub">Um passeio rápido pelo produto, com o Nevo de guia.</p>
       </div>
-      <button class="ghost-btn press ss-toggle" type="button" @click="emit('update:hidden', true)">
+      <button ref="hideBtn" class="ghost-btn press ss-toggle" type="button" @click="hide">
         <EyeOff :size="15" aria-hidden="true" />
         <span>Ocultar vitrine</span>
       </button>
@@ -98,7 +110,7 @@ const { team } = useStreakTeam()
 
   <div v-else class="ss-collapsed">
     <span class="ss-collapsed-text">Vitrine animada oculta</span>
-    <button class="ghost-btn press" type="button" @click="show">
+    <button ref="showBtn" class="ghost-btn press" type="button" @click="show">
       <Eye :size="15" aria-hidden="true" />
       <span>Mostrar vitrine</span>
     </button>
@@ -179,6 +191,15 @@ const { team } = useStreakTeam()
 .ss-placeholder-nevo {
   position: relative;
   opacity: 0.85;
+}
+
+/* Mesma altura mínima que a vitrine ganha no celular (NevoShowcase.vue): sem
+   isto o placeholder media 280px e a vitrine 380px, e a página pulava 100px
+   quando o chunk chegava. */
+@media (max-width: 640px) {
+  .ss-placeholder {
+    min-height: 380px;
+  }
 }
 
 /*

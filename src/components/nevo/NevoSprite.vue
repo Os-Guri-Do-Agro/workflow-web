@@ -17,9 +17,15 @@
  *
  * Movimento reduzido: vira `still` (e o flipbook mostra só o primeiro frame).
  *
- * Usado em: StreakHero (home), TierTrack, StreakCelebration, popover do chip.
+ * Exposto: `hop()`, um pulinho único (antecipa, sobe, cai, assenta) por cima
+ * do movimento atual, para reação a hover/foco. É Web Animations nativa, sem
+ * gsap: a animação do script ganha da do CSS enquanto roda e, no fim, o
+ * movimento de sempre volta sozinho. Movimento reduzido: não faz nada.
+ *
+ * Usado em: StreakHero (home), TierTrack, StreakCelebration, popover do chip,
+ * 404 e ErrorBoundary.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { NEVO_FLIPBOOKS, nevoSize, nevoSrc, type NevoSpriteName } from './nevo-assets'
 
@@ -96,6 +102,41 @@ const rootStyle = computed(() => ({
 }))
 
 const decorative = computed(() => !props.alt)
+
+// ─── Pulinho de reação ────────────────────────────────────────────────────────
+const bodyEl = ref<HTMLElement | null>(null)
+const floorEl = ref<HTMLElement | null>(null)
+
+/** Mesma linguagem do `nevo-bounce` (agacha, estica subindo, achata na queda). */
+const HOP_BODY: Keyframe[] = [
+  { offset: 0, transform: 'translateY(0) scale(1, 1)', easing: 'cubic-bezier(0.3, 0, 0.6, 1)' },
+  { offset: 0.14, transform: 'translateY(0) scale(1.1, 0.88)', easing: 'cubic-bezier(0.2, 0.8, 0.4, 1)' },
+  { offset: 0.46, transform: 'translateY(-18%) scale(0.95, 1.06)', easing: 'cubic-bezier(0.5, 0, 0.8, 0.5)' },
+  { offset: 0.72, transform: 'translateY(0) scale(1.12, 0.88)', easing: 'cubic-bezier(0.2, 0.8, 0.4, 1)' },
+  { offset: 0.87, transform: 'translateY(-2%) scale(0.98, 1.02)', easing: 'ease-out' },
+  { offset: 1, transform: 'translateY(0) scale(1, 1)' },
+]
+
+/** A sombra encolhe e clareia enquanto o corpo está no ar. */
+const HOP_FLOOR: Keyframe[] = [
+  { offset: 0, transform: 'translateX(-50%) scale(1)', opacity: 1 },
+  { offset: 0.14, transform: 'translateX(-50%) scale(1.08)', opacity: 1 },
+  { offset: 0.46, transform: 'translateX(-50%) scale(0.66)', opacity: 0.5 },
+  { offset: 0.72, transform: 'translateX(-50%) scale(1.1)', opacity: 1 },
+  { offset: 1, transform: 'translateX(-50%) scale(1)', opacity: 1 },
+]
+
+const HOP_MS = 700
+
+function hop(): void {
+  if (reduced.value) return
+  const body = bodyEl.value
+  if (!body || typeof body.animate !== 'function') return
+  body.animate(HOP_BODY, { duration: HOP_MS })
+  floorEl.value?.animate(HOP_FLOOR, { duration: HOP_MS })
+}
+
+defineExpose({ hop })
 </script>
 
 <template>
@@ -107,8 +148,8 @@ const decorative = computed(() => !props.alt)
     :aria-label="decorative ? undefined : alt"
     :aria-hidden="decorative ? 'true' : undefined"
   >
-    <span v-if="floor" class="nevo__floor" />
-    <span class="nevo__body">
+    <span v-if="floor" ref="floorEl" class="nevo__floor" />
+    <span ref="bodyEl" class="nevo__body">
       <span class="nevo__flip" :class="{ 'is-flipped': flip }">
         <img
           v-for="f in layout.frames"

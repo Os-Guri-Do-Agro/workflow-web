@@ -21,7 +21,7 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import NevoFlame from '@/components/nevo/NevoFlame.vue'
 import NevoSprite from '@/components/nevo/NevoSprite.vue'
 import StreakWeek from '@/components/nevo/StreakWeek.vue'
-import { daysLabel, tierOf, tierTone } from '@/components/nevo/nevo-assets'
+import { POINTS_RULES, daysLabel, litTone, tierOf, tierTone } from '@/components/nevo/nevo-assets'
 import TeamInsightsRail from '@/features/time/components/TeamInsightsRail.vue'
 import TimeHeatmap from '@/features/time/components/TimeHeatmap.vue'
 import PeriodPicker from '@/features/time/components/PeriodPicker.vue'
@@ -119,8 +119,7 @@ const SORT_OPTIONS: readonly { key: TeamSort; label: string }[] = [
 const SORT_HINT: Partial<Record<TeamSort, string>> = {
   streak:
     'Dias seguidos com a meta cumprida: 30 min de foco ou 1 tarefa concluída. Fim de semana e feriado não quebram a sequência.',
-  points:
-    'Pontos desta semana: tarefa concluída vale 10, cada 3 min de foco vale 1, comentar ou atualizar uma tarefa vale 3 e dia garantido vale 15.',
+  points: `Pontos desta semana: ${POINTS_RULES}.`,
 }
 const sortHint = computed(() => SORT_HINT[sortMode.value] ?? null)
 
@@ -190,7 +189,9 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
 <template>
   <div class="team">
     <!-- Escopo: grupo inteiro ou uma empresa -->
-    <nav v-if="showScope" class="scope" aria-label="Escopo do ranking">
+    <!-- Grupo de botões de filtro, não navegação: `nav` virava landmark e
+         aparecia no leitor de tela ao lado do menu. -->
+    <div v-if="showScope" class="scope" role="group" aria-label="Escopo do ranking">
       <button
         class="scope__btn"
         :class="{ 'scope__btn--on': isGroup }"
@@ -211,7 +212,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
       >
         {{ c.name }}
       </button>
-    </nav>
+    </div>
 
     <!-- Resumo + período -->
     <header class="team-bar">
@@ -279,7 +280,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
         <!-- Eixo do ranking. Só aparece com a sequência disponível no servidor. -->
         <div v-if="streakAvailable" class="rank-tools">
           <div class="rank-tools__row">
-            <nav class="scope" aria-label="Ordenar o ranking por">
+            <div class="scope" role="group" aria-label="Ordenar o ranking por">
               <button
                 v-for="o in SORT_OPTIONS"
                 :key="o.key"
@@ -294,7 +295,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
                 <Star v-else :size="15" aria-hidden="true" />
                 {{ o.label }}
               </button>
-            </nav>
+            </div>
             <span v-if="myPlace" class="rank-me">
               Você está em <strong>{{ myPlace }}º</strong>
             </span>
@@ -342,6 +343,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
                     v-if="sortMode !== 'streak'"
                     class="team-streak"
                     :class="{ 'team-streak--lit': p.streak.securedToday }"
+                    :style="{ '--streak-lit': litTone(p.streak.tierKey) }"
                     role="img"
                     :aria-label="streakAria(p.streak)"
                     :title="streakAria(p.streak)"
@@ -349,6 +351,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
                     <NevoFlame
                       :live="p.streak.securedToday"
                       :lit="p.streak.securedToday"
+                      :tier="p.streak.tierKey"
                       :size="18"
                     />
                     <span class="team-streak__num">{{ daysLabel(p.streak.current) }}</span>
@@ -370,12 +373,14 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
               <span
                 class="pod__total pod__total--streak"
                 :class="{ 'pod__total--lit': p.streak.securedToday }"
+                :style="{ '--streak-lit': litTone(p.streak.tierKey) }"
                 role="img"
                 :aria-label="streakAria(p.streak)"
               >
                 <NevoFlame
                   :live="p.streak.securedToday"
                   :lit="p.streak.securedToday"
+                  :tier="p.streak.tierKey"
                   :size="p.rank === 1 ? 28 : 24"
                 />
                 {{ daysLabel(p.streak.current) }}
@@ -449,6 +454,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
                   v-if="row.streak"
                   class="team-streak"
                   :class="{ 'team-streak--lit': row.streak.securedToday }"
+                  :style="{ '--streak-lit': litTone(row.streak.tierKey) }"
                   role="img"
                   :aria-label="streakAria(row.streak)"
                   :title="streakAria(row.streak)"
@@ -456,6 +462,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
                   <NevoFlame
                     :live="row.streak.securedToday"
                     :lit="row.streak.securedToday"
+                    :tier="row.streak.tierKey"
                     :size="18"
                   />
                   <span class="team-streak__num">{{ daysLabel(row.streak.current) }}</span>
@@ -911,8 +918,9 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
   gap: 6px;
 }
 
+/* Aceso, o número pega o tom da chama do nível (`--streak-lit`, AA). */
 .pod__total--lit {
-  color: var(--streak-flame);
+  color: var(--streak-lit, var(--streak-flame));
 }
 
 .pod__track {
@@ -1099,7 +1107,7 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
 }
 
 .team-streak--lit {
-  color: var(--streak-flame);
+  color: var(--streak-lit, var(--streak-flame));
 }
 
 /* Em quais empresas do grupo a pessoa registrou tempo. Base 0: ocupa só a

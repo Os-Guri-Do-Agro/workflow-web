@@ -12,9 +12,14 @@
  *
  * Use em volta do que é ACESSÓRIO. Não use para esconder falha do fluxo
  * principal: ali o certo é a tela dizer o que aconteceu.
+ *
+ * O Nevo triste (pequeno, parado, decorativo) fica ao lado da mensagem: dá o
+ * tom de "algo deu errado aqui" sem alarme. O NevoSprite é só CSS e sprite,
+ * e as telas que usam esta caixa (home e Meu tempo) já o carregam.
  */
 import { onErrorCaptured, ref } from 'vue'
-import { AlertTriangle, RotateCcw } from 'lucide-vue-next'
+import { RotateCcw } from 'lucide-vue-next'
+import NevoSprite from '@/components/nevo/NevoSprite.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -44,13 +49,15 @@ function tentarDeNovo() {
 
 <template>
   <div v-if="erro" class="eb">
-    <AlertTriangle :size="15" />
+    <span class="eb-nevo">
+      <NevoSprite pose="sad" motion="still" :size="48" />
+    </span>
     <div class="eb-text">
       <p class="eb-title">Não consegui carregar {{ label }}</p>
       <p class="eb-msg">{{ erro.message }}</p>
     </div>
     <button class="eb-btn" type="button" @click="tentarDeNovo">
-      <RotateCcw :size="12" /> Tentar de novo
+      <RotateCcw :size="14" aria-hidden="true" /> Tentar de novo
     </button>
   </div>
   <template v-else>
@@ -61,23 +68,33 @@ function tentarDeNovo() {
 <style scoped>
 .eb {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 13px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 10px 13px;
   border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--border));
   border-radius: var(--radius);
   background: var(--surface-2);
   color: var(--warn);
 }
 
+.eb-nevo {
+  flex: none;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 40px;
+  height: 48px;
+}
+
 .eb-text {
   flex: 1;
-  min-width: 0;
+  min-width: min(180px, 100%);
 }
 
 .eb-title {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 0.8125rem;
   font-weight: 700;
   color: var(--text);
 }

@@ -110,6 +110,11 @@ function scrollToAnchor(hash: string, fromOtherPage: boolean) {
     }
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     container.scrollTo({ top, behavior: reduced ? 'instant' : 'smooth' })
+    // O foco vai junto com a rolagem: sem isto ele ficava no botão que levou até
+    // aqui (o chip da topbar) e o próximo Tab voltava para a topbar, longe do
+    // que a pessoa pediu para ver. Só em alvo preparado para receber foco
+    // (`tabindex`), e sem rolar de novo.
+    if (target.hasAttribute('tabindex')) target.focus({ preventScroll: true })
   }
   requestAnimationFrame(tick)
 }
@@ -176,6 +181,13 @@ const router = createRouter({
     },
     // Ferramenta em desenvolvimento: a página apresenta o produto (spec: docs/specs/ocr-digital.md).
     { path: '/ocr', name: 'ocr', component: () => import('@/features/ocr/OcrDigitalView.vue') },
+    // Catálogo curado de onde tirar vídeo, foto e trilha, com a licença à vista.
+    // Só leitura e sem escopo de empresa: vale para o time inteiro.
+    {
+      path: '/recursos',
+      name: 'resource-library',
+      component: () => import('@/features/library/ResourceLibraryView.vue'),
+    },
     // Tokens de API das ferramentas (spec: docs/specs/acessos-publicos.md).
     // `anyCompanyAdmin`: quem não é ADMIN em NENHUMA empresa não tem o que ver.
     {

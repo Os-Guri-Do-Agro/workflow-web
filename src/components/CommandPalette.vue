@@ -353,7 +353,10 @@ defineExpose({ open })
   <Teleport to="body">
     <Transition name="palette">
       <div v-if="isOpen" class="palette-overlay" @mousedown.self="close">
-        <div class="palette-container">
+        <!-- Diálogo modal de verdade (role + aria-modal): quem espera o
+             caminho livre, como a festa da sequência, enxerga a paleta aberta
+             e não abre por baixo dela roubando o foco da busca. -->
+        <div class="palette-container" role="dialog" aria-modal="true" aria-label="Paleta de comandos">
           <div class="palette-input-row">
             <Search :size="16" class="palette-search-icon" />
             <input

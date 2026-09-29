@@ -82,8 +82,11 @@ const chain = () => props.editor?.chain().focus()
  * foco do editor, o que esconderia o próprio campo que a pessoa está usando.
  */
 function shouldShow({ editor }: { editor: CoreEditor }): boolean {
+  // Campo só leitura: o menu continua montado (ver o TaskDescriptionEditor),
+  // mas nunca aparece, nem no modo link.
+  if (!editor.isEditable) return false
   if (linkMode.value) return true
-  return editor.isEditable && editor.isFocused && !editor.state.selection.empty
+  return editor.isFocused && !editor.state.selection.empty
 }
 
 async function openLink() {
@@ -111,7 +114,7 @@ function closeLink() {
   linkUrl.value = ''
 }
 
-defineExpose({ openLink })
+defineExpose({ openLink, closeLink })
 </script>
 
 <template>

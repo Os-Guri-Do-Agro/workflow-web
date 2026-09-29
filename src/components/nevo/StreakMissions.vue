@@ -235,7 +235,8 @@ const doneCount = computed(() => props.missions.filter((m) => m.done).length)
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--success);
+  /* Mesmo verde do dia garantido (5,7:1 no claro; o --success dá 2,6:1). */
+  background: var(--streak-done);
   color: var(--surface);
   animation: smis-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }

@@ -78,7 +78,8 @@ const nextMonthLabel = computed(() => monthLabel(shiftMonthKey(props.monthKey, 1
           Nasce em {{ status.label }}
         </span>
         <span class="meta-chip" :style="{ '--c': priority.token } as Record<string, string>">
-          {{ priority.short }}
+          <component :is="priority.icon" :size="12" />
+          {{ priority.label }}
         </span>
         <span class="meta-chip meta-chip--plain">
           {{ countInMonth }}× neste mês

@@ -137,20 +137,28 @@ export function useTimeTracking() {
     onSuccess: onStopped,
   })
 
+  // Lançar, editar e excluir entrada não geram evento de socket (só o start e o
+  // stop geram, e o `useRealtimeQuerySync` cobre esses). Sem isto o chip, a home
+  // e a festa do "dia garantido" só mudavam no polling de 5 min. `['streak']`
+  // espelha `streakKeys.all` de useStreak (literal para o timer não importar o
+  // composable da sequência); o prefixo pega a minha e a da equipe.
+  const afterEntryChange = () =>
+    Promise.all([invalidateAll(), queryClient.invalidateQueries({ queryKey: ['streak'] })])
+
   const createManual = useMutation({
     mutationFn: (input: ManualEntryInput) => timeService.createManual(input),
-    onSuccess: () => void invalidateAll(),
+    onSuccess: () => void afterEntryChange(),
   })
 
   const updateEntry = useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateEntryInput }) =>
       timeService.updateEntry(id, data),
-    onSuccess: () => void invalidateAll(),
+    onSuccess: () => void afterEntryChange(),
   })
 
   const deleteEntry = useMutation({
     mutationFn: (id: string) => timeService.deleteEntry(id),
-    onSuccess: () => void invalidateAll(),
+    onSuccess: () => void afterEntryChange(),
   })
 
   // Liga/desliga o ticker compartilhado conforme há timer rodando.
@@ -196,6 +204,7 @@ export function useTimeTracking() {
     updateEntry,
     deleteEntry,
     invalidateAll,
+    afterEntryChange,
   }
 }
 

@@ -14,6 +14,12 @@ const sharedRadiusAndShadow = {
   '--radius': '10px',
   '--radius-lg': '14px',
   '--radius-xl': '20px',
+  // Raios de trabalho do board de tarefas (spec board-tarefas-redesign): 4px
+  // para tag, badge e checkbox; 8px para coluna, menu e popover. O card usa
+  // `--radius-sm` (6px). Ficam fora da escala acima porque ela é a das telas de
+  // vitrine, e ferramenta densa com raio grande em tudo é o que lê como "IA".
+  '--radius-xs': '4px',
+  '--radius-md': '8px',
   // `--shadow-sm` é redefinida por tema logo abaixo: a mesma sombra suave que
   // funciona no claro desaparece sobre fundo escuro.
   '--shadow-sm': '0 1px 2px rgba(0,0,0,0.20)',
@@ -53,7 +59,9 @@ const sharedRadiusAndShadow = {
   '--metal-silver': '#C2CBD6',
   '--metal-silver-lo': '#7E8894',
   '--metal-bronze-hi': '#F0C39A',
-  '--metal-bronze': '#C58045',
+  // Um passo mais claro que o bronze "de catálogo" (#C58045): o número da
+  // medalha em --brand-ink ficava em 4,49:1; aqui dá 4,76:1 (AA).
+  '--metal-bronze': '#C9854A',
   '--metal-bronze-lo': '#7E4A1F',
 }
 
@@ -116,6 +124,24 @@ const darkTokens: TokenMap = {
   '--avatar-4': '#E0A1B8',
   '--avatar-5': '#D4B476',
   '--avatar-6': '#93C79C',
+  // Board de tarefas (spec board-tarefas-redesign, D5 e D6). A coluna é um
+  // poço um passo acima do fundo e abaixo do card; o card não tem sombra no
+  // escuro (sombra preta sobre fundo preto não aparece), só um fio de 1px.
+  '--surface-sunken': '#15171C',
+  '--shadow-raised': '0 0 0 1px rgba(230,238,250,0.10)',
+  // Status só no ícone de 14px. Família própria, e não `--status-*`, porque
+  // aqui "A fazer" é NEUTRO e "Em andamento" é azul; os gráficos do Dashboard
+  // continuam na paleta de `--status-*`. Todos passam 3:1 como objeto gráfico.
+  '--task-status-todo': 'rgba(240,243,247,0.50)',
+  '--task-status-prog': '#5B9BF8',
+  '--task-status-test': '#A98BF0',
+  '--task-status-done': '#3CCB7F',
+  // Cor só onde muda decisão: prioridade Urgente/Alta e prazo vencido/perto.
+  // São TEXTO de 12px, então passam AA (>= 4,5:1) sobre --surface e --surface-2.
+  '--prio-urgent': '#F97066',
+  '--prio-high': '#F79009',
+  '--due-late': '#F97066',
+  '--due-soon': '#F7B04B',
   // Sequência diária do Nevo (spec sequencia-diaria-nevo). Cor como sinal
   // chapado (número, anel, tinta de fundo), nunca brilho em volta. Os tons que
   // viram TEXTO (chama, níveis) passam AA sobre --surface: chama 8,2:1,
@@ -129,8 +155,11 @@ const darkTokens: TokenMap = {
   '--streak-rest': '#8FA6C7',
   '--streak-perfect': '#F5C542',
   '--streak-missed': '#A98387',
-  // "Concluído!" em TEXTO. No escuro é o próprio --success (5,9:1); existe
-  // porque no claro o verde de --success dá só 2,4:1 como texto.
+  // Verde de "feito" da sequência: "Concluído!" em TEXTO e preenchimento
+  // sólido com glifo na cor da superfície (check do dia garantido, selos das
+  // trilhas, check das missões). No escuro é o próprio --success (5,9:1);
+  // existe porque no claro o verde de --success dá só 2,4:1 como texto e 2,6:1
+  // como objeto gráfico.
   '--streak-done': '#12B76A',
   // Níveis do mascote, na mesma família das chamas-cristal de cada nível
   // (seq-basico laranja, seq-disciplina laranja-dourado, seq-constancia azul,
@@ -188,21 +217,40 @@ const lightTokens: TokenMap = {
   '--avatar-4': '#B34A6E',
   '--avatar-5': '#96690F',
   '--avatar-6': '#35793F',
+  // Board de tarefas: ver o comentário no tema escuro. No claro o card é
+  // branco com a sombra `raised` do Atlassian (sem borda) sobre o poço cinza.
+  '--surface-sunken': '#E9E9EC',
+  '--shadow-raised': '0 1px 1px rgba(30,31,33,0.20), 0 0 1px rgba(30,31,33,0.30)',
+  '--task-status-todo': 'rgba(11,11,12,0.45)',
+  '--task-status-prog': '#2563EB',
+  '--task-status-test': '#7C3AED',
+  '--task-status-done': '#15803D',
+  // O laranja e o vermelho de --warn/--err dão 2,2:1 e 3,6:1 sobre branco:
+  // não servem como texto. Estes passam AA (4,8:1 a 5,6:1).
+  '--prio-urgent': '#D92D20',
+  '--prio-high': '#B54708',
+  '--due-late': '#D92D20',
+  '--due-soon': '#B54708',
   // Sequência diária: versão escura dos mesmos matizes do tema dark, porque o
-  // laranja da marca (--brand-accent) dá só 3:1 sobre branco. Medido sobre
-  // --surface: chama 5,2:1, perfeito 5,4:1, níveis entre 5,0:1 e 7,1:1.
-  '--streak-flame': '#C2410C',
+  // laranja da marca (--brand-accent) dá só 3:1 sobre branco. Os tons que viram
+  // texto também precisam passar sobre a TINTA do próprio tom (cartão do nível
+  // atual, selo, "Dia perfeito!", "Faltam N dias" no cartão do próximo marco,
+  // topo aceso do popover), não só sobre --surface: com a chama em #C2410C e o
+  // dourado em #9A5B06 esses casos davam 4,2 a 4,5:1. Um passo mais escuros,
+  // o pior caso medido (tinta de até 16% e --surface-3, também no Modo XP) fica
+  // em 4,6:1. Sobre --surface: chama 6,1:1, dourado 6,3:1, níveis de 6,1 a 7,1:1.
+  '--streak-flame': '#AF3A0A',
   '--streak-flame-soft': 'rgba(234,88,12,0.10)',
   '--streak-off': '#878D97',
   '--streak-rest': '#4F6485',
-  '--streak-perfect': '#9A5B06',
+  '--streak-perfect': '#8C5205',
   '--streak-missed': '#A86A70',
   '--streak-done': '#067647',
-  '--tier-basico': '#C2410C',
-  '--tier-progresso': '#B45309',
+  '--tier-basico': '#AF3A0A',
+  '--tier-progresso': '#9F4807',
   '--tier-determinado': '#3B5B9A',
   '--tier-especialista': '#6D28D9',
-  '--tier-lendario': '#9A5B06',
+  '--tier-lendario': '#8C5205',
   '--nevo-floor': 'rgba(11,11,12,0.16)',
 }
 

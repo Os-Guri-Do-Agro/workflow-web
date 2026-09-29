@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   AlertTriangle,
   DollarSign,
@@ -97,6 +97,21 @@ watch(
     activeTab.value = abaDaUrl(tab)
   },
 )
+const router = useRouter()
+/**
+ * Trocar de aba aqui também escreve na URL: ela é a fonte da aba. Sem isso,
+ * quem chegava por "Ver o time" (URL `?tab=team`), ia para "Meu tempo" e pedia
+ * o time de novo fazia uma navegação duplicada: a URL não mudava, o watch acima
+ * não disparava e a aba ficava onde estava.
+ */
+function irParaAba(tab: Tab) {
+  activeTab.value = tab
+  const query = { ...rota.query }
+  // "Meu tempo" é a aba padrão: sai da URL em vez de virar `?tab=me`.
+  if (tab === 'me') delete query.tab
+  else query.tab = tab
+  void router.replace({ query })
+}
 const hasCompany = computed(() => !!workspace.activeCompanyId)
 
 const headEyebrow = computed(() =>
@@ -699,7 +714,7 @@ async function submitManual() {
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'me' }"
           type="button"
-          @click="activeTab = 'me'"
+          @click="irParaAba('me')"
         >
           Meu tempo
         </button>
@@ -709,7 +724,7 @@ async function submitManual() {
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'report' }"
           type="button"
-          @click="activeTab = 'report'"
+          @click="irParaAba('report')"
         >
           <Scale :size="14" />
           Fechamento
@@ -719,7 +734,7 @@ async function submitManual() {
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'team' }"
           type="button"
-          @click="activeTab = 'team'"
+          @click="irParaAba('team')"
         >
           <Users :size="14" />
           Equipe

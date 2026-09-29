@@ -30,10 +30,12 @@ import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka
 import NevoFlame from '@/components/nevo/NevoFlame.vue'
 import {
   NEVO_MILESTONES,
+  POINTS_RULES,
   daysLabel,
+  litTone,
   milestoneTone,
   remainingLabel,
-  tierTone,
+  tierToneText,
 } from '@/components/nevo/nevo-assets'
 import { useStreak } from '@/composables/useStreak'
 
@@ -85,6 +87,14 @@ const chipState = computed<ChipState>(() => {
 const lit = computed(() => data.value?.securedToday ?? false)
 const atRisk = computed(() => data.value?.atRisk ?? false)
 const current = computed(() => data.value?.current ?? 0)
+const tierKey = computed(() => data.value?.tier.key ?? 'none')
+
+/**
+ * Aceso, chip e topo do popover seguem o NÍVEL: a chama vira o cristal do
+ * nível (`NevoFlame` com `tier`) e o número pega o mesmo tom. Os `--tier-*`
+ * passam AA como texto nos dois temas; no Modo XP o número segue branco.
+ */
+const litStyle = computed(() => (lit.value ? { '--streak-lit': litTone(tierKey.value) } : undefined))
 
 /**
  * Nome acessível do botão (e o `title`, idêntico). Dia de descanso ganha frase
@@ -142,13 +152,28 @@ function closePopover() {
   open.value = false
 }
 
+/**
+ * "Ver minha jornada": o foco vai para o módulo da sequência na home (quem leva
+ * é o router, junto com a rolagem até a âncora). Por isso, ao fechar, o reka
+ * NÃO devolve o foco a este botão, senão ele voltava para a topbar.
+ */
+let focusGoesToJourney = false
+
+function goToJourney() {
+  focusGoesToJourney = true
+  closePopover()
+}
+
+function onCloseAutoFocus(event: Event) {
+  if (!focusGoesToJourney) return
+  focusGoesToJourney = false
+  event.preventDefault()
+}
+
 // ─── Conteúdo do popover ──────────────────────────────────────────────────────
 const unitLabel = computed(() => (current.value === 1 ? 'dia seguido' : 'dias seguidos'))
 
-const tierColor = computed(() => {
-  const key = data.value?.tier.key ?? 'none'
-  return key === 'none' ? 'var(--text-3)' : tierTone(key)
-})
+const tierColor = computed(() => tierToneText(data.value?.tier.key ?? 'none'))
 
 const missionsDone = computed(() => data.value?.missions.filter((m) => m.done).length ?? 0)
 const missionsTotal = computed(() => data.value?.missions.length ?? 0)
@@ -173,8 +198,7 @@ const weekPoints = computed(() => data.value?.points.week ?? 0)
 
 const TIER_HINT =
   'Nível do mascote: o Nevo evolui conforme a sequência cresce (Básico, Em progresso, Determinado, Especialista e Lendário).'
-const POINTS_HINT =
-  'Pontos da semana: tarefa concluída vale 10, cada 3 minutos de foco vale 1 e dia garantido vale 15. Servem para o ranking do time.'
+const POINTS_HINT = `Pontos da semana: ${POINTS_RULES}. Servem para o ranking do time.`
 </script>
 
 <template>
@@ -198,13 +222,14 @@ const POINTS_HINT =
           'is-open': open,
           'streak-trigger--compact': compact,
         }"
+        :style="litStyle"
         :aria-label="triggerLabel"
         :title="triggerLabel"
         @pointerenter="prefetchPanel"
         @focus="prefetchPanel"
       >
         <span class="streak-trigger__flame">
-          <NevoFlame :live="lit" :lit="lit" :size="compact ? 20 : 22" />
+          <NevoFlame :live="lit" :lit="lit" :tier="tierKey" :size="compact ? 20 : 22" />
           <span v-if="atRisk" class="streak-trigger__risk" aria-hidden="true" />
         </span>
         <span
@@ -226,12 +251,13 @@ const POINTS_HINT =
         :side-offset="10"
         :collision-padding="12"
         @open-auto-focus="focusPanel"
+        @close-auto-focus="onCloseAutoFocus"
       >
         <!-- Topo: chama + número (como no mock do dono) e o Nevo no humor do dia. -->
-        <section class="streak-pop__hero" :class="{ 'is-lit': lit }">
+        <section class="streak-pop__hero" :class="{ 'is-lit': lit }" :style="litStyle">
           <div class="streak-pop__hero-main">
             <div class="streak-pop__count">
-              <NevoFlame :live="lit" :lit="lit" :size="40" />
+              <NevoFlame :live="lit" :lit="lit" :tier="tierKey" :size="40" />
               <p class="streak-pop__num">{{ current }}</p>
             </div>
             <p class="streak-pop__unit">{{ unitLabel }}</p>
@@ -298,7 +324,7 @@ const POINTS_HINT =
           <RouterLink
             class="streak-pop__btn streak-pop__btn--primary"
             :to="{ path: '/', hash: '#sequencia' }"
-            @click="closePopover"
+            @click="goToJourney"
           >
             Ver minha jornada
           </RouterLink>
@@ -386,7 +412,7 @@ const POINTS_HINT =
 }
 
 .streak-trigger.is-lit .streak-trigger__num {
-  color: var(--streak-flame);
+  color: var(--streak-lit, var(--streak-flame));
 }
 
 .streak-trigger__num.is-pop {
@@ -555,9 +581,9 @@ html[data-xp='true'] .streak-skel__num {
   background: var(--surface-2);
 }
 
-/* Aceso: tinta chapada da chama (sem radial, sem brilho). */
+/* Aceso: tinta chapada da chama do nível (sem radial, sem brilho). */
 .streak-pop__hero.is-lit {
-  background: color-mix(in srgb, var(--streak-flame) 8%, var(--surface-2));
+  background: color-mix(in srgb, var(--streak-lit, var(--streak-flame)) 8%, var(--surface-2));
 }
 
 .streak-pop__hero-main {
@@ -583,7 +609,7 @@ html[data-xp='true'] .streak-skel__num {
 }
 
 .streak-pop__hero.is-lit .streak-pop__num {
-  color: var(--streak-flame);
+  color: var(--streak-lit, var(--streak-flame));
 }
 
 .streak-pop__unit {

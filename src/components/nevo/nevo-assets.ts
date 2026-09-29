@@ -174,6 +174,19 @@ export function tierForDays(days: number): NevoTier | null {
   return NEVO_TIERS.find((t) => days >= t.min && (t.max === null || days <= t.max)) ?? null
 }
 
+/**
+ * Chama ACESA de quem está no nível `key` (chip, home, popover, equipe).
+ * Sem nível e no Básico fica a laranja animada de sempre (flipbook
+ * `fogo-animado-*`): devolve null. Dali para cima vem a chama-cristal do nível
+ * (Em progresso laranja-dourado, Determinado azul, Especialista roxo, Lendário
+ * dourado), que é estática e tremula só em CSS no `NevoFlame`.
+ * Chama apagada não usa isto: continua a cinza.
+ */
+export function tierLitFlame(key: StreakTierKey | null | undefined): NevoSpriteName | null {
+  if (!key || key === 'none' || key === 'basico') return null
+  return tierOf(key)?.flame ?? null
+}
+
 // ─── Marcos (D9) ───────────────────────────────────────────────────────────────
 
 export interface NevoMilestone {
@@ -196,6 +209,20 @@ export function milestoneFlame(key: StreakMilestoneKey): NevoSpriteName {
   return NEVO_MILESTONES.find((m) => m.key === key)?.flame ?? 'seq-basico'
 }
 
+// ─── Pontos da semana (D11) ───────────────────────────────────────────────────
+
+/**
+ * A regra dos pontos, num texto só para todas as telas (dica do chip, rodapé da
+ * home, ordenação da Equipe): antes cada uma listava um pedaço e ninguém
+ * chegava ao número mostrado somando o que lia. Espelha o `POINTS` de
+ * `workflow-api/src/streak/streak-engine.ts` (D11): mudou lá, muda aqui.
+ * Sem ponto final, para cada tela pôr o prefixo e o fecho dela.
+ */
+export const POINTS_RULES =
+  'tarefa concluída vale 10, cada 3 minutos de foco vale 1 (até 200 por dia), ' +
+  'comentar, mudar o status ou atualizar uma tarefa vale 3 (até 10 ações por dia), ' +
+  'dia garantido vale 15 e dia perfeito vale mais 10'
+
 // ─── Humor do Nevo (o que ele diz e como aparece) ─────────────────────────────
 
 export type NevoMoodKey =
@@ -214,11 +241,46 @@ export interface NevoMood {
   motion: 'idle' | 'walk' | 'run' | 'bounce' | 'sleep' | 'still'
   title: string
   message: string
+  /**
+   * Noite (22h às 4h59) num dia ainda por garantir: o Nevo aparece cansado.
+   * A chave continua `pending`/`at-risk` (quem decide botão e fala pela chave
+   * segue funcionando); a pose e o texto é que mudam.
+   */
+  night?: boolean
+}
+
+/** Fim de noite e madrugada (22h às 4h59): hora em que o Nevo fica com sono. */
+export function isNightHour(hour: number): boolean {
+  return hour >= 22 || hour < 5
+}
+
+/** Até quantos dias depois da quebra o Nevo ainda fala dela ("Ops... que pena"). */
+export const BROKEN_RECENT_DAYS = 7
+
+/** Dias entre duas datas YYYY-MM-DD (positivo quando `to` vem depois). */
+export function daysBetween(from: string, to: string): number {
+  // Meio-dia local nas duas pontas: horário de verão não empurra a conta.
+  const a = new Date(`${from}T12:00:00`).getTime()
+  const b = new Date(`${to}T12:00:00`).getTime()
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0
+  return Math.round((b - a) / 86_400_000)
 }
 
 /**
  * Humor a partir do resumo e da hora local. Regras (copy sem em-dash):
- * garantido > descanso > quebrou > em risco (depois das 17h) > pendente > novo.
+ * garantido > descanso > quebrou (só se recente, até 7 dias) > em risco
+ * (depois das 17h) > pendente > novo.
+ *
+ * "Quebrou" depende da data: `previous` vale para a janela inteira de 400 dias,
+ * e quebra antiga não é notícia. Morar AQUI (e não numa tela) é o que faz o
+ * chip e a home dizerem a mesma coisa.
+ *
+ * Noite (`isNightHour`, 22h às 4h59): "em risco" e "pendente" mantêm a chave e
+ * ganham a pose `cansado` com `night: true`. O texto muda com a hora, porque a
+ * verdade muda: das 22h à meia-noite o dia AINDA fecha hoje (se não garantir,
+ * a sequência quebra à meia-noite, D5), então o Nevo avisa do prazo em vez de
+ * mandar dormir; na madrugada o dia acabou de começar e dá para deixar para
+ * a manhã sem perder nada.
  */
 export function moodFor(s: StreakMe | null | undefined, hour = new Date().getHours()): NevoMood {
   if (!s) {
@@ -249,10 +311,18 @@ export function moodFor(s: StreakMe | null | undefined, hour = new Date().getHou
       pose: 'dormindo',
       motion: 'sleep',
       title: 'Dia de descanso',
-      message: s.current > 0 ? `Sua sequência de ${s.current} dias fica guardada. Descanse!` : 'Hoje não tem meta. Aproveite o descanso!',
+      message:
+        s.current > 0
+          ? `Sua sequência de ${daysLabel(s.current)} fica guardada. Descanse!`
+          : 'Hoje não tem meta. Aproveite o descanso!',
     }
   }
-  if (s.current === 0 && s.previous > 0 && s.brokenOn) {
+  if (
+    s.current === 0 &&
+    s.previous > 0 &&
+    s.brokenOn &&
+    daysBetween(s.brokenOn, s.date) <= BROKEN_RECENT_DAYS
+  ) {
     return {
       key: 'broken',
       pose: 'sad',
@@ -262,21 +332,43 @@ export function moodFor(s: StreakMe | null | undefined, hour = new Date().getHou
     }
   }
   if (s.current > 0 && hour >= 17) {
+    if (isNightHour(hour)) {
+      return {
+        key: 'at-risk',
+        pose: 'cansado',
+        motion: 'idle',
+        night: true,
+        title: 'Tá ficando tarde',
+        message: `O dia fecha à meia-noite. Ainda dá para garantir o ${s.current + 1}º dia seguido: 1 tarefa concluída ou 30 min de foco.`,
+      }
+    }
     return {
       key: 'at-risk',
       pose: 'thinking',
       motion: 'idle',
       title: 'Sua sequência está esperando',
-      message: `Garanta o dia ${s.current + 1}: 30 min de foco ou 1 tarefa concluída.`,
+      // Ordinal com "seguido": "o dia 13" solto era lido como data do mês.
+      message: `Garanta o ${s.current + 1}º dia seguido: 30 min de foco ou 1 tarefa concluída.`,
     }
   }
   if (s.current > 0) {
+    // Aqui a hora é < 17: noite só pode ser madrugada (0h às 4h59).
+    if (isNightHour(hour)) {
+      return {
+        key: 'pending',
+        pose: 'cansado',
+        motion: 'idle',
+        night: true,
+        title: 'Hora de descansar',
+        message: `Tá tarde. Amanhã cedo a gente garante o ${s.current + 1}º dia seguido.`,
+      }
+    }
     return {
       key: 'pending',
       pose: tier?.pose ?? 'idle',
       motion: tier?.motion ?? 'idle',
       title: 'Bora garantir o dia?',
-      message: `Falta pouco para o dia ${s.current + 1}. Foque 30 min ou conclua 1 tarefa.`,
+      message: `Falta pouco para o ${s.current + 1}º dia seguido. Foque 30 min ou conclua 1 tarefa.`,
     }
   }
   return {
@@ -286,6 +378,33 @@ export function moodFor(s: StreakMe | null | undefined, hour = new Date().getHou
     title: 'Comece sua sequência hoje',
     message: 'Foque 30 minutos ou conclua 1 tarefa e o Nevo acende a primeira chama.',
   }
+}
+
+// ─── Dicas do Nevo (clique no mascote da home) ───────────────────────────────
+
+/**
+ * Dicas curtas e úteis que o Nevo dá no balão quando alguém clica nele. Todas
+ * são fatos do produto (conferidos no código e nas regras D1 a D11 da spec):
+ * mudou a regra, muda aqui. Até ~85 caracteres, para caber em duas linhas no
+ * balão do palco. Sem travessão.
+ */
+export const NEVO_TIPS: readonly string[] = [
+  '30 min de foco ou 1 tarefa concluída já garantem o dia.',
+  'Aperte Ctrl+K para buscar qualquer página, empresa ou comando.',
+  'O cronômetro fica no topo de toda tela: dê o play de onde estiver.',
+  'Esqueceu o cronômetro? Uma Entrada manual feita até o dia seguinte ainda conta.',
+  'Fim de semana e feriado não quebram a sequência. Pode descansar!',
+  'Comentar ou mudar o status de uma tarefa cumpre a missão do time.',
+  'As 3 missões no mesmo dia fazem um dia perfeito e valem 10 pontos a mais.',
+  'Na aba Equipe, em Meu tempo, dá para ver a chama de cada colega.',
+]
+
+/**
+ * Primeira dica do dia: muda de um dia para o outro sem sortear (o mesmo dia
+ * sempre começa pela mesma), e cada clique avança uma.
+ */
+export function firstTipIndex(d: Date = new Date()): number {
+  return d.getDate() % NEVO_TIPS.length
 }
 
 /** Formata "12 dias" / "1 dia". */
@@ -325,9 +444,32 @@ export function weekdayIndex(date: string): number {
   return (d.getDay() + 6) % 7
 }
 
-/** Cor chapada do nível (token por tema). `none` cai no cinza da chama apagada. */
+/**
+ * Cor chapada do nível (token por tema) para DECORAÇÃO: tinta de fundo, borda,
+ * disco, chama. `none` cai no cinza da chama apagada, que é cor de ícone.
+ */
 export function tierTone(key: StreakTierKey): string {
   return key === 'none' ? 'var(--streak-off)' : `var(--tier-${key})`
+}
+
+/**
+ * Cor do nível quando ela pinta TEXTO. Os tons de nível passam AA como texto;
+ * o `--streak-off` do "sem nível" não (3,3:1 no claro), então aí vai o cinza de
+ * texto terciário.
+ */
+export function tierToneText(key: StreakTierKey): string {
+  return key === 'none' ? 'var(--text-3)' : tierTone(key)
+}
+
+/**
+ * Tom da chama ACESA de quem está no nível `key`, casado com `tierLitFlame`:
+ * número do chip, topo aceso do popover, "N dias" ao lado da chama na equipe.
+ * Serve como texto e como tinta (os `--tier-*` passam AA sobre a superfície e
+ * sobre a tinta de até 16% do próprio tom, nos dois temas e no Modo XP). Sem
+ * nível não deveria estar aceso; se estiver, fica o laranja da chama.
+ */
+export function litTone(key: StreakTierKey | null | undefined): string {
+  return !key || key === 'none' ? 'var(--streak-flame)' : tierTone(key)
 }
 
 /**

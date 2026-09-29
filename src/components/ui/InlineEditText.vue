@@ -29,6 +29,12 @@ const props = withDefaults(
     /** `title` usa tipografia de h1; `body` é texto corrido. */
     variant?: 'title' | 'body'
     minRows?: number
+    /**
+     * Multilinha que só QUEBRA na tela: Enter grava (como no campo de uma
+     * linha) e quebra de linha colada vira espaço. É o título longo do painel,
+     * que num `<input>` ficava cortado no meio da frase.
+     */
+    submitOnEnter?: boolean
   }>(),
   {
     multiline: false,
@@ -38,6 +44,7 @@ const props = withDefaults(
     disabled: false,
     variant: 'body',
     minRows: 3,
+    submitOnEnter: false,
   },
 )
 
@@ -75,6 +82,9 @@ function autosize() {
 }
 
 function onInput() {
+  if (props.submitOnEnter && /[\r\n]/.test(draft.value)) {
+    draft.value = draft.value.replace(/\s*[\r\n]+\s*/g, ' ')
+  }
   dirty.value = true
   clearTimer()
   timer = window.setTimeout(flush, props.debounceMs)
@@ -106,7 +116,7 @@ function onKeydown(event: KeyboardEvent) {
     return
   }
   if (event.key === 'Enter') {
-    if (props.multiline && !(event.metaKey || event.ctrlKey)) return
+    if (props.multiline && !props.submitOnEnter && !(event.metaKey || event.ctrlKey)) return
     event.preventDefault()
     flush()
     fieldRef.value?.blur()

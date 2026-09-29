@@ -78,7 +78,6 @@ const cells = computed<Cell[]>(() => {
   }).slice(0, total + lead > 35 ? 42 : 35)
 })
 
-const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.status).token
 </script>
 
 <template>
@@ -91,7 +90,7 @@ const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.s
           Fixas do mês
         </span>
         <span class="rail-sub">
-          Valem o mês inteiro. Reaparecem sozinhas no mês seguinte — sem recopiar nada.
+          Valem o mês inteiro. Reaparecem sozinhas no mês seguinte, sem recopiar nada.
         </span>
       </header>
 
@@ -101,14 +100,13 @@ const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.s
           :key="item.id"
           class="fixed-card"
           :class="{ 'fixed-card--skipped': item.skipped }"
-          :style="{ '--st-c': statusToken(item) } as Record<string, string>"
           tabindex="0"
           role="button"
           @click="emit('open', item)"
           @keydown.enter="emit('open', item)"
         >
           <div class="fixed-top">
-            <span class="status-dot" aria-hidden="true" />
+            <component :is="statusSpec(item.status).icon" :size="14" />
             <span class="fixed-status">{{ statusSpec(item.status).label }}</span>
             <span class="fixed-day">dia {{ Number(item.date.slice(8, 10)) }}</span>
           </div>
@@ -153,14 +151,13 @@ const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.s
               :key="item.id"
               class="occ"
               :class="{ 'occ--skipped': item.skipped, 'occ--touched': item.touched }"
-              :style="{ '--st-c': statusToken(item) } as Record<string, string>"
               tabindex="0"
               role="button"
               :title="item.title"
               @click="emit('open', item)"
               @keydown.enter="emit('open', item)"
             >
-              <span class="occ-bar" aria-hidden="true" />
+              <component :is="statusSpec(item.status).icon" :size="12" class="occ-status" />
               <span class="occ-title">{{ item.title }}</span>
               <button
                 v-if="!item.skipped"
@@ -264,7 +261,6 @@ const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.s
   padding: 9px 11px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--st-c);
   border-radius: var(--radius);
   cursor: pointer;
   transition:
@@ -275,7 +271,6 @@ const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.s
 .fixed-card:hover,
 .fixed-card:focus-visible {
   border-color: var(--border-strong);
-  border-left-color: var(--st-c);
   box-shadow: var(--shadow-sm);
   outline: none;
 }
@@ -290,25 +285,19 @@ const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.s
   gap: 6px;
 }
 
-.status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--st-c);
+.fixed-top > svg {
   flex-shrink: 0;
 }
 
 .fixed-status {
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-3);
 }
 
 .fixed-day {
   margin-left: auto;
-  font-size: 10.5px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--text-4);
 }
@@ -418,7 +407,7 @@ const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.s
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 4px 5px 4px 8px;
+  padding: 4px 5px 4px 6px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -436,17 +425,14 @@ const statusToken = (occurrence: RecurringOccurrence) => statusSpec(occurrence.s
   outline: none;
 }
 
-.occ-bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--st-c);
+.occ-status {
+  flex-shrink: 0;
 }
 
 .occ-title {
   flex: 1;
   min-width: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 550;
   line-height: 1.3;
   color: var(--text);
