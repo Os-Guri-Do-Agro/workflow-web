@@ -373,8 +373,8 @@ const alternar = (nome: string) => (aberto.value = aberto.value === nome ? null 
           <header class="painel-topo">
             <span class="painel-icone" aria-hidden="true"><History :size="18" /></span>
             <span class="painel-texto">
-              <h2>Mudou neste ano</h2>
-              <span class="painel-desc">O que saiu do ar e para onde a gente foi</span>
+              <h2>O que mudou</h2>
+              <span class="painel-desc">O que saiu do ar ou mudou de dono, e para onde a gente foi</span>
             </span>
           </header>
           <ul class="mudou">

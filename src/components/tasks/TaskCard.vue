@@ -10,9 +10,14 @@
  * 4. meta 12px: chave · regra da rotina · prazo · `3/6` · anexos · documentos,
  *    e à direita a prioridade (só Alta e Urgente) e até 2 avatares.
  *
- * Sem capa, sem checklist expansível, sem anel e sem lixeira ocupando espaço:
- * excluir e mover moram no menu "…", que aparece por cima no hover sem
- * reservar largura (era a lixeira invisível que quebrava o título cedo).
+ * Capa: quando a tarefa tem um anexo de imagem, a primeira imagem vira a capa
+ * no topo do card, de ponta a ponta (como no Trello/Jira). Foi pedido do time
+ * depois da primeira versão sem capa: a foto é o jeito mais rápido de achar a
+ * tarefa certa. Sem zoom no hover; se a imagem falhar, a capa some.
+ *
+ * Sem checklist expansível, sem anel e sem lixeira ocupando espaço: excluir e
+ * mover moram no menu "…", que aparece por cima no hover sem reservar largura
+ * (era a lixeira invisível que quebrava o título cedo).
  *
  * Cor só onde muda decisão: prazo vencido/perto, Alta/Urgente e o avatar.
  * Nada de borda colorida, sombra que cresce, card que sobe ou entrada animada.
@@ -162,6 +167,18 @@ const subtasks = computed(() => {
   return { done: list.filter((s) => s.status === 'DONE').length, total: list.length }
 })
 
+// Capa: a primeira imagem entre os anexos. O mimeType pode faltar em anexo
+// antigo, por isso a extensão também vale.
+const IMAGE_FILE = /\.(jpe?g|png|gif|webp|avif)$/i
+const coverFailed = ref(false)
+const coverUrl = computed(() => {
+  if (coverFailed.value) return null
+  const image = props.task.attachments?.find(
+    (a) => a.mimeType?.startsWith('image/') || IMAGE_FILE.test(a.filename),
+  )
+  return image?.url ?? null
+})
+
 // `_count` é o que a API manda agora; o array carregado é a rede para payload antigo.
 const attachmentCount = computed(
   () => props.task._count?.attachments ?? props.task.attachments?.length ?? 0,
@@ -283,6 +300,10 @@ function cancelFromKey() {
     @keydown.space.self.prevent="onOpenKey"
     v-on="{ [TASK_CARD_RENAME_EVENT]: startEditing }"
   >
+    <div v-if="coverUrl" class="card__cover" aria-hidden="true">
+      <img :src="coverUrl" alt="" loading="lazy" decoding="async" draggable="false" @error="coverFailed = true" />
+    </div>
+
     <input
       v-if="editing"
       ref="input"
@@ -497,6 +518,24 @@ function cancelFromKey() {
 
 .card--readonly {
   cursor: default;
+}
+
+/* ── Capa ──
+   Sangra até a borda do card (anula o padding) e herda o raio de cima. A
+   altura é fixa para a coluna não pular quando a imagem carrega. */
+.card__cover {
+  margin: -8px -10px 2px;
+  height: 116px;
+  overflow: hidden;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--surface-2);
+}
+
+.card__cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* ── Título ── */

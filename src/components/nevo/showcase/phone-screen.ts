@@ -48,7 +48,7 @@ const P = {
   black: 'black',
 }
 
-/** Fonte do produto (Geist). Mesma pilha dos tokens, com fallback do sistema. */
+/** Fonte do produto (Figtree). Mesma pilha dos tokens, com fallback do sistema. */
 const FONT = tok('--font-family', 'system-ui, sans-serif')
 
 function font(weight: number, px: number): string {
@@ -268,7 +268,7 @@ export function createPhoneScreen(onDirty: () => void): PhoneScreen {
     onDirty()
   }
   spriteListeners.add(bump)
-  // A Geist pode chegar depois do primeiro desenho: redesenha quando carregar.
+  // A fonte pode chegar depois do primeiro desenho: redesenha quando carregar.
   void document.fonts?.ready.then(bump)
 
   /**

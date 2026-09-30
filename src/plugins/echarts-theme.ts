@@ -53,7 +53,7 @@ export function withAlpha(input: string, alpha: number): string {
 
 /** Fonte do produto para textos desenhados em canvas. */
 export function chartFontFamily(): string {
-  return readToken('--font-family', 'Geist, Inter, sans-serif')
+  return readToken('--font-family', '"Figtree Variable", Inter, sans-serif')
 }
 
 /**
@@ -78,7 +78,7 @@ export function chartStatusColors(): {
   }
 }
 
-/** Tooltip com a cara do design system (surface, borda, sombra, Geist). */
+/** Tooltip com a cara do design system (surface, borda, sombra, Figtree). */
 export function chartTooltip(): Record<string, unknown> {
   return {
     backgroundColor: resolveCssColor('var(--surface)'),

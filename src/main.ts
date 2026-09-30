@@ -5,7 +5,8 @@
 // pessoas. Ver utils/storage-shim.ts.
 import '@/utils/storage-shim'
 
-import '@/assets/fonts/geist/geist.css'
+import '@fontsource-variable/figtree'
+import '@fontsource-variable/figtree/wght-italic.css'
 import '@fontsource-variable/inter'
 import '@/styles/reset.css'
 import '@/styles/typography.css'

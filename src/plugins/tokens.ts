@@ -27,12 +27,13 @@ const sharedRadiusAndShadow = {
   '--motion': '180ms',
   '--motion-slow': '280ms',
   '--motion-ease': 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-  // Geist (self-host, ver assets/fonts/geist) é a fonte do produto — variável
-  // 100–900, então os pesos intermediários (550/650/720…) renderizam exatos.
-  // Inter fica de fallback caso a woff2 ainda não tenha carregado: é a grotesque
-  // mais próxima em métrica, o swap quase não desloca layout.
+  // Figtree (self-host via @fontsource-variable/figtree, importada no main.ts)
+  // é a fonte do produto desde set/2026: o time achou a Geist pouco confortável
+  // no board e escolheu a Figtree comparando as duas nos mesmos cards. É
+  // variável 300–900, então os pesos intermediários (550/650…) renderizam
+  // exatos. Inter fica de fallback enquanto a woff2 não chega.
   '--font-family':
-    '"Geist", "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    '"Figtree Variable", "Figtree", "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   '--font-mono':
     'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
   // Cores fixas de identidade da marca (o mascote xícara). Não variam por tema:

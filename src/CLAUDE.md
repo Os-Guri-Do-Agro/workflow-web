@@ -16,7 +16,7 @@ Guia interno para navegar e evoluir o código.
 - @tanstack/vue-query para cache de fetch
 - TypeScript 5.9, Vite 7
 - Ícones: **lucide-vue-next** (padrão) + `mdi` via fonte (legado, em migração)
-- Fonte: **Geist** (Vercel, OFL 1.1; self-host VARIÁVEL 100–900 + itálico em `assets/fonts/geist/`, importada no `main.ts`; Inter fica de fallback). Trocar em `tokens.ts` (`--font-family`). Não ligar stylistic sets no reset: o corte padrão é o desenho do produto
+- Fonte: **Figtree** (OFL 1.1; self-host VARIÁVEL 300–900 + itálico via `@fontsource-variable/figtree`, importada no `main.ts`; Inter fica de fallback). Escolhida pelo time em set/2026 no lugar da Geist, que achou pouco confortável no board (a Geist segue em `assets/fonts/geist/`, sem import). Trocar em `tokens.ts` (`--font-family`). Não ligar stylistic sets no reset: o corte padrão é o desenho do produto
 - Motion: `motion-v` (springs de estado, ex.: anéis de progresso) + **gsap** (coreografia de entrada e count-up; spec overhaul-visual-premium). O gsap NUNCA entra no chunk de entrada: a diretiva `v-reveal` (`plugins/reveal.ts`, registrada no `main.ts`) importa a lib dinamicamente, e `useCountUp` só é importado por views lazy. Toda animação decorativa respeita `prefers-reduced-motion`
 - 3D: **three.js**, só na vitrine da home. Import de `three` **apenas** em `components/nevo/showcase/`, e a vitrine chega por `defineAsyncComponent` + `useLazyLoad` (`features/dashboard/components/ShowcaseSection.vue`). Nunca no chunk de entrada nem no da home (checar no build)
 - Toast: **vue-sonner** (consumido via `useToast()` bridge)
@@ -44,7 +44,7 @@ Camadas disponíveis como CSS custom properties em `:root` (atualizadas runtime 
 | **Radius**         | `--radius-sm` (6px), `--radius` (10px), `--radius-lg` (14px), `--radius-xl` (20px); de trabalho (board): `--radius-xs` (4px, tag/badge) e `--radius-md` (8px, coluna/menu) |
 | **Shadow**         | `--shadow-sm`, `--shadow`, `--shadow-overlay`                                         |
 | **Motion**         | `--motion-fast` (120ms), `--motion` (180ms), `--motion-slow` (280ms), `--motion-ease` |
-| **Typography**     | `--font-family` (Geist), `--font-mono`                                                 |
+| **Typography**     | `--font-family` (Figtree), `--font-mono`                                               |
 | **Board de tarefas** | `--surface-sunken` (poço da coluna), `--shadow-raised` (card: fio de 1px no escuro, sombra `raised` do Atlassian no claro), `--task-status-todo/prog/test/done` (cor do ÍCONE de status: A fazer neutro, Em andamento azul; os gráficos seguem em `--status-*`), `--prio-urgent`, `--prio-high`, `--due-late`, `--due-soon` (texto de 12px com AA). Spec [board-tarefas-redesign.md](../docs/specs/2026/q3/q3-3/board-tarefas-redesign.md). No Modo XP valem os do tema claro |
 | **Sequência (Nevo)** | `--streak-flame`, `--streak-flame-soft`, `--streak-off`, `--streak-rest`, `--streak-perfect`, `--streak-missed`, `--streak-done`, `--nevo-floor` e os níveis `--tier-basico`, `--tier-progresso`, `--tier-determinado`, `--tier-especialista`, `--tier-lendario`. Cor como sinal chapado (número, anel, tinta), nunca brilho em volta. No Modo XP o `styles/xp.css` força os valores do tema claro no `<html>` (a paleta Luna é clara) e um laranja claro na barra azul do topo |
 
