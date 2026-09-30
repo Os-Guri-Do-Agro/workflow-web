@@ -44,8 +44,10 @@ export function normalizePersonName(name: string | null | undefined): string {
  *
  * - `https://...` (bucket público), `blob:` e `data:image/` (prévia local)
  *   passam como estão;
- * - `/avatars/x.webp` é relativo à ORIGEM DO FRONT (os avatares prontos moram em
- *   `public/avatars/`), não à API: o navegador resolve sozinho;
+ * - `/avatars/x.webp` é relativo à ORIGEM DO FRONT (as quatro fotos iniciais em
+ *   `public/avatars/`), não à API: o navegador resolve sozinho. É transitório:
+ *   a API leva essas fotos para o bucket na primeira leitura e passa a
+ *   devolver `https://`;
  * - caminho sem barra inicial ganha a barra, para não virar relativo à rota
  *   atual (`/tasks/m-09/avatars/...`);
  * - qualquer outro esquema (`javascript:`, `//host` etc.) é recusado e a pessoa

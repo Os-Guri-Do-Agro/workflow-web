@@ -4,9 +4,10 @@ export type CompanyRole = 'ADMIN' | 'WORKER' | 'CLIENT' | 'VIEWER'
 
 /**
  * Foto de perfil da pessoa. Dois formatos válidos:
- * - URL absoluta `https://...` (upload no bucket público);
- * - caminho relativo `/avatars/<nome>.webp` (os avatares prontos servidos pelo
- *   próprio front, mesma origem).
+ * - URL absoluta `https://...` (bucket público; é o normal, inclusive para as
+ *   quatro fotos iniciais depois que a API as leva para lá);
+ * - caminho relativo `/avatars/<nome>.webp` (foto inicial que a API ainda não
+ *   levou para o bucket, servida pelo próprio front até lá).
  * `null` = sem foto (ou a migration ainda não foi aplicada): a UI mostra as
  * iniciais. Quem desenha é sempre o `PersonAvatar`.
  */
