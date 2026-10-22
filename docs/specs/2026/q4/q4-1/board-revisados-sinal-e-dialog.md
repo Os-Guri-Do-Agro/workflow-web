@@ -1,6 +1,6 @@
 # Spec: Coluna "Revisados", sinal do teste no card e tarefa em dialog central
 
-**Status:** Concluído (código completo e verificado; sem commit; migration pendente em produção)
+**Status:** Concluído (commits na main; migration aplicada em produção em 2026-10-22, falta só registrar no histórico do Prisma)
 **Autor:** Claude (Opus 5.5) a pedido do Nicolas
 **Criado em:** 2026-10-22
 **Última atualização:** 2026-10-22
@@ -219,7 +219,8 @@ Junto, o **título do card** fica mais legível.
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-10-22 | 0.1 | Criação a partir do pedido, das respostas do Nicolas e da pesquisa em três frentes (API, board e detalhe) | Claude |
-| 2026-10-22 | 0.2 | T1 a T8 entregues e verificados; correções da revisão do diff (detalhe abaixo). Sem commit. | Claude |
+| 2026-10-22 | 0.2 | T1 a T8 entregues e verificados; correções da revisão do diff (detalhe abaixo). | Claude |
+| 2026-10-22 | 0.3 | Commits na main pelo Nicolas. Migration aplicada em produção com `scripts/run-prod-migration.mjs`: SQL inteiro sem erro, tabela `ActivityTestSignal` presente. O registro em `_prisma_migrations` (`prisma migrate resolve --applied 20261022120000_activity_reviewed_test_signal`) ficou para o Nicolas: a permissão negou o comando. Sem o registro, um `migrate deploy` futuro reaplica o arquivo, o que é inofensivo porque ele é idempotente. | Claude |
 
 ### v0.2: entrega
 
