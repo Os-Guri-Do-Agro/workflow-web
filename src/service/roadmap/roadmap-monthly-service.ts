@@ -1,4 +1,5 @@
 import api from '../api'
+import type { ActivityStatus } from '@/features/tasks/activity-types'
 
 export type RoadmapCategory = 'milestone' | 'meeting' | 'delivery' | 'recording' | 'note' | 'risk'
 
@@ -28,7 +29,7 @@ export interface RoadmapEntry {
   source: string
 }
 
-export type RoadmapDeliveryStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+export type RoadmapDeliveryStatus = ActivityStatus
 
 /**
  * Entrega real do mês: uma atividade com `dueDate` no mês, derivada pela API a

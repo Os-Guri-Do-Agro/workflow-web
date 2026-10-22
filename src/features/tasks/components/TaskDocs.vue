@@ -12,8 +12,15 @@
  * texto. O mesmo `.md` também pode ficar como anexo — a escolha é oferecida na
  * seção Arquivos (`TaskAttachments`), que pergunta o destino. Nesta seção não
  * há pergunta: quem sobe por aqui já escolheu documento.
+ *
+ * Variante `specs` (dialog da tarefa, spec board-revisados-sinal-e-dialog,
+ * D12): a spec não é para ler na tela, é para levar ao agente. Vem RECOLHIDA,
+ * e cada documento é uma linha com Copiar (markdown cru), Baixar (.md) e Ver
+ * (abre na leitura). O editor continua a um clique.
  */
 import { computed, ref } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
+import activityService from '@/service/activities/activity-service'
 import {
   Check,
   ChevronDown,
@@ -21,6 +28,7 @@ import {
   ChevronRight,
   Copy,
   Download,
+  Eye,
   FileText,
   Loader2,
   Plus,
@@ -40,8 +48,10 @@ const props = withDefaults(
     docs: ActivityDocMeta[]
     companyId?: string | null
     canEdit?: boolean
+    /** `specs`: recolhido, com Copiar/Baixar/Ver por documento (dialog da tarefa). */
+    variant?: 'full' | 'specs'
   }>(),
-  { canEdit: true, companyId: null },
+  { canEdit: true, companyId: null, variant: 'full' },
 )
 
 /** A lista de documentos vive na atividade: mudou, o pai recarrega. */
@@ -81,6 +91,12 @@ async function addBlank(): Promise<void> {
   creating.value = true
   try {
     await createDoc({ title: 'Novo documento', content: '' })
+    // Nas Specs recolhidas, o documento novo e vazio abre no editor: é para
+    // escrever nele agora.
+    if (isSpecs.value && collapsed.value) {
+      openMode.value = null
+      collapsed.value = false
+    }
   } finally {
     creating.value = false
   }
@@ -142,15 +158,111 @@ const selectedIndex = computed(() =>
 // da tarefa: fica no `localStorage`, igual ao modo do editor.
 
 const COLLAPSE_KEY = 'tasks.docs.collapsed'
-const collapsed = ref(localStorage.getItem(COLLAPSE_KEY) === '1')
+const isSpecs = computed(() => props.variant === 'specs')
+// Specs nascem recolhidas SEMPRE (não é preferência guardada): o que se faz com
+// elas é copiar e baixar, e o editor aberto empurraria comentários para baixo.
+const collapsed = ref(isSpecs.value ? true : localStorage.getItem(COLLAPSE_KEY) === '1')
+/** Modo com que o editor abre: o "Ver" das Specs abre na leitura. */
+const openMode = ref<'preview' | null>(null)
 
-function toggleCollapse(): void {
+async function toggleCollapse(): Promise<void> {
   // Recolher desmonta o editor: descarrega o autosave pendente antes, senão o
-  // que foi digitado nos últimos segundos morre com o componente.
-  if (!collapsed.value) flush()
+  // que foi digitado nos últimos segundos morre com o componente (e o Copiar
+  // da linha leria o texto sem a última edição).
+  if (!collapsed.value) await flush()
   collapsed.value = !collapsed.value
-  localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0')
+  if (!collapsed.value) openMode.value = null
+  if (!isSpecs.value) localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0')
 }
+
+// ─── Specs: ações por documento, sem abrir o editor ──────────────────────────
+
+const queryClient = useQueryClient()
+const copiedId = ref<string | null>(null)
+const busyId = ref<string | null>(null)
+
+/** Markdown cru do documento: o rascunho, se é o aberto; senão, do cache/servidor. */
+async function contentOf(doc: ActivityDocMeta): Promise<string> {
+  if (doc.id === selectedId.value && !collapsed.value) return draft.value
+  // `staleTime: 0`: o que se copia para o agente é o que está no servidor
+  // agora, não o que estava no cache há meio minuto.
+  const full = await queryClient.fetchQuery({
+    queryKey: ['activity-doc', doc.id],
+    queryFn: () => activityService.getDoc(doc.id, props.companyId ?? undefined),
+    staleTime: 0,
+  })
+  return full.content
+}
+
+/**
+ * Copia um texto que ainda vai chegar da rede. Safari e Firefox recusam o
+ * `writeText` depois de um `await` (o gesto do clique "expira"): o
+ * `ClipboardItem` com uma Promise segura o gesto até o texto chegar.
+ */
+async function copyAsync(text: Promise<string>): Promise<void> {
+  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/plain': text.then((t) => new Blob([t], { type: 'text/plain' })),
+        }),
+      ])
+      return
+    } catch {
+      // Navegador sem ClipboardItem com Promise: cai no writeText.
+    }
+  }
+  await navigator.clipboard.writeText(await text)
+}
+
+async function copyDoc(doc: ActivityDocMeta): Promise<void> {
+  busyId.value = doc.id
+  try {
+    await copyAsync(contentOf(doc))
+    copiedId.value = doc.id
+    window.setTimeout(() => {
+      if (copiedId.value === doc.id) copiedId.value = null
+    }, 1600)
+  } catch {
+    showError('Não foi possível copiar o documento')
+  } finally {
+    busyId.value = null
+  }
+}
+
+async function downloadDoc(doc: ActivityDocMeta): Promise<void> {
+  busyId.value = doc.id
+  try {
+    saveAs(doc.filename, await contentOf(doc))
+    showSuccess(`${doc.filename} baixado`)
+  } catch {
+    showError('Não foi possível baixar o documento')
+  } finally {
+    busyId.value = null
+  }
+}
+
+function viewDoc(doc: ActivityDocMeta): void {
+  selectedId.value = doc.id
+  openMode.value = 'preview'
+  collapsed.value = false
+}
+
+/** Gera o arquivo no cliente: o documento vive no banco, não no Storage. */
+function saveAs(filename: string, text: string): void {
+  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+/** O principal primeiro: é o que as subtarefas herdam e o que se leva ao agente. */
+const specRows = computed(() =>
+  [...props.docs].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.position - b.position),
+)
 
 /** Resumo de uma linha no lugar do editor: qual documento ficaria aberto. */
 const collapsedSummary = computed(() => {
@@ -217,15 +329,7 @@ async function copyRaw(): Promise<void> {
 function download(): void {
   const doc = selected.value
   if (!doc) return
-  // Gera o arquivo no cliente a partir do texto: o documento vive no banco,
-  // não no Storage, então não existe URL para baixar.
-  const blob = new Blob([draft.value], { type: 'text/markdown;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = doc.filename
-  link.click()
-  URL.revokeObjectURL(url)
+  saveAs(doc.filename, draft.value)
   showSuccess(`${doc.filename} baixado`)
 }
 
@@ -252,25 +356,25 @@ function onDeleteDialog(open: boolean): void {
 </script>
 
 <template>
-  <section class="docs">
+  <section class="docs" :class="{ 'docs--specs': isSpecs }">
     <header class="docs__head">
       <button
         type="button"
         class="docs__title"
         :aria-expanded="!collapsed"
-        :title="collapsed ? 'Expandir documentos' : 'Minimizar documentos'"
+        :title="collapsed ? 'Abrir o editor' : 'Recolher o editor'"
         @click="toggleCollapse"
       >
         <ChevronDown :size="13" class="docs__chev" :class="{ 'docs__chev--up': collapsed }" />
         <FileText :size="12" />
-        Documentos
+        {{ isSpecs ? 'Specs' : 'Documentos' }}
         <span v-if="docs.length" class="docs__count">{{ docs.length }}</span>
-        <span v-if="collapsed && collapsedSummary" class="docs__summary">
+        <span v-if="collapsed && collapsedSummary && !isSpecs" class="docs__summary">
           {{ collapsedSummary }}
         </span>
       </button>
 
-      <div v-if="canEdit && !collapsed" class="docs__head-actions">
+      <div v-if="canEdit && (!collapsed || isSpecs)" class="docs__head-actions">
         <button
           type="button"
           class="docs__ghost press"
@@ -300,6 +404,54 @@ function onDeleteDialog(open: boolean): void {
         </button>
       </div>
     </header>
+
+    <!-- Specs recolhidas: uma linha por documento, com o que se faz com spec. -->
+    <ul v-if="isSpecs && collapsed && docs.length" class="specs" aria-label="Specs da tarefa">
+      <li v-for="doc in specRows" :key="doc.id" class="specs__row">
+        <span class="specs__name" :title="doc.filename">
+          <Star v-if="doc.isPrimary" :size="13" class="specs__star" aria-label="Principal" />
+          <FileText v-else :size="13" class="specs__icon" aria-hidden="true" />
+          <span class="specs__title">{{ doc.title }}</span>
+          <span class="specs__file">{{ doc.filename }}</span>
+        </span>
+        <span class="specs__actions">
+          <button
+            type="button"
+            class="specs__btn"
+            :disabled="busyId === doc.id"
+            :aria-label="`Copiar o markdown de ${doc.title}`"
+            @click="copyDoc(doc)"
+          >
+            <Check v-if="copiedId === doc.id" :size="14" />
+            <Copy v-else :size="14" />
+            <span>{{ copiedId === doc.id ? 'Copiado' : 'Copiar' }}</span>
+          </button>
+          <button
+            type="button"
+            class="specs__btn"
+            :disabled="busyId === doc.id"
+            :aria-label="`Baixar ${doc.filename}`"
+            @click="downloadDoc(doc)"
+          >
+            <Download :size="14" />
+            <span>Baixar</span>
+          </button>
+          <button
+            type="button"
+            class="specs__btn"
+            :aria-label="`Ver ${doc.title}`"
+            @click="viewDoc(doc)"
+          >
+            <Eye :size="14" />
+            <span>Ver</span>
+          </button>
+        </span>
+      </li>
+    </ul>
+
+    <p v-else-if="isSpecs && collapsed" class="specs__empty">
+      Nenhuma spec ainda. Suba o .md da tarefa ou crie um documento: ele fica aqui para copiar e baixar.
+    </p>
 
     <div v-if="!docs.length && !collapsed" class="docs__empty">
       <FileText :size="18" />
@@ -428,6 +580,8 @@ function onDeleteDialog(open: boolean): void {
 
         <MarkdownDocEditor
           v-else
+          :key="openMode ?? 'default'"
+          :initial-mode="openMode"
           :model-value="draft"
           :state="saveState"
           :saved-at="savedAt"
@@ -894,6 +1048,155 @@ function onDeleteDialog(open: boolean): void {
   .docs__chev {
     animation: none;
     transition: none;
+  }
+}
+/* ── Variante Specs (dialog da tarefa, D12) ──────────────────────────────── */
+/* Cabeçalho como os outros blocos do dialog: frase, 13/600, sem eyebrow. */
+.docs--specs .docs__head {
+  padding: 0;
+  min-height: 32px;
+}
+
+.docs--specs .docs__title {
+  margin: 0 -6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.docs--specs .docs__ghost {
+  min-height: 32px;
+  padding: 0 10px;
+  background: transparent;
+  font-size: 12px;
+}
+
+.docs--specs .docs__layout,
+.docs--specs .docs__empty {
+  margin-top: 8px;
+}
+
+.specs {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.specs__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.specs__row:last-child {
+  border-bottom: 0;
+}
+
+.specs__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.specs__star {
+  flex: none;
+  color: var(--due-soon);
+}
+
+.specs__icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.specs__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.specs__file {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.specs__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.specs__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.specs__btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.specs__btn:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.specs__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.specs__empty {
+  margin: 8px 0 0;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-3);
+}
+
+/* Estreito: o nome do arquivo sai e os botões ficam só com o ícone. */
+@container (max-width: 520px) {
+  .specs__file {
+    display: none;
+  }
+  .specs__btn span {
+    display: none;
+  }
+  .specs__btn {
+    min-width: 36px;
+    justify-content: center;
+    padding: 0;
   }
 }
 </style>

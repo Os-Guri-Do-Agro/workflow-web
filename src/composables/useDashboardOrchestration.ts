@@ -113,6 +113,10 @@ export const statusMeta: Record<string, { color: string; label: string }> = {
   todo: { color: 'var(--status-todo)', label: 'A fazer' },
   'in-progress': { color: 'var(--status-prog)', label: 'Em andamento' },
   testing: { color: 'var(--status-test)', label: 'Em teste' },
+  // O feed manda o status cru normalizado (`IN_TESTING` vira `in-testing`):
+  // sem estas chaves o histórico mostrava "Atualizado" no lugar da coluna.
+  'in-testing': { color: 'var(--status-test)', label: 'Em teste' },
+  reviewed: { color: 'var(--task-status-review)', label: 'Revisados' },
   done: { color: 'var(--status-done)', label: 'Concluído' },
   completed: { color: 'var(--status-done)', label: 'Concluído' },
   planning: { color: 'var(--status-todo)', label: 'Planejando' },

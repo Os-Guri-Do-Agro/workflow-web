@@ -32,7 +32,7 @@ const sections = computed<{ title: string; items: Shortcut[] }[]>(() => [
       { keys: [['←'], ['→']], label: 'Coluna vizinha' },
       {
         keys: props.grouped ? [['Enter']] : [['Enter'], ['O']],
-        label: 'Abrir no painel',
+        label: 'Abrir a tarefa',
       },
       { keys: [['E']], label: 'Renomear a tarefa em foco' },
       { keys: [['Esc']], label: 'Tirar o foco ou cancelar a criação' },
@@ -47,10 +47,10 @@ const sections = computed<{ title: string; items: Shortcut[] }[]>(() => [
     ],
   },
   {
-    title: 'Com o painel aberto',
+    title: 'Com a tarefa aberta',
     items: [
       { keys: [['J'], ['K']], label: 'Trocar de tarefa (também ↓ e ↑)' },
-      { keys: [['Esc']], label: 'Fechar o painel' },
+      { keys: [['Esc']], label: 'Fechar a tarefa (em tela cheia, o primeiro Esc só restaura o tamanho)' },
     ],
   },
   {

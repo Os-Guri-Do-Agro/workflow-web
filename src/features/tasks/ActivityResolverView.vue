@@ -7,8 +7,9 @@ import { useWorkspaceStore } from '@/stores/workspaceStores'
 import EmptyState from '@/components/ui/EmptyState.vue'
 
 /**
- * Resolve links antigos `/activity/:id` (notificações/históricos) para a rota
- * real da task, trocando a empresa ativa se o link é de outra empresa.
+ * Resolve links antigos `/activity/:id` (notificações/históricos) para o board
+ * do mês com a tarefa aberta no dialog, trocando a empresa ativa se o link é
+ * de outra empresa (spec board-revisados-sinal-e-dialog, D11).
  */
 const route = useRoute()
 const router = useRouter()
@@ -23,7 +24,7 @@ onMounted(async () => {
     if (companyId && companyId !== workspaceStore.activeCompanyId) {
       workspaceStore.setActiveCompany(companyId)
     }
-    router.replace(`/tasks/${monthId}/${taskId}?company=${companyId}`)
+    router.replace({ path: `/tasks/${monthId}`, query: { task: taskId, company: companyId } })
   } catch {
     failed.value = true
   }

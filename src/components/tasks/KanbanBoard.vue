@@ -31,7 +31,7 @@ import { ACTIVITY_STATUSES, priorityLevel, statusSpec } from '@/features/tasks/t
 import { taskKey } from '@/features/tasks/task-key'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
-import type { ActivityStatus } from '@/features/tasks/activity-types'
+import type { ActivityStatus, TestSignalView } from '@/features/tasks/activity-types'
 
 export type KanbanTask = TaskCardTask
 export type KanbanApiStatus = ActivityStatus
@@ -73,18 +73,24 @@ const emit = defineEmits<{
   'quick-create': [status: ActivityStatus, title: string]
   /** Esc no campo, ou saiu dele vazio. */
   'composer-cancel': [status: ActivityStatus, reason: 'escape' | 'blur']
+  /** "Mover todas para Concluído" na coluna Revisados (D7). */
+  'release-all': [status: ActivityStatus]
+  /** Sinal do teste trocado na bolinha de um card. */
+  'test-signal': [taskId: string, view: TestSignalView]
 }>()
 
 const columns = ACTIVITY_STATUSES
 
 const isDragging = ref(false)
 const dragOverColumn = ref<ActivityStatus | null>(null)
-const columnActivities = ref<Record<ActivityStatus, KanbanTask[]>>({
-  TODO: [],
-  IN_PROGRESS: [],
-  IN_TESTING: [],
-  DONE: [],
-})
+// Uma lista por coluna, montada da fonte única: status novo no task-meta
+// ganha coluna sem ninguém lembrar daqui.
+const columnActivities = ref(
+  Object.fromEntries(columns.map((c) => [c.value, [] as KanbanTask[]])) as Record<
+    ActivityStatus,
+    KanbanTask[]
+  >,
+)
 
 // ── Ordenar por prioridade (só na tela, some ao recarregar) ──
 const sortedColumns = ref<ActivityStatus[]>([])
@@ -196,9 +202,13 @@ const onEnterColumn = (status: ActivityStatus) => {
       :over="isDragging && dragOverColumn === column.value"
       sortable
       :sorted="isSorted(column.value)"
+      :releasable="
+        column.value === 'REVIEWED' && !readonly && (columnActivities.REVIEWED?.length ?? 0) > 0
+      "
       @create="emit('create-in', column.value)"
       @toggle-collapse="toggleCollapsed(column.value)"
       @toggle-sort="toggleSort(column.value)"
+      @release-all="emit('release-all', column.value)"
     >
       <!-- Corpo com scroll próprio. Parado, a lista tem a altura dos cards e o
            "Criar" vem logo depois do último; arrastando, a lista cresce até o
@@ -237,6 +247,7 @@ const onEnterColumn = (status: ActivityStatus) => {
             @delete="emit('delete-task', task)"
             @move="onMenuMove(task, $event)"
             @show-occurrences="emit('show-occurrences', task)"
+            @signal="(view) => emit('test-signal', task.id, view)"
           />
         </VueDraggable>
 

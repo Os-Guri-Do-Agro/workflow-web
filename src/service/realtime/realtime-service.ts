@@ -3,6 +3,7 @@ import { apiBaseUrl } from '@/service/api'
 import type { AppNotification } from '@/service/inbox/inbox-service'
 import type { TimeEntry, TeamLiveEntry, TeamStoppedPayload } from '@/service/time/time-service'
 import type { SearchHit } from '@/service/ai/ai-service'
+import type { ActivityStatus } from '@/features/tasks/activity-types'
 
 export interface PublicUser {
   id: string
@@ -70,7 +71,7 @@ export interface NotificationSyncPayload {
 }
 
 // ─── Kanban realtime (arraste de atividades) ────────────────────────────────
-export type ActivityBoardStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+export type ActivityBoardStatus = ActivityStatus
 
 export type ActivityChangeType = 'created' | 'updated' | 'deleted' | 'moved'
 

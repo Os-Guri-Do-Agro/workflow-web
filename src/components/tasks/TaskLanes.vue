@@ -30,7 +30,7 @@ import { ACTIVITY_STATUSES } from '@/features/tasks/task-meta'
 import { taskKey } from '@/features/tasks/task-key'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import type { BoardLane } from '@/features/tasks/board-lanes'
-import type { ActivityStatus } from '@/features/tasks/activity-types'
+import type { ActivityStatus, TestSignalView } from '@/features/tasks/activity-types'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 const props = defineProps<{
@@ -56,6 +56,8 @@ const emit = defineEmits<{
   'create-in': [status: ActivityStatus, laneKey: string]
   'quick-create': [status: ActivityStatus, title: string]
   'composer-cancel': [status: ActivityStatus, reason: 'escape' | 'blur']
+  /** Sinal do teste trocado na bolinha de um card. */
+  'test-signal': [taskId: string, view: TestSignalView]
 }>()
 
 const columns = ACTIVITY_STATUSES
@@ -68,12 +70,9 @@ const cells = ref<Cells>({})
 function syncCells() {
   const next: Cells = {}
   for (const lane of props.lanes) {
-    next[lane.key] = {
-      TODO: [...lane.columns.TODO],
-      IN_PROGRESS: [...lane.columns.IN_PROGRESS],
-      IN_TESTING: [...lane.columns.IN_TESTING],
-      DONE: [...lane.columns.DONE],
-    }
+    next[lane.key] = Object.fromEntries(
+      columns.map((c) => [c.value, [...lane.columns[c.value]]]),
+    ) as Record<ActivityStatus, KanbanTask[]>
   }
   cells.value = next
 }
@@ -88,7 +87,10 @@ watch(
 
 /** Total de cada coluna somando as linhas (é o que o cabeçalho preso mostra). */
 const totals = computed(() => {
-  const out = { TODO: 0, IN_PROGRESS: 0, IN_TESTING: 0, DONE: 0 } as Record<ActivityStatus, number>
+  const out = Object.fromEntries(columns.map((c) => [c.value, 0])) as Record<
+    ActivityStatus,
+    number
+  >
   for (const lane of props.lanes) {
     for (const col of columns) out[col.value] += lane.counts[col.value]
   }
@@ -146,7 +148,11 @@ const onEnd = () => {
 </script>
 
 <template>
-  <div class="swim" :class="{ 'swim--dragging': isDragging }">
+  <div
+    class="swim"
+    :class="{ 'swim--dragging': isDragging }"
+    :style="{ '--lane-cols': columns.length }"
+  >
     <div class="swim__inner">
       <!-- Cabeçalhos das colunas, presos no topo enquanto as linhas rolam. -->
       <div class="swim__heads">
@@ -262,6 +268,7 @@ const onEnd = () => {
                   @delete="emit('delete-task', task)"
                   @move="onMenuMove(task, $event)"
                   @show-occurrences="emit('show-occurrences', task)"
+                  @signal="(view) => emit('test-signal', task.id, view)"
                 />
               </VueDraggable>
               <TaskQuickCreate
@@ -297,16 +304,18 @@ const onEnd = () => {
   min-width: 100%;
 }
 
+/* Uma trilha por coluna do task-meta (`--lane-cols`, posto no template):
+   com cinco colunas, 220px é o que cabe na largura útil de 1440 com a
+   sidebar aberta (1144px), a mesma régua do board simples. */
 .swim__grid {
   display: grid;
-  grid-template-columns: repeat(4, 280px);
+  grid-template-columns: repeat(var(--lane-cols, 5), 260px);
   gap: 8px;
 }
 
-/* Mesma régua do board simples: abaixo de 1144px de largura útil, 244px. */
-@container task-board (max-width: 1143px) {
+@container task-board (max-width: 1400px) {
   .swim__grid {
-    grid-template-columns: repeat(4, 244px);
+    grid-template-columns: repeat(var(--lane-cols, 5), 220px);
   }
 }
 

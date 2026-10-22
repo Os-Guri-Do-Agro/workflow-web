@@ -53,6 +53,11 @@ export interface TaskKeyboardOptions {
   onOpen: (id: string) => void
   /** Trocar a tarefa do painel aberto (sem empilhar histórico). */
   onSwitchPanel: (id: string) => void
+  /**
+   * Quando a tarefa aberta não está no board (uma subtarefa), de qual card do
+   * board o J/K parte. Sem isso o J/K pulava para o primeiro card.
+   */
+  anchorTaskId?: () => string | null
   onExpandLanes: () => void
   onCollapseLanes: () => void
 }
@@ -146,7 +151,11 @@ export function useTaskKeyboard(opts: TaskKeyboardOptions) {
       .map((c) => c.dataset.id ?? '')
       .filter((id) => id && !isOccurrenceId(id) && !isPendingTaskId(id))
     if (!current || !order.length) return
-    const at = order.indexOf(current)
+    let at = order.indexOf(current)
+    if (at === -1) {
+      const anchor = opts.anchorTaskId?.()
+      if (anchor) at = order.indexOf(anchor)
+    }
     const next = at === -1 ? order[delta > 0 ? 0 : order.length - 1] : order[at + delta]
     if (!next || next === current) return
     opts.onSwitchPanel(next)

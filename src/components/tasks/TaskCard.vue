@@ -4,11 +4,15 @@
  * board do mês (`KanbanBoard`) e pelo `/board`. A anatomia é a do protótipo
  * aprovado pelo dono, de cima para baixo:
  *
- * 1. título 14/20 500, até 2 linhas;
+ * 1. título 15/21 600, até 3 linhas (spec board-revisados-sinal-e-dialog, D8):
+ *    é o primeiro contato e precisa ser entendido antes de abrir a tarefa. O
+ *    prefixo de área separado por " › " ("App › Parceiro › ...") sai numa
+ *    linha própria, menor e apagada, e o assunto vem forte embaixo;
  * 2. tags como ponto + texto (máx. 2 + "+N"), sem caixa;
  * 3. dívida da rotina em texto ("N atrasadas", "+N no mês"), só em card gerado;
- * 4. meta 12px: chave · regra da rotina · prazo · `3/6` · anexos · documentos,
- *    e à direita a prioridade (só Alta e Urgente) e até 2 avatares.
+ * 4. meta 12px: sinal do teste (só em "Em teste") · chave · regra da rotina ·
+ *    prazo · `3/6` · anexos · documentos, e à direita a prioridade (só Alta e
+ *    Urgente), até 2 avatares e o "…".
  *
  * Capa: quando a tarefa tem um anexo de imagem, a primeira imagem vira a capa
  * no topo do card, de ponta a ponta (como no Trello/Jira). Foi pedido do time
@@ -16,8 +20,8 @@
  * tarefa certa. Sem zoom no hover; se a imagem falhar, a capa some.
  *
  * Sem checklist expansível, sem anel e sem lixeira ocupando espaço: excluir e
- * mover moram no menu "…", que aparece por cima no hover sem reservar largura
- * (era a lixeira invisível que quebrava o título cedo).
+ * mover moram no menu "…", na ponta da linha de meta. Antes ele aparecia por
+ * cima do canto do título no hover e escondia o fim da primeira linha.
  *
  * Cor só onde muda decisão: prazo vencido/perto, Alta/Urgente e o avatar.
  * Nada de borda colorida, sombra que cresce, card que sobe ou entrada animada.
@@ -47,8 +51,10 @@ import {
 } from 'lucide-vue-next'
 import { tagColorVar, type TagLike } from '@/components/ui/tag-palette'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
+import TestSignalDot from '@/components/tasks/TestSignalDot.vue'
+import { splitTaskTitle } from '@/features/tasks/task-title'
 import { ACTIVITY_STATUSES, dueSignal, prioritySpec } from '@/features/tasks/task-meta'
-import type { ActivityStatus } from '@/features/tasks/activity-types'
+import type { ActivityStatus, TestSignalView } from '@/features/tasks/activity-types'
 import { isOccurrenceId } from '@/features/tasks/recurring/recurrence-types'
 import { TASK_CARD_RENAME_EVENT } from '@/features/tasks/composables/useTaskKeyboard'
 
@@ -77,6 +83,8 @@ export interface TaskCardTask {
   recurrenceHidden?: number
   /** Dessas, quantas já venceram sem ninguém tocar ("N atrasadas"). */
   recurrenceOverdue?: number
+  /** Sinal do teste (só em "Em teste"; `null` = azul). */
+  testSignal?: TestSignalView | null
 }
 
 const props = withDefaults(
@@ -111,6 +119,8 @@ const props = withDefaults(
      * card, que a linha já diz de quem é. Os outros responsáveis continuam.
      */
     omitPerson?: string | null
+    /** Empresa da tarefa (o `/board` mistura empresas). Vai no sinal do teste. */
+    companyId?: string | null
   }>(),
   {
     taskKey: null,
@@ -122,6 +132,7 @@ const props = withDefaults(
     dragging: false,
     pending: false,
     omitPerson: null,
+    companyId: null,
   },
 )
 
@@ -133,6 +144,8 @@ const emit = defineEmits<{
   /** "N atrasadas" e "+N no mês" levam à Agenda; quem chama decide. */
   'show-occurrences': []
   tag: [slug: string]
+  /** Sinal do teste trocado na bolinha (já gravado): quem tem o estado guarda. */
+  signal: [view: TestSignalView]
 }>()
 
 const MAX_TAGS = 2
@@ -141,6 +154,11 @@ const MAX_AVATARS = 2
 const isDone = computed(() => props.status === 'DONE')
 const isVirtual = computed(() => isOccurrenceId(props.task.id))
 const title = computed(() => props.task.title ?? '')
+const titleParts = computed(() => splitTaskTitle(title.value))
+// Bolinha do sinal: só em "Em teste", em tarefa que existe no banco.
+const showSignal = computed(
+  () => props.status === 'IN_TESTING' && !isVirtual.value && !props.pending,
+)
 
 const tags = computed(() => (props.task.tags ?? []).map((link) => link.tag))
 const shownTags = computed(() => tags.value.slice(0, MAX_TAGS))
@@ -315,7 +333,12 @@ function cancelFromKey() {
       @keydown.esc.stop.prevent="cancelFromKey"
       @blur="commitEdit"
     />
-    <h3 v-else class="card__title" :title="title" @dblclick="startEditing">{{ title }}</h3>
+    <template v-else>
+      <p v-if="titleParts.area" class="card__area" :title="titleParts.area">{{ titleParts.area }}</p>
+      <h3 class="card__title" :title="title" @dblclick="startEditing">
+        <span v-if="titleParts.area" class="sr-only">{{ titleParts.area }} › </span>{{ titleParts.subject }}
+      </h3>
+    </template>
 
     <!-- Tags: ponto na cor da tag + texto neutro. Sem caixa, sem tinta. -->
     <div v-if="tags.length" class="card__tags">
@@ -371,6 +394,15 @@ function cancelFromKey() {
 
     <div class="card__meta">
       <span class="card__facts">
+        <TestSignalDot
+          v-if="showSignal"
+          :task-id="task.id"
+          :task-title="title"
+          :signal="task.testSignal ?? null"
+          :company-id="companyId"
+          :readonly="readonly"
+          @changed="emit('signal', $event)"
+        />
         <span
           v-if="taskKey"
           class="mi card__key"
@@ -434,10 +466,7 @@ function cancelFromKey() {
             +{{ extraPeople.length }}
           </span>
         </span>
-      </span>
-    </div>
-
-    <DropdownMenuRoot v-if="hasMenu" v-model:open="menuOpen">
+        <DropdownMenuRoot v-if="hasMenu" v-model:open="menuOpen">
       <DropdownMenuTrigger as-child>
         <button
           type="button"
@@ -470,7 +499,9 @@ function cancelFromKey() {
           </template>
         </DropdownMenuContent>
       </DropdownMenuPortal>
-    </DropdownMenuRoot>
+        </DropdownMenuRoot>
+      </span>
+    </div>
   </article>
 </template>
 
@@ -538,16 +569,30 @@ function cancelFromKey() {
   object-fit: cover;
 }
 
-/* ── Título ── */
+/* ── Título (D8) ──
+   15/21 600 em até três linhas: na coluna de 220px cabem ~28 caracteres por
+   linha, e a maioria dos títulos do time se lê inteira. */
+.card__area {
+  margin: 0 0 -3px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .card__title {
   margin: 0;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
+  font-size: 15px;
+  line-height: 21px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
   color: var(--text);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   /* Título sem espaço ("aaaa…") não tem onde quebrar e empurraria o card. */
@@ -558,14 +603,23 @@ function cancelFromKey() {
   color: var(--text-2);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .card__title-input {
   width: calc(100% + 8px);
   margin: -2px -4px;
   padding: 1px 3px;
   font: inherit;
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
+  font-size: 15px;
+  line-height: 21px;
+  font-weight: 600;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--accent);
@@ -786,23 +840,30 @@ function cancelFromKey() {
   user-select: none;
 }
 
-/* ── "…": por cima do canto, sem reservar espaço no título ── */
+/* ── "…": na ponta da linha de meta (D8). O lugar fica reservado (20px) para
+   nada pular quando ele aparece no hover, e não cobre mais o título. A área
+   de toque cresce por fora sem empurrar a linha. ── */
 .card__more {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 26px;
-  height: 26px;
+  position: relative;
+  width: 20px;
+  height: 20px;
+  margin-block: -2px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
   color: var(--text-3);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
+}
+
+.card__more::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
 }
 
 .card:hover .card__more,
@@ -814,7 +875,7 @@ function cancelFromKey() {
 
 .card__more:hover {
   color: var(--text);
-  background: var(--surface-2);
+  background: var(--surface-3);
 }
 
 .card__more:focus-visible {

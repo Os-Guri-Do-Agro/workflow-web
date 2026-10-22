@@ -384,7 +384,12 @@ html[data-xp='true'] {
   --task-status-todo: rgba(26, 26, 26, 0.5) !important;
   --task-status-prog: #2563eb !important;
   --task-status-test: #7c3aed !important;
+  --task-status-review: #0e9384 !important;
   --task-status-done: #15803d !important;
+  --test-signal-testing: #1570ef !important;
+  --test-signal-adjust: #fdb022 !important;
+  --test-signal-rejected: #d92d20 !important;
+  --test-signal-ring: rgba(16, 24, 40, 0.32) !important;
   --prio-urgent: #d92d20 !important;
   --prio-high: #b54708 !important;
   --due-late: #d92d20 !important;

@@ -2,7 +2,13 @@ import api from '../api'
 // Import de TIPO apenas (apagado na compilação): dá contrato real aos métodos
 // de documento sem acoplar o service à feature em runtime. O resto do arquivo
 // ainda é `any` por herança; tipar tudo é limpeza de outra rodada.
-import type { ActivityDoc, ActivityDocMeta } from '@/features/tasks/activity-types'
+import type {
+  ActivityDoc,
+  ActivityDocMeta,
+  ActivityStatus,
+  TestSignal,
+  TestSignalView,
+} from '@/features/tasks/activity-types'
 
 class activityService {
   private async handleRequest<T>(request: Promise<{ data: T }>, errorMessage: string): Promise<T> {
@@ -32,6 +38,21 @@ class activityService {
   }
 
   /** Move o card no kanban persistindo status + ordem manual (position 0-based). */
+  /**
+   * Sinal do teste da tarefa em "Em teste" (azul, amarelo, vermelho). Não move
+   * a tarefa. `companyId` explícito no `/board`, que mistura empresas.
+   */
+  setTestSignal(id: string, signal: TestSignal, companyId?: string | null): Promise<TestSignalView> {
+    return this.handleRequest(
+      api.patch<TestSignalView>(
+        `/activity/${id}/test-signal`,
+        { signal },
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
+      'Erro ao trocar o sinal do teste',
+    )
+  }
+
   moveActivity(id: string, data: { status: string; position: number }): Promise<any> {
     return this.handleRequest(
       api.patch(`/activity/${id}/move`, data),
@@ -39,9 +60,10 @@ class activityService {
     )
   }
 
-  postActivity(data: any): Promise<any> {
+  /** `companyId` explícito quando a tela mistura empresas (o `/board`). */
+  postActivity(data: any, companyId?: string | null): Promise<any> {
     return this.handleRequest(
-      api.post('/activity', data),
+      api.post('/activity', data, companyId ? { headers: { 'x-company-id': companyId } } : undefined),
       'Erro ao criar atividade',
     )
   }
@@ -229,7 +251,9 @@ class activityService {
   }
 }
 
-export type PickerStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+// O tipo único: o `STATUS_META` do TaskPicker é `Record` sobre esta união, e
+// a lista local deixava um status novo quebrar o seletor em runtime.
+export type PickerStatus = ActivityStatus
 
 export interface PickerActivity {
   id: string

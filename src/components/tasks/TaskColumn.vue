@@ -13,6 +13,10 @@
  * "Ordenar por prioridade", que só reordena a TELA e some ao recarregar: a
  * ordem manual gravada no mês não muda. Ordenada, a coluna mostra o ícone no
  * cabeçalho para ninguém confundir com a ordem de verdade.
+ *
+ * Em "Revisados" o menu ganha "Mover todas para Concluído" (spec
+ * board-revisados-sinal-e-dialog, D7): o dia do deploy vira um clique. Quem
+ * confirma e grava é o board; a coluna só pede.
  */
 import { computed } from 'vue'
 import {
@@ -22,7 +26,14 @@ import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { ArrowDownWideNarrow, ChevronsLeft, ListRestart, MoreHorizontal, Plus } from 'lucide-vue-next'
+import {
+  ArrowDownWideNarrow,
+  ChevronsLeft,
+  ListRestart,
+  MoreHorizontal,
+  Plus,
+  Rocket,
+} from 'lucide-vue-next'
 import { statusSpec } from '@/features/tasks/task-meta'
 import type { ActivityStatus } from '@/features/tasks/activity-types'
 
@@ -40,6 +51,8 @@ const props = withDefaults(
     sortable?: boolean
     /** A coluna está ordenada por prioridade agora. */
     sorted?: boolean
+    /** Oferece "Mover todas para Concluído" (só "Revisados", com cards e permissão). */
+    releasable?: boolean
   }>(),
   {
     canCreate: false,
@@ -48,6 +61,7 @@ const props = withDefaults(
     over: false,
     sortable: false,
     sorted: false,
+    releasable: false,
   },
 )
 
@@ -55,6 +69,7 @@ const emit = defineEmits<{
   create: []
   'toggle-collapse': []
   'toggle-sort': []
+  'release-all': []
 }>()
 
 const spec = computed(() => statusSpec(props.status))
@@ -96,7 +111,7 @@ const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa'
           <ArrowDownWideNarrow :size="14" :stroke-width="1.8" />
         </span>
 
-        <span v-if="canCreate || collapsible || sortable" class="lane__actions">
+        <span v-if="canCreate || collapsible || sortable || releasable" class="lane__actions">
           <button
             v-if="canCreate"
             type="button"
@@ -126,6 +141,10 @@ const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa'
                   <ArrowDownWideNarrow v-else :size="14" :stroke-width="1.8" />
                   <span>{{ sorted ? 'Voltar à ordem manual' : 'Ordenar por prioridade' }}</span>
                 </DropdownMenuItem>
+                <DropdownMenuItem v-if="releasable" class="dd-item" @select="emit('release-all')">
+                  <Rocket :size="14" :stroke-width="1.8" />
+                  <span>Mover todas para Concluído</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem v-if="collapsible" class="dd-item" @select="emit('toggle-collapse')">
                   <ChevronsLeft :size="14" :stroke-width="1.8" />
                   <span>Recolher coluna</span>
@@ -145,17 +164,15 @@ const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa'
 .lane {
   position: relative;
   /*
-   * 280px é a base, não o teto. As colunas CRESCEM até 360px quando sobra
-   * largura: com a medida travada, um monitor de 1870px deixava 443px de vazio
-   * à direita do board e a tela parecia mal distribuída.
-   *
-   * O número da spec continua valendo onde ela o definiu. Em 1440px, descontada
-   * a sidebar e o respiro, sobram exatamente 1144px, que é o que as quatro
-   * colunas de 280 mais os três vãos ocupam: não há folga para crescer ali, e a
-   * medida se mantém. Só acima disso a coluna se estica.
+   * Cinco colunas desde "Revisados" (spec board-revisados-sinal-e-dialog, D6).
+   * Em 1440px, descontada a sidebar e o respiro, sobram 1144px: cinco colunas
+   * de 220px mais os quatro vãos de 8px ocupam 1132px, então nada rola de lado
+   * na tela comum. A base é 236px e as colunas CRESCEM até 360px quando sobra
+   * largura (com a medida travada, um monitor de 1870px deixava um vazio
+   * grande à direita e a tela parecia mal distribuída).
    */
-  flex: 1 1 280px;
-  min-width: 280px;
+  flex: 1 1 236px;
+  min-width: 220px;
   max-width: 360px;
   min-height: 0;
   display: flex;
@@ -293,13 +310,14 @@ const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa'
 }
 
 /* Largura por CONTAINER, não por viewport: o mesmo board vive ao lado de uma
-   sidebar de 248px (Command) ou de 296px (Focus). Quatro colunas de 280px mais
-   os três vãos de 8px pedem 1144px; abaixo disso a coluna cai para 244px, que
-   é o que cabe num notebook de 1280. Os boards declaram o container. */
-@container task-board (max-width: 1143px) {
+   sidebar de 248px (Command) ou de 296px (Focus). Abaixo de 1132px úteis as
+   cinco colunas não cabem mais e o board rola de lado, com a coluna em 220px
+   (a medida mínima que ainda lê um título de três linhas). Os boards declaram
+   o container. */
+@container task-board (max-width: 1131px) {
   .lane:not(.lane--collapsed) {
-    flex-basis: 244px;
-    width: 244px;
+    flex-basis: 220px;
+    width: 220px;
   }
 }
 

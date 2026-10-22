@@ -43,9 +43,13 @@ import {
 import { groupByPerson, NOBODY_LANE } from '@/features/tasks/board-lanes'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import { taskKey } from '@/features/tasks/task-key'
-import { statusSpec } from '@/features/tasks/task-meta'
+import { ACTIVITY_STATUSES, statusSpec } from '@/features/tasks/task-meta'
 import { resolveDropIndex } from '@/features/tasks/board-order'
-import type { ActivityDetail } from '@/features/tasks/activity-types'
+import type {
+  ActivityDetail,
+  ActivityStatus,
+  TestSignalView,
+} from '@/features/tasks/activity-types'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import { useQueryClient } from '@tanstack/vue-query'
@@ -82,7 +86,9 @@ import {
 } from '@/features/tasks/recurring/recurrence-types'
 
 // ── Tipos locais (shape real da API de tarefas/quarters deste módulo) ──
-type BoardStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+// Do tipo único: com uma lista local, o card de um status novo sumia do board
+// (o `syncFromQuery` pulava a coluna) sem nenhum erro de compilação.
+type BoardStatus = ActivityStatus
 
 interface TaskResponsible {
   /** Card real traz o id; o de rotina só o nome. */
@@ -124,9 +130,16 @@ interface BoardTask {
    * está em dia.
    */
   recurrenceOverdue?: number
+  /** Sinal do teste (só em "Em teste"; `null` = azul). */
+  testSignal?: TestSignalView | null
 }
 
 type BoardColumns = Record<BoardStatus, BoardTask[]>
+
+/** Uma lista vazia por coluna, na ordem do task-meta. */
+function emptyColumns(): BoardColumns {
+  return Object.fromEntries(ACTIVITY_STATUSES.map((s) => [s.value, []])) as unknown as BoardColumns
+}
 
 interface CompanyMember {
   id: string
@@ -197,6 +210,17 @@ const route = useRoute()
 const router = useRouter()
 const queryClient = useQueryClient()
 
+// Link de tarefa de OUTRA empresa ("Copiar link", notificação): troca a empresa
+// ativa ANTES de qualquer query do board sair. Sem isto o x-company-id da
+// empresa antiga faz o board e o dialog responderem 404 (spec
+// board-revisados-sinal-e-dialog, D11). A página de detalhe já fazia o mesmo.
+{
+  const linkCompany = typeof route.query.company === 'string' ? route.query.company : null
+  if (linkCompany && linkCompany !== localStorage.getItem('activeCompany')) {
+    useWorkspaceStore().setActiveCompany(linkCompany)
+  }
+}
+
 const dialog = ref(false)
 const creating = ref(false)
 
@@ -247,12 +271,31 @@ const { success: showSuccess, error: showError, info: showInfo } = useToast()
 const formActivity = ref<ActivityFormModel>(EMPTY_FORM())
 
 // Local mutable tasks ref for optimistic drag-and-drop updates
-const tasks = ref<BoardColumns>({ TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] })
+const tasks = ref<BoardColumns>(emptyColumns())
 
-const STATUSES: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
+const STATUSES: BoardStatus[] = ACTIVITY_STATUSES.map((s) => s.value)
 
 // ── Reactive query keys ──
-const companyId = computed(() => localStorage.getItem('activeCompany') ?? '')
+// Reativo, pelo store: um link de OUTRA empresa (notificação, "Copiar link")
+// pode chegar com este board já montado (mesma rota, outro `?company=`). Lido
+// do localStorage, o id ficava preso na empresa antiga e o dialog pedia a
+// tarefa com o x-company-id errado (404).
+const companyId = computed(
+  () => useWorkspaceStore().activeCompanyId ?? localStorage.getItem('activeCompany') ?? '',
+)
+
+watch(
+  () => route.query.company,
+  (linkCompany) => {
+    if (typeof linkCompany !== 'string' || !linkCompany) return
+    const store = useWorkspaceStore()
+    if (linkCompany !== store.activeCompanyId) store.setActiveCompany(linkCompany)
+  },
+)
+
+watch(companyId, (next, previous) => {
+  if (next && next !== previous) findMembers()
+})
 
 // Nome da empresa ativa: é dele que sai o prefixo da chave do card (`PJ-K7Q2XM`).
 // A lista de empresas chega pelo AppShell; até lá a chave aparece sem prefixo.
@@ -455,7 +498,7 @@ const quickCreate = useQuickCreate({
 const { composer, restore: composerRestore } = quickCreate
 
 const boardTasks = computed<BoardColumns>(() => {
-  const merged = { TODO: [], IN_PROGRESS: [], IN_TESTING: [], DONE: [] } as BoardColumns
+  const merged = emptyColumns()
   for (const status of STATUSES) {
     merged[status] = [...(tasks.value[status] ?? []), ...quickCreate.pending.value[status]]
   }
@@ -486,7 +529,7 @@ const refreshTasks = async () => {
 }
 
 const findMembers = async () => {
-  const id = localStorage.getItem('activeCompany')
+  const id = companyId.value
   if (!id) return
   try {
     const response = (await companiesServices.getCompanyMembers(id)) as
@@ -789,6 +832,8 @@ const handleMove = async (payload: KanbanMovePayload) => {
     taskId,
     payload.position,
   )
+  // O servidor apaga o sinal do teste quando a tarefa sai de "Em teste".
+  if (movedTask && status !== 'IN_TESTING') movedTask.testSignal = null
   if (movedTask) target.splice(position, 0, movedTask)
 
   try {
@@ -803,6 +848,59 @@ const handleMove = async (payload: KanbanMovePayload) => {
   }
 }
 
+/** Bolinha trocada direto no card: o estado do board guarda o sinal novo. */
+function onCardSignal(id: string, view: TestSignalView) {
+  const found = findBoardTask(id)
+  if (found) found.task.testSignal = view
+}
+
+// ── "Mover todas para Concluído" (spec board-revisados-sinal-e-dialog, D7) ──
+// O dia do deploy: tudo que está em Revisados (e que a pessoa VÊ, com o filtro
+// valendo) vai para o fim de Concluído, na ordem da coluna.
+const confirmRelease = ref(false)
+const releasing = ref(false)
+
+const releasableIds = computed(() =>
+  (filteredTasks.value.REVIEWED ?? [])
+    .map((t) => t.id)
+    .filter((id) => !isOccurrenceId(id) && !id.startsWith('tmp:')),
+)
+
+function askReleaseAll() {
+  if (releasableIds.value.length) confirmRelease.value = true
+}
+
+async function releaseAll() {
+  const ids = [...releasableIds.value]
+  releasing.value = true
+  let movidas = 0
+  let falharam = 0
+  try {
+    // Em SÉRIE, como a massa da Lista: dois `/move` em paralelo saindo da
+    // mesma coluna travam as mesmas linhas em ordem cruzada e o Postgres aborta
+    // um deles (deadlock). Um por vez, cada um no fim de Concluído, mantém a
+    // ordem de Revisados.
+    for (const id of ids) {
+      try {
+        await activityService.moveActivity(id, {
+          status: 'DONE',
+          position: Number.MAX_SAFE_INTEGER,
+        })
+        movidas++
+      } catch {
+        falharam++
+      }
+    }
+  } finally {
+    releasing.value = false
+    confirmRelease.value = false
+    await refreshTasks()
+  }
+  const tarefas = (n: number) => (n === 1 ? '1 tarefa' : `${n} tarefas`)
+  if (falharam) showError(`${tarefas(movidas)} em Concluído, ${tarefas(falharam)} não foi possível mover`)
+  else showSuccess(`${tarefas(movidas)} em Concluído`)
+}
+
 // ── Realtime: aplica movimentos vindos de outras abas/usuários ──
 const applyRemoteMove = (p: ActivityMovedPayload) => {
   if (p.monthId !== monthId.value) return // outro mês → ignora
@@ -810,6 +908,7 @@ const applyRemoteMove = (p: ActivityMovedPayload) => {
   if (!moved) return // card não carregado neste cliente — o refresh do reconnect cobre
   const target = tasks.value[p.status as BoardStatus]
   if (!target) return
+  if (p.status !== 'IN_TESTING') moved.testSignal = null
   if (p.position === null) {
     target.push(moved) // Fase 1 (sem ordem manual): joga no fim
   } else {
@@ -892,13 +991,13 @@ const deleteTask = async () => {
   }
 }
 
-// ── Painel de detalhe sobre o board (spec board-tarefas-redesign, D9) ──────
+// ── Tarefa em dialog sobre o board (spec board-revisados-sinal-e-dialog, D9) ──
 //
 // A tarefa aberta vive na URL (`?task=`), como no `/board`: o link é
-// compartilhável, sobrevive ao F5 e o voltar do navegador fecha o painel. O
-// board continua montado atrás, com filtro, scroll e colunas intactos. A página
-// cheia (`/tasks/:month/:taskId`) continua existindo: é o "Abrir em página" do
-// painel, e os links antigos seguem valendo.
+// compartilhável ("Copiar link" do dialog), sobrevive ao F5 e o voltar do
+// navegador fecha o dialog. O board continua montado atrás, com filtro, scroll
+// e colunas intactos. A página cheia (`/tasks/:month/:taskId`) continua
+// existindo: é o "Abrir página completa" do "…", e os links antigos valem.
 const openTaskId = computed(() =>
   typeof route.query.task === 'string' && route.query.task ? route.query.task : null,
 )
@@ -1017,6 +1116,8 @@ const applyPanelPatch = (id: string, patch: Partial<ActivityDetail>) => {
   if (patch.dueDate !== undefined) task.dueDate = patch.dueDate
   if (patch.updatedAt) task.updatedAt = patch.updatedAt
   if (patch.tags !== undefined) task.tags = patch.tags ?? []
+  // Sinal do teste trocado no dialog: a bolinha do card muda junto.
+  if (patch.testSignal !== undefined) task.testSignal = patch.testSignal ?? null
   if (patch.subtasks !== undefined) {
     // O `3/6` do card sai daqui: marcar uma subtarefa no painel já o atualiza.
     task.subtasks = (patch.subtasks ?? []).map((s) => ({ id: s.id, title: s.title, status: s.status }))
@@ -1036,6 +1137,8 @@ const applyPanelPatch = (id: string, patch: Partial<ActivityDetail>) => {
     return
   }
   const nextStatus = patch.status as BoardStatus | undefined
+  // Saiu de "Em teste" pelo dialog: o sinal some junto (o servidor apaga).
+  if (nextStatus && nextStatus !== 'IN_TESTING') task.testSignal = null
   if (nextStatus && nextStatus !== status && STATUSES.includes(nextStatus)) {
     const index = tasks.value[status].indexOf(task)
     const moved = removeFromColumns(id)
@@ -1212,6 +1315,9 @@ useTaskKeyboard({
   },
   onOpen: (id) => openDetails({ id }),
   onSwitchPanel: switchPanelTo,
+  // Subtarefa aberta no dialog não está no board: J/K andam a partir do pai.
+  anchorTaskId: () =>
+    queryClient.getQueryData<ActivityDetail>(['activity', openTaskId.value])?.parentId ?? null,
   onExpandLanes: () => {
     collapsedLanes.value = []
   },
@@ -1356,10 +1462,12 @@ const moveRecurrenceToNextMonth = async (template: RecurringTemplate) => {
 
 // Alturas fake do skeleton: colunas com "cargas" diferentes leem como um board
 // de verdade carregando, não como quatro barras genéricas.
+// Uma faixa por coluna do board (cinco desde "Revisados").
 const skeletonLanes = [
   [76, 64, 92, 64],
   [88, 64],
   [64, 76],
+  [76],
   [64, 92, 64, 76, 64],
 ]
 </script>
@@ -1579,6 +1687,7 @@ const skeletonLanes = [
             @create-in="(status, laneKey) => openComposer(status, laneKey)"
             @quick-create="(_status, title) => quickCreate.submit(title)"
             @composer-cancel="onComposerCancel"
+            @test-signal="onCardSignal"
           />
           <KanbanBoard
             v-else
@@ -1595,6 +1704,8 @@ const skeletonLanes = [
             @create-in="(status) => openComposer(status)"
             @quick-create="(_status, title) => quickCreate.submit(title)"
             @composer-cancel="onComposerCancel"
+            @release-all="askReleaseAll"
+            @test-signal="onCardSignal"
           />
         </div>
 
@@ -1697,6 +1808,20 @@ const skeletonLanes = [
       confirm-label="Excluir"
       :loading="!!deleting"
       @confirm="deleteTask"
+    />
+
+    <!-- "Mover todas para Concluído" (coluna Revisados) -->
+    <ConfirmDialog
+      v-model="confirmRelease"
+      title="Mover todas para Concluído"
+      :message="
+        releasableIds.length === 1
+          ? 'A tarefa de Revisados vai para Concluído. Use quando ela já subiu.'
+          : `As ${releasableIds.length} tarefas de Revisados vão para Concluído, na mesma ordem. Use quando elas já subiram.`
+      "
+      confirm-label="Mover para Concluído"
+      :loading="releasing"
+      @confirm="releaseAll"
     />
 
     <!-- Create task dialog (casca AppDialog; o TaskForm põe header/corpo/footer) -->
@@ -2001,7 +2126,10 @@ const skeletonLanes = [
 }
 
 .skel-lane {
-  flex: 0 0 280px;
+  /* A mesma régua das colunas de verdade (TaskColumn). */
+  flex: 1 1 236px;
+  min-width: 220px;
+  max-width: 360px;
   padding: 6px 8px 0;
   border-radius: var(--radius-md);
   background: var(--surface-sunken);

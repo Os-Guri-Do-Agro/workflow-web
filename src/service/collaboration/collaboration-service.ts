@@ -23,8 +23,13 @@ const collaborationService = {
     return response.data
   },
 
-  async createComment(input: CreateCommentInput) {
-    const response = await api.post<CommentPayload>('/comments', input)
+  /** `companyId` explícito quando a tela mistura empresas (o `/board`). */
+  async createComment(input: CreateCommentInput, companyId?: string | null) {
+    const response = await api.post<CommentPayload>(
+      '/comments',
+      input,
+      companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+    )
     return response.data
   },
 

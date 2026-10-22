@@ -136,7 +136,17 @@ const darkTokens: TokenMap = {
   '--task-status-todo': 'rgba(240,243,247,0.50)',
   '--task-status-prog': '#5B9BF8',
   '--task-status-test': '#A98BF0',
+  // Revisados (aprovada, esperando subir): verde-azulado, entre o violeta do
+  // teste e o verde do concluído (spec board-revisados-sinal-e-dialog, D6).
+  '--task-status-review': '#2ED3B7',
   '--task-status-done': '#3CCB7F',
+  // Sinal do teste: a bolinha do card em "Em teste" (D5). Cor chapada, nunca
+  // brilho. Objeto gráfico de 10px: passa 3:1 sobre o card.
+  '--test-signal-testing': '#53B1FD',
+  '--test-signal-adjust': '#FDB022',
+  '--test-signal-rejected': '#F97066',
+  // No escuro o disco já contrasta sozinho; o anel só existe no claro.
+  '--test-signal-ring': 'transparent',
   // Cor só onde muda decisão: prioridade Urgente/Alta e prazo vencido/perto.
   // São TEXTO de 12px, então passam AA (>= 4,5:1) sobre --surface e --surface-2.
   '--prio-urgent': '#F97066',
@@ -225,7 +235,14 @@ const lightTokens: TokenMap = {
   '--task-status-todo': 'rgba(11,11,12,0.45)',
   '--task-status-prog': '#2563EB',
   '--task-status-test': '#7C3AED',
+  '--task-status-review': '#0E9384',
   '--task-status-done': '#15803D',
+  // Amarelo sobre branco não passa 3:1 nem como objeto: o anel escuro fino dá
+  // o contorno, e o miolo continua amarelo (é a cor que o time pediu).
+  '--test-signal-testing': '#1570EF',
+  '--test-signal-adjust': '#FDB022',
+  '--test-signal-rejected': '#D92D20',
+  '--test-signal-ring': 'rgba(16,24,40,0.32)',
   // O laranja e o vermelho de --warn/--err dão 2,2:1 e 3,6:1 sobre branco:
   // não servem como texto. Estes passam AA (4,8:1 a 5,6:1).
   '--prio-urgent': '#D92D20',

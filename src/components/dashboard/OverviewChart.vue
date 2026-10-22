@@ -38,6 +38,8 @@ interface OverviewMetrics {
     todo?: number
     inProgress?: number
     inTesting?: number
+    /** Revisados: aprovada, esperando subir. Não é concluída. */
+    reviewed?: number
     completed?: number
   }
 }
@@ -52,6 +54,7 @@ const slices = computed(() => {
     { key: 'todo', name: 'A fazer', value: s?.todo || 0, token: 'var(--status-todo)' },
     { key: 'prog', name: 'Em andamento', value: s?.inProgress || 0, token: 'var(--status-prog)' },
     { key: 'test', name: 'Em teste', value: s?.inTesting || 0, token: 'var(--status-test)' },
+    { key: 'review', name: 'Revisados', value: s?.reviewed || 0, token: 'var(--task-status-review)' },
     { key: 'done', name: 'Concluídas', value: s?.completed || 0, token: 'var(--status-done)' },
   ]
 })

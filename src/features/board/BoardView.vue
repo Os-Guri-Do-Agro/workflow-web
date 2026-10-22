@@ -13,6 +13,7 @@ import TaskCard, { type TaskCardTask } from '@/components/tasks/TaskCard.vue'
 import TaskColumn from '@/components/tasks/TaskColumn.vue'
 import TaskDetailPanel from '@/features/tasks/components/TaskDetailPanel.vue'
 import { ACTIVITY_STATUSES, PRIORITY_OPTIONS, priorityLevel } from '@/features/tasks/task-meta'
+import type { ActivityDetail, ActivityStatus } from '@/features/tasks/activity-types'
 import { taskKey } from '@/features/tasks/task-key'
 import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
 
@@ -45,7 +46,9 @@ function parseTagsParam(value: unknown): string[] {
 const filterTags = ref<string[]>(parseTagsParam(route.query.tags))
 const draggedTask = ref<ActivityItem | null>(null)
 
-type ColumnStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+// A união vem do tipo único: uma lista local de status era o que fazia um
+// status novo sumir do board sem erro de compilação.
+type ColumnStatus = ActivityStatus
 
 // Colunas, rótulos, ícones e escala de prioridade vêm do task-meta: a mesma
 // fonte do board do mês. Antes esta tela tinha a própria escala (P0 = Crítica),
@@ -154,6 +157,7 @@ function toCard(a: ActivityItem): TaskCardTask {
     responsibles: (a.responsibles ?? []).map((r) => ({ userId: r.id, user: { name: r.name } })),
     tags: (a.tags ?? []).map((tag) => ({ tag })),
     _count: { docs: a.docCount ?? 0, attachments: a.attachmentCount ?? 0 },
+    testSignal: a.testSignal ?? null,
   }
 }
 
@@ -366,9 +370,22 @@ onMounted(() => {
 // ── Realtime: reflete arraste feito em outras abas/usuários na visão agregada ──
 // A store é reativa; setar .status faz columnTasks reordenar sozinho. Match
 // por id cobre todas as empresas do workspace (o usuário recebe eventos de todas).
+/** O dialog avisa o board do que mudou; aqui só o sinal do teste e o status. */
+function applyBoardPatch(id: string, patch: Partial<ActivityDetail>) {
+  const activity = workspace.workspaceData?.activities.find((a) => a.id === id)
+  if (!activity) return
+  if (patch.testSignal !== undefined) activity.testSignal = patch.testSignal ?? null
+  if (patch.status) {
+    activity.status = patch.status
+    if (patch.status !== 'IN_TESTING') activity.testSignal = null
+  }
+}
+
 function applyRemoteMove(p: ActivityMovedPayload) {
   const activity = workspace.workspaceData?.activities.find((a) => a.id === p.activityId)
-  if (activity) activity.status = p.status
+  if (!activity) return
+  activity.status = p.status
+  if (p.status !== 'IN_TESTING') activity.testSignal = null
 }
 
 useActivityBoardRealtime(applyRemoteMove, loadData)
@@ -436,15 +453,21 @@ async function updateTaskStatus(task: ActivityItem, newStatus: ColumnStatus) {
   // chegam por caminhos diferentes, e nenhum deles pode gravar sem permissão.
   if (!canEditTask(task)) return
   const previousStatus = task.status
-  // Update otimista: o card move na hora.
+  const previousSignal = task.testSignal ?? null
+  // Update otimista: o card move na hora (e o sinal do teste some fora de
+  // "Em teste", como no servidor).
   task.status = newStatus
+  if (newStatus !== 'IN_TESTING') task.testSignal = null
   try {
     await activityService.patchActivityStatus(task.id, newStatus, task.companyId)
     showSuccess('Atividade movida')
-  } catch {
-    // Reverte em caso de erro.
+  } catch (error: unknown) {
+    // Reverte em caso de erro, com o motivo da API quando houver (ex.: a
+    // coluna Revisados antes da migração).
     task.status = previousStatus
-    showError('Não foi possível mover a atividade')
+    task.testSignal = previousSignal
+    const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
+    showError(message ?? 'Não foi possível mover a atividade')
   }
 }
 
@@ -588,6 +611,7 @@ function handleDrop(columnId: ColumnStatus) {
               :status="column.value"
               :task-key="taskKey(task, task.companyName)"
               :context="task.companyName"
+              :company-id="task.companyId"
               :renamable="false"
               :deletable="false"
               :readonly="!canEditTask(task)"
@@ -599,6 +623,7 @@ function handleDrop(columnId: ColumnStatus) {
               @open="openTask(task)"
               @move="updateTaskStatus(task, $event)"
               @tag="toggleTagFilter"
+              @signal="(view) => (task.testSignal = view)"
             />
           </template>
         </div>
@@ -611,6 +636,7 @@ function handleDrop(columnId: ColumnStatus) {
       :task-id="openTaskId"
       :company-id="openTaskCompanyId"
       :company-name="openTaskCompanyName"
+      :apply-patch="applyBoardPatch"
       @close="closeTask"
     />
   </div>

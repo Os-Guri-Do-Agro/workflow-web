@@ -9,7 +9,8 @@
  * conjuntos. Qualquer escala nova entra AQUI, nunca num `Record` local.
  *
  * Os ícones são desenhados à mão em SVG (os do protótipo aprovado), não Lucide:
- * status é círculo vazio, meio cheio, tracejado com ponto e check cheio;
+ * status é círculo vazio, meio cheio, tracejado com ponto, check vazado
+ * (Revisados: aprovado, ainda não subiu) e check cheio (Concluído: no ar);
  * prioridade é barras (Baixa, Média, Alta) ou o quadrado de "!" (Urgente).
  * Cada ícone é um componente funcional que aceita `size`, então encaixa em
  * `<component :is="spec.icon" :size="14" />` como um ícone Lucide.
@@ -60,6 +61,7 @@ export interface StatusSpec {
 const TODO_C = 'var(--task-status-todo)'
 const PROG_C = 'var(--task-status-prog)'
 const TEST_C = 'var(--task-status-test)'
+const REVIEW_C = 'var(--task-status-review)'
 const DONE_C = 'var(--task-status-done)'
 
 const StatusTodoIcon = svgIcon('StatusTodoIcon', () => [
@@ -83,6 +85,21 @@ const StatusTestingIcon = svgIcon('StatusTestingIcon', () => [
   h('circle', { cx: 8, cy: 8, r: 2.2, style: { fill: TEST_C } }),
 ])
 
+/**
+ * Revisados: o mesmo check do Concluído, mas VAZADO. Lê como "aprovado" sem
+ * competir com o "está no ar" do check cheio.
+ */
+const StatusReviewedIcon = svgIcon('StatusReviewedIcon', () => [
+  h('circle', { cx: 8, cy: 8, r: 6, style: { stroke: REVIEW_C }, 'stroke-width': 1.6 }),
+  h('path', {
+    d: 'm5.4 8.1 1.8 1.8 3.4-3.6',
+    style: { stroke: REVIEW_C },
+    'stroke-width': 1.7,
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round',
+  }),
+])
+
 const StatusDoneIcon = svgIcon('StatusDoneIcon', () => [
   h('circle', { cx: 8, cy: 8, r: 7, style: { fill: DONE_C } }),
   // O check na cor da superfície: no claro é branco, no escuro é o fundo do card.
@@ -100,6 +117,8 @@ export const ACTIVITY_STATUSES: readonly StatusSpec[] = [
   { value: 'TODO', label: 'A fazer', token: TODO_C, icon: StatusTodoIcon },
   { value: 'IN_PROGRESS', label: 'Em andamento', token: PROG_C, icon: StatusProgressIcon },
   { value: 'IN_TESTING', label: 'Em teste', token: TEST_C, icon: StatusTestingIcon },
+  // Aprovada no teste e esperando subir. NÃO é entrega: só Concluído conta.
+  { value: 'REVIEWED', label: 'Revisados', token: REVIEW_C, icon: StatusReviewedIcon },
   { value: 'DONE', label: 'Concluído', token: DONE_C, icon: StatusDoneIcon },
 ] as const
 

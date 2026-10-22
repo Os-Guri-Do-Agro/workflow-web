@@ -7,7 +7,22 @@
  * `responsibles: [{ userId, user }]`, `status: 'TODO'` e `monthId` escalar.
  * Tipar o painel pelo tipo errado seria refatorar no escuro.
  */
-export type ActivityStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+export type ActivityStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'REVIEWED' | 'DONE'
+
+/**
+ * Sinal do teste (spec board-revisados-sinal-e-dialog, D2 a D5): a bolinha do
+ * card em "Em teste". Azul = em teste (também quando não há sinal), amarelo =
+ * precisa de ajuste, vermelho = reprovada (continua em "Em teste").
+ */
+export type TestSignal = 'TESTING' | 'NEEDS_ADJUSTMENT' | 'REJECTED'
+
+/** Como a API devolve o sinal: `null` = nunca marcado (azul). */
+export interface TestSignalView {
+  signal: TestSignal
+  setBy: { id: string; name: string } | null
+  /** ISO 8601. */
+  updatedAt: string
+}
 
 export interface ActivityUser {
   id: string
@@ -117,6 +132,8 @@ export interface ActivityDetail {
    * vazio quando a atividade não tem pai. Somente leitura: editar é na origem.
    */
   inheritedDocs?: ActivityDocMeta[]
+  /** Sinal do teste. Só vem preenchido em "Em teste"; `null` = azul. */
+  testSignal?: TestSignalView | null
 }
 
 /** Corpo aceito por `PATCH /activity/:id`. Tudo opcional: o backend é parcial. */

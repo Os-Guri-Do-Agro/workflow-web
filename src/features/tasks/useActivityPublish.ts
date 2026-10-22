@@ -1,7 +1,8 @@
 import { useQueryClient } from '@tanstack/vue-query'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { getUserToken } from '@/utils/authContent'
-import type { ActivityDetail, ActivityResponsible } from './activity-types'
+import type { ActivityDetail, ActivityResponsible, ActivityStatus } from './activity-types'
+import { ACTIVITY_STATUSES } from './task-meta'
 
 /**
  * Publica o resultado de uma gravação em TODAS as fontes que desenham o card.
@@ -18,7 +19,7 @@ import type { ActivityDetail, ActivityResponsible } from './activity-types'
  * o board repinta o card com o dado antigo (visível em qualquer rede real).
  */
 
-type BoardStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+type BoardStatus = ActivityStatus
 
 /** Card como o `GET /month/:id/board` devolve (campos usados pelo KanbanBoard). */
 interface BoardCard {
@@ -33,7 +34,9 @@ interface BoardCard {
 
 type BoardColumns = Record<BoardStatus, BoardCard[]>
 
-const BOARD_STATUSES: BoardStatus[] = ['TODO', 'IN_PROGRESS', 'IN_TESTING', 'DONE']
+// Da fonte única: com a lista local, o cache da coluna "Revisados" não recebia
+// a edição feita no detalhe e o card ficava velho até o refetch.
+const BOARD_STATUSES: BoardStatus[] = ACTIVITY_STATUSES.map((s) => s.value)
 
 /**
  * Campos do card que uma edição de atividade pode mudar. `status` fica de fora
