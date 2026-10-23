@@ -3,7 +3,11 @@
 **Status:** Concluído (sem commit)
 **Autor:** Claude (Opus 5.5) a pedido do Nicolas
 **Criado em:** 2026-10-22
-**Versão:** 1.0
+**Versão:** 1.1
+
+> **v1.1 (2026-10-23):** duas mudanças:
+> - Notas voltou ao menu ("descobri que tinha gente usando"). Continuam fora Roadmap, Calendário e Bug reports.
+> - Nova ordem das seções: Trabalho, Pessoal, Empresa, Ferramentas. Vale no NavList, no rail e na coluna do Focus, nas abas e no dock do Canvas.
 
 > Pedido: *"ninguém usa calendário, notas, bug reports e roadmap, pode esconder esses caras? Empresa: ter a opção de minimizar, Ferramentas também, assim fica mais lean. Tenta colocar alguns detalhes a mais da cor selecionada em configuração, tá muito light o projeto, óbvio que tá legal o layout, só dar mais um tcham."*
 

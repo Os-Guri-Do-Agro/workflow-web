@@ -86,20 +86,20 @@ const tabGroups = computed<TabGroup[]>(() => {
       ],
     },
     {
+      name: 'Pessoal',
+      items: [
+        { to: '/time', icon: Timer, label: 'Meu tempo' },
+        { to: '/notes', icon: StickyNote, label: 'Notas' },
+        { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
+      ],
+    },
+    {
       name: 'Empresa',
       items: [
         { to: '/drive', icon: HardDrive, label: 'Drive' },
         { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER' },
         { to: '/variables', icon: KeyRound, label: 'Variáveis' },
         { to: '/company-users', icon: Users, label: 'Usuários', role: 'ADMIN' },
-      ],
-    },
-    {
-      name: 'Pessoal',
-      items: [
-        { to: '/time', icon: Timer, label: 'Meu tempo' },
-        { to: '/notes', icon: StickyNote, label: 'Notas' },
-        { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
       ],
     },
     {
@@ -127,7 +127,7 @@ const tabGroups = computed<TabGroup[]>(() => {
 
 /**
  * Dock: atalhos mais usados, na ordem das seções e com o mesmo traço entre
- * grupos (Trabalho, depois Empresa, depois Pessoal).
+ * grupos (Trabalho, depois Pessoal, depois Empresa).
  */
 const dockGroups = computed<TabItem[][]>(() => {
   const work: TabItem[] = [
@@ -141,11 +141,11 @@ const dockGroups = computed<TabItem[][]>(() => {
   work.push({ to: '/roadmap', icon: Milestone, label: 'Roadmap' })
   return [
     work,
+    [{ to: '/notes', icon: StickyNote, label: 'Notas' }],
     [
       { to: '/drive', icon: HardDrive, label: 'Drive' },
       { to: '/variables', icon: KeyRound, label: 'Variáveis' },
     ],
-    [{ to: '/notes', icon: StickyNote, label: 'Notas' }],
   ]
     .map((group) => group.filter((i) => !isNavHidden(i.to)))
     .filter((group) => group.length > 0)

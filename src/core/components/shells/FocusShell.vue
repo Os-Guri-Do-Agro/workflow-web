@@ -98,14 +98,14 @@ const railItems = computed<RailItem[]>(() => {
   }
   items.push(
     { to: '/roadmap', icon: Milestone, label: 'Roadmap', section: 'Trabalho' },
+    { to: '/time', icon: Timer, label: 'Meu tempo', section: 'Pessoal' },
+    { to: '/notes', icon: StickyNote, label: 'Notas', section: 'Pessoal' },
+    { to: '/calendar', icon: CalendarDays, label: 'Calendário', section: 'Pessoal' },
     // Empresa: recursos e administração da empresa.
     { to: '/drive', icon: HardDrive, label: 'Drive', section: 'Empresa' },
     { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER', section: 'Empresa' },
     { to: '/variables', icon: KeyRound, label: 'Variáveis', section: 'Empresa' },
     { to: '/company-users', icon: Users, label: 'Usuários', role: 'ADMIN', section: 'Empresa' },
-    { to: '/time', icon: Timer, label: 'Meu tempo', section: 'Pessoal' },
-    { to: '/notes', icon: StickyNote, label: 'Notas', section: 'Pessoal' },
-    { to: '/calendar', icon: CalendarDays, label: 'Calendário', section: 'Pessoal' },
     // Ferramentas de integração por último, espelhando o NavList do CommandShell.
     { to: '/qr', icon: QrCode, label: 'QR Codes', section: 'Ferramentas' },
     { to: '/links', icon: Link2, label: 'Encurtador', section: 'Ferramentas' },
@@ -124,7 +124,7 @@ const railItems = computed<RailItem[]>(() => {
   return items.filter((i) => userMeetsRole(i.role) && !isNavHidden(i.to))
 })
 
-const SECTION_ORDER: RailSectionName[] = ['Trabalho', 'Empresa', 'Pessoal', 'Ferramentas']
+const SECTION_ORDER: RailSectionName[] = ['Trabalho', 'Pessoal', 'Empresa', 'Ferramentas']
 
 /**
  * Rail e coluna de contexto desenham os MESMOS grupos, na ordem do NavList.
@@ -198,7 +198,7 @@ const showTasks = computed(() =>
       <BrandMark class="rail-brand" />
       <!-- Um grupo por seção do menu, separados por um traço discreto: o rail
            não tem espaço para rótulo, e a divisória é o que diz onde termina
-           Trabalho e começa Empresa. -->
+           Trabalho e começa Pessoal. -->
       <nav class="rail-nav" aria-label="Navegação principal">
         <div
           v-for="section in railSections"

@@ -1,6 +1,7 @@
 /**
  * Telas FORA do menu (pedido do Nicolas, out/2026: "ninguém usa calendário,
  * notas, bug reports e roadmap"). O objetivo é deixar a navegação enxuta.
+ * Notas voltou ao menu um dia depois: tinha gente usando.
  *
  * Só some a ENTRADA: menu lateral dos três shells, menu iniciar e área de
  * trabalho do Modo XP e a busca rápida (Ctrl K). As ROTAS continuam valendo:
@@ -10,7 +11,7 @@
  * rota desta lista, ou ligar `VITE_SHOW_ALL_NAV=true` para ver tudo de novo
  * sem mexer em código.
  */
-const HIDDEN: readonly string[] = ['/roadmap', '/notes', '/calendar', '/bug-reports']
+const HIDDEN: readonly string[] = ['/roadmap', '/calendar', '/bug-reports']
 
 export const HIDDEN_NAV_ROUTES: readonly string[] =
   import.meta.env.VITE_SHOW_ALL_NAV === 'true' ? [] : HIDDEN

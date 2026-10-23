@@ -162,14 +162,15 @@ const workItems = computed<NavItem[]>(() => {
 })
 
 /**
- * Ordem das seções: execução, empresa, pessoal e, por último, as ferramentas de
- * integração. Seção sem item para o papel da pessoa não desenha nem o rótulo.
+ * Ordem das seções: execução, pessoal, empresa e, por último, as ferramentas de
+ * integração (Pessoal antes de Empresa a pedido do Nicolas, out/2026: é o que se
+ * usa no dia a dia). Seção sem item para o papel da pessoa não desenha nem o rótulo.
  */
 const sections = computed<NavSection[]>(() =>
   [
     { name: 'Trabalho' as const, items: workItems.value },
-    { name: 'Empresa' as const, items: companyItems.value },
     { name: 'Pessoal' as const, items: personalItems.value },
+    { name: 'Empresa' as const, items: companyItems.value },
     { name: 'Ferramentas' as const, items: toolsItems.value },
   ].filter((s) => s.items.length > 0),
 )
