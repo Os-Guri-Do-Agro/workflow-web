@@ -33,6 +33,7 @@ import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useAssistant } from '@/composables/useAssistant'
 import { useOnboarding } from '@/composables/useOnboarding'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { isNavHidden } from '@/config/nav-visibility'
 
 const router = useRouter()
 const activeCompanyStore = useActiveCompanyId()
@@ -99,7 +100,9 @@ interface Command {
 
 const staticCommands = computed<Command[]>(() => [
   { id: 'nav-dash', label: 'Dashboard', hint: 'Visão geral', icon: LayoutDashboard, section: 'Navegação', keywords: 'home inicio painel', action: () => go('/') },
-  { id: 'nav-roadmap', label: 'Roadmap', hint: 'Eventos e atividades', icon: Milestone, section: 'Navegação', keywords: 'planejamento timeline estrategia entregas', action: () => go('/roadmap') },
+  ...(isNavHidden('/roadmap')
+    ? []
+    : [{ id: 'nav-roadmap', label: 'Roadmap', hint: 'Eventos e atividades', icon: Milestone, section: 'Navegação', keywords: 'planejamento timeline estrategia entregas', action: () => go('/roadmap') } as Command]),
   // Canvas: escondido via feature flag (CANVAS_ENABLED). Reativar = VITE_CANVAS_ENABLED=true.
   ...(CANVAS_ENABLED
     ? [{ id: 'nav-canvas', label: 'Canvas', hint: 'Boards de desenho', icon: Paintbrush, section: 'Navegação', keywords: 'desenho lousa whiteboard yjs', action: () => go('/boards') } as Command]

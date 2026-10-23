@@ -37,6 +37,7 @@ import HelpButton from './shared/HelpButton.vue'
 import StreakChip from './shared/StreakChip.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { isNavHidden } from '@/config/nav-visibility'
 import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
 
 defineEmits<{
@@ -120,7 +121,7 @@ const railItems = computed<RailItem[]>(() => {
       section: 'Ferramentas',
     })
   }
-  return items.filter((i) => userMeetsRole(i.role))
+  return items.filter((i) => userMeetsRole(i.role) && !isNavHidden(i.to))
 })
 
 const SECTION_ORDER: RailSectionName[] = ['Trabalho', 'Empresa', 'Pessoal', 'Ferramentas']

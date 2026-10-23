@@ -200,7 +200,9 @@ function crumbTooltip(crumb: string): string | undefined {
   align-items: center;
   gap: 10px;
   padding: 0 14px;
-  background: var(--surface);
+  /* O mesmo fio da cor escolhida do menu: barra e menu formam a moldura do
+     app, e o conteúdo continua neutro. */
+  background: var(--accent-wash);
   border-bottom: 1px solid var(--border);
   position: relative;
   z-index: 2;
@@ -285,7 +287,9 @@ function crumbTooltip(crumb: string): string | undefined {
 .sidebar {
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  /* Um fio da cor escolhida em Configurações no fundo do menu: dá identidade
+     sem pintar nada de conteúdo (5% do acento sobre a superfície). */
+  background: var(--accent-wash);
   border-right: 1px solid var(--border);
   min-height: 0;
 }

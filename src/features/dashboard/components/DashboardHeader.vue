@@ -130,10 +130,12 @@ const emit = defineEmits<{
   color: var(--text-2);
 }
 
+/* Modo ativo na cor escolhida em Configurações, como as vistas do board. */
 .mode-btn--active {
   background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
+  color: var(--accent-ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm), inset 0 0 0 999px var(--accent-soft);
 }
 
 @media (max-width: 768px) {

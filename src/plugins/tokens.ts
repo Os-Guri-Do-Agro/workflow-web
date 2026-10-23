@@ -436,6 +436,15 @@ export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral
   }
   root.style.setProperty('--accent', accents[accent][theme])
   root.style.setProperty('--accent-fg', accentForeground[theme])
+  // Tons derivados da cor escolhida em Configurações (spec
+  // menu-enxuto-e-cor): o "tcham" da cor sem virar neon. O acento puro como
+  // destaque de conteúdo berra no tema claro (teal e laranja sobre branco),
+  // então: misturado ao texto para ícone e texto (`ink`, passa AA sobre o
+  // `soft`), e em transparência baixa para fundo (`soft`, `wash`). Por
+  // referência a `--accent`, acompanham o Modo XP e qualquer troca sem recalcular.
+  root.style.setProperty('--accent-ink', 'color-mix(in srgb, var(--accent) 72%, var(--text))')
+  root.style.setProperty('--accent-soft', 'color-mix(in srgb, var(--accent) 13%, transparent)')
+  root.style.setProperty('--accent-wash', 'color-mix(in srgb, var(--accent) 6%, var(--surface))')
   for (const [key, pair] of Object.entries(tagColors)) {
     root.style.setProperty(`--tag-${key}`, pair[theme])
   }

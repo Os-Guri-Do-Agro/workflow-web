@@ -47,6 +47,11 @@ button {
   background: transparent;
 }
 
+/* Texto selecionado na cor escolhida em Configurações, em tom de fundo. */
+::selection {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

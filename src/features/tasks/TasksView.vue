@@ -2031,10 +2031,12 @@ const skeletonLanes = [
   color: var(--text);
 }
 
+/* Vista aberta na cor escolhida em Configurações (o mesmo tom do item ativo
+   do menu), sem o acento puro. */
 .views__btn[aria-pressed='true'] {
-  background: var(--surface-3);
-  color: var(--text);
-  font-weight: 500;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 
 .head-spacer {

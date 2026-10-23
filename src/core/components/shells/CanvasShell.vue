@@ -38,6 +38,7 @@ import HelpButton from './shared/HelpButton.vue'
 import StreakChip from './shared/StreakChip.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { isNavHidden } from '@/config/nav-visibility'
 import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
 
 const emit = defineEmits<{
@@ -117,7 +118,10 @@ const tabGroups = computed<TabGroup[]>(() => {
     },
   ]
   return groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => userMeetsRole(i.role)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => userMeetsRole(i.role) && !isNavHidden(i.to)),
+    }))
     .filter((g) => g.items.length > 0)
 })
 
@@ -143,6 +147,8 @@ const dockGroups = computed<TabItem[][]>(() => {
     ],
     [{ to: '/notes', icon: StickyNote, label: 'Notas' }],
   ]
+    .map((group) => group.filter((i) => !isNavHidden(i.to)))
+    .filter((group) => group.length > 0)
 })
 
 const isActive = (to: string) => {

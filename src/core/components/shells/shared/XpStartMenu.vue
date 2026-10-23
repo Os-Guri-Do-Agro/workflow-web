@@ -8,6 +8,7 @@ import { useNavQuarters } from '@/composables/useNavQuarters'
 import { getUserToken } from '@/utils/authContent'
 import { clearSession } from '@/service/api'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
+import { isNavHidden } from '@/config/nav-visibility'
 
 /*
  * Menu Iniciar do easter egg Windows XP (tema Luna).
@@ -55,7 +56,7 @@ const appLinks = computed<MenuLink[]>(() => {
     { label: 'QR Codes', icon: 'qr', to: '/qr' },
     { label: 'Meu tempo', icon: 'clock', to: '/time' },
   )
-  return links
+  return links.filter((l) => !isNavHidden(l.to))
 })
 
 function go(to: string): void {

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import XpIcon from './XpIcon.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { isNavHidden } from '@/config/nav-visibility'
 
 /*
  * Ícones de área de trabalho do easter egg Windows XP.
@@ -32,7 +33,7 @@ const icons: DeskIcon[] = [
   { id: 'calendar', label: 'Calendário', icon: 'calendar', to: '/calendar' },
   { id: 'qr', label: 'QR Codes', icon: 'qr', to: '/qr' },
   { id: 'time', label: 'Meu tempo', icon: 'clock', to: '/time' },
-]
+].filter((i) => !isNavHidden(i.to))
 
 const selected = ref<string | null>(null)
 

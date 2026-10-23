@@ -40,7 +40,7 @@ Camadas disponíveis como CSS custom properties em `:root` (atualizadas runtime 
 | **Text hierarchy** | `--text`, `--text-2` (70%), `--text-3` (48%), `--text-4` (32%)                        |
 | **Status**         | `--status-todo`, `--status-prog`, `--status-test`, `--status-done`, `--status-block`  |
 | **Semantic**       | `--success`, `--warn`, `--err`, `--info`                                              |
-| **Accent**         | `--accent`, `--accent-fg` (trocável em runtime via `uiStore.accent`)                  |
+| **Accent**         | `--accent`, `--accent-fg` (trocável em runtime via `uiStore.accent`). Derivados para dar cor sem neon: `--accent-ink` (ícone/texto, passa AA sobre o `soft`), `--accent-soft` (fundo de item ativo), `--accent-wash` (moldura: sidebar e topo do CommandShell). Destaque de conteúdo nunca usa o `--accent` puro |
 | **Radius**         | `--radius-sm` (6px), `--radius` (10px), `--radius-lg` (14px), `--radius-xl` (20px); de trabalho (board): `--radius-xs` (4px, tag/badge) e `--radius-md` (8px, coluna/menu) |
 | **Shadow**         | `--shadow-sm`, `--shadow`, `--shadow-overlay`                                         |
 | **Motion**         | `--motion-fast` (120ms), `--motion` (180ms), `--motion-slow` (280ms), `--motion-ease` |
@@ -93,7 +93,7 @@ Trocar a variante é feito em `/settings` e é aplicada em runtime (sem reload).
 - `UserMenu.vue`: avatar (`PersonAvatar` de quem está logado) + dropdown com Trocar foto (`/settings#perfil`) / Configurações / Sair
 - `CmdKButton.vue` — disparador da Command Palette (full / compact / icon)
 - `ThemeToggle.vue` — botão sol/lua que usa `useUiPreferences`
-- `NavList.vue` — lista de navegação reutilizável (usada em CommandShell; quarters carregadas da API). Quatro seções, nesta ordem: **Trabalho** (execução do dia: Dashboard, Board, Tarefas, Roadmap), **Empresa** (recursos e administração: Drive, Bug reports, Variáveis, Usuários só ADMIN), **Pessoal** (Meu tempo, Notas, Calendário) e **Ferramentas** (QR Codes, Encurtador, OCR Digital, Acessos Públicos). Seção sem item para o papel da pessoa não aparece
+- `NavList.vue` — lista de navegação reutilizável (usada em CommandShell; quarters carregadas da API). Quatro seções, nesta ordem: **Trabalho** (execução do dia: Dashboard, Board, Tarefas, Roadmap), **Empresa** (recursos e administração: Drive, Bug reports, Variáveis, Usuários só ADMIN), **Pessoal** (Meu tempo, Notas, Calendário) e **Ferramentas** (QR Codes, Encurtador, OCR Digital, Acessos Públicos). Seção sem item para o papel da pessoa não aparece. **Desde out/2026, Roadmap, Notas, Calendário e Bug reports estão FORA do menu** (`config/nav-visibility.ts`, `isNavHidden`): some só a entrada (menu dos três shells, Modo XP e Ctrl K); a rota continua; voltar = tirar da lista ou `VITE_SHOW_ALL_NAV=true`. As seções são **recolhíveis** pelo nome (preferência em `localStorage` `nav.collapsed`; na primeira vez Empresa e Ferramentas nascem recolhidas), e recolhida a seção ainda mostra o item da tela aberta
 - `StreakChip.vue`: chama + número da sequência antes do `TimerWidget` nos 3 shells (`compact` no Canvas). Popover reka-ui com portal (estilo global `streak-pop`, z 3000) com semana, missões, próximo marco e atalhos (`/#sequencia`, `/time?tab=team`). Corpo do popover em chunks sob demanda; some quando a API não tem a rota (404/403)
 
 Os rótulos do breadcrumb (CommandShell) e do título da barra (FocusShell) são os mesmos do `NavList`; rota sem rótulo cai em "Nevo".
