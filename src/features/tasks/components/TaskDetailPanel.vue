@@ -88,14 +88,17 @@ import {
   type ActivityDetail,
   type ActivityResponsible,
   type ActivityTag,
+  type TestCheckView,
   type TestSignalView,
 } from '../activity-types'
+import { checksAfterMove, reviewBlockReason } from '../test-platforms'
 import TaskDescriptionEditor from './TaskDescriptionEditor.vue'
 import TaskAttachments from './TaskAttachments.vue'
 import TaskDocs from './TaskDocs.vue'
 import InheritedDocs from './InheritedDocs.vue'
 import TagInput from '@/components/ui/TagInput.vue'
 import TestSignalDot from '@/components/tasks/TestSignalDot.vue'
+import TestPlatformChecks from '@/components/tasks/TestPlatformChecks.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -581,6 +584,24 @@ function onSignalChanged(view: TestSignalView | null): void {
   applyPatch?.(props.taskId, { testSignal: view })
 }
 
+// ── Teste por plataforma (spec teste-por-plataforma, D10) ────────────────────
+// Editável em "Em teste"; em Revisados e Concluído é o registro de quem testou
+// (só aparece se houver check). `testChecks` nulo = API sem o recurso.
+const showChecks = computed(() => {
+  const checks = activity.value?.testChecks
+  if (!Array.isArray(checks)) return false
+  const status = activity.value?.status
+  return isTesting.value || ((status === 'REVIEWED' || status === 'DONE') && checks.length > 0)
+})
+
+/** Gravado pelo próprio controle: aqui só acerta o cache e o card do board. */
+function onChecksChanged(checks: TestCheckView[] | null): void {
+  queryClient.setQueryData<ActivityDetail>(['activity', props.taskId], (old) =>
+    old ? { ...old, testChecks: checks } : old,
+  )
+  applyPatch?.(props.taskId, { testChecks: checks })
+}
+
 // ── Gravações ────────────────────────────────────────────────────────────────
 function saveTitle(value: string) {
   const title = value.replace(/\s+/g, ' ').trim()
@@ -600,10 +621,24 @@ function saveDescription(value: string) {
 
 function saveStatus(value: string) {
   if (value === activity.value?.status) return
+  // Revisados só com Web, iOS e Android testados (spec teste-por-plataforma,
+  // D11): o menu nem grava, e o toast diz o que falta.
+  const blocked = reviewBlockReason(activity.value, activity.value?.status, value)
+  if (blocked) {
+    showError(blocked)
+    return
+  }
   // Trocar de coluna zera o sinal do teste (o servidor apaga ao sair de "Em
   // teste"; voltar recomeça azul). Sem isto o dialog mostrava o sinal velho.
   if (activity.value?.testSignal) onSignalChanged(null)
-  void commitStatus(value)
+  void commitStatus(value).then(() => {
+    // Retrabalho CONFIRMADO: o servidor apagou o teste por plataforma. Depois
+    // da resposta, e não antes: uma troca recusada não pode sumir com check.
+    if (fieldState.status !== 'saved') return
+    const current = activity.value?.testChecks
+    const next = checksAfterMove(current, value)
+    if (next !== current) onChecksChanged(next ?? null)
+  })
 }
 
 function savePriority(value: number) {
@@ -1068,6 +1103,20 @@ onBeforeUnmount(() => {
                     :readonly="!canEdit"
                     variant="field"
                     @changed="onSignalChanged"
+                  />
+                </dd>
+              </template>
+
+              <template v-if="showChecks">
+                <dt>Testes</dt>
+                <dd>
+                  <TestPlatformChecks
+                    variant="field"
+                    :task-id="taskId"
+                    :checks="activity.testChecks ?? null"
+                    :company-id="companyIdRef"
+                    :readonly="!canEdit || !isTesting"
+                    @changed="onChecksChanged"
                   />
                 </dd>
               </template>

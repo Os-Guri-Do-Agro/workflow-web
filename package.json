@@ -25,6 +25,7 @@
     "@fontsource-variable/inter": "^5.2.8",
     "@hocuspocus/provider": "^4.3.0",
     "@mdi/font": "^7.4.47",
+    "@mdi/js": "^7.4.47",
     "@tanstack/vue-query": "^5.96.0",
     "@tiptap/core": "^3.28.0",
     "@tiptap/extension-character-count": "^3.28.0",

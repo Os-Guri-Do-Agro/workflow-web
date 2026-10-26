@@ -147,6 +147,11 @@ const darkTokens: TokenMap = {
   '--test-signal-rejected': '#F97066',
   // No escuro o disco já contrasta sozinho; o anel só existe no claro.
   '--test-signal-ring': 'transparent',
+  // Teste por plataforma (spec teste-por-plataforma, D9): o check marcado é
+  // verde (o mesmo do Concluído), com fundo suave. Cor chapada, sem brilho.
+  '--test-check-on': '#3CCB7F',
+  '--test-check-on-bg': 'rgba(60,203,127,0.14)',
+  '--test-check-on-border': 'rgba(60,203,127,0.42)',
   // Cor só onde muda decisão: prioridade Urgente/Alta e prazo vencido/perto.
   // São TEXTO de 12px, então passam AA (>= 4,5:1) sobre --surface e --surface-2.
   '--prio-urgent': '#F97066',
@@ -243,6 +248,10 @@ const lightTokens: TokenMap = {
   '--test-signal-adjust': '#FDB022',
   '--test-signal-rejected': '#D92D20',
   '--test-signal-ring': 'rgba(16,24,40,0.32)',
+  // Check marcado: o verde do Concluído passa 5:1 sobre branco como ícone.
+  '--test-check-on': '#15803D',
+  '--test-check-on-bg': 'rgba(21,128,61,0.09)',
+  '--test-check-on-border': 'rgba(21,128,61,0.38)',
   // O laranja e o vermelho de --warn/--err dão 2,2:1 e 3,6:1 sobre branco:
   // não servem como texto. Estes passam AA (4,8:1 a 5,6:1).
   '--prio-urgent': '#D92D20',

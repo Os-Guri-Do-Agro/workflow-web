@@ -52,9 +52,10 @@ import {
 import { tagColorVar, type TagLike } from '@/components/ui/tag-palette'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import TestSignalDot from '@/components/tasks/TestSignalDot.vue'
+import TestPlatformChecks from '@/components/tasks/TestPlatformChecks.vue'
 import { splitTaskTitle } from '@/features/tasks/task-title'
 import { ACTIVITY_STATUSES, dueSignal, prioritySpec } from '@/features/tasks/task-meta'
-import type { ActivityStatus, TestSignalView } from '@/features/tasks/activity-types'
+import type { ActivityStatus, TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
 import { isOccurrenceId } from '@/features/tasks/recurring/recurrence-types'
 import { TASK_CARD_RENAME_EVENT } from '@/features/tasks/composables/useTaskKeyboard'
 
@@ -85,6 +86,8 @@ export interface TaskCardTask {
   recurrenceOverdue?: number
   /** Sinal do teste (só em "Em teste"; `null` = azul). */
   testSignal?: TestSignalView | null
+  /** Teste por plataforma (só em "Em teste"; `null` = API sem o recurso). */
+  testChecks?: TestCheckView[] | null
 }
 
 const props = withDefaults(
@@ -146,6 +149,8 @@ const emit = defineEmits<{
   tag: [slug: string]
   /** Sinal do teste trocado na bolinha (já gravado): quem tem o estado guarda. */
   signal: [view: TestSignalView]
+  /** Plataforma marcada ou desmarcada (já gravado): a lista inteira de checks. */
+  checks: [checks: TestCheckView[]]
 }>()
 
 const MAX_TAGS = 2
@@ -159,6 +164,9 @@ const titleParts = computed(() => splitTaskTitle(title.value))
 const showSignal = computed(
   () => props.status === 'IN_TESTING' && !isVirtual.value && !props.pending,
 )
+// Checklist Web/iOS/Android: mesma regra, e só se a API já tem o recurso
+// (`testChecks` nulo = migration ainda não aplicada).
+const showChecks = computed(() => showSignal.value && Array.isArray(props.task.testChecks))
 
 const tags = computed(() => (props.task.tags ?? []).map((link) => link.tag))
 const shownTags = computed(() => tags.value.slice(0, MAX_TAGS))
@@ -502,6 +510,17 @@ function cancelFromKey() {
         </DropdownMenuRoot>
       </span>
     </div>
+
+    <!-- Teste por plataforma: Web, iOS e Android, marcados sem abrir a tarefa.
+         Revisados só com os três (spec teste-por-plataforma, D9). -->
+    <TestPlatformChecks
+      v-if="showChecks"
+      :task-id="task.id"
+      :checks="task.testChecks ?? null"
+      :company-id="companyId"
+      :readonly="readonly"
+      @changed="emit('checks', $event)"
+    />
   </article>
 </template>
 

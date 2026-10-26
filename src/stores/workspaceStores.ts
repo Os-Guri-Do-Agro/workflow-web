@@ -4,7 +4,7 @@ import dashboardService from '@/service/dashboard/dashboard-service'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
 import { isOverdue } from '@/utils/date'
-import type { TestSignalView } from '@/features/tasks/activity-types'
+import type { TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
 
 export interface CompanySummary {
   id: string
@@ -52,6 +52,8 @@ export interface ActivityItem {
   attachmentCount?: number
   /** Sinal do teste (só em "Em teste"; `null` = azul). API antiga não manda. */
   testSignal?: TestSignalView | null
+  /** Teste por plataforma (só em "Em teste"; `null` = API sem o recurso). */
+  testChecks?: TestCheckView[] | null
 }
 
 export interface WorkspaceCompany {

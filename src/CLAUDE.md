@@ -45,7 +45,7 @@ Camadas disponíveis como CSS custom properties em `:root` (atualizadas runtime 
 | **Shadow**         | `--shadow-sm`, `--shadow`, `--shadow-overlay`                                         |
 | **Motion**         | `--motion-fast` (120ms), `--motion` (180ms), `--motion-slow` (280ms), `--motion-ease` |
 | **Typography**     | `--font-family` (Figtree), `--font-mono`                                               |
-| **Board de tarefas** | `--surface-sunken` (poço da coluna), `--shadow-raised` (card: fio de 1px no escuro, sombra `raised` do Atlassian no claro), `--task-status-todo/prog/test/done` (cor do ÍCONE de status: A fazer neutro, Em andamento azul; os gráficos seguem em `--status-*`), `--prio-urgent`, `--prio-high`, `--due-late`, `--due-soon` (texto de 12px com AA). Spec [board-tarefas-redesign.md](../docs/specs/2026/q3/q3-3/board-tarefas-redesign.md). No Modo XP valem os do tema claro |
+| **Board de tarefas** | `--surface-sunken` (poço da coluna), `--shadow-raised` (card: fio de 1px no escuro, sombra `raised` do Atlassian no claro), `--task-status-todo/prog/test/done` (cor do ÍCONE de status: A fazer neutro, Em andamento azul; os gráficos seguem em `--status-*`), `--prio-urgent`, `--prio-high`, `--due-late`, `--due-soon` (texto de 12px com AA), `--task-status-review` (Revisados), `--test-signal-*` (bolinha do teste) e `--test-check-on`/`-on-bg`/`-on-border` (plataforma testada). Spec [board-tarefas-redesign.md](../docs/specs/2026/q3/q3-3/board-tarefas-redesign.md). No Modo XP valem os do tema claro |
 | **Sequência (Nevo)** | `--streak-flame`, `--streak-flame-soft`, `--streak-off`, `--streak-rest`, `--streak-perfect`, `--streak-missed`, `--streak-done`, `--nevo-floor` e os níveis `--tier-basico`, `--tier-progresso`, `--tier-determinado`, `--tier-especialista`, `--tier-lendario`. Cor como sinal chapado (número, anel, tinta), nunca brilho em volta. No Modo XP o `styles/xp.css` força os valores do tema claro no `<html>` (a paleta Luna é clara) e um laranja claro na barra azul do topo |
 
 **Nunca escreva hex em componentes.** Se precisar de uma cor que não existe, adicione o token em `tokens.ts` primeiro.
@@ -536,6 +536,31 @@ Quatro regras que não são óbvias:
 11. **Agrupado, a ordem de arraste é da coluna do mês inteiro:** cada linha é um grupo do Sortable
     (entre linhas não solta) e o `move-task` leva a ordem visível da CÉLULA, que o
     `resolveDropIndex` traduz pela âncora do vizinho, como no filtro.
+
+### Em teste, Revisados e o teste por plataforma
+
+Specs: [board-revisados-sinal-e-dialog.md](../docs/specs/2026/q4/q4-1/board-revisados-sinal-e-dialog.md) (coluna Revisados, bolinha do sinal) e [teste-por-plataforma.md](../docs/specs/2026/q4/q4-1/teste-por-plataforma.md) (checklist Web, iOS, Android).
+
+**Os componentes:**
+- `components/tasks/TestSignalDot.vue`: a bolinha do card em Em teste.
+- `components/tasks/TestPlatformChecks.vue`: o checklist.
+  - variante `card`: a faixa no rodapé do card de Em teste;
+  - variante `field`: a linha "Testes" do dialog.
+- `features/tasks/test-platforms.ts`: fonte única das três plataformas (ordem, nome e o ícone de `@mdi/js`) e da regra `reviewBlockReason`.
+
+Os dois controles gravam sozinhos e avisam por evento (`signal`, `checks`); `TasksView`, `BoardView` e o dialog guardam o valor novo.
+
+Cinco regras que não são óbvias:
+
+1. **Revisados só com as três plataformas.**
+   - A API recusa com 409 no `move` e no `status`.
+   - O front recusa ANTES, sem request, quando o card sai de Em teste com o checklist carregado. Isso vale no board do mês, no agrupado por pessoa, no "Mover para", no `/board`, no dialog e na massa da Lista.
+   - Vindo de outra coluna, quem decide é a API.
+   - A recusa no `handleMove` é síncrona: o `onEnd` do `KanbanBoard`/`TaskLanes` ressincroniza pela prop e o card volta sozinho.
+2. **`testChecks: null` = recurso indisponível** (API sem a migration `20261026120000_activity_test_check`). Nesse caso o checklist some e nada é bloqueado. `[]` = nada marcado.
+3. **Retrabalho apaga o teste.** Voltar para A fazer ou Em andamento apaga os checks, e o front limpa SÓ depois da troca confirmada (`checksAfterMove`), para um rollback não sumir com check válido. Revisados e Concluído mantêm os checks como registro.
+4. **Ícone de marca vem de `@mdi/js`** (SVG por constante, tree-shaken), desenhado por `PlatformIcon.vue`. O Lucide não tem logo; o `@mdi/font` (classes `mdi-*`) continua proibido em código novo.
+5. **`container-type: inline-size` exige largura explícita** em item que não é esticado pelo pai. Sem `width: 100%`, o `.tpf` media 0px dentro do `<dd>` do dialog e cortava o nome de quem testou.
 
 ### Memória do filtro do board
 

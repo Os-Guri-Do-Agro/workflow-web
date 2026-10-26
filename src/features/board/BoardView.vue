@@ -14,6 +14,7 @@ import TaskColumn from '@/components/tasks/TaskColumn.vue'
 import TaskDetailPanel from '@/features/tasks/components/TaskDetailPanel.vue'
 import { ACTIVITY_STATUSES, PRIORITY_OPTIONS, priorityLevel } from '@/features/tasks/task-meta'
 import type { ActivityDetail, ActivityStatus } from '@/features/tasks/activity-types'
+import { checksAfterMove, reviewBlockReason } from '@/features/tasks/test-platforms'
 import { taskKey } from '@/features/tasks/task-key'
 import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
 
@@ -158,6 +159,7 @@ function toCard(a: ActivityItem): TaskCardTask {
     tags: (a.tags ?? []).map((tag) => ({ tag })),
     _count: { docs: a.docCount ?? 0, attachments: a.attachmentCount ?? 0 },
     testSignal: a.testSignal ?? null,
+    testChecks: a.testChecks ?? null,
   }
 }
 
@@ -375,9 +377,12 @@ function applyBoardPatch(id: string, patch: Partial<ActivityDetail>) {
   const activity = workspace.workspaceData?.activities.find((a) => a.id === id)
   if (!activity) return
   if (patch.testSignal !== undefined) activity.testSignal = patch.testSignal ?? null
+  if (patch.testChecks !== undefined) activity.testChecks = patch.testChecks ?? null
   if (patch.status) {
     activity.status = patch.status
     if (patch.status !== 'IN_TESTING') activity.testSignal = null
+    // Retrabalho apaga o teste por plataforma, só com a troca confirmada.
+    if (patch.updatedAt) activity.testChecks = checksAfterMove(activity.testChecks, patch.status)
   }
 }
 
@@ -386,6 +391,7 @@ function applyRemoteMove(p: ActivityMovedPayload) {
   if (!activity) return
   activity.status = p.status
   if (p.status !== 'IN_TESTING') activity.testSignal = null
+  activity.testChecks = checksAfterMove(activity.testChecks, p.status)
 }
 
 useActivityBoardRealtime(applyRemoteMove, loadData)
@@ -452,6 +458,13 @@ async function updateTaskStatus(task: ActivityItem, newStatus: ColumnStatus) {
   // Guarda também aqui (e não só no card): o arraste nativo e o "Mover para"
   // chegam por caminhos diferentes, e nenhum deles pode gravar sem permissão.
   if (!canEditTask(task)) return
+  // Revisados só com Web, iOS e Android testados (spec teste-por-plataforma,
+  // D11): o card nem sai de "Em teste".
+  const blocked = reviewBlockReason(task, task.status, newStatus)
+  if (blocked) {
+    showError(blocked)
+    return
+  }
   const previousStatus = task.status
   const previousSignal = task.testSignal ?? null
   // Update otimista: o card move na hora (e o sinal do teste some fora de
@@ -460,6 +473,8 @@ async function updateTaskStatus(task: ActivityItem, newStatus: ColumnStatus) {
   if (newStatus !== 'IN_TESTING') task.testSignal = null
   try {
     await activityService.patchActivityStatus(task.id, newStatus, task.companyId)
+    // Retrabalho: o servidor apagou o teste por plataforma.
+    task.testChecks = checksAfterMove(task.testChecks, newStatus)
     showSuccess('Atividade movida')
   } catch (error: unknown) {
     // Reverte em caso de erro, com o motivo da API quando houver (ex.: a
@@ -624,6 +639,7 @@ function handleDrop(columnId: ColumnStatus) {
               @move="updateTaskStatus(task, $event)"
               @tag="toggleTagFilter"
               @signal="(view) => (task.testSignal = view)"
+              @checks="(checks) => (task.testChecks = checks)"
             />
           </template>
         </div>

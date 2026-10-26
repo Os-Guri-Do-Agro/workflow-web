@@ -390,6 +390,9 @@ html[data-xp='true'] {
   --test-signal-adjust: #fdb022 !important;
   --test-signal-rejected: #d92d20 !important;
   --test-signal-ring: rgba(16, 24, 40, 0.32) !important;
+  --test-check-on: #15803d !important;
+  --test-check-on-bg: rgba(21, 128, 61, 0.09) !important;
+  --test-check-on-border: rgba(21, 128, 61, 0.38) !important;
   --prio-urgent: #d92d20 !important;
   --prio-high: #b54708 !important;
   --due-late: #d92d20 !important;

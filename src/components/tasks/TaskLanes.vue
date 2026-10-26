@@ -30,7 +30,7 @@ import { ACTIVITY_STATUSES } from '@/features/tasks/task-meta'
 import { taskKey } from '@/features/tasks/task-key'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import type { BoardLane } from '@/features/tasks/board-lanes'
-import type { ActivityStatus, TestSignalView } from '@/features/tasks/activity-types'
+import type { ActivityStatus, TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 const props = defineProps<{
@@ -58,6 +58,7 @@ const emit = defineEmits<{
   'composer-cancel': [status: ActivityStatus, reason: 'escape' | 'blur']
   /** Sinal do teste trocado na bolinha de um card. */
   'test-signal': [taskId: string, view: TestSignalView]
+  'test-checks': [taskId: string, checks: TestCheckView[]]
 }>()
 
 const columns = ACTIVITY_STATUSES
@@ -144,6 +145,11 @@ const onStart = () => {
 }
 const onEnd = () => {
   isDragging.value = false
+  // Como no KanbanBoard: o que chegou durante o arraste foi ignorado, e uma
+  // soltura recusada (Revisados sem o teste das três plataformas) não muda a
+  // prop. Sem ressincronizar, o card ficava na coluna errada até o próximo
+  // refetch. Soltura aceita já mudou `lanes`, então o resultado é o mesmo.
+  syncCells()
 }
 </script>
 
@@ -269,6 +275,7 @@ const onEnd = () => {
                   @move="onMenuMove(task, $event)"
                   @show-occurrences="emit('show-occurrences', task)"
                   @signal="(view) => emit('test-signal', task.id, view)"
+                  @checks="(checks) => emit('test-checks', task.id, checks)"
                 />
               </VueDraggable>
               <TaskQuickCreate

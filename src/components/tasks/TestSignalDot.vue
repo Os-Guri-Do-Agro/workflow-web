@@ -24,6 +24,7 @@ import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from 'reka
 import activityService from '@/service/activities/activity-service'
 import collaborationService from '@/service/collaboration/collaboration-service'
 import { useToast } from '@/composables/useToast'
+import { relativeTime } from '@/utils/relative-time'
 import type { TestSignal, TestSignalView } from '@/features/tasks/activity-types'
 
 const props = withDefaults(
@@ -75,24 +76,11 @@ const current = computed<TestSignalView | null>(() => local.value ?? props.signa
 const kind = computed<TestSignal>(() => current.value?.signal ?? 'TESTING')
 const option = computed(() => OPTIONS.find((o) => o.value === kind.value) ?? OPTIONS[0]!)
 
-function quando(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
-  if (!Number.isFinite(diff)) return ''
-  const min = Math.round(diff / 60_000)
-  if (min < 1) return 'agora'
-  if (min < 60) return `há ${min} min`
-  const h = Math.round(min / 60)
-  if (h < 24) return `há ${h} h`
-  const dias = Math.round(h / 24)
-  if (dias < 30) return dias === 1 ? 'há 1 dia' : `há ${dias} dias`
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-}
-
 const autoria = computed(() => {
   const view = current.value
   if (!view) return ''
   const quem = view.setBy?.name ?? 'alguém'
-  return `${quem}, ${quando(view.updatedAt)}`
+  return `${quem}, ${relativeTime(view.updatedAt)}`
 })
 
 const description = computed(() =>

@@ -31,7 +31,7 @@ import { ACTIVITY_STATUSES, priorityLevel, statusSpec } from '@/features/tasks/t
 import { taskKey } from '@/features/tasks/task-key'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
-import type { ActivityStatus, TestSignalView } from '@/features/tasks/activity-types'
+import type { ActivityStatus, TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
 
 export type KanbanTask = TaskCardTask
 export type KanbanApiStatus = ActivityStatus
@@ -77,6 +77,7 @@ const emit = defineEmits<{
   'release-all': [status: ActivityStatus]
   /** Sinal do teste trocado na bolinha de um card. */
   'test-signal': [taskId: string, view: TestSignalView]
+  'test-checks': [taskId: string, checks: TestCheckView[]]
 }>()
 
 const columns = ACTIVITY_STATUSES
@@ -248,6 +249,7 @@ const onEnterColumn = (status: ActivityStatus) => {
             @move="onMenuMove(task, $event)"
             @show-occurrences="emit('show-occurrences', task)"
             @signal="(view) => emit('test-signal', task.id, view)"
+            @checks="(checks) => emit('test-checks', task.id, checks)"
           />
         </VueDraggable>
 

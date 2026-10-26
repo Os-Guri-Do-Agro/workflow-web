@@ -24,6 +24,20 @@ export interface TestSignalView {
   updatedAt: string
 }
 
+/**
+ * Teste por plataforma (spec teste-por-plataforma). A ordem da tela é Web,
+ * iOS, Android; a tarefa só entra em Revisados com as três.
+ */
+export type TestPlatform = 'WEB' | 'IOS' | 'ANDROID'
+
+/** Uma plataforma testada: qual, por quem e quando. */
+export interface TestCheckView {
+  platform: TestPlatform
+  checkedBy: { id: string; name: string } | null
+  /** ISO 8601. */
+  checkedAt: string
+}
+
 export interface ActivityUser {
   id: string
   name: string
@@ -134,6 +148,11 @@ export interface ActivityDetail {
   inheritedDocs?: ActivityDocMeta[]
   /** Sinal do teste. Só vem preenchido em "Em teste"; `null` = azul. */
   testSignal?: TestSignalView | null
+  /**
+   * Plataformas testadas (Em teste, e como registro em Revisados e Concluído).
+   * `null` ou ausente = recurso indisponível (API sem a migration).
+   */
+  testChecks?: TestCheckView[] | null
 }
 
 /** Corpo aceito por `PATCH /activity/:id`. Tudo opcional: o backend é parcial. */

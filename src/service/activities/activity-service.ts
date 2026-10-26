@@ -6,6 +6,8 @@ import type {
   ActivityDoc,
   ActivityDocMeta,
   ActivityStatus,
+  TestCheckView,
+  TestPlatform,
   TestSignal,
   TestSignalView,
 } from '@/features/tasks/activity-types'
@@ -37,7 +39,6 @@ class activityService {
     )
   }
 
-  /** Move o card no kanban persistindo status + ordem manual (position 0-based). */
   /**
    * Sinal do teste da tarefa em "Em teste" (azul, amarelo, vermelho). Não move
    * a tarefa. `companyId` explícito no `/board`, que mistura empresas.
@@ -53,6 +54,28 @@ class activityService {
     )
   }
 
+  /**
+   * Marca ou desmarca o teste de uma plataforma (Web, iOS, Android) da tarefa
+   * em "Em teste". Devolve a lista inteira de checks. `companyId` explícito no
+   * `/board`, que mistura empresas.
+   */
+  setTestCheck(
+    id: string,
+    platform: TestPlatform,
+    checked: boolean,
+    companyId?: string | null,
+  ): Promise<TestCheckView[]> {
+    return this.handleRequest(
+      api.patch<TestCheckView[]>(
+        `/activity/${id}/test-check`,
+        { platform, checked },
+        companyId ? { headers: { 'x-company-id': companyId } } : undefined,
+      ),
+      'Erro ao marcar o teste da plataforma',
+    )
+  }
+
+  /** Move o card no kanban persistindo status + ordem manual (position 0-based). */
   moveActivity(id: string, data: { status: string; position: number }): Promise<any> {
     return this.handleRequest(
       api.patch(`/activity/${id}/move`, data),

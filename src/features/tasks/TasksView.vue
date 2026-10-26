@@ -48,8 +48,10 @@ import { resolveDropIndex } from '@/features/tasks/board-order'
 import type {
   ActivityDetail,
   ActivityStatus,
+  TestCheckView,
   TestSignalView,
 } from '@/features/tasks/activity-types'
+import { checksAfterMove, reviewBlockReason } from '@/features/tasks/test-platforms'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import { useQueryClient } from '@tanstack/vue-query'
@@ -132,6 +134,8 @@ interface BoardTask {
   recurrenceOverdue?: number
   /** Sinal do teste (só em "Em teste"; `null` = azul). */
   testSignal?: TestSignalView | null
+  /** Teste por plataforma (só em "Em teste"; `null` = API sem o recurso). */
+  testChecks?: TestCheckView[] | null
 }
 
 type BoardColumns = Record<BoardStatus, BoardTask[]>
@@ -819,6 +823,16 @@ const handleMove = async (payload: KanbanMovePayload) => {
     return
   }
 
+  // Revisados só com Web, iOS e Android testados (spec teste-por-plataforma,
+  // D11). Recusa ANTES de mexer no estado e sem await: o `onEnd` do arraste
+  // ressincroniza pela prop, e o card volta sozinho para "Em teste".
+  const origin = findBoardTask(taskId)
+  const blocked = reviewBlockReason(origin?.task, origin?.status, status)
+  if (blocked) {
+    showError(blocked)
+    return
+  }
+
   const movedTask = removeFromColumns(taskId)
   const target = tasks.value[status as BoardStatus] ?? []
 
@@ -838,6 +852,10 @@ const handleMove = async (payload: KanbanMovePayload) => {
 
   try {
     await activityService.moveActivity(taskId, { status, position })
+    // Voltou para A fazer ou Em andamento: o servidor apagou o teste por
+    // plataforma (retrabalho pede teste novo). Só depois de confirmado: o
+    // checklist só aparece em "Em teste", e um rollback não perde check válido.
+    if (movedTask) movedTask.testChecks = checksAfterMove(movedTask.testChecks, status)
     // Materializou: o card trocou de identidade (`rec:…` virou cuid) e deixou
     // de ser virtual. Sem o refetch a tela continuaria com o id antigo, e o
     // próximo arraste tentaria materializar de novo uma data que já é tarefa.
@@ -852,6 +870,12 @@ const handleMove = async (payload: KanbanMovePayload) => {
 function onCardSignal(id: string, view: TestSignalView) {
   const found = findBoardTask(id)
   if (found) found.task.testSignal = view
+}
+
+/** Plataforma marcada direto no card: o estado do board guarda a lista nova. */
+function onCardChecks(id: string, checks: TestCheckView[]) {
+  const found = findBoardTask(id)
+  if (found) found.task.testChecks = checks
 }
 
 // ── "Mover todas para Concluído" (spec board-revisados-sinal-e-dialog, D7) ──
@@ -909,6 +933,7 @@ const applyRemoteMove = (p: ActivityMovedPayload) => {
   const target = tasks.value[p.status as BoardStatus]
   if (!target) return
   if (p.status !== 'IN_TESTING') moved.testSignal = null
+  moved.testChecks = checksAfterMove(moved.testChecks, p.status)
   if (p.position === null) {
     target.push(moved) // Fase 1 (sem ordem manual): joga no fim
   } else {
@@ -1118,6 +1143,8 @@ const applyPanelPatch = (id: string, patch: Partial<ActivityDetail>) => {
   if (patch.tags !== undefined) task.tags = patch.tags ?? []
   // Sinal do teste trocado no dialog: a bolinha do card muda junto.
   if (patch.testSignal !== undefined) task.testSignal = patch.testSignal ?? null
+  // Plataforma marcada no dialog: o checklist do card muda junto.
+  if (patch.testChecks !== undefined) task.testChecks = patch.testChecks ?? null
   if (patch.subtasks !== undefined) {
     // O `3/6` do card sai daqui: marcar uma subtarefa no painel já o atualiza.
     task.subtasks = (patch.subtasks ?? []).map((s) => ({ id: s.id, title: s.title, status: s.status }))
@@ -1139,6 +1166,9 @@ const applyPanelPatch = (id: string, patch: Partial<ActivityDetail>) => {
   const nextStatus = patch.status as BoardStatus | undefined
   // Saiu de "Em teste" pelo dialog: o sinal some junto (o servidor apaga).
   if (nextStatus && nextStatus !== 'IN_TESTING') task.testSignal = null
+  // Retrabalho apaga o teste por plataforma, mas só com a troca CONFIRMADA
+  // (`updatedAt`): o rollback de uma troca recusada não perde check válido.
+  if (nextStatus && patch.updatedAt) task.testChecks = checksAfterMove(task.testChecks, nextStatus)
   if (nextStatus && nextStatus !== status && STATUSES.includes(nextStatus)) {
     const index = tasks.value[status].indexOf(task)
     const moved = removeFromColumns(id)
@@ -1688,6 +1718,7 @@ const skeletonLanes = [
             @quick-create="(_status, title) => quickCreate.submit(title)"
             @composer-cancel="onComposerCancel"
             @test-signal="onCardSignal"
+            @test-checks="onCardChecks"
           />
           <KanbanBoard
             v-else
@@ -1706,6 +1737,7 @@ const skeletonLanes = [
             @composer-cancel="onComposerCancel"
             @release-all="askReleaseAll"
             @test-signal="onCardSignal"
+            @test-checks="onCardChecks"
           />
         </div>
 

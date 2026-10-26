@@ -54,7 +54,8 @@ import { isOccurrenceId } from '../recurring/recurrence-types'
 import { isPendingTaskId } from '../pending-task'
 import { useTaskSelection } from '../composables/useTaskSelection'
 import { isOverlayOverPanel } from '../composables/useTaskKeyboard'
-import type { ActivityDetail, ActivityResponsible, ActivityStatus } from '../activity-types'
+import type { ActivityDetail, ActivityResponsible, ActivityStatus, TestCheckView } from '../activity-types'
+import { reviewBlockReason } from '../test-platforms'
 import TaskBulkBar, { type BulkMonthGroup, type BulkPerson } from './TaskBulkBar.vue'
 
 /** O mínimo do card do board que a linha lê (o `BoardTask` do TasksView cabe aqui). */
@@ -68,6 +69,8 @@ export interface TaskListTask {
   subtasks?: Array<{ id: string; title: string; status: string }>
   /** Rótulo da regra, só no card virtual de rotina ("Toda semana · seg"). */
   recurrence?: string
+  /** Teste por plataforma: segura a ida para Revisados (spec teste-por-plataforma). */
+  testChecks?: TestCheckView[] | null
 }
 
 /** `/company/:id/members` devolve `{ userId, user }`; tipos antigos têm `{ id, name }`. */
@@ -544,9 +547,26 @@ async function bulkStatus(status: ActivityStatus) {
   if (busy.value) return
   const label = statusSpec(status).label
   const picked = selectedRows()
-  const targets = picked.filter((r) => r.status !== status)
-  if (!targets.length) {
+  const candidates = picked.filter((r) => r.status !== status)
+  if (!candidates.length) {
     showInfo(`Nada a mudar: já estão em ${label}`)
+    return
+  }
+  // Revisados só com Web, iOS e Android testados (spec teste-por-plataforma,
+  // D11): as que ainda não têm o teste nem saem para a API, continuam
+  // selecionadas e o toast diz o que falta (a API recusaria com 409 e a falha
+  // genérica não diria o motivo).
+  const blocked = candidates.filter((r) => reviewBlockReason(r.task, r.status, status))
+  const targets = candidates.filter((r) => !blocked.includes(r))
+  if (blocked.length) {
+    showError(
+      blocked.length === 1
+        ? (reviewBlockReason(blocked[0]!.task, blocked[0]!.status, status) ?? '')
+        : `${blocked.length} tarefas ficaram fora de Revisados: falta o teste em Web, iOS e Android`,
+    )
+  }
+  if (!targets.length) {
+    selection.set(blocked.map((r) => r.id))
     return
   }
   busy.value = true
@@ -566,8 +586,10 @@ async function bulkStatus(status: ActivityStatus) {
       outcome,
       `${plural(outcome.ok.length, 'movida', 'movidas')} para ${label}`,
       UPDATED,
-      picked.map((r) => r.id),
+      picked.filter((r) => !blocked.includes(r)).map((r) => r.id),
     )
+    // As barradas pelo teste continuam selecionadas, junto das que falharam.
+    if (blocked.length) selection.set([...outcome.failed, ...blocked.map((r) => r.id)])
   } finally {
     busy.value = false
   }
