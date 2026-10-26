@@ -557,7 +557,7 @@ Cinco regras que não são óbvias:
    - O front recusa ANTES, sem request, quando o card sai de Em teste com o checklist carregado. Isso vale no board do mês, no agrupado por pessoa, no "Mover para", no `/board`, no dialog e na massa da Lista.
    - Vindo de outra coluna, quem decide é a API.
    - A recusa no `handleMove` é síncrona: o `onEnd` do `KanbanBoard`/`TaskLanes` ressincroniza pela prop e o card volta sozinho.
-2. **`testChecks: null` = recurso indisponível** (API sem a migration `20261026120000_activity_test_check`). Nesse caso o checklist some e nada é bloqueado. `[]` = nada marcado.
+2. **`testChecks: null` = recurso indisponível** (API sem a migration `20261026120000_activity_test_check`, ou card virtual `rec:`). Nesse caso o checklist some e nada é bloqueado. `[]` = nada marcado. A API manda os checks válidos de TODA tarefa real, em qualquer coluna: o card que entra em Em teste já chega com o checklist.
 3. **Retrabalho apaga o teste.** Voltar para A fazer ou Em andamento apaga os checks, e o front limpa SÓ depois da troca confirmada (`checksAfterMove`), para um rollback não sumir com check válido. Revisados e Concluído mantêm os checks como registro.
 4. **Ícone de marca vem de `@mdi/js`** (SVG por constante, tree-shaken), desenhado por `PlatformIcon.vue`. O Lucide não tem logo; o `@mdi/font` (classes `mdi-*`) continua proibido em código novo.
 5. **`container-type: inline-size` exige largura explícita** em item que não é esticado pelo pai. Sem `width: 100%`, o `.tpf` media 0px dentro do `<dd>` do dialog e cortava o nome de quem testou.

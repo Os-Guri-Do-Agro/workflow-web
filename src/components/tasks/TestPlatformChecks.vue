@@ -20,6 +20,7 @@
  * tooltip, e a marca muda de forma (círculo vazio para check).
  */
 import { computed, ref, watch } from 'vue'
+import { useQueryClient } from '@tanstack/vue-query'
 import { Check } from 'lucide-vue-next'
 import PlatformIcon from '@/components/tasks/PlatformIcon.vue'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
@@ -33,7 +34,7 @@ import {
   platformNames,
   type TestPlatformSpec,
 } from '@/features/tasks/test-platforms'
-import type { TestCheckView, TestPlatform } from '@/features/tasks/activity-types'
+import type { ActivityDetail, TestCheckView, TestPlatform } from '@/features/tasks/activity-types'
 
 const props = withDefaults(
   defineProps<{
@@ -53,6 +54,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const queryClient = useQueryClient()
 
 // Lista gravada aqui e ainda não refletida no dado que veio de cima.
 const local = ref<TestCheckView[] | null>(null)
@@ -118,6 +120,13 @@ async function toggle(platform: TestPlatform) {
   try {
     const saved = await activityService.setTestCheck(props.taskId, platform, marking, props.companyId)
     local.value = saved
+    // O cache do detalhe (`['activity', id]`) é acertado AQUI, e não só por
+    // quem ouve o evento: marcar no card e abrir o dialog logo depois mostrava
+    // o estado velho, e o dialog fechado antes da resposta (Esc, J/K) perdia o
+    // `emit` de componente desmontado.
+    queryClient.setQueryData<ActivityDetail>(['activity', props.taskId], (old) =>
+      old ? { ...old, testChecks: saved } : old,
+    )
     emit('changed', saved)
   } catch (error: unknown) {
     local.value = previous

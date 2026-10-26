@@ -629,21 +629,25 @@ const createActivity = async () => {
       // As tags já existem (o TagInput cria via `POST /tag`, que é idempotente),
       // então aqui só vinculamos.
       tagIds: formActivity.value.tags.map((t) => t.id),
+      // A coluna escolhida vai no próprio POST (a API aceita `status` desde a
+      // coluna Revisados; a criação inline já usava). Criar em A fazer e mover
+      // depois passava pelo bloqueio de Revisados (teste por plataforma) e a
+      // tarefa nascida já em Revisados levava 409.
+      status: formActivity.value.initialStatus,
     }
     const created = await activityService.postActivity(payload)
 
-    // A API cria sempre em `TODO`. Quando a pessoa escolheu outra coluna, o
-    // segundo passo é o que honra a escolha — sem ele o campo do formulário
-    // seria decorativo. A §10.1 do contrato de backend pede `status` no POST
-    // para isto virar uma requisição só.
+    // O move que sobra só ORDENA: o card nasce no topo da coluna escolhida (a
+    // API cria com `position` 0, que empataria com o primeiro card). Mesmo
+    // status, então não passa por nenhuma regra de troca de coluna.
     if (formActivity.value.initialStatus !== 'TODO') {
       try {
         await activityService.moveActivity(created.id, {
           status: formActivity.value.initialStatus,
           position: 0,
         })
-      } catch (error: unknown) {
-        showError(apiErrorMessage(error, 'A tarefa foi criada, mas ficou em "A fazer"'))
+      } catch {
+        // Já está na coluna certa; só a posição não foi gravada.
       }
     }
 

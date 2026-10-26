@@ -1,10 +1,10 @@
 # Spec: Teste por plataforma (Web, iOS, Android) no card de Em teste
 
-**Status:** Em Implementação
+**Status:** Concluído (código na main; falta aplicar a migration `20261026120000_activity_test_check` em produção)
 **Autor:** Claude (Opus 5.5) a pedido do Nicolas
 **Criado em:** 2026-10-26
 **Última atualização:** 2026-10-26
-**Versão:** 0.1
+**Versão:** 0.2
 **Base:** [board-revisados-sinal-e-dialog.md](./board-revisados-sinal-e-dialog.md) (coluna Revisados e sinal do teste)
 
 > Pedido do Nicolas (2026-10-26): *"na parte de Em teste, ser um tico mais e mais conteúdo, porque deve conter os campos testados Web, Apple e Android, com o ícone de todos. Quem testou em qual plataforma dá um check, e só vai para Revisados depois dos 3 marcados. Caso não tenha web, a pessoa marca mesmo assim para ir, mas precisa desses 3 campos. Algo bonitinho, com uma lib de ícones que tenha o logo do Android e da Apple, mais um de navegador para fechar."* Implementar, commitar e dar push estão liberados.
@@ -58,13 +58,13 @@ O card em **Em teste** ganha uma faixa com três botões, **Web**, **iOS** e **A
 | D2 | **Sem "não se aplica".** As três são obrigatórias; sem web, a pessoa marca Web mesmo assim. | Palavra do dono. Uma opção a mais seria uma decisão a mais em todo card. |
 | D3 | **Marcar só em Em teste.** `PATCH /activity/:id/test-check` `{ platform, checked }` responde 409 fora de Em teste, 404 de outra empresa e 503 sem a tabela. Devolve a lista inteira de checks válidos da tarefa. Marcar de novo atualiza autor e hora. | O checklist é do teste. Fora da coluna ele é registro, não controle. |
 | D4 | **Os checks sobrevivem a Revisados e Concluído** e **somem quando a tarefa volta para A fazer ou Em andamento** (retrabalho: o teste antigo não vale para o código novo). A limpeza é best-effort, fora da transação. Na leitura, check mais velho que a última entrada em A fazer ou Em andamento é descartado. | Voltar de Revisados para Em teste não pode perder o teste feito. Corrigir e voltar precisa testar de novo. |
-| D5 | **Bloqueio:** `move` e `updateStatus` recusam com **409** a entrada em REVIEWED vinda de outro status quando falta alguma plataforma. A mensagem diz quais: "Marque o teste em iOS e Android antes de mover para Revisados". Reordenar dentro de Revisados não passa pela regra. | Palavra do dono: "só vai para Revisados depois dos 3 marcados". |
+| D5 | **Bloqueio:** `move` e `updateStatus` recusam com **409** a entrada em REVIEWED vinda de outro status quando falta alguma plataforma. A mensagem diz quais: "Marque o teste em iOS e Android antes de mover para Revisados". Reordenar dentro de Revisados não passa pela regra.<br>**Duas conferências.** A rápida, fora da transação, recusa na hora e descobre se a tabela existe. A segunda roda dentro da transação que grava, com a linha da tarefa travada (`SELECT ... FOR UPDATE`). O `set` do checklist trava a mesma linha, então desmarcar e mover ao mesmo tempo não se cruzam. | Palavra do dono: "só vai para Revisados depois dos 3 marcados". A segunda conferência fecha a corrida apontada na revisão. |
 | D6 | **Sem a tabela, o bloqueio fica desligado** (com aviso no log uma vez). | O deploy chega antes da migration: travar Revisados até alguém rodar a migration pararia o time. |
 | D7 | **A criação direto em Revisados não é bloqueada** (status inicial na criação e na rotina). | Criar já em Revisados é registrar algo testado por fora; bloquear quebraria o "+" da coluna sem ganho real. O fluxo normal (arrastar) é o bloqueado. |
-| D8 | **Leitura:** board do mês e `/board` anexam `testChecks` só aos cards de Em teste (uma query `IN (...)` mais um `groupBy` só quando há check). O detalhe anexa em qualquer status. `null` = recurso indisponível (sem a tabela): o front esconde o checklist e não bloqueia nada. `[]` = nada marcado. | Mesmo custo do sinal, e o front sabe distinguir "nada marcado" de "ainda não existe". |
-| D9 | **Card (só Em teste, tarefa real):** faixa no rodapé, depois da linha de meta, separada por um fio de 1px `--border`. Três botões de 28px de altura (alvo de 44px por `::after`) com ícone de 14px e nome. **Marcado:** fundo verde suave (`--test-check-on-bg`), texto forte e um selo de check. **Sem marcar:** contorno neutro e texto apagado. Em card estreito (< 232px) os nomes somem e ficam só os ícones. Tooltip e `aria-label`: "Android: testado por Letícia, há 2 h. Clique para desmarcar". O clique não abre a tarefa nem arrasta (`no-drag`). | O teste é feito sem abrir a tarefa, como a bolinha. Cor nunca é o único canal: o selo e o texto mudam junto. |
-| D10 | **Dialog:** linha "Testes" logo abaixo do "Sinal do teste", com uma linha por plataforma: ícone, nome, e quem testou (avatar, primeiro nome e "há 2 h") ou "Não testado". Abaixo, "Revisados só com as 3 marcadas" ou "Pronto para Revisados". Editável em Em teste. Em Revisados e Concluído aparece só se houver check, somente leitura. | O "quem testou em qual plataforma" mora no dialog; o card só mostra o estado. |
-| D11 | **Bloqueio também no front**, com a mesma mensagem: soltar em Revisados um card de Em teste com plataforma faltando devolve o card na hora, sem request (board do mês, agrupado por pessoa, "Mover para" do card, `/board` e dialog). Vindo de outra coluna, quem decide é a API (409, o card volta e o toast mostra a mensagem). | Resposta imediata no caso comum; a API continua sendo a regra. |
+| D8 | **Leitura:**<br>• Board do mês e `/board` anexam `testChecks` (os checks VÁLIDOS) a toda tarefa real, em qualquer coluna, com uma query `IN (...)` mais um `groupBy` só quando há check. Assim o card que entra em Em teste depois (arraste, realtime, dialog) já traz o checklist.<br>• O detalhe anexa em qualquer status.<br>• `null` = recurso indisponível (sem a tabela, ou card virtual `rec:`): o front esconde o checklist e não bloqueia nada.<br>• `[]` = nada marcado. | Mesmo custo do sinal, e o front sabe distinguir "nada marcado" de "ainda não existe". A primeira versão anexava só em Em teste, e o card que entrava depois ficava sem checklist até um refetch (revisão). |
+| D9 | **Card (só Em teste, tarefa real):** faixa no rodapé, depois da linha de meta, separada por um fio de 1px `--border`.<br>• **Botões:** três, de 28px de altura (alvo de 44px por `::after`), em flex proporcional ao conteúdo, com ícone de 14px, nome e marca.<br>• **Marcado:** fundo verde suave (`--test-check-on-bg`), texto forte e a marca vira check.<br>• **Sem marcar:** contorno neutro, texto apagado e a marca é um círculo vazio.<br>• **Card estreito:** abaixo de 224px os nomes somem e ficam ícone e marca (é o caso das 5 colunas em 1440 com a barra lateral).<br>• **Tooltip e `aria-label`:** "Android: testado por Letícia Porfírio, há 2 h. Clique para desmarcar".<br>• O clique não abre a tarefa nem arrasta (`no-drag`). | O teste é feito sem abrir a tarefa, como a bolinha. Cor nunca é o único canal: a marca muda de forma. |
+| D10 | **Dialog:** linha "Testes" logo abaixo do "Sinal do teste", com uma linha por plataforma.<br>• **Conteúdo:** ícone, nome e quem testou (avatar e primeiro nome) ou "Não testado".<br>• **O "quando":** fica no tooltip e no nome acessível, porque a coluna de propriedades tem uns 200px.<br>• **Dica abaixo:** "Falta testar em Android" ou "Pronto para Revisados".<br>• Editável em Em teste. Em Revisados e Concluído aparece só se houver check, somente leitura. | O "quem testou em qual plataforma" mora no dialog; o card só mostra o estado. |
+| D11 | **Bloqueio também no front**, com a mesma mensagem: soltar em Revisados um card de Em teste com plataforma faltando devolve o card na hora, sem request. Vale no board do mês, no agrupado por pessoa, no "Mover para" do card, no `/board`, no dialog e na massa da Lista (as barradas continuam selecionadas). Vindo de outra coluna, quem decide é a API: 409, o card volta e o toast mostra a mensagem. | Resposta imediata no caso comum; a API continua sendo a regra. |
 | D12 | **Ícones de `@mdi/js`** (`mdiWeb`, `mdiApple`, `mdiAndroid`), desenhados num `<svg>` próprio (`PlatformIcon.vue`). Só esses três são importados. Não é o `@mdi/font`: nada de classe `mdi-*`. | Uma família só para os três, com o mesmo peso visual. O `simple-icons` não tem navegador genérico, e misturar com o `Globe` do Lucide (traço) daria dois estilos lado a lado. |
 
 ## Riscos e Mitigações
@@ -87,39 +87,39 @@ O card em **Em teste** ganha uma faixa com três botões, **Web**, **iOS** e **A
 ## Acceptance Criteria
 
 ### Comportamentais
-- [ ] **AC1. Given** um card em Em teste **Then** ele mostra Web, iOS e Android sem marcar. **When** clico em Android **Then** ele fica marcado sem abrir a tarefa, persiste no reload e o dialog mostra "Android, Nicolas, agora".
-- [ ] **AC2. Given** Web e iOS marcados e Android não **When** arrasto o card para Revisados **Then** ele volta para Em teste, nenhuma request de move sai, e o toast diz "Marque o teste em Android antes de mover para Revisados".
-- [ ] **AC3. Given** as três marcadas **When** arrasto para Revisados **Then** ele fica em Revisados.
-- [ ] **AC4. Given** um card em Em andamento **When** chamo o `move` para REVIEWED **Then** a API responde 409 com as três plataformas na mensagem.
-- [ ] **AC5. Given** uma tarefa com as três marcadas **When** ela vai para Em andamento e volta para Em teste **Then** as três estão desmarcadas. **When** vai para Revisados e volta para Em teste **Then** as três continuam marcadas.
-- [ ] **AC6. Given** a API nova sem a migration **Then** o board carrega, o card de Em teste não mostra o checklist, mover para Revisados funciona como antes, e `PATCH /activity/:id/test-check` responde 503.
-- [ ] **AC7. Given** o dialog de uma tarefa em Em teste **Then** a linha "Testes" mostra as três plataformas com quem testou, e marcar ali muda o card do board na hora.
+- [x] **AC1. Given** um card em Em teste **Then** ele mostra Web, iOS e Android sem marcar. **When** clico em Android **Then** ele fica marcado sem abrir a tarefa, persiste no reload e o dialog mostra "Android, Nicolas, agora".
+- [x] **AC2. Given** Web e iOS marcados e Android não **When** arrasto o card para Revisados **Then** ele volta para Em teste, nenhuma request de move sai, e o toast diz "Marque o teste em Android antes de mover para Revisados".
+- [x] **AC3. Given** as três marcadas **When** arrasto para Revisados **Then** ele fica em Revisados.
+- [x] **AC4. Given** um card em Em andamento **When** chamo o `move` para REVIEWED **Then** a API responde 409 com as três plataformas na mensagem.
+- [x] **AC5. Given** uma tarefa com as três marcadas **When** ela vai para Em andamento e volta para Em teste **Then** as três estão desmarcadas. **When** vai para Revisados e volta para Em teste **Then** as três continuam marcadas.
+- [x] **AC6. Given** a API nova sem a migration **Then** o board carrega, o card de Em teste não mostra o checklist, mover para Revisados funciona como antes, e `PATCH /activity/:id/test-check` responde 503.
+- [x] **AC7. Given** o dialog de uma tarefa em Em teste **Then** a linha "Testes" mostra as três plataformas com quem testou, e marcar ali muda o card do board na hora.
 
 ### Observáveis
-- [ ] `GET /month/:id/board`: cada tarefa de Em teste traz `testChecks` (`[]` ou a lista `{ platform, checkedBy, checkedAt }` na ordem Web, iOS, Android); as outras, `null`.
-- [ ] Nenhum hex novo em componente, nenhum em-dash na copy, nenhum `mdi-*` de fonte.
+- [x] `GET /month/:id/board`: cada tarefa real traz `testChecks` (`[]` ou a lista `{ platform, checkedBy, checkedAt }` na ordem Web, iOS, Android); `null` só no card virtual e sem a tabela.
+- [x] Nenhum hex novo em componente, nenhum em-dash na copy, nenhum `mdi-*` de fonte.
 
 ## Estratégia de Testes
 
 ### Unitários (API, Jest)
-- [ ] `ActivityTestCheckService`:
+- [x] `ActivityTestCheckService`:
   - `checksFor` sem N+1, na ordem das plataformas, descartando o check mais velho que a última entrada em A fazer ou Em andamento, e degradando sem a tabela (`null` mais um aviso);
   - `set` recusa fora de Em teste (409), de outra empresa (404) e sem a tabela (503); faz upsert e delete e emite realtime;
   - `missingFor` devolve `null` sem a tabela e propaga outro erro;
   - `clear` nunca lança.
-- [ ] `ActivityService`:
+- [x] `ActivityService`:
   - `move` e `updateStatus` para REVIEWED com plataforma faltando: 409 com os nomes;
   - com as três: passa;
   - sem a tabela: passa;
   - reordenar dentro de Revisados não consulta;
   - voltar para A fazer ou Em andamento limpa.
-- [ ] HTTP: DTO inválido 400, sem token 401.
+- [x] HTTP: DTO inválido 400, sem token 401.
 
 ### Integração (PGlite)
-- [ ] Migration aplicada duas vezes sobre o schema atual (idempotente), e o Prisma gerado grava e lê `ActivityTestCheck`.
+- [x] Migration aplicada duas vezes sobre o schema atual (idempotente), e o Prisma gerado grava e lê `ActivityTestCheck`.
 
 ### Harness (front, Vite + API falsa + Edge)
-- [ ] Card com o checklist em claro e escuro, em 1440 e 390. Marcar e desmarcar (request certo). AC2 e AC3 no arraste. Dialog com quem testou. O `/board` com o mesmo card.
+- [x] Card com o checklist em claro e escuro, em 1440 e 390. Marcar e desmarcar (request certo). AC2 e AC3 no arraste. Dialog com quem testou. O `/board` com o mesmo card.
 
 ## Arquivos Impactados
 
@@ -138,14 +138,14 @@ O card em **Em teste** ganha uma faixa com três botões, **Web**, **iOS** e **A
 
 ## Tasks Técnicas
 
-- [ ] **T1 (api):** schema, migration, `prisma generate`, PGlite.
-- [ ] **T2 (api):** `ActivityTestCheckService`, rota, anexo no board, no `/board` e no detalhe. *(depende de T1)*
-- [ ] **T3 (api):** bloqueio e limpeza no `move` e no `updateStatus`. *(depende de T2)*
-- [ ] **T4 (api):** Jest, suíte inteira, tsc, lint dos arquivos tocados.
-- [ ] **T5 (web):** tipos, `test-platforms.ts`, `@mdi/js`, `PlatformIcon`, tokens.
-- [ ] **T6 (web):** `TestPlatformChecks` no card e no dialog, eventos até o estado do board. *(depende de T5)*
-- [ ] **T7 (web):** bloqueio no front (D11). *(depende de T5)*
-- [ ] **T8:** harness, prints, `vue-tsc`, lint, build, revisão do diff, commit e push nos dois repos.
+- [x] **T1 (api):** schema, migration, `prisma generate`, PGlite.
+- [x] **T2 (api):** `ActivityTestCheckService`, rota, anexo no board, no `/board` e no detalhe. *(depende de T1)*
+- [x] **T3 (api):** bloqueio e limpeza no `move` e no `updateStatus`. *(depende de T2)*
+- [x] **T4 (api):** Jest, suíte inteira, tsc, lint dos arquivos tocados.
+- [x] **T5 (web):** tipos, `test-platforms.ts`, `@mdi/js`, `PlatformIcon`, tokens.
+- [x] **T6 (web):** `TestPlatformChecks` no card e no dialog, eventos até o estado do board. *(depende de T5)*
+- [x] **T7 (web):** bloqueio no front (D11). *(depende de T5)*
+- [x] **T8:** harness, prints, `vue-tsc`, lint, build, revisão do diff, commit e push nos dois repos.
 
 ## Plano de Rollout
 
@@ -171,13 +171,54 @@ O card em **Em teste** ganha uma faixa com três botões, **Web**, **iOS** e **A
 
 ## Definition of Done
 
-- [ ] AC1 a AC7 e os observáveis conferidos, cada um com evidência (teste ou print).
-- [ ] Jest inteiro verde; `tsc` limpo; lint dos arquivos tocados limpo; `vue-tsc --build` limpo; build do front ok.
-- [ ] Prints claro e escuro.
-- [ ] Commit e push nos dois repos (autorizados pelo Nicolas neste pedido).
+- [x] AC1 a AC7 e os observáveis conferidos, cada um com evidência (teste ou print).
+- [x] Jest inteiro verde; `tsc` limpo; lint dos arquivos tocados limpo; `vue-tsc --build` limpo; build do front ok.
+- [x] Prints claro e escuro.
+- [x] Commit e push nos dois repos (autorizados pelo Nicolas neste pedido).
 
 ## Change Log
 
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-10-26 | 0.1 | Criação a partir do pedido e da pesquisa na API e no board. Implementação autorizada no próprio pedido. | Claude |
+| 2026-10-26 | 0.2 | Entrega (o Nicolas commitou a primeira versão: API `a05c641`, web `dc115a7`), revisão independente do diff e as correções dela num segundo commit. Detalhe abaixo. | Claude |
+
+### v0.2: entrega e revisão
+
+**Verificação.**
+- **API:**
+  - Jest inteiro: 832 passando. As 11 falhas são do OCR (`pdf-text`, `page-selector`, `ocr.service`) e são as mesmas na main.
+  - `tsc` e eslint limpos nos arquivos tocados (o import sem uso do `dashboard.service.ts`, que vinha da main, saiu).
+- **Integração com o código real contra Postgres embutido (PGlite), 26 checagens:**
+  - **Sem a migration:** board carrega, o checklist some, Revisados funciona como antes e marcar dá 503.
+  - **Migration:** idempotente.
+  - **Bloqueio de ponta a ponta:** inclusive a corrida simulada (desmarcar entre a conferência e a escrita: 409 pela transação com a linha travada).
+  - **Registro e limpeza:** registro em Revisados, limpeza no retrabalho e descarte de check velho.
+- **Front:**
+  - `vue-tsc`, eslint e oxlint limpos; build ok. Do `@mdi/js` só os três ícones entram no bundle.
+  - Os 12 `any` do `activity-service.ts` já existiam.
+- **Harness no navegador (Vite + API falsa + Edge), 32 checagens:** claro e escuro em 1440, claro em 1920, e prints em 390. Cobre:
+  - o card e o bloqueio no arraste, no "Mover para", no dialog e no `/board`;
+  - o 409 vindo de outra coluna;
+  - o retrabalho;
+  - o dialog com quem testou;
+  - o cache do dialog;
+  - o formulário em Revisados;
+  - o modo sem a migration.
+
+**Achados da revisão independente, todos corrigidos e provados:**
+1. **Formulário completo criando já em Revisados levava 409.** Ele criava em A fazer e movia. Agora o `POST` leva o `status`, e o move que sobra só ordena na mesma coluna.
+2. **`testChecks: null` fora de Em teste não se recuperava.** O card que entrava em Em teste (arraste no `/board`, realtime, dialog) ficava sem checklist e sem bloqueio até um refetch. Agora a leitura anexa os checks válidos a toda tarefa real (D8).
+3. **Corrida no servidor:** desmarcar e mover ao mesmo tempo deixava entrar em Revisados faltando plataforma, e marcar junto de uma volta para retrabalho ressuscitava check. Agora há segunda conferência na transação, com `FOR UPDATE`, e o `set` roda em transação com a mesma trava (D5).
+4. **Cache do dialog desatualizado** depois de marcar no card, ou com o dialog fechado antes da resposta. O próprio componente passou a acertar o cache `['activity', id]`.
+
+**Desvios conscientes:**
+1. O "quando" saiu da linha do dialog (fica no tooltip e no nome acessível): a coluna de propriedades tem uns 200px e cortava o nome.
+2. O `TaskLanes` passou a ressincronizar no fim do arraste, como o `KanbanBoard`: sem isso, a soltura recusada deixava o card na coluna errada no agrupado por pessoa.
+3. O `container-type` do dialog precisou de `width: 100%`: sem largura explícita ele media 0px dentro do `<dd>`.
+
+**Fica para depois (follow-ups):**
+- **Dialog aberto enquanto um colega marca:** fica com o dado velho até o foco da janela. O realtime não invalida `['activity', id]`; o sinal do teste tem a mesma limitação.
+- **"Quando" congelado:** o tooltip ("há 2 h") não se atualiza sozinho com o dialog parado. Também é igual no sinal.
+- **Lista:** a vista Lista não mostra o checklist (só aplica a regra na massa), como a bolinha.
+- **Bloqueio na criação:** criar já em Revisados não passa pelo bloqueio (D7).
