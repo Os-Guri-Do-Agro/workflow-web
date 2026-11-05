@@ -148,8 +148,11 @@ const revoking = ref<PublicAccessToken | null>(null)
  * clicável para PODER explicar o motivo (botão `disabled` não dispara tooltip
  * nem entra na ordem de tab, deixando o usuário sem resposta nenhuma).
  */
+/** O back decide (`canRevoke`); API antiga só manda `mine`. */
+const canRevoke = (t: PublicAccessToken) => t.canRevoke ?? t.mine
+
 function onRevokeClick(t: PublicAccessToken) {
-  if (!t.mine) {
+  if (!canRevoke(t)) {
     showError(`Só quem criou revoga. Este token é de ${t.createdByName}.`)
     return
   }
@@ -376,6 +379,7 @@ function fmtWhen(iso: string | null): string {
               {{ companyName(t.companyId) }}
               <span class="pa-sep">·</span>
               criado por {{ t.mine ? 'você' : t.createdByName }}
+              <template v-if="t.creatorActive === false"> (saiu da empresa)</template>
               <span class="pa-sep">·</span>
               {{ fmtWhen(t.lastUsedAt) }}
             </p>
@@ -383,15 +387,15 @@ function fmtWhen(iso: string | null): string {
           <button
             v-if="!t.revoked"
             class="pa-icon-btn pa-icon-btn--danger"
-            :class="{ 'pa-icon-btn--muted': !t.mine }"
+            :class="{ 'pa-icon-btn--muted': !canRevoke(t) }"
             type="button"
-            :aria-disabled="!t.mine"
+            :aria-disabled="!canRevoke(t)"
             :title="
-              t.mine
+              canRevoke(t)
                 ? 'Revogar este token'
                 : `Só quem criou revoga: este token é de ${t.createdByName}`
             "
-            :aria-label="t.mine ? `Revogar ${t.name}` : `Revogar bloqueado: token de ${t.createdByName}`"
+            :aria-label="canRevoke(t) ? `Revogar ${t.name}` : `Revogar bloqueado: token de ${t.createdByName}`"
             @click="onRevokeClick(t)"
           >
             <Trash2 :size="14" />
