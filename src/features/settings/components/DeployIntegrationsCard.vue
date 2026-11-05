@@ -420,7 +420,7 @@ watch(companyId, () => {
             </div>
 
             <div v-if="testResult?.id === it.id" class="dep-test" role="status">
-              <LottiePlayer src="/lottie/deploy-ok.json" :size="44" />
+              <LottiePlayer :src="testResult.dispatchError ? '/lottie/nevo-deploy-falhou.json' : '/lottie/nevo-deploy-ok.json'" :size="64" />
               <p v-if="!testResult.dispatchError">Evento de teste entregue. Confira o aviso no sino e na timeline da empresa.</p>
               <p v-else class="dep-test-warn">O evento entrou, mas um aviso não saiu: {{ testResult.dispatchError }}</p>
             </div>

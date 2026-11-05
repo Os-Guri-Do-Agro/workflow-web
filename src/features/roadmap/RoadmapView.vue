@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { memoPorArg } from '@/utils/memo'
 import {
   Activity,
@@ -46,7 +46,6 @@ import { dateOnlyDiffDays, todayDateOnly } from '@/utils/date'
 import CommentsPanel from '@/components/collaboration/CommentsPanel.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
-import CountUp from '@/components/ui/CountUp.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import aiService from '@/service/ai/ai-service'
 // Rótulo e cor de status vêm do mesmo lugar que o board e o detalhe da tarefa:
@@ -170,6 +169,18 @@ type CalendarCategoryMeta = {
 
 const roadmapMode = ref<RoadmapMode>('monthly')
 const showMonthlyHelp = ref(false)
+
+/**
+ * Ferramenta aberta no roadmap mensal (spec v2-mobile-e-home, R2). Antes o
+ * formulário de registro, a geração por IA, a exportação, a legenda e o filtro
+ * ocupavam a primeira tela inteira e os meses começavam lá embaixo. Agora o
+ * conteúdo vem primeiro e cada ferramenta abre pela barra de ações, uma por vez.
+ */
+type RoadmapTool = 'add' | 'ai' | 'export'
+const roadmapTool = ref<RoadmapTool | null>(null)
+function toggleRoadmapTool(tool: RoadmapTool) {
+  roadmapTool.value = roadmapTool.value === tool ? null : tool
+}
 const isRoadmapPrinting = ref(false)
 const roadmapPrompt = ref('')
 const roadmapPromptLoading = ref(false)
@@ -456,7 +467,13 @@ function laneItemStyle(item: RoadmapItem, laneId: string) {
   // o título ficaria cortado em "Ent". A pílula passa a ter a largura do texto,
   // ancorada na data. O packing já reservou essa largura, então não colide.
   if (item.kind !== 'month' && item.start === item.end) {
-    return { left: base.left, top, width: 'auto', maxWidth: '190px' }
+    // Perto do fim do ano a pílula de 190px passava da borda e saía cortada
+    // pelo `overflow: hidden` da célula ("Crash ao abrir galeria" virava "Cras").
+    // Ela encolhe até o espaço que sobra até dezembro (com reticências e o
+    // título inteiro no tooltip); o packing reservou até 190px à direita, então
+    // encolher nunca colide.
+    const leftNum = Number.parseFloat(String(base.left)) || 0
+    return { left: base.left, top, width: 'auto', maxWidth: `min(190px, calc(${100 - leftNum}% - 6px))` }
   }
   return { ...base, top }
 }
@@ -497,6 +514,29 @@ const todayInViewport = computed(
 )
 
 const todayStyle = computed(() => ({ left: `${positionPercent(todayKey)}%` }))
+
+/**
+ * Abre a timeline já no dia de hoje (spec v2-mobile-e-home, R3). Em tela que
+ * ainda precisa rolar de lado, o trimestre atual ficava escondido à direita e
+ * parecia que a timeline não tinha nada de agora.
+ */
+const timelineScroll = ref<HTMLElement | null>(null)
+function scrollTimelineToToday() {
+  const box = timelineScroll.value
+  const line = box?.querySelector<HTMLElement>('.timeline-today')
+  if (!box || !line || box.scrollWidth <= box.clientWidth) return
+  const lineX = line.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft
+  box.scrollLeft = Math.max(0, lineX - box.clientWidth * 0.6)
+}
+watch(
+  () => roadmapMode.value,
+  async (mode) => {
+    if (mode !== 'timeline') return
+    await nextTick()
+    requestAnimationFrame(scrollTimelineToToday)
+  },
+  { immediate: true },
+)
 
 const overdueItems = computed(() => annualDeliveries.value.filter((item) => item.overdue))
 
@@ -949,10 +989,6 @@ const visibleMonthlyPlans = computed(() => {
 
 const hiddenPastMonthsCount = computed(() => monthlyPlans.value.length - visibleMonthlyPlans.value.length)
 const hasVisibleMonthlyPlans = computed(() => visibleMonthlyPlans.value.length > 0)
-
-const selectedNoteMonth = computed(() =>
-  visibleMonthlyPlans.value.find((month) => month.key === noteMonthKey.value) ?? visibleMonthlyPlans.value[0] ?? monthlyPlans.value[0],
-)
 
 const printedMonthlyPlans = computed(() =>
   exportMonthKey.value === 'all'
@@ -1712,23 +1748,78 @@ const focusPhotosFor = memoPorArg(
 
 <template>
   <section class="roadmap-page">
-    <div class="roadmap-mode-switch no-print" aria-label="Tipo de roadmap">
-      <button
-        class="mode-btn"
-        :class="{ 'mode-btn--active': roadmapMode === 'monthly' }"
-        @click="roadmapMode = 'monthly'"
-      >
-        <CalendarDays :size="14" />
-        Calendários mensais
-      </button>
-      <button
-        class="mode-btn"
-        :class="{ 'mode-btn--active': roadmapMode === 'timeline' }"
-        @click="roadmapMode = 'timeline'"
-      >
-        <Milestone :size="14" />
-        Timeline anual
-      </button>
+    <div class="roadmap-toolbar no-print">
+      <div class="roadmap-mode-switch" role="group" aria-label="Tipo de roadmap">
+        <button
+          class="mode-btn"
+          :class="{ 'mode-btn--active': roadmapMode === 'monthly' }"
+          :aria-pressed="roadmapMode === 'monthly'"
+          @click="roadmapMode = 'monthly'"
+        >
+          <CalendarDays :size="14" />
+          Mensal
+        </button>
+        <button
+          class="mode-btn"
+          :class="{ 'mode-btn--active': roadmapMode === 'timeline' }"
+          :aria-pressed="roadmapMode === 'timeline'"
+          @click="roadmapMode = 'timeline'"
+        >
+          <Milestone :size="14" />
+          Timeline do ano
+        </button>
+      </div>
+
+      <div v-if="roadmapMode === 'monthly'" class="roadmap-actions">
+        <small v-if="roadmapMonthlyLoading || !usingRoadmapMonthlyApi" class="roadmap-data-source">
+          {{ roadmapMonthlyLoading ? 'Sincronizando…' : 'Sem conexão com o servidor' }}
+        </small>
+        <button
+          v-if="hiddenPastMonthsCount > 0 || showAllMonthlyPlans"
+          type="button"
+          class="roadmap-action"
+          :aria-pressed="showAllMonthlyPlans"
+          @click="toggleAllMonthlyPlans"
+        >
+          {{ showAllMonthlyPlans ? 'Esconder meses passados' : `Meses passados (${hiddenPastMonthsCount})` }}
+        </button>
+        <button
+          type="button"
+          class="roadmap-action"
+          :class="{ 'roadmap-action--on': roadmapTool === 'export' }"
+          :aria-expanded="roadmapTool === 'export'"
+          :disabled="!hasMonthlyPlans"
+          @click="toggleRoadmapTool('export')"
+        >
+          <FileDown :size="15" aria-hidden="true" />
+          Exportar
+        </button>
+        <button
+          v-if="canEditMonthlyRoadmap"
+          type="button"
+          class="roadmap-action"
+          :class="{ 'roadmap-action--on': roadmapTool === 'ai' }"
+          :aria-expanded="roadmapTool === 'ai'"
+          @click="toggleRoadmapTool('ai')"
+        >
+          <Sparkles :size="15" aria-hidden="true" />
+          Gerar com IA
+        </button>
+        <button
+          v-if="canEditMonthlyRoadmap && hasVisibleMonthlyPlans"
+          type="button"
+          class="roadmap-action roadmap-action--primary"
+          :class="{ 'roadmap-action--on': roadmapTool === 'add' }"
+          :aria-expanded="roadmapTool === 'add'"
+          @click="toggleRoadmapTool('add')"
+        >
+          <Plus :size="15" aria-hidden="true" />
+          Adicionar
+        </button>
+        <button type="button" class="roadmap-action roadmap-action--icon" aria-label="Como funciona esta tela" title="Como funciona esta tela" @click="showMonthlyHelp = true">
+          <CircleHelp :size="16" aria-hidden="true" />
+        </button>
+      </div>
     </div>
 
     <template v-if="roadmapMode === 'monthly'">
@@ -1779,50 +1870,17 @@ const focusPhotosFor = memoPorArg(
         </section>
       </div>
 
-      <section class="monthly-workbench no-print" aria-label="Ferramentas do roadmap mensal">
-        <div class="monthly-note-panel" aria-label="Adicionar anotacao">
+      <!-- Ferramentas sob demanda: só a escolhida na barra de ações aparece. -->
+      <section v-if="roadmapTool" class="monthly-workbench monthly-workbench--single no-print" aria-label="Ferramentas do roadmap mensal">
+        <div v-if="roadmapTool === 'add'" class="monthly-note-panel" aria-label="Adicionar item ao roadmap">
           <div class="monthly-note-head">
             <div class="monthly-note-title">
-              <span class="text-eyebrow">
-                Agenda do roadmap
-                <!-- Só aparece quando muda o que a pessoa pode fazer: carregando ou
-                     sem servidor. "Dados da API" era jargão de quem construiu. -->
-                <small v-if="roadmapMonthlyLoading || !usingRoadmapMonthlyApi" class="roadmap-data-source">
-                  {{ roadmapMonthlyLoading ? 'Sincronizando…' : 'Sem conexão com o servidor' }}
-                </small>
-              </span>
-              <h2>Registre um marco, entrega, reunião ou nota</h2>
-              <p>Escolha o tipo, o mês e a data para marcar o item no calendário correspondente.</p>
+              <h2>Adicionar ao roadmap</h2>
+              <p>Marco, entrega, reunião, gravação, nota ou risco: escolha o mês, o tipo e a data.</p>
             </div>
-            <div class="monthly-help-row no-print">
-              <button class="monthly-help-btn press" type="button" @click="showMonthlyHelp = true">
-                <CircleHelp :size="15" />
-                Como funciona esta tela?
-              </button>
-            </div>
-          </div>
-          <div v-if="selectedNoteMonth" class="monthly-action-context" aria-label="Contexto do mes selecionado">
-            <article>
-              <Target :size="14" />
-              <div>
-                <span>Foco selecionado</span>
-                <strong>{{ selectedNoteMonth.main }}</strong>
-              </div>
-            </article>
-            <article>
-              <CalendarClock :size="14" />
-              <div>
-                <span>Agenda do mês</span>
-                <strong>{{ monthItemsCount(selectedNoteMonth) }} itens planejados</strong>
-              </div>
-            </article>
-            <article>
-              <CircleDot :size="14" />
-              <div>
-                <span>Dias com atenção</span>
-                <strong>{{ monthMarkedDays(selectedNoteMonth) }} datas marcadas</strong>
-              </div>
-            </article>
+            <button class="roadmap-action roadmap-action--icon" type="button" aria-label="Fechar" @click="roadmapTool = null">
+              <X :size="16" aria-hidden="true" />
+            </button>
           </div>
           <div v-if="hasVisibleMonthlyPlans && canEditMonthlyRoadmap" class="monthly-note-form">
             <div class="monthly-select-wrap">
@@ -1862,31 +1920,10 @@ const focusPhotosFor = memoPorArg(
             Não há meses atuais ou futuros para anotações. Use "Ver todos" para acessar meses anteriores.
           </p>
           <p v-else class="monthly-readonly-hint">Seu perfil pode visualizar o roadmap mensal, mas não pode criar anotações.</p>
-
-          <section class="monthly-legend" aria-label="Legenda dos calendarios">
-            <strong>Legenda</strong>
-            <span
-              v-for="(meta, category) in calendarCategoryMeta"
-              :key="category"
-              class="monthly-legend-item"
-              :style="{ '--entry-c': meta.tone }"
-            >
-              <component :is="meta.icon" :size="12" />
-              {{ meta.label }}
-            </span>
-            <span class="monthly-legend-item monthly-legend-item--delivery">
-              <CalendarCheck :size="12" />
-              Entrega de tarefa (quadrado no dia)
-            </span>
-            <span class="monthly-legend-item" :style="{ '--entry-c': 'var(--err)' }">
-              <Flag :size="12" />
-              Entrega atrasada
-            </span>
-          </section>
         </div>
 
-        <aside class="monthly-side-panel">
-          <div class="monthly-export-card monthly-prompt-card">
+        <aside v-else class="monthly-side-panel">
+          <div v-if="roadmapTool === 'ai'" class="monthly-export-card monthly-prompt-card">
             <Sparkles :size="16" />
             <div>
               <strong>Gerar por prompt</strong>
@@ -1908,7 +1945,7 @@ const focusPhotosFor = memoPorArg(
             </button>
           </div>
 
-          <div class="monthly-export-card">
+          <div v-else class="monthly-export-card">
             <FileDown :size="16" />
             <div>
               <strong>Exportação</strong>
@@ -1959,28 +1996,22 @@ const focusPhotosFor = memoPorArg(
         </div>
       </section>
 
-      <section v-if="hasMonthlyPlans" class="monthly-filter-bar no-print">
-        <div>
-          <span class="text-eyebrow">Filtro de meses</span>
-          <p>
-            {{
-              showAllMonthlyPlans
-                ? 'Mostrando todos os meses do ano.'
-                : hiddenPastMonthsCount > 0
-                  ? `${hiddenPastMonthsCount} meses anteriores ocultos.`
-                  : 'Mostrando meses atuais e futuros.'
-            }}
-          </p>
-        </div>
-        <button
-          v-if="hiddenPastMonthsCount > 0 || showAllMonthlyPlans"
-          class="monthly-filter-btn press"
-          type="button"
-          @click="toggleAllMonthlyPlans"
-        >
-          {{ showAllMonthlyPlans ? 'Ocultar anteriores' : 'Ver todos' }}
-        </button>
-      </section>
+      <!-- Legenda numa linha só, em texto: lê os pontos do calendário sem
+           competir com ele (antes eram oito pílulas coloridas). -->
+      <p v-if="hasVisibleMonthlyPlans" class="roadmap-legend no-print" aria-label="Legenda dos calendários">
+        <span v-for="(meta, category) in calendarCategoryMeta" :key="category" class="roadmap-legend-item">
+          <i :style="{ background: meta.tone }" aria-hidden="true" />
+          {{ meta.label }}
+        </span>
+        <span class="roadmap-legend-item">
+          <i class="roadmap-legend-square" aria-hidden="true" />
+          Entrega de tarefa
+        </span>
+        <span class="roadmap-legend-item">
+          <i :style="{ background: 'var(--err)' }" aria-hidden="true" />
+          Atrasada
+        </span>
+      </p>
 
       <section v-if="hasMonthlyPlans && !hasVisibleMonthlyPlans" class="monthly-empty-state">
         <CalendarDays :size="22" />
@@ -1998,30 +2029,20 @@ const focusPhotosFor = memoPorArg(
           v-reveal="index"
           class="month-card"
         >
+          <!-- Sem "Etapa X de 12" e sem placar de números grandes: o mês, o foco
+               e um resumo em uma linha (o que muda decisão é o atraso). -->
           <header class="month-head">
-            <span>Etapa {{ monthlyPlans.findIndex((item) => item.key === month.key) + 1 }} de {{ monthlyPlans.length }}</span>
             <div>
               <h2>{{ month.title }}</h2>
               <p>{{ month.main }}</p>
             </div>
-            <div class="month-head-metrics" aria-label="Resumo do mes">
-              <span>
-                <strong>{{ monthMarkedDays(month) }}</strong>
-                <small>datas</small>
-              </span>
-              <span>
-                <strong>{{ monthItemsCount(month) }}</strong>
-                <small>itens</small>
-              </span>
-              <span :class="{ 'month-head-metrics--danger': monthOverdueCount(month) > 0 }">
-                <strong>{{ month.deliveries.length }}</strong>
-                <small>entregas</small>
-              </span>
-              <span>
-                <strong>{{ monthCategories(month).length }}</strong>
-                <small>tipos</small>
-              </span>
-            </div>
+            <p class="month-head-summary">
+              {{ monthItemsCount(month) }} {{ monthItemsCount(month) === 1 ? 'item' : 'itens' }}
+              · {{ month.deliveries.length }} {{ month.deliveries.length === 1 ? 'tarefa' : 'tarefas' }}
+              <strong v-if="monthOverdueCount(month) > 0" class="month-head-late">
+                · {{ monthOverdueCount(month) }} {{ monthOverdueCount(month) === 1 ? 'atrasada' : 'atrasadas' }}
+              </strong>
+            </p>
           </header>
 
           <div class="month-card-body">
@@ -2473,41 +2494,23 @@ const focusPhotosFor = memoPorArg(
       </div>
     </template>
 
-    <section v-if="roadmapMode === 'timeline'" class="interaction-grid" aria-label="Controles do roadmap">
+    <!-- Topo da timeline (R3): filtros primeiro, resumo numa linha de texto. O
+         bloco "Como usar" e o placar de números grandes saíram; o painel de
+         detalhe só aparece com algo selecionado (antes ficava vazio ocupando um
+         terço da largura). -->
+    <section
+      v-if="roadmapMode === 'timeline'"
+      class="interaction-grid"
+      :class="{ 'interaction-grid--solo': !selected }"
+      aria-label="Controles do roadmap"
+    >
       <div class="controls-card">
-        <div class="controls-intro">
-          <div>
-            <span class="text-eyebrow">Como usar</span>
-            <h2>Explore as entregas do ano por trimestre e status</h2>
-          </div>
-          <p>
-            Cada barra é uma atividade posicionada pela data de entrega. Clique nela para ver prazo,
-            responsáveis e progresso no painel ao lado.
-          </p>
-        </div>
-
-        <div class="annual-summary" aria-label="Resumo das entregas do ano">
-          <span>
-            <strong><CountUp :value="annualTotals.scheduled" /></strong>
-            <small>com data</small>
+        <p class="annual-line">
+          {{ annualTotals.scheduled }} com data · {{ annualTotals.completed }} concluídas
+          <strong v-if="annualTotals.overdue > 0" class="annual-line--late">· {{ annualTotals.overdue }} atrasadas</strong>
+          <span v-if="annualTotals.undated > 0" class="annual-line--muted">
+            · {{ annualTotals.undated }} sem data (não aparecem na linha: defina o prazo no quadro)
           </span>
-          <span :class="{ 'annual-summary--warn': annualTotals.undated > 0 }">
-            <strong><CountUp :value="annualTotals.undated" /></strong>
-            <small>sem data</small>
-          </span>
-          <span :class="{ 'annual-summary--danger': annualTotals.overdue > 0 }">
-            <strong><CountUp :value="annualTotals.overdue" /></strong>
-            <small>atrasadas</small>
-          </span>
-          <span>
-            <strong><CountUp :value="annualTotals.completed" /></strong>
-            <small>concluídas</small>
-          </span>
-        </div>
-
-        <p v-if="annualTotals.undated > 0" class="annual-undated-note">
-          {{ annualTotals.undated }} atividade(s) não têm data de entrega e por isso não aparecem na
-          timeline. Defina o prazo no quadro para elas entrarem aqui.
         </p>
 
         <div class="controls-row">
@@ -2642,7 +2645,7 @@ const focusPhotosFor = memoPorArg(
         </section>
       </div>
 
-      <aside class="detail-card" aria-live="polite">
+      <aside v-if="selected" class="detail-card" aria-live="polite">
         <template v-if="selected">
           <div class="detail-head">
             <span class="detail-type">
@@ -2747,7 +2750,7 @@ const focusPhotosFor = memoPorArg(
     />
 
     <div v-else-if="roadmapMode === 'timeline'" class="roadmap-shell">
-      <div class="roadmap-scroll" role="region" aria-label="Linha do tempo do roadmap" tabindex="0">
+      <div ref="timelineScroll" class="roadmap-scroll" role="region" aria-label="Linha do tempo do roadmap" tabindex="0">
         <div class="roadmap-board">
           <div class="board-header">
             <div class="side-header">Trimestre</div>
@@ -2941,6 +2944,25 @@ const focusPhotosFor = memoPorArg(
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 12px;
   margin-bottom: 18px;
+}
+
+.interaction-grid--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.annual-line {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.annual-line--late {
+  color: var(--due-late);
+  font-weight: 600;
+}
+
+.annual-line--muted {
+  color: var(--text-3);
 }
 
 .controls-card,
@@ -3150,14 +3172,16 @@ const focusPhotosFor = memoPorArg(
 }
 
 .roadmap-board {
-  min-width: 1240px;
+  min-width: 1000px;
   position: relative;
 }
 
 .board-header,
 .lane-row {
   display: grid;
-  grid-template-columns: 180px 90px 90px minmax(880px, 1fr);
+  /* Cabe em 1440 com a barra lateral (antes 880px de mínimo empurravam o Q4,
+     o trimestre atual, para fora da tela). */
+  grid-template-columns: 180px 90px 90px minmax(640px, 1fr);
 }
 
 .board-header {
@@ -3217,15 +3241,13 @@ const focusPhotosFor = memoPorArg(
   font-weight: 700;
 }
 
+/* Linhas neutras (R3): a cor do trimestre fica só no ícone da linha e nas
+   barras. Antes cada trimestre era uma faixa pastel em degradê, e o quadro
+   inteiro virava um arco-íris que competia com as entregas. */
 .lane-row {
   min-height: 132px;
   border-bottom: 1px solid var(--border);
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--lane-color) 16%, transparent),
-      color-mix(in srgb, var(--lane-color) 7%, transparent)
-    );
+  background: var(--surface);
 }
 
 .lane-row:last-child {
@@ -3237,7 +3259,7 @@ const focusPhotosFor = memoPorArg(
   gap: 10px;
   align-items: center;
   padding: 18px 14px;
-  background: color-mix(in srgb, var(--lane-color) 22%, var(--surface));
+  background: var(--surface-2);
   border-right: 1px solid var(--border);
 }
 
@@ -3548,15 +3570,133 @@ const focusPhotosFor = memoPorArg(
   font-size: 12.5px;
 }
 
+/* Barra de ações (R2): modo à esquerda, ferramentas à direita. */
+.roadmap-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.roadmap-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.roadmap-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.roadmap-action:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.roadmap-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.roadmap-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.roadmap-action--on,
+.roadmap-action[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  color: var(--accent-ink);
+}
+
+.roadmap-action--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-fg);
+}
+
+.roadmap-action--primary.roadmap-action--on {
+  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+  color: var(--accent-fg);
+}
+
+.roadmap-action--icon {
+  width: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
+.roadmap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.roadmap-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roadmap-legend-item i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.roadmap-legend-item .roadmap-legend-square {
+  border-radius: 2px;
+  background: transparent;
+  border: 1.5px solid var(--text-3);
+}
+
+.monthly-workbench.monthly-workbench--single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 980px;
+}
+
+.month-head-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.month-head-late {
+  color: var(--due-late);
+  font-weight: 600;
+}
+
 .roadmap-mode-switch {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
-  margin-bottom: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow-sm);
 }
 
 .mode-btn {
@@ -3647,7 +3787,7 @@ const focusPhotosFor = memoPorArg(
   color: var(--text);
   font-size: clamp(22px, 3vw, 32px);
   line-height: 1;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.02em;
 }
 
 .monthly-help-head p {
@@ -3776,7 +3916,7 @@ const focusPhotosFor = memoPorArg(
   margin: 5px 0 6px;
   color: var(--text);
   font-size: 18px;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.02em;
 }
 
 .monthly-note-panel p,
@@ -4008,16 +4148,19 @@ const focusPhotosFor = memoPorArg(
 }
 
 .monthly-legend-item,
+/* Contagem por tipo em texto, no tom da legenda: o ícone carrega a cor, o
+   texto fica neutro (antes era uma pílula tingida por tipo). */
 .month-category-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border-radius: 999px;
+  gap: 5px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.month-category-chip svg {
   color: var(--entry-c);
-  background: color-mix(in srgb, var(--entry-c) 11%, transparent);
-  border: 1px solid color-mix(in srgb, var(--entry-c) 24%, transparent);
-  font-size: 11px;
-  font-weight: 800;
 }
 
 .monthly-empty-state {
@@ -4041,7 +4184,7 @@ const focusPhotosFor = memoPorArg(
   margin: 5px 0 6px;
   color: var(--text);
   font-size: 20px;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.02em;
 }
 
 .monthly-empty-state p {
@@ -4135,9 +4278,8 @@ const focusPhotosFor = memoPorArg(
   gap: 12px;
   align-items: end;
   padding: 16px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%),
-    var(--surface-2);
+  /* Superfície lisa: o degradê do acento no topo de cada mês era enfeite. */
+  background: var(--surface-2);
   border-bottom: 1px solid var(--border);
 }
 
@@ -4153,7 +4295,7 @@ const focusPhotosFor = memoPorArg(
   color: var(--text);
   font-size: 24px;
   line-height: 1;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.02em;
 }
 
 .month-head p {
@@ -4551,7 +4693,7 @@ const focusPhotosFor = memoPorArg(
 }
 
 .month-category-chip {
-  padding: 5px 8px;
+  padding: 2px 0;
 }
 
 .month-entry-list {
@@ -4640,13 +4782,12 @@ const focusPhotosFor = memoPorArg(
 .month-entry-tag {
   display: inline-block;
   margin-right: 5px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--entry-c) 18%, transparent);
-  color: var(--entry-c);
-  font-size: 10px;
-  font-weight: 900;
-  text-transform: uppercase;
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .month-entry strong {
@@ -4729,7 +4870,7 @@ const focusPhotosFor = memoPorArg(
   color: var(--text);
   font-size: 30px;
   line-height: 1;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.02em;
 }
 
 .month-drawer-head p {
@@ -5025,18 +5166,41 @@ const focusPhotosFor = memoPorArg(
 }
 
 @media (max-width: 640px) {
-  /* Celular é leitura (spec v2-mobile-e-home, R1): os calendários do mês vêm
-     primeiro e o formulário de registro desce para o fim da página. Antes a
-     tela abria com o formulário e o calendário ficava três rolagens abaixo. */
+  /* Celular (spec v2-mobile-e-home, R1/R2): barra de ações, legenda e a
+     ferramenta aberta no topo; depois os meses. O DOM tem outras seções entre
+     elas (ajuda, avisos), por isso a ordem é pela propriedade order. */
   .roadmap-page {
     display: flex;
     flex-direction: column;
     padding: 14px 12px 28px;
   }
 
+  /* A ferramenta aberta (sob demanda) aparece logo abaixo da barra. */
   .monthly-workbench {
-    order: 1;
-    margin-top: 18px;
+    order: -1;
+  }
+
+  /* Ações numa faixa só, com rolagem lateral (como os filtros do board). */
+  .roadmap-actions {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -12px;
+    padding: 0 12px 2px;
+  }
+
+  .roadmap-actions > * {
+    flex-shrink: 0;
+  }
+
+  /* A barra vem antes de tudo mesmo com a página em coluna (order). */
+  .roadmap-toolbar {
+    order: -1;
+  }
+
+  .roadmap-legend {
+    order: -1;
   }
 
   .detail-list {
@@ -5201,7 +5365,7 @@ const focusPhotosFor = memoPorArg(
     color: #111827;
     font-size: 24pt;
     line-height: 1;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.02em;
   }
 
   .print-month-head p {

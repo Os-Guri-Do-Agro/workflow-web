@@ -1,29 +1,36 @@
 {
-  "generatedAt": "2026-09-10T19:54:19.568Z",
+  "generatedAt": "2026-11-05T20:41:47.863Z",
   "model": "Xenova/all-MiniLM-L6-v2",
   "counts": {
-    "specs": 39,
+    "specs": 48,
     "epics": 3,
-    "memories": 0,
+    "memories": 16,
     "enriched": 0
   },
   "statusByName": {
     "Em Implementação (A, B e C entregues e verificados; falta aplicar a migration)": 1,
-    "Em Implementação": 2,
-    "Concluído": 8,
+    "Em Implementação": 4,
+    "Concluído": 9,
     "implementada": 1,
     "Em Implementação (código completo; bloqueada no gate de e2e, ver *Estado da entrega*)": 1,
     "Em Implementação (P1 a P5 entregues; falta aplicar migration e empacotar a extensão)": 1,
+    "Concluído (commits na main; migration aplicada em produção em 2026-10-22, falta só registrar no histórico do Prisma)": 1,
+    "Concluído (sem commit)": 1,
+    "Concluído (código na main; falta aplicar a migration `20261026120000_activity_test_check` em produção)": 1,
+    "Draft (ideação; nenhuma ideia aqui é spec aprovada)": 1,
+    "Concluído (aguardando revisão do Nicolas e deploy)": 1,
     "Desconhecido": 9,
     "Em Implementação — F1–F4 entregues": 1,
     "Implementado na branch `develop` (Ondas 1-3 + F8) — frontend completo; pendências de backend em [docs/BACKEND_HANDOFF.md](../BACKEND_HANDOFF.md)": 1,
     "Em Implementação (P1 In Review)": 1,
-    "In Review": 5,
+    "In Review": 4,
+    "Em Implementação (rodadas V2.1 e V2.2 em novembro/2026)": 1,
     "Planejada (não iniciada)": 1,
     "Implementado (código) — migration pendente de aplicar em produção": 1,
     "Pronto para implementar": 1,
     "Entregue — commit `0d1ea7c` no branch `develop` (2026-04-22)": 1,
     "frontend completo (local, dentro de `/tasks/:month`)": 1,
+    "backend completo": 1,
     "frontend completo e em uso local": 1,
     "Concluído (aguardando deploy do backend para e2e)": 1,
     "aprovada para implementação": 1
@@ -259,6 +266,184 @@
       ]
     },
     {
+      "path": "docs/specs/2026/q3/q3-3/board-tarefas-redesign.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Board de tarefas \"não IA\" (Jira denso + Lista + Agrupar por pessoa)",
+      "status": "Em Implementação",
+      "lastUpdated": "2026-09-26 (v0.6, correções da revisão final)",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Decisões",
+        "Princípios visuais (resumo operacional)",
+        "Riscos e Mitigações",
+        "Requisitos Não-Funcionais",
+        "Acceptance Criteria",
+        "Tasks (fatias entregáveis, em ordem)",
+        "Follow-ups",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/2026/q3/q3-3/ociosidade-nao-acusa-sem-prova.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "O Nevo não acusa ociosidade sem uma fonte que enxergue o computador",
+      "status": "Concluído",
+      "lastUpdated": null,
+      "sections": [
+        "O relato",
+        "O que acontecia",
+        "A causa",
+        "Decisões",
+        "Sobre \"alguma lib npm que resolva isso 100%\"",
+        "Arquivos Impactados",
+        "Verificação",
+        "Efeito para quem usa",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Sequência Diária com o Nevo (gamificação estilo Duolingo)",
+      "status": "Em Implementação",
+      "lastUpdated": "2026-09-25",
+      "sections": [
+        "Visão Geral",
+        "Motivação / Contexto de Negócio",
+        "Research Findings",
+        "Decisões de produto (regras da sequência)",
+        "Riscos e Mitigações",
+        "Requisitos Não-Funcionais",
+        "Contrato da API",
+        "User Stories",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Considerações de Arquitetura",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Follow-ups",
+        "Decisões tomadas na implementação",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/2026/q4/q4-1/board-revisados-sinal-e-dialog.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Coluna \"Revisados\", sinal do teste no card e tarefa em dialog central",
+      "status": "Concluído (commits na main; migration aplicada em produção em 2026-10-22, falta só registrar no histórico do Prisma)",
+      "lastUpdated": "2026-10-22",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Research Findings",
+        "Decisões",
+        "Riscos e Mitigações",
+        "Requisitos Não-Funcionais",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/2026/q4/q4-1/menu-enxuto-e-cor.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Menu enxuto (itens escondidos, seções recolhíveis) e mais da cor escolhida",
+      "status": "Concluído (sem commit)",
+      "lastUpdated": null,
+      "sections": [
+        "Decisões",
+        "Verificação",
+        "Fora do escopo / follow-ups"
+      ]
+    },
+    {
+      "path": "docs/specs/2026/q4/q4-1/teste-por-plataforma.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Teste por plataforma (Web, iOS, Android) no card de Em teste",
+      "status": "Concluído (código na main; falta aplicar a migration `20261026120000_activity_test_check` em produção)",
+      "lastUpdated": "2026-10-26",
+      "sections": [
+        "Visão Geral",
+        "Motivação",
+        "Research Findings",
+        "Decisões",
+        "Riscos e Mitigações",
+        "Requisitos Não-Funcionais",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Plano de Rollout",
+        "Plano de Rollback",
+        "Observabilidade",
+        "Definition of Done",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/2026/q4/q4-2/nevo-utilidade-total-ideias.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Nevo: o que falta para virar utilidade total (análise de produto + 120 ideias)",
+      "status": "Draft (ideação; nenhuma ideia aqui é spec aprovada)",
+      "lastUpdated": null,
+      "sections": [
+        "0. Como foi feita a leitura",
+        "1. O diagnóstico, do jeito que um time de produto de IA leria",
+        "2. As cinco fundações (destravam metade das ideias)",
+        "3. Deploys, alertas e operação (o buraco que você já sentiu)",
+        "4. O agente que trabalha (IA que faz, não que conversa)",
+        "5. O cliente dentro",
+        "6. Pessoas e colaboradores",
+        "7. Conhecimento",
+        "8. Cofre e segurança operacional",
+        "9. O dia a dia de quem usa",
+        "10. O dinheiro da software house",
+        "11. Plataforma e ecossistema",
+        "12. O que melhorar no que já existe",
+        "13. Ordem que eu seguiria",
+        "14. O que eu deliberadamente não faria",
+        "Change Log"
+      ]
+    },
+    {
+      "path": "docs/specs/2026/q4/q4-2/v2-mobile-e-home.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "v2 do front, parte 1 (celular de verdade, home \"Meu dia\", visual \"não IA\", Lottie e tela de Deploys)",
+      "status": "Concluído (aguardando revisão do Nicolas e deploy)",
+      "lastUpdated": "2026-11-05",
+      "sections": [
+        "Visão Geral",
+        "Motivação / Contexto de Negócio",
+        "Research Findings (verificado nesta sessão, com a API real local + Postgres embutido)",
+        "Decisões",
+        "Riscos e Mitigações",
+        "Acceptance Criteria",
+        "Estratégia de Testes",
+        "Arquivos Impactados",
+        "Tasks Técnicas",
+        "Plano de Rollback",
+        "Perguntas em Aberto",
+        "Change Log"
+      ]
+    },
+    {
       "path": "docs/specs/acessos-publicos.md",
       "kind": "spec",
       "isEpic": false,
@@ -415,8 +600,8 @@
       "kind": "spec",
       "isEpic": true,
       "title": "workflow-v2",
-      "status": "In Review",
-      "lastUpdated": "2026-07-29",
+      "status": "Em Implementação (rodadas V2.1 e V2.2 em novembro/2026)",
+      "lastUpdated": "2026-11-05",
       "sections": [
         "Visão Geral",
         "Relação com `docs/EVOLUCAO.md`",
@@ -424,6 +609,7 @@
         "Auditoria de produto por eixo de growth",
         "Auditoria de dependências",
         "Rodadas",
+        "Novembro/2026: reverificação e rodadas V2.x",
         "Decisões que valem para todas as rodadas",
         "Riscos do épico",
         "Perguntas em Aberto",
@@ -865,6 +1051,27 @@
       ]
     },
     {
+      "path": "docs/specs/tarefas-recorrentes-frontend.md",
+      "kind": "spec",
+      "isEpic": false,
+      "title": "Tarefas recorrentes — a API, para o frontend",
+      "status": "backend completo",
+      "lastUpdated": null,
+      "sections": [
+        "0. Como ler este documento",
+        "1. O modelo em uma tela",
+        "2. O quadro do mês",
+        "3. Os endpoints",
+        "4. Escrever numa ocorrência",
+        "5. Os erros que a tela precisa tratar",
+        "6. Mapeamento campo a campo",
+        "7. O que continua sendo do cliente",
+        "8. Roteiro da troca",
+        "9. Como conferir que os dois lados concordam",
+        "10. O que continua em aberto"
+      ]
+    },
+    {
       "path": "docs/specs/tarefas-recorrentes-handoff-backend.md",
       "kind": "spec",
       "isEpic": false,
@@ -955,5 +1162,118 @@
       ]
     }
   ],
-  "memories": []
+  "memories": [
+    {
+      "path": "didactic-overhaul-program.md",
+      "kind": "memory",
+      "name": "didactic-overhaul-program",
+      "description": "Programa multi-fase para deixar o work-flow didático/acessível; spec em docs/specs/didactic-overhaul.md",
+      "type": "project"
+    },
+    {
+      "path": "drive-de-arquivos.md",
+      "kind": "memory",
+      "name": "drive-de-arquivos",
+      "description": "Drive P1 implementado (bucket privado drive-files, pessoal+empresa); migration 20260811120000 pendente de aplicar em produção",
+      "type": "project"
+    },
+    {
+      "path": "entrega-5-fixes-jul2026.md",
+      "kind": "memory",
+      "name": "entrega-5-fixes-jul2026",
+      "description": "Entrega dos 5 fixes (fonte Geist, tema claro, Meu Tempo, avatares, migração v-dialog→AppDialog) na branch main, NÃO COMMITADA, aguardando review do diff",
+      "type": "project"
+    },
+    {
+      "path": "envs-producao-railway.md",
+      "kind": "memory",
+      "name": "envs-producao-railway",
+      "description": "A API em producao (Railway) roda sem ENCRYPTION_KEY/JWT_SECRET conferidas; segredos de empresa cifrados com chave publica do codigo",
+      "type": "project"
+    },
+    {
+      "path": "guard-nao-ve-body-multipart.md",
+      "kind": "memory",
+      "name": "guard-nao-ve-body-multipart",
+      "description": "Na workflow-api, CompanyRoleGuard NÃO enxerga body de multipart (guards rodam antes do FileInterceptor/multer)",
+      "type": "project"
+    },
+    {
+      "path": "nicolas-ui-taste-premium.md",
+      "kind": "memory",
+      "name": "nicolas-ui-taste-premium",
+      "description": "Gosto de UI do Nicolas — \\\"premium de mercado\\\", não básico; odeia border-left; escolheu direção \\\"profundo + movimento\\\" pro board",
+      "type": "feedback"
+    },
+    {
+      "path": "ocr-v1-custo-completude.md",
+      "kind": "memory",
+      "name": "ocr-v1-custo-completude",
+      "description": "OCR v1 — implementado em ago/2026; limites de schema da API Anthropic e pendências de dado",
+      "type": "project"
+    },
+    {
+      "path": "overhaul-visual-premium.md",
+      "kind": "memory",
+      "name": "overhaul-visual-premium",
+      "description": "Programa de tirar o layout \\\"IAZADO\\\" - F0/F1/F2 entregues (gsap, v-reveal, ProgressRing, CountUp, echarts tokenizado, Dashboard e Roadmap); proximas fases e follow-ups",
+      "type": "project"
+    },
+    {
+      "path": "overnight-fix-program.md",
+      "kind": "memory",
+      "name": "overnight-fix-program",
+      "description": "Programa overnight (02/07/2026) de correção total do work-flow — plano de ondas, estado e caminho do relatório de auditoria",
+      "type": "project"
+    },
+    {
+      "path": "prisma-migrate-dev-e-perigoso.md",
+      "kind": "memory",
+      "name": "prisma-migrate-dev-e-perigoso",
+      "description": "Nunca rodar `prisma migrate dev` no workflow-api - aponta pra produção e o drift acumulado faria dropar índices que garantem regras de negócio",
+      "type": "project"
+    },
+    {
+      "path": "qr-microservice-roles-simplification.md",
+      "kind": "memory",
+      "name": "qr-microservice-roles-simplification",
+      "description": "Estado da simplificação de roles (ADMIN/WORKER) + QR pastas + microserviço de QR por token no work-flow",
+      "type": "project"
+    },
+    {
+      "path": "sentia-consome-ocr.md",
+      "kind": "memory",
+      "name": "sentia-consome-ocr",
+      "description": "Sentia é o primeiro cliente do OCR Digital; Marcel Yassumoto faz a integração e o alvo é preencher o cadastro de Empresa da Sentia",
+      "type": "project"
+    },
+    {
+      "path": "time-tracking-v2.md",
+      "kind": "memory",
+      "name": "time-tracking-v2",
+      "description": "Time Tracking v2 (paridade Clockify + visão de equipe admin) implementado; deploy do backend pendente p/ e2e",
+      "type": "project"
+    },
+    {
+      "path": "user-nicolas-workstyle.md",
+      "kind": "memory",
+      "name": "user-nicolas-workstyle",
+      "description": "Como o Nicolas gosta de trabalhar — delega com alta confiança, spec-driven, PT-BR casual",
+      "type": "feedback"
+    },
+    {
+      "path": "verificacao-visual-cdp.md",
+      "kind": "memory",
+      "name": "verificacao-visual-cdp",
+      "description": "Verificação visual no work-flow: Edge headless + JWT fake + mock de API; SEMPRE nos 2 temas e em cenário esparso E cheio",
+      "type": "feedback"
+    },
+    {
+      "path": "workflow-privado-acessos-publicos.md",
+      "kind": "memory",
+      "name": "workflow-privado-acessos-publicos",
+      "description": "Workflow é ferramenta privada (sem cadastro público); tokens de API vivem na página Acessos Públicos com escopo por ferramenta e revogação só pelo criador",
+      "type": "project"
+    }
+  ]
 }

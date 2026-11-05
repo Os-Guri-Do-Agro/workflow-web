@@ -114,7 +114,7 @@ const firstSteps = computed(() => [
     </div>
 
     <div v-else-if="summary.open === 0" class="myday-clear">
-      <LottiePlayer src="/lottie/tudo-em-dia.json" :size="96" label="" />
+      <LottiePlayer src="/lottie/nevo-tudo-em-dia.json" :size="120" label="" />
       <div>
         <p class="myday-clear-title">Tudo em dia</p>
         <p class="myday-clear-desc">Nenhuma tarefa aberta com você. Quando alguém te designar, ela aparece aqui.</p>

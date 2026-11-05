@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { refDebounced } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { ChevronDown, FileText, FileStack, LayoutGrid, List, Plus, Search, X } from 'lucide-vue-next'
+import { ChevronDown, FileStack, LayoutGrid, List, Plus, Search, X } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -290,7 +290,7 @@ function clearFilters() {
 
         <EmptyState
           v-else-if="!totalNotes"
-          :icon="FileText"
+          nevo
           :title="hasFilters ? 'Nenhuma nota encontrada' : 'Nenhuma nota ainda'"
           :description="
             hasFilters

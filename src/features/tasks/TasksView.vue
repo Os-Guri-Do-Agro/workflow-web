@@ -1693,6 +1693,7 @@ const skeletonLanes = [
         <div v-show="currentTab === 'board'" ref="boardWrap" class="board-wrap">
           <EmptyState
             v-if="totalTasks === 0"
+            nevo
             :title="monthName ? `Nenhuma tarefa em ${monthName.toLowerCase()}.` : 'Nenhuma tarefa neste mês.'"
           >
             <template v-if="isWorkerRole" #action>
@@ -1750,6 +1751,7 @@ const skeletonLanes = [
         <div v-if="currentTab === 'list'" class="list-wrap">
           <EmptyState
             v-if="totalTasks === 0"
+            nevo
             :title="monthName ? `Nenhuma tarefa em ${monthName.toLowerCase()}.` : 'Nenhuma tarefa neste mês.'"
           >
             <template v-if="isWorkerRole" #action>
