@@ -303,10 +303,8 @@ function toggleEnd(): void {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 

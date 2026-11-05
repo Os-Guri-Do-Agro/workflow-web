@@ -13,6 +13,8 @@ import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 const props = defineProps<{
   entityType: CommentEntityType
   entityId: string
+  /** Empresa da entidade quando a tela mistura empresas (o /board agregado). */
+  companyId?: string | null
   title?: string
   compact?: boolean
 }>()
@@ -23,6 +25,7 @@ const reactions = ['👍', '✅', '👀', '🔥']
 const { comments, loading, sending, error, create, remove, toggleReaction } = useComments(
   () => props.entityType,
   () => props.entityId,
+  () => props.companyId,
 )
 
 // Id do usuário logado (mesma fonte que reactions/autor) — destaca comentários
@@ -318,10 +321,8 @@ async function react(comment: CommentPayload, emoji: string) {
   align-items: center;
   gap: 6px;
   color: var(--text-4);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .comments-head h2 {

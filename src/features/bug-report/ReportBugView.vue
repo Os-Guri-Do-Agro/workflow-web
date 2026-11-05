@@ -724,10 +724,8 @@ function reset() {
 }
 
 .field-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 
@@ -782,10 +780,8 @@ function reset() {
 }
 
 .or-text {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 /* Alerts */

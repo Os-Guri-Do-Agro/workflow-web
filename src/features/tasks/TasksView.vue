@@ -1606,7 +1606,7 @@ const skeletonLanes = [
 
       <button
         type="button"
-        class="icon-btn hit"
+        class="icon-btn hit kbd-btn"
         aria-label="Atalhos do teclado"
         aria-keyshortcuts="?"
         title="Atalhos do teclado (?)"
@@ -2283,14 +2283,66 @@ const skeletonLanes = [
   color: var(--text-4);
 }
 
-/* ─── Mobile ─── */
+/* ─── Mobile (spec v2-mobile-e-home, B1) ───
+   Antes o cabeçalho e os filtros ocupavam metade da tela antes do primeiro
+   card. Agora: linha 1 com o mês e as ações, linha 2 com as vistas, e os
+   filtros numa faixa só que rola de lado. Atalhos de teclado e o "Agrupar"
+   saem (não há teclado físico, e uma coluna por tela não comporta linhas por
+   pessoa; o agrupamento que veio pela URL continua valendo). */
 @media (max-width: 640px) {
   .tasks-page {
-    padding: 10px 14px 0;
+    padding: 10px 12px 0;
   }
 
   .head-spacer {
     display: none;
+  }
+
+  .board-head {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .month-nav {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .board-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .board-head > .views {
+    order: 3;
+    width: 100%;
+    height: 36px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .board-head > .views .views__btn {
+    flex: 1;
+    height: 34px;
+  }
+
+  .group-by,
+  .kbd-btn {
+    display: none;
+  }
+
+  .board-toolbar.board-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -12px;
+    padding: 2px 12px 8px;
+    scroll-padding-inline: 12px;
+  }
+
+  .board-toolbar > :deep(*) {
+    flex-shrink: 0;
   }
 }
 </style>

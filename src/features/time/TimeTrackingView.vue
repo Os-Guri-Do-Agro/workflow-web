@@ -1350,10 +1350,8 @@ async function submitManual() {
 .tv-eyebrow {
   margin: 0 0 2px;
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .tv-title {
@@ -1638,10 +1636,8 @@ async function submitManual() {
 
 .tv-total-label {
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .tv-total-value {

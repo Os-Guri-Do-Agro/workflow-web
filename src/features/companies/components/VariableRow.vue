@@ -54,7 +54,7 @@ const initials = computed(() => props.variable.name.slice(0, 2).toUpperCase())
 
 const updatedRelative = computed(() => {
   const at = props.variable.updatedAt
-  if (!at) return '—'
+  if (!at) return '-'
   const diff = Date.now() - new Date(at).getTime()
   const mins = Math.floor(diff / 60000)
   if (mins < 1) return 'agora'

@@ -35,7 +35,7 @@ export function useEnvExport() {
     const blocks: string[] = []
     for (const v of variables) {
       if (!v.fields?.length) continue
-      const header = v.description ? `# ${v.name} — ${v.description}` : `# ${v.name}`
+      const header = v.description ? `# ${v.name}: ${v.description}` : `# ${v.name}`
       const lines = v.fields
         .filter((f) => f.key?.trim())
         .map((f) => `${toEnvKey(v.name, f.key)}=${f.value ?? ''}`)

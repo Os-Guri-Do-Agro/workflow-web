@@ -1785,8 +1785,10 @@ const focusPhotosFor = memoPorArg(
             <div class="monthly-note-title">
               <span class="text-eyebrow">
                 Agenda do roadmap
-                <small class="roadmap-data-source">
-                  {{ roadmapMonthlyLoading ? 'Sincronizando...' : usingRoadmapMonthlyApi ? 'Dados da API' : 'API indisponível' }}
+                <!-- Só aparece quando muda o que a pessoa pode fazer: carregando ou
+                     sem servidor. "Dados da API" era jargão de quem construiu. -->
+                <small v-if="roadmapMonthlyLoading || !usingRoadmapMonthlyApi" class="roadmap-data-source">
+                  {{ roadmapMonthlyLoading ? 'Sincronizando…' : 'Sem conexão com o servidor' }}
                 </small>
               </span>
               <h2>Registre um marco, entrega, reunião ou nota</h2>
@@ -2994,10 +2996,8 @@ const focusPhotosFor = memoPorArg(
 
 .control-label {
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .segmented {
@@ -3090,10 +3090,8 @@ const focusPhotosFor = memoPorArg(
 
 .detail-type {
   color: var(--accent);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .detail-status {
@@ -3130,10 +3128,8 @@ const focusPhotosFor = memoPorArg(
 
 .detail-list dt {
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .detail-list dd {
@@ -3179,10 +3175,8 @@ const focusPhotosFor = memoPorArg(
   align-items: flex-end;
   padding: 0 12px 12px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .timeline-header {
@@ -3832,10 +3826,8 @@ const focusPhotosFor = memoPorArg(
   display: block;
   margin-bottom: 3px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .monthly-action-context strong {
@@ -4152,10 +4144,8 @@ const focusPhotosFor = memoPorArg(
 .month-head > span {
   grid-column: 1 / -1;
   color: var(--accent);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .month-head h2 {
@@ -4199,9 +4189,8 @@ const focusPhotosFor = memoPorArg(
 
 .month-head-metrics small {
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  text-transform: uppercase;
 }
 
 .month-head-metrics--danger strong,
@@ -4356,10 +4345,8 @@ const focusPhotosFor = memoPorArg(
   align-items: center;
   gap: 7px;
   color: var(--text);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
 }
 
 .month-section-title--split {
@@ -4544,9 +4531,8 @@ const focusPhotosFor = memoPorArg(
 
 .focus-photo-more span {
   color: var(--text-3);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  text-transform: uppercase;
 }
 
 .focus-photo-grid img,
@@ -4791,9 +4777,8 @@ const focusPhotosFor = memoPorArg(
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  text-transform: uppercase;
 }
 
 .drawer-calendar-summary strong {
@@ -5040,6 +5025,20 @@ const focusPhotosFor = memoPorArg(
 }
 
 @media (max-width: 640px) {
+  /* Celular é leitura (spec v2-mobile-e-home, R1): os calendários do mês vêm
+     primeiro e o formulário de registro desce para o fim da página. Antes a
+     tela abria com o formulário e o calendário ficava três rolagens abaixo. */
+  .roadmap-page {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 12px 28px;
+  }
+
+  .monthly-workbench {
+    order: 1;
+    margin-top: 18px;
+  }
+
   .detail-list {
     grid-template-columns: 1fr;
   }

@@ -956,11 +956,9 @@ watch(tab, (t) => {
   gap: 10px;
 }
 .clone-row label {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-3);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 .clone-row code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1058,10 +1056,8 @@ watch(tab, (t) => {
   gap: 4px;
 }
 .ff label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 .fi {

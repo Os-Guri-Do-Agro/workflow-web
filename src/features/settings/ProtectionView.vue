@@ -84,7 +84,7 @@ async function permitir() {
 
 function copiarPedido() {
   const texto = [
-    'Oi! Preciso da extensão "Nevo — detector de atividade" instalada na minha máquina.',
+    'Oi! Preciso da extensão "Nevo: detector de atividade" instalada na minha máquina.',
     '',
     'Ela deixa o cronômetro do Nevo saber quando estou trabalhando fora do navegador,',
     'para não registrar tempo parado nem parar o tempo enquanto eu trabalho em outro programa.',

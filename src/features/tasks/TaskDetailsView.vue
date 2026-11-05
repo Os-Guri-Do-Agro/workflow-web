@@ -1806,10 +1806,8 @@ const onSubtaskFilePick = (e: Event) => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-3);
   margin-bottom: 6px;
 }

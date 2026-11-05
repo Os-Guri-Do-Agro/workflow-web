@@ -1044,6 +1044,7 @@ onBeforeUnmount(() => {
               <CommentsPanel
                 entity-type="ACTIVITY"
                 :entity-id="taskId"
+                :company-id="companyId"
                 title="Comentários"
                 compact
               />

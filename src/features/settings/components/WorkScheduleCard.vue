@@ -223,10 +223,8 @@ function restaurarPadrao() {
 }
 
 .ws-day-label {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--text-4);
 }
 

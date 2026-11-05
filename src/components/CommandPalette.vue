@@ -495,11 +495,9 @@ defineExpose({ open })
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-4);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   padding: 10px 10px 4px;
 }
 

@@ -74,7 +74,7 @@ const tabs: { key: TabKey; label: string; icon: typeof Building2 }[] = [
 
 const formatCnpj = (cnpj: string): string => {
   const d = (cnpj || '').replace(/\D/g, '')
-  if (d.length !== 14) return cnpj || '—'
+  if (d.length !== 14) return cnpj || '-'
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
 }
 
@@ -406,11 +406,9 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .page-title {

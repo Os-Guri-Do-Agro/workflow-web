@@ -199,10 +199,8 @@ function handleConfirm() {
   display: block;
   margin-bottom: 6px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .confirm-input {

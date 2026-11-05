@@ -292,8 +292,6 @@ function leaderAria(p: (typeof leaders.value)[number]): string {
   margin: 18px 0 8px;
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 

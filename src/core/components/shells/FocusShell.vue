@@ -469,8 +469,6 @@ const showTasks = computed(() =>
   font-size: 12px;
   font-weight: 700;
   color: var(--text-4);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   padding: 4px 8px 6px;
 }
 
@@ -580,12 +578,10 @@ const showTasks = computed(() =>
 }
 
 .tree-q-meta {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--text-4);
   margin-left: auto;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .tree-children {

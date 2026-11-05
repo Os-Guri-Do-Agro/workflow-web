@@ -383,8 +383,6 @@ defineExpose({ workItems, companyItems, personalItems, toolsItems })
   font: inherit;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   text-align: left;
   cursor: pointer;
 }

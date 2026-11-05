@@ -80,7 +80,7 @@ function handleLater() {
           <p class="prot-step-desc">
             É o que me deixa perceber que você está trabalhando em outro programa. Sem ela eu
             não sei se você saiu ou só minimizou o Nevo, então
-            <strong>nunca paro seu cronômetro sozinho</strong> — e o tempo esquecido vira hora
+            <strong>nunca paro seu cronômetro sozinho</strong>, e o tempo esquecido vira hora
             inflada no relatório.
           </p>
           <p v-if="alerts.detectionBlocked.value" class="prot-step-hint">

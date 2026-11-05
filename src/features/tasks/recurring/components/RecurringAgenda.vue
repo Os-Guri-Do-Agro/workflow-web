@@ -227,8 +227,6 @@ const cells = computed<Cell[]>(() => {
   gap: 6px;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
   color: var(--text-2);
 }
 

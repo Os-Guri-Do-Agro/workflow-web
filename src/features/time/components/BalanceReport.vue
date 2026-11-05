@@ -246,7 +246,7 @@ function exportarCsv() {
             <!-- Dia sem registro vira travessão: "0s" numa coluna de horas lê
                  como defeito, não como ausência. -->
             <span class="rep-day-worked" :class="{ 'rep-day-empty': d.workedSec === 0 }">
-              {{ d.workedSec > 0 ? formatDurationLong(d.workedSec) : '—' }}
+              {{ d.workedSec > 0 ? formatDurationLong(d.workedSec) : '-' }}
             </span>
             <span class="rep-day-target">
               {{ d.targetSec > 0 ? formatDurationLong(d.targetSec) : 'sem meta' }}
@@ -433,9 +433,7 @@ function exportarCsv() {
 }
 
 .rep-total-label {
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
   color: var(--text-4);
 }
 

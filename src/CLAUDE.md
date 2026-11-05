@@ -50,6 +50,10 @@ Camadas disponíveis como CSS custom properties em `:root` (atualizadas runtime 
 
 **Nunca escreva hex em componentes.** Se precisar de uma cor que não existe, adicione o token em `tokens.ts` primeiro.
 
+**Sem rótulo em CAIXA ALTA com espaçamento largo** acima de título ou seção (o "eyebrow" de tela gerada por IA). Rótulo é caixa normal, peso 600-700, 12px no mínimo. Caixa alta só onde ela é dado: dia da semana em grade de calendário, código, hex, badge de status. A passada de nov/2026 está em `scripts/de-caps.mjs` (rodar de novo com `--dry` mostra o que escapou).
+
+**Fonte:** a Figtree é a padrão do token; a pessoa pode trocar em Aparência (`ui.font`: `figtree`, `plex`, `source`, `atkinson`, `system`). `applyFontFamily` (tokens.ts) grava `--font-family-user`, que o `--font-family` lê primeiro; a woff2 de cada opção só é baixada por quem escolhe (e pela prévia da Aparência). Para trocar a padrão do time, mude a pilha do token, não a lista de opções.
+
 Para Vuetify-compat, `plugins/tokens.ts` também exporta `vuetifyThemeColors` que alimenta o `createVuetify({ theme })`. Mantemos o padrão do projeto:
 
 - `primary` = bg do surface elevado (drawer/appbar background)
@@ -84,6 +88,13 @@ O layout principal é gerenciado por [`core/components/shells/AppShell.vue`](./c
 
 Trocar a variante é feito em `/settings` e é aplicada em runtime (sem reload).
 
+**Celular e tela pequena (spec `docs/specs/2026/q4/q4-2/v2-mobile-e-home.md`):** abaixo de 900px (`useCompactViewport`, um `matchMedia` compartilhado) o `AppShell` monta o [`MobileShell.vue`](./core/components/shells/MobileShell.vue) em QUALQUER variante: topo compacto (marca, empresa, busca, sequência, sino, avatar), conteúdo com rolagem própria e tab bar (Início, Tarefas do mês corrente, Tempo com o relógio quando roda, Notas, Mais). "Mais" abre a folha `MobileMoreSheet.vue` com o `NavList` inteiro, tema, assistente e configurações. Regras:
+- Enquanto o `MobileShell` existe, o `<html>` tem `--shell-bottom-inset` (altura da tab bar + área segura). Tudo que é `position: fixed` no rodapé soma essa variável (assistente, recados do Nevo, toasts). Componente fixo novo no rodapé precisa fazer o mesmo.
+- Área segura: topo e tab bar usam `env(safe-area-inset-*)` (o `index.html` tem `viewport-fit=cover`).
+- No celular saem: o botão flutuante do assistente (vai para a folha "Mais"), o recado de permissão de ociosidade e o chrome do Modo XP.
+- O `theme-color` da barra do sistema segue a cor do topo (sincronizado pelo `MobileShell` ao trocar tema/acento). O app é instalável (`public/manifest.webmanifest`).
+- Tela nova: teste em 375px no harness (`scripts/harness`) antes de fechar. Zero rolagem horizontal da página; alvo de toque de 44px.
+
 **Para rotas sem shell** (`login`, `download`, `public-file` e as públicas de board/roadmap/bug-report): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas. Rota nova sem shell precisa entrar em DOIS lugares: no `bare` do `AppShell` e no `PUBLIC_ROUTES` do router (senão o guard manda pro login).
 
 **Componentes shared dos shells** em [`core/components/shells/shared/`](./core/components/shells/shared/):
@@ -117,6 +128,7 @@ Em [`components/ui/`](./components/ui/):
 | `TipTapToolbar.vue`    | Toolbar tokenizada de editor. Prop `groups` escolhe o que aparece; `bare` para uso dentro de popover.                |
 | `FileViewer.vue`       | Visualizador de arquivo em tela cheia (Teleport, imagem/PDF/markdown/vídeo/áudio, setas, foco preso). Promovido do antigo `AttachmentViewer` das tarefas. `item.url` pronto OU `resolveUrl` assíncrono (Drive: URL assinada fresca). |
 | `AppSelect.vue`        | Select padrão (reka-ui Select). Single/multiple. Sem busca. Com `chip-avatars` (itens = pessoas, `value` = id do usuário) desenha o `PersonAvatar` no chip e em cada opção. |
+| `LottiePlayer.vue`     | Animação Lottie (`lottie-web` light, import dinâmico). Arquivos em `public/lottie/`, GERADOS por `scripts/lottie/build.mjs` (desenhados em código, sem licença de terceiro). Cores são marcadores (azul puro = principal, vermelho puro = fundo suave, verde puro = acento) trocados por tokens na hora via prop `palette`; segue tema e acento. Reduced-motion mostra o último quadro. Falha de rede some sem quebrar. Animação nova: acrescente no `build.mjs` e rode `node scripts/lottie/build.mjs` |
 | `ProgressRing.vue`     | Anel de progresso genérico (linguagem do `SubtaskProgress`: 12h, spring motion-v, done = `--status-done`). Slot no centro p/ número/label. |
 | `CountUp.vue` + `useCountUp` | Número que conta até o valor (gsap, pt-BR, reduced-motion salta direto). O componente existe p/ uso em `v-for`. |
 | `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. **Não é mais usado no time tracking** (ver `TaskPicker`); segue disponível para lista plana. |
@@ -189,7 +201,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 
 | Feature         | View principal                                                                                 | Rota               | Observações                                                           |
 | --------------- | ---------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------- |
-| Dashboard       | [`features/dashboard/DashboardView.vue`](./features/dashboard/DashboardView.vue)               | `/` e `/dashboard` | Vue Query. **Layout bento assimétrico** (grid por `grid-template-areas`, direção aprovada pelo dono): módulos em `features/dashboard/components/` (DashboardHeader, HeroSection=Progresso, MovementModule, StatsRow=tiles com `display: contents`, ActivityPanel=feed) — cada módulo declara a própria `grid-area`; célula base `.bento-cell` em `dashboard-shared.css` |
+| Dashboard       | [`features/dashboard/DashboardView.vue`](./features/dashboard/DashboardView.vue)               | `/` e `/dashboard` | **Três abas (nov/2026), só a aberta monta:** *Meu dia* (padrão: `MyDaySection` com as tarefas da pessoa de todas as empresas agrupadas por `my-day.ts`, derivadas do `/dashboard/workspace`; `StreakSummaryCard`; agenda), *Jornada* (palco completo do Nevo; `/#sequencia` abre aqui) e *Painel* (o bento abaixo). Aba lembrada em `dashboard.tab`. Painel: Vue Query. **Layout bento assimétrico** (grid por `grid-template-areas`, direção aprovada pelo dono): módulos em `features/dashboard/components/` (DashboardHeader, HeroSection=Progresso, MovementModule, StatsRow=tiles com `display: contents`, ActivityPanel=feed) — cada módulo declara a própria `grid-area`; célula base `.bento-cell` em `dashboard-shared.css` |
 | Board           | [`features/board/BoardView.vue`](./features/board/BoardView.vue)                               | `/board`           | Kanban                                                                |
 | Canvas          | [`features/boards/BoardsListView.vue`](./features/boards/BoardsListView.vue)                   | `/boards`          | **Desabilitado (feature flag)** — `CANVAS_ENABLED` (`config/feature-flags.ts`); reativar com `VITE_CANVAS_ENABLED=true`. Ver [docs/CANVAS_DEACTIVATION.md](../docs/CANVAS_DEACTIVATION.md). Arquivos preservados, nada deletado |
 | Público         | [`features/public/PublicBoardView.vue`](./features/public/PublicBoardView.vue)                 | `/public/board/:token` | Board read-only por token                                         |

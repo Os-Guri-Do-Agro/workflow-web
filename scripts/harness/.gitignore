@@ -1,0 +1,10 @@
+node_modules/
+pgdata/
+seed-out.json
+token.txt
+*.log
+*.png
+before/
+after*/
+states/
+schema.sql

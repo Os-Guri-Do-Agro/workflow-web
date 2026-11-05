@@ -504,19 +504,15 @@ const onTabsWheel = (event: WheelEvent) => {
 }
 
 .pop-q {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-2);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .pop-q-meta {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-4);
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .pop-item {

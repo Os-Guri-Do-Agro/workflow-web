@@ -7,6 +7,8 @@ import { getUserToken } from '@/utils/authContent'
 export function useComments(
   entityType: MaybeRefOrGetter<CommentEntityType>,
   entityId: MaybeRefOrGetter<string>,
+  /** Empresa da entidade quando a tela mistura empresas; sem ela vale a ativa. */
+  companyId?: MaybeRefOrGetter<string | null | undefined>,
 ) {
   const comments = ref<CommentPayload[]>([])
   const loading = ref(false)
@@ -16,6 +18,7 @@ export function useComments(
 
   const resolvedEntityType = computed(() => toValue(entityType))
   const resolvedEntityId = computed(() => toValue(entityId))
+  const resolvedCompanyId = computed(() => toValue(companyId) ?? null)
 
   async function refresh() {
     if (!resolvedEntityId.value) return
@@ -23,7 +26,11 @@ export function useComments(
     error.value = null
 
     try {
-      comments.value = await collaborationService.listComments(resolvedEntityType.value, resolvedEntityId.value)
+      comments.value = await collaborationService.listComments(
+        resolvedEntityType.value,
+        resolvedEntityId.value,
+        resolvedCompanyId.value,
+      )
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Erro ao carregar comentários'
     } finally {
@@ -41,7 +48,7 @@ export function useComments(
         entityId: resolvedEntityId.value,
         body: body.trim(),
         mentions,
-      })
+      }, resolvedCompanyId.value)
       upsertComment(created)
     } finally {
       sending.value = false
@@ -49,7 +56,7 @@ export function useComments(
   }
 
   async function remove(id: string) {
-    await collaborationService.deleteComment(id)
+    await collaborationService.deleteComment(id, resolvedCompanyId.value)
     comments.value = comments.value.filter((comment) => comment.id !== id)
   }
 
@@ -63,9 +70,9 @@ export function useComments(
 
     try {
       if (hasReaction) {
-        await collaborationService.removeReaction(comment.id, emoji)
+        await collaborationService.removeReaction(comment.id, emoji, resolvedCompanyId.value)
       } else {
-        await collaborationService.addReaction(comment.id, emoji)
+        await collaborationService.addReaction(comment.id, emoji, resolvedCompanyId.value)
       }
     } catch (err) {
       comments.value = previous
@@ -114,8 +121,9 @@ export function useComments(
     // Contrato explícito: o socket entrega as rooms de todas as empresas do
     // usuário, e hoje só a improbabilidade de dois cuid colidirem evitava um
     // comentário de outra empresa entrar aqui.
-    const activeCompany = localStorage.getItem('activeCompany')
-    if (activeCompany && comment.companyId && comment.companyId !== activeCompany) return
+    // A empresa que vale é a da entidade (explícita) e, sem ela, a ativa.
+    const expectedCompany = resolvedCompanyId.value ?? localStorage.getItem('activeCompany')
+    if (expectedCompany && comment.companyId && comment.companyId !== expectedCompany) return
 
     const index = comments.value.findIndex((item) => item.id === comment.id)
     if (index >= 0) {
@@ -149,7 +157,7 @@ export function useComments(
     unsubscribeRealtime?.()
   })
 
-  watch([resolvedEntityType, resolvedEntityId], () => {
+  watch([resolvedEntityType, resolvedEntityId, resolvedCompanyId], () => {
     void refresh()
   })
 

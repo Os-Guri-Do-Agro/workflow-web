@@ -427,11 +427,9 @@ defineEmits<{
 }
 
 .section-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: rgba(var(--v-theme-secondary), 0.3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   white-space: nowrap;
 }
 

@@ -1,10 +1,12 @@
 # Épico: workflow-v2
 
-**Status:** In Review
+**Status:** Em Implementação (rodadas V2.1 e V2.2 em novembro/2026)
 **Autor:** Nicolas (via spec-driven, modo 3)
 **Criado em:** 2026-07-29
-**Última atualização:** 2026-07-29
-**Versão:** 0.1
+**Última atualização:** 2026-11-05
+**Versão:** 0.2
+
+> **Leia primeiro a seção [Novembro/2026](#novembro2026-reverificação-e-rodadas-v2x)**: ela reconfere o estado de julho e substitui as rodadas R2 a R5 pela fila V2.x. As seções de julho ficam como histórico.
 **Repos:** `work-flow` (frontend) + `workflow-api` (backend NestJS/Prisma, deploy Railway)
 
 ---
@@ -246,6 +248,69 @@ Notas P3 (edição ao vivo) e P4 (rabisco), copiloto que executa ações com con
 
 ---
 
+## Novembro/2026: reverificação e rodadas V2.x
+
+**Pedido (2026-11-05):** "preciso de um v2 desse projeto", com quatro frentes:
+- evoluir o que existe antes de criar coisa nova;
+- celular de verdade (o Nicolas vai trabalhar pelo celular este mês, e o time ganha mais uma pessoa);
+- segurança tratada a sério ("foi feito meio nas coxas por ser interno");
+- deploys do Amplify e do Railway avisando no app, com webhook que só ADMIN da empresa configura.
+
+Também pediu tirar a "cara de IA" (inclusive a fonte) e usar Lottie.
+
+Verificação feita com a API real rodando local contra Postgres embutido e seed sintético (`work-flow/scripts/harness`), com prints em 375, 768 e 1440 px.
+
+### Estado dos itens de julho
+
+| Item | Hoje | Evidência |
+|---|---|---|
+| R1.2 XSS armazenado na descrição | **Fechado** no front (DOMPurify em todo `v-html`) e na escrita da descrição (`HtmlSanitizerService`). Comentários, notas, docs e bug report ainda gravam cru (B5) | spec `seguranca-v2-auditoria-e-correcoes` |
+| R1.8 Lazy loading | **Feito.** 37 rotas com `import()`; chunk de entrada caiu de 3,39 MB para 1,1 MB | `router/index.ts`; build de 2026-11-05 |
+| R1.9 Mock `useTasks.ts` | **Removido** | arquivo não existe |
+| R2.7 Fechar `mdi-*` e tirar `@mdi/font` | **Aberto**: 3 arquivos | grep `mdi-` |
+| R2.9 `GET /company/all` | **Fechado** (escopado ao usuário) | `company.service.ts:106-113` |
+| R2.9 CORS, helmet, headers | **Front fechado** (CSP aplicada e testada no build); **API em V2.2** | `vercel.json`; spec de segurança B1 |
+| R2.9 `ENCRYPTION_KEY` | **Mitigado por log**, fallback ainda no código; confirmar a env no Railway | spec de segurança M8 |
+| R2.10 CI | **Aberto** nos dois repos | sem `.github/workflows` |
+| R3.3 / R3.4 Convite e recuperação de senha | **Não existem.** Hoje o ADMIN cria a pessoa com senha | `auth.controller.ts` só tem `login` |
+| R4 `Quarter.year` | **Aberto** | `schema.prisma` |
+| Achado novo (não estava em julho) | **C1 crítico**: listagens sem filtro de empresa quando falta o `x-company-id` (variáveis SECRET decifradas de todas as empresas, entre outras) | spec de segurança C1 |
+| Achado novo | Celular inutilizável: sidebar fixa ocupava dois terços de 375 px | spec `v2-mobile-e-home` |
+
+### Rodadas
+
+Esforço: **P** até 1 dia · **M** 2 a 5 dias · **G** 1 a 3 semanas.
+
+| Rodada | Tema | Itens | Esforço | Migration | Spec |
+|---|---|---|---|---|---|
+| **V2.1** (05/11, feita) | Celular, home e visual "não IA" | Moldura de celular + PWA; home em abas com "Meu dia"; board, notas e roadmap no celular; passada de rótulos em caixa alta; escolha de fonte; Lottie próprio; CSP no Vercel; tela de Deploys | M | Não | [v2-mobile-e-home](../2026/q4/q4-2/v2-mobile-e-home.md) |
+| **V2.2** (05/11, em andamento) | Segurança da API + webhook de deploy (backend) | C1, A1 a A3, M1 a M6, B1 a B3 + integração Amplify/Railway com token por integração, idempotência e log de entregas | M | **Sim** (webhook, aditiva, aplicar à mão) | `workflow-api/docs/specs/2026/q4/q4-2/` |
+| **V2.3** | Ligar os deploys de verdade | Aplicar a migration; criar as integrações de petjourney, sentia e emmitec; conectar EventBridge (Amplify) e Railway; conferir o primeiro FAILED real | P | Aplicar | idem |
+| **V2.4** | Time crescendo | Convite por e-mail (SendGrid já pago), recuperação de senha, primeiro acesso guiado (o "Meu dia" já tem os três passos) | M | Sim | a escrever |
+| **V2.5** | Sessão e higiene de segurança | Refresh token curto ou `tokenVersion` (M9), `npm audit fix` em PR próprio (M7), Swagger interno (B4), sanitização no servidor de comentários/notas/docs (B5), auditoria do segundo grupo de módulos | M | Sim (M9) | spec de segurança |
+| **V2.6** | Celular, segunda camada | Detalhe da tarefa como folha com status no topo; barra do editor de notas acima do teclado (`visualViewport`); roadmap quebrado em componentes (`RoadmapView.vue` tem 5.650 linhas) | M | Não | a escrever |
+| **V2.7** | Peso e escala | `/dashboard/workspace` devolve a história inteira de tarefas (filtrar no servidor); entrada de 1,1 MB (Vuetify); CI nos dois repos; tirar `@mdi/font` | M | Não | a escrever |
+
+### Decisões novas
+
+- **D10. Celular é moldura própria**, não sidebar escondida: abaixo de 900px, em qualquer variante de shell.
+- **D11. A home abre no trabalho da pessoa** ("Meu dia"); números da empresa e o palco do Nevo ficam a um toque, nunca somem.
+- **D12. Rótulo em caixa alta só quando é dado.** Vale para todo componente novo (regra no `src/CLAUDE.md`).
+- **D13. Lottie desenhado em código**, com cores dos tokens; nada de arquivo de terceiro sem licença conferida.
+- **D14. Toda rota de empresa exige empresa validada** (`@CompanyId()`); leitura crua de header ou query é proibida (fecha o C1 e vale para rota nova).
+
+### Plugins e skills que agregam aqui
+
+- **Já em uso:**
+  - `impeccable` (crítica e piso visual);
+  - harness de `scripts/harness` (verificação de verdade, sem produção).
+- **Vale ligar:**
+  - `security-review` a cada rodada que mexer em controller;
+  - `design:accessibility-review` antes de fechar tela nova;
+  - `context7` quando uma lib mudar de major (Prisma, Vuetify, Tiptap);
+  - `playwright-mcp`, se quiserem que o agente navegue no navegador do Nicolas em vez do headless.
+- **Não recomendo** outra skill de UI além do impeccable: viraria ruído.
+
 ## Decisões que valem para todas as rodadas
 
 - **D1. Nada de big bang.** Cada item de rodada é entregável sozinho. Se a rodada parar no meio, o que foi feito continua valendo.
@@ -283,3 +348,4 @@ Notas P3 (edição ao vivo) e P4 (rabisco), copiloto que executa ações com con
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-07-29 | 0.1 | Criação. Reverificação do EVOLUCAO.md, auditoria de growth por eixo, auditoria de dependências, recorte em 5 rodadas | Nicolas (via spec-driven) |
+| 2026-11-05 | 0.2 | Reverificação de novembro, achados novos (C1 crítico, celular quebrado), fila V2.1 a V2.7, decisões D10 a D14 | Nicolas (via spec-driven, Agentes 1 e 2) |

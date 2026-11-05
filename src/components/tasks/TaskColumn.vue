@@ -316,15 +316,18 @@ const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa'
    o container. */
 @container task-board (max-width: 1131px) {
   .lane:not(.lane--collapsed) {
-    flex-basis: 220px;
+    flex: 1 0 220px;
     width: 220px;
   }
 }
 
-/* Celular: uma coluna por tela, em fita com snap. */
+/* Celular: uma coluna por tela, em fita com snap, com a ponta da próxima
+   aparecendo para dizer que tem mais ao lado. O `flex-shrink: 0` é o que faz
+   valer: com o `flex: 1 1` da base, a coluna encolhia até o `min-width` de
+   220px e a regra nunca tinha efeito (medido: base 298px, largura real 220px). */
 @container task-board (max-width: 640px) {
   .lane:not(.lane--collapsed) {
-    flex-basis: min(84cqw, 320px);
+    flex: 0 0 min(84cqw, 320px);
     width: min(84cqw, 320px);
     scroll-snap-align: start;
   }

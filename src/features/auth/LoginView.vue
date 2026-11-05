@@ -267,10 +267,8 @@ const features = [
 }
 
 .field-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 
@@ -487,10 +485,8 @@ const features = [
 
 .hero-eyebrow {
   display: inline-block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
   color: var(--text-3);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   border: 1px solid var(--border);

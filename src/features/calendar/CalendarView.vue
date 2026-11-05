@@ -972,10 +972,8 @@ function isTodayColumn(date: Date): boolean {
   align-items: center;
   gap: 6px;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .page-title {
@@ -1416,11 +1414,9 @@ function isTodayColumn(date: Date): boolean {
 .week-allday-label {
   display: grid;
   place-items: center;
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--text-4);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .week-allday-col {
@@ -1580,10 +1576,8 @@ function isTodayColumn(date: Date): boolean {
   gap: 10px;
   margin-bottom: 9px;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .side-new {

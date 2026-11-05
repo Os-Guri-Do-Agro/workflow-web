@@ -43,7 +43,7 @@ const STATUS_META: Record<string, StatusMeta> = {
   },
   FAILED: {
     label: 'Precisamos de mais detalhes',
-    sub: 'Algo não bateu no processamento. Vamos olhar manualmente — fica tranquilo.',
+    sub: 'Algo não bateu no processamento. Vamos olhar manualmente, fica tranquilo.',
     color: '#EF4444',
     icon: AlertCircle,
   },
@@ -271,10 +271,8 @@ onMounted(() => load())
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--text-3);
   margin-bottom: 6px;
 }
@@ -300,8 +298,6 @@ onMounted(() => load())
   color: var(--text-3);
 }
 .meta-label {
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   font-weight: 600;
 }
 .footer-hint {

@@ -202,7 +202,7 @@ function removerAjuste(id: string) {
                 <!-- Dia sem registro vira travessão: "0s" numa coluna de horas
                      lê como defeito, não como ausência. -->
                 <span class="stm-day-worked" :class="{ 'stm-day-empty': d.workedSec === 0 }">
-                  {{ d.workedSec > 0 ? formatDurationLong(d.workedSec) : '—' }}
+                  {{ d.workedSec > 0 ? formatDurationLong(d.workedSec) : '-' }}
                 </span>
                 <span class="stm-day-target">
                   {{ d.targetSec > 0 ? formatDurationLong(d.targetSec) : 'sem meta' }}
@@ -291,8 +291,6 @@ function removerAjuste(id: string) {
 
 .stm-saldo-label {
   font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   opacity: 0.7;
 }
 
@@ -355,8 +353,6 @@ function removerAjuste(id: string) {
 
 .stm-cell-label {
   font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   opacity: 0.6;
 }
 

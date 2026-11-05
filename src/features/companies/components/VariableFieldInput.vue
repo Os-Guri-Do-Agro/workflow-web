@@ -58,7 +58,7 @@ const openUrl = () => {
       placeholder="chave"
       @input="emit('update:key', ($event.target as HTMLInputElement).value)"
     />
-    <div v-else class="field-key-static">{{ field.key || '—' }}</div>
+    <div v-else class="field-key-static">{{ field.key || '-' }}</div>
 
     <div class="field-value-wrap">
       <input

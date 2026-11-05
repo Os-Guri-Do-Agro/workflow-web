@@ -9,6 +9,8 @@ const { theme } = useUiPreferences()
   <Toaster
     :theme="theme"
     position="bottom-right"
+    :mobile-offset="{ bottom: 'calc(16px + var(--shell-bottom-inset, 0px))' }"
+    :offset="{ bottom: 'calc(24px + var(--shell-bottom-inset, 0px))' }"
     rich-colors
     close-button
     :duration="3200"

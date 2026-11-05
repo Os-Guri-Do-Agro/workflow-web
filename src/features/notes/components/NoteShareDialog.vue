@@ -468,10 +468,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
   display: block;
   margin-bottom: 8px;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 
 .share__people {

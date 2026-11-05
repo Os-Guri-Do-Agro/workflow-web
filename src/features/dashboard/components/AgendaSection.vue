@@ -20,6 +20,19 @@ const upcoming = computed<UpcomingEvent[]>(() => {
   return []
 })
 
+// O tipo chega como enum da API (MEETING, DEADLINE...). Na tela vai o nome em
+// português, o mesmo do Calendário.
+const TYPE_LABEL: Record<string, string> = {
+  MEETING: 'Reunião',
+  DEADLINE: 'Prazo',
+  REMINDER: 'Lembrete',
+  SPRINT: 'Sprint',
+  RETROSPECTIVE: 'Retrospectiva',
+  TASK: 'Tarefa',
+  PERSONAL: 'Pessoal',
+}
+const typeLabel = (type: string) => TYPE_LABEL[type] ?? 'Evento'
+
 // Eventos são instantes reais → usa só ev.startDate (backend padronizado). Protege contra Invalid Date.
 const eventDate = (ev: UpcomingEvent): Date | null => {
   if (!ev.startDate) return null
@@ -81,7 +94,7 @@ const timeLabel = (ev: UpcomingEvent) =>
             {{ timeLabel(ev) }}
           </span>
         </div>
-        <div v-if="ev.type" class="agenda-type">{{ ev.type }}</div>
+        <div v-if="ev.type" class="agenda-type">{{ typeLabel(ev.type) }}</div>
       </article>
     </div>
   </section>
@@ -189,13 +202,12 @@ const timeLabel = (ev: UpcomingEvent) =>
 
 .agenda-type {
   font-size: 12px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {

@@ -139,10 +139,8 @@ const html = computed(() => renderMarkdown(contentQuery.data.value?.content ?? '
   background: transparent;
   color: var(--text-3);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   cursor: pointer;
   text-align: left;
 }

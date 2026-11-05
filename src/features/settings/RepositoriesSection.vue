@@ -73,7 +73,7 @@ const submitCreate = async () => {
       ownerLogin: draft.value.ownerLogin.trim(),
       token: draft.value.token.trim(),
     })
-    toastSuccess('Conexão criada — sincronizando repositórios…')
+    toastSuccess('Conexão criada, sincronizando repositórios…')
     showCreate.value = false
     draft.value = { ownerLogin: '', token: '' }
     await load()
@@ -693,10 +693,8 @@ onMounted(() => load())
   gap: 5px;
 }
 .ff label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 .fi {

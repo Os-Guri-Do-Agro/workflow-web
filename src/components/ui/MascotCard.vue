@@ -132,10 +132,8 @@ withDefaults(
   align-items: center;
   gap: 6px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .mascot-actions {

@@ -504,7 +504,7 @@ function submit() {
                 </div>
                 <span v-if="targetError" class="qed-hint qed-hint--err">{{ targetError }}</span>
                 <span v-else-if="isEdit" class="qed-hint">
-                  O mesmo QR impresso passa a apontar para este link — sem reimprimir.
+                  O mesmo QR impresso passa a apontar para este link, sem reimprimir.
                 </span>
               </label>
 
@@ -744,10 +744,8 @@ function submit() {
 .qed-eyebrow {
   margin: 0 0 2px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .qed-title {
@@ -965,8 +963,6 @@ function submit() {
   font-size: 12px;
   font-weight: 750;
   color: var(--text);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .qed-presets {

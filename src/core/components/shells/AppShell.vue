@@ -4,7 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import CommandShell from './CommandShell.vue'
 import FocusShell from './FocusShell.vue'
 import CanvasShell from './CanvasShell.vue'
+import MobileShell from './MobileShell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
+import { useCompactViewport } from '@/composables/useCompactViewport'
 /**
  * Assíncrono porque o painel renderiza markdown da IA, e o markdown puxa o
  * `highlight.js` (314 KB). Sendo import estático aqui, o destaque de sintaxe
@@ -170,7 +172,22 @@ const bare = computed(
     route.name === 'public-note',
 )
 
+// Tela pequena ganha a moldura de celular em qualquer variante: a variante é
+// preferência de desktop e nenhuma das três cabe abaixo de 900px.
+//
+// A troca é decidida na carga e a cada navegação, NUNCA no meio de uma página:
+// a página mora dentro do shell, e trocar de shell desmonta e remonta a página
+// inteira. Girar um iPad (768 em retrato, 1024 em paisagem) ou encaixar a janela
+// em meia tela perderia edição inline e formulário aberto (revisão cruzada de
+// 2026-11-05). Até a próxima navegação, a moldura atual continua funcional.
+const liveCompact = useCompactViewport()
+const compact = ref(liveCompact.value)
+router.afterEach(() => {
+  compact.value = liveCompact.value
+})
+
 const ActiveShell = computed(() => {
+  if (compact.value) return MobileShell
   if (shell.value === 'focus') return FocusShell
   // Canvas escondido (feature flag off): quem tinha ui.shell='canvas' no
   // localStorage cai no CommandShell em vez de uma tela quebrada.
@@ -240,7 +257,9 @@ const openPalette = () => paletteRef.value?.open()
     </component>
     <CommandPalette ref="paletteRef" />
     <CompanyCreateOverlay />
-    <AssistantLauncher />
+    <!-- No celular o botão flutuante cobria conteúdo da lista; lá o assistente
+         abre pela folha "Mais" da tab bar. -->
+    <AssistantLauncher v-if="!compact" />
     <AssistantPanel />
     <WelcomeGuide />
     <!-- Recados do Nevo (canto inferior direito). O container empilha e fica
@@ -263,7 +282,7 @@ const openPalette = () => paletteRef.value?.open()
     <StreakCelebration />
     <!-- Easter egg Windows XP (só quando o modo XP está ligado): ícones de área
          de trabalho, title bar da "janela" de conteúdo e barra de tarefas. -->
-    <template v-if="xp">
+    <template v-if="xp && !compact">
       <XpDesktop />
       <XpWindowChrome />
       <XpTaskbar />
@@ -285,7 +304,7 @@ const openPalette = () => paletteRef.value?.open()
 .nevo-stack {
   position: fixed;
   right: 22px;
-  bottom: 90px;
+  bottom: calc(90px + var(--shell-bottom-inset, 0px));
   z-index: 95;
   display: flex;
   flex-direction: column-reverse;
@@ -298,7 +317,7 @@ const openPalette = () => paletteRef.value?.open()
   .nevo-stack {
     right: 16px;
     left: 16px;
-    bottom: 84px;
+    bottom: calc(84px + var(--shell-bottom-inset, 0px));
     align-items: stretch;
   }
 }

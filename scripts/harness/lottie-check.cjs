@@ -1,0 +1,16 @@
+const { chromium } = require('playwright-core')
+const fs = require('fs')
+;(async () => {
+  const seed = JSON.parse(fs.readFileSync('seed-out.json'))
+  const t = (await (await fetch('http://127.0.0.1:3599/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'bia@nevo.test', password: 'nevo1234' }) })).json()).accessToken
+  const b = await chromium.launch({ channel: 'msedge', headless: true })
+  const c = await b.newContext()
+  await c.addInitScript(([t, co]) => { localStorage.setItem('token', t); localStorage.setItem('activeCompany', co); localStorage.setItem('onboarding.completed', '1'); localStorage.setItem('onboarding.autoShown', '1') }, [t, seed.companies.pet])
+  const p = await c.newPage()
+  await p.goto('http://localhost:5180/')
+  const sample = async () => p.evaluate(() => { const g = document.querySelector('.lottie svg g'); return g ? g.outerHTML.length : -1 })
+  await p.waitForSelector('.lottie svg', { timeout: 10000 }).catch(() => {})
+  const s1 = await sample(); await p.waitForTimeout(250); const s2 = await sample(); await p.waitForTimeout(1500); const s3 = await sample()
+  console.log('lottie svg markup sizes over time:', s1, s2, s3)
+  await b.close()
+})()

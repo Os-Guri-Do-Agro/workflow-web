@@ -32,8 +32,10 @@ const sharedRadiusAndShadow = {
   // no board e escolheu a Figtree comparando as duas nos mesmos cards. É
   // variável 300–900, então os pesos intermediários (550/650…) renderizam
   // exatos. Inter fica de fallback enquanto a woff2 não chega.
+  // `--font-family-user` é a escolha da pessoa em Configurações > Aparência
+  // (applyFontFamily); sem escolha, vale a Figtree.
   '--font-family':
-    '"Figtree Variable", "Figtree", "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    'var(--font-family-user, "Figtree Variable", "Figtree", "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif)',
   '--font-mono':
     'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
   // Cores fixas de identidade da marca (o mascote xícara). Não variam por tema:
@@ -390,6 +392,88 @@ export function applyFontScale(scale: FontScale = 1): void {
   // 16px é o tamanho raiz padrão dos browsers; escalamos a partir dele.
   root.style.fontSize = `${16 * scale}px`
   root.setAttribute('data-font-scale', String(scale))
+}
+
+// ── Fonte do app (spec v2-mobile-e-home, T2) ─────────────────────────────────
+
+export type FontFamilyName = 'figtree' | 'plex' | 'source' | 'atkinson' | 'system'
+
+export interface FontFamilyOption {
+  value: FontFamilyName
+  label: string
+  /** Por que escolher esta, em uma linha. */
+  desc: string
+  /** Pilha CSS. `null` = a padrão do token (Figtree). */
+  stack: string | null
+  /** Carrega a woff2 sob demanda: só quem escolhe a fonte baixa a fonte. */
+  load?: () => Promise<unknown>
+}
+
+const SYSTEM_STACK = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
+
+/**
+ * A Figtree segue padrão (escolhida pelo time em set/2026 comparando nos
+ * mesmos cards). As outras existem para o time comparar no uso real antes de
+ * trocar o padrão, como a memória do projeto pede para mudança de fonte.
+ */
+export const FONT_FAMILIES: readonly FontFamilyOption[] = [
+  { value: 'figtree', label: 'Figtree', desc: 'A atual: redonda e leve.', stack: null },
+  {
+    value: 'plex',
+    label: 'IBM Plex Sans',
+    desc: 'Cara de ferramenta séria, desenho próprio.',
+    stack: `"IBM Plex Sans Variable", "IBM Plex Sans", ${SYSTEM_STACK}`,
+    load: () => import('@fontsource-variable/ibm-plex-sans'),
+  },
+  {
+    value: 'source',
+    label: 'Source Sans 3',
+    desc: 'Neutra e confortável em texto pequeno.',
+    stack: `"Source Sans 3 Variable", "Source Sans 3", ${SYSTEM_STACK}`,
+    load: () => import('@fontsource-variable/source-sans-3'),
+  },
+  {
+    value: 'atkinson',
+    label: 'Atkinson Hyperlegible',
+    desc: 'Feita para legibilidade máxima: 1, l e I não se confundem.',
+    stack: `"Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", ${SYSTEM_STACK}`,
+    load: () => import('@fontsource-variable/atkinson-hyperlegible-next'),
+  },
+  {
+    value: 'system',
+    label: 'Do sistema',
+    desc: 'A fonte do seu aparelho. Nada para baixar, a mais rápida no celular.',
+    stack: SYSTEM_STACK,
+  },
+] as const
+
+export function fontFamilyOption(name: FontFamilyName): FontFamilyOption {
+  return FONT_FAMILIES.find((f) => f.value === name) ?? FONT_FAMILIES[0]!
+}
+
+/**
+ * Aplica a fonte escolhida. A woff2 chega antes da troca (sem piscar para a
+ * fonte do sistema no meio); se o download falhar, a pilha cai na do sistema.
+ */
+let fontRequest = 0
+
+export async function applyFontFamily(name: FontFamilyName): Promise<void> {
+  const option = fontFamilyOption(name)
+  const root = document.documentElement
+  // Trocas rápidas: só a última escolha vale, mesmo que um download antigo
+  // termine depois dela.
+  const request = ++fontRequest
+  if (!option.stack) {
+    root.style.removeProperty('--font-family-user')
+    return
+  }
+  try {
+    await option.load?.()
+  } catch {
+    // Sem a woff2, a própria pilha já termina na fonte do sistema.
+  }
+  if (request !== fontRequest) return
+  root.style.setProperty('--font-family-user', option.stack)
 }
 
 /**

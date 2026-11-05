@@ -910,8 +910,6 @@ function onTabKey(e: KeyboardEvent) {
 .sh-tier-eyebrow {
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 
@@ -1244,8 +1242,6 @@ function onTabKey(e: KeyboardEvent) {
 .sh-next-eyebrow {
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 

@@ -893,8 +893,6 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
   /* 12px no mínimo (regra 50+); em rem para seguir o aumento de fonte. */
   font-size: 0.75rem;
   font-weight: 750;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
   flex-shrink: 0;
 }
 
@@ -1252,8 +1250,6 @@ const myPlace = computed(() => (myRow.value && scores(myRow.value) ? myRow.value
   color: var(--text-4);
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .team-period-value {

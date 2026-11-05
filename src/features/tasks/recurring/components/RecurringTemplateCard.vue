@@ -266,10 +266,8 @@ const nextMonthLabel = computed(() => monthLabel(shiftMonthKey(props.monthKey, 1
 }
 
 .next-caption {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-4);
 }
 

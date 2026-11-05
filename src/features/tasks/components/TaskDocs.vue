@@ -649,10 +649,8 @@ function onDeleteDialog(open: boolean): void {
   background: transparent;
   color: var(--text-3);
   font-family: inherit;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 

@@ -217,7 +217,7 @@ const downloadAsEnv = () => {
             <div class="history-badge">Em breve</div>
             <p class="history-title">Linha do tempo de alterações</p>
             <p class="history-desc">
-              Veremos aqui quem criou, editou e apagou valores — com timestamp e snapshot. Requer
+              Veremos aqui quem criou, editou e apagou valores, com timestamp e snapshot. Requer
               evolução no backend.
             </p>
           </div>

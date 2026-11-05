@@ -188,7 +188,7 @@ export function useTimerIdleGuard() {
       body: debug
         ? `Sem atividade há ${idleSec.value}s. "${describe()}" segue gravando.`
         : limitado
-          ? `Sem atividade no Nevo há ${minutes} min. "${describe()}" segue gravando — se estiver em outro programa, tudo certo.`
+          ? `Sem atividade no Nevo há ${minutes} min. "${describe()}" segue gravando. Se estiver em outro programa, tudo certo.`
           : `Sem atividade há ${minutes} min. "${describe()}" segue gravando.`,
       actions: [
         { action: 'continue', title: 'Continuar contando' },

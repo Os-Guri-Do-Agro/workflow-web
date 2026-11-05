@@ -266,10 +266,8 @@ const goSettings = () => router.push('/settings')
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--text-3);
   margin: 0 4px;
 }

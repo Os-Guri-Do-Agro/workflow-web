@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { refDebounced } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { FileText, FileStack, LayoutGrid, List, Plus, Search, X } from 'lucide-vue-next'
+import { ChevronDown, FileText, FileStack, LayoutGrid, List, Plus, Search, X } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -57,7 +57,27 @@ function openNote(id: string) {
 
 function selectFolder(id: string | null) {
   selectedFolder.value = selectedFolder.value === id ? null : id
+  // No celular a árvore fecha depois da escolha: o que a pessoa quer ver é a lista.
+  foldersOpen.value = false
 }
+
+/**
+ * Celular (spec v2-mobile-e-home, N1): a árvore de pastas ocupava um bloco
+ * inteiro antes da primeira nota. Lá ela vira um botão "Pastas" com a pasta
+ * atual no rótulo; no desktop nada muda (o botão nem aparece).
+ */
+const foldersOpen = ref(false)
+function findFolder(nodes: NoteFolderNode[], id: string): NoteFolderNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    const hit = findFolder(node.children, id)
+    if (hit) return hit
+  }
+  return null
+}
+const currentFolderLabel = computed(() =>
+  selectedFolder.value ? (findFolder(tree.value, selectedFolder.value)?.name ?? 'Pasta') : 'Todas as notas',
+)
 
 function toggleFolder(id: string) {
   const next = new Set(expanded.value)
@@ -185,7 +205,7 @@ function clearFilters() {
     </header>
 
     <div class="notes__layout">
-      <aside class="notes__side">
+      <aside class="notes__side" :class="{ 'notes__side--open': foldersOpen }">
         <div class="notes__search">
           <Search :size="15" />
           <input
@@ -198,9 +218,22 @@ function clearFilters() {
 
         <button
           type="button"
+          class="notes__folders-toggle"
+          :aria-expanded="foldersOpen"
+          aria-controls="notes-folders"
+          @click="foldersOpen = !foldersOpen"
+        >
+          <FileStack :size="15" aria-hidden="true" />
+          <span class="notes__folders-label">{{ currentFolderLabel }}</span>
+          <ChevronDown :size="15" aria-hidden="true" class="notes__folders-chev" />
+        </button>
+
+        <div id="notes-folders" class="notes__folders">
+        <button
+          type="button"
           class="notes__all"
           :class="{ 'notes__all--on': selectedFolder === null }"
-          @click="selectedFolder = null"
+          @click="selectedFolder = null; foldersOpen = false"
         >
           <FileStack :size="15" />
           <span>Todas as notas</span>
@@ -230,6 +263,7 @@ function clearFilters() {
           @add-child="openCreateSubfolder"
           @drop-note="handleDropNote"
         />
+        </div>
       </aside>
 
       <section class="notes__content">
@@ -505,10 +539,8 @@ function clearFilters() {
   margin: 14px 0 4px;
   padding: 0 8px;
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .notes__side-head button {
@@ -561,10 +593,8 @@ function clearFilters() {
 .notes__section {
   margin: 4px 0 10px;
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .notes__grid {
@@ -588,12 +618,91 @@ function clearFilters() {
   font-size: 11px;
 }
 
+/* O botão de pastas só existe no celular. */
+.notes__folders-toggle {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .notes__layout {
     grid-template-columns: 1fr;
   }
   .notes__side {
     position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .notes__head {
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  .notes__sub,
+  .notes__view {
+    display: none;
+  }
+
+  .notes__create {
+    white-space: nowrap;
+  }
+
+  .notes__side {
+    display: grid;
+    gap: 8px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+  }
+
+  .notes__folders-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .notes__folders-label {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .notes__folders-chev {
+    color: var(--text-3);
+    transition: transform var(--motion-fast) var(--motion-ease);
+  }
+
+  .notes__side--open .notes__folders-chev {
+    transform: rotate(180deg);
+  }
+
+  .notes__folders {
+    display: none;
+    padding: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .notes__side--open .notes__folders {
+    display: block;
+  }
+
+  .notes__folders-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 }
 

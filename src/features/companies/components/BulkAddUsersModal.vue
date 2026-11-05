@@ -317,10 +317,8 @@ onMounted(() => {
 }
 
 .um-company-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 

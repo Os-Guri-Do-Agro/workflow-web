@@ -188,10 +188,8 @@ function submit() {
   display: block;
   margin-bottom: 6px;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
 .folder-dialog__input {

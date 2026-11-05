@@ -1,0 +1,32 @@
+const { chromium } = require('playwright-core')
+const pg = require('pg')
+const fs = require('fs')
+;(async () => {
+  const seed = JSON.parse(fs.readFileSync('seed-out.json'))
+  const db = new pg.Client({ connectionString: 'postgresql://postgres:postgres@127.0.0.1:55432/wf' })
+  await db.connect()
+  const task = (await db.query(`SELECT a.id, a.title FROM "Activity" a JOIN "Month" m ON m.id=a."monthId" JOIN "Quarter" q ON q.id=m."quarterId" WHERE q."companyId"=$1 AND a."parentId" IS NULL AND a.status <> 'DONE' LIMIT 1`, [seed.companies.sentia])).rows[0]
+  const t = (await (await fetch('http://127.0.0.1:3599/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'nicolas@nevo.test', password: 'nevo1234' }) })).json()).accessToken
+  const b = await chromium.launch({ channel: 'msedge', headless: true })
+  const c = await b.newContext({ viewport: { width: 1440, height: 900 } })
+  await c.addInitScript(([t, co]) => { localStorage.setItem('token', t); localStorage.setItem('activeCompany', co); localStorage.setItem('onboarding.completed', '1'); localStorage.setItem('onboarding.autoShown', '1'); localStorage.setItem('ui.idlePermissionPrompt', 'done') }, [t, seed.companies.pet])
+  const p = await c.newPage()
+  const headers = []
+  p.on('request', (r) => { if (r.url().includes('/comments')) headers.push(`${r.method()} ${r.headers()['x-company-id'] === seed.companies.sentia ? 'Sentia' : r.headers()['x-company-id'] === seed.companies.pet ? 'PetJourney' : r.headers()['x-company-id']}`) })
+  await p.goto(`http://localhost:5174/board?task=${task.id}&company=${seed.companies.sentia}`)
+  await p.waitForTimeout(4000)
+  const box = p.locator('.comments textarea, [class*=comment] textarea').first()
+  await box.fill('Teste de empresa certa no /board agregado')
+  await box.press('Control+Enter').catch(() => {})
+  await p.waitForTimeout(500)
+  const send = p.locator('button:has-text("Enviar"), button:has-text("Comentar")').first()
+  if (await send.count()) await send.click().catch(() => {})
+  await p.waitForTimeout(2000)
+  const row = (await db.query(`SELECT c."companyId", c.body FROM "Comment" c WHERE c."entityId"=$1 ORDER BY c."createdAt" DESC LIMIT 1`, [task.id])).rows[0]
+  const shown = await p.locator('text=Teste de empresa certa').count()
+  console.log('tarefa:', task.title)
+  console.log('requests /comments:', headers.join(' | '))
+  console.log('gravado em:', row ? (row.companyId === seed.companies.sentia ? 'Sentia (certo)' : row.companyId === seed.companies.pet ? 'PetJourney (ERRADO)' : row.companyId) : 'nada gravado')
+  console.log('aparece no painel:', shown > 0)
+  await b.close(); await db.end()
+})()

@@ -40,8 +40,6 @@ defineProps<{ title: string }>()
      Na escala máxima o título longo quebra em duas linhas, sem vazar. */
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 </style>

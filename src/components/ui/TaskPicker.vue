@@ -905,10 +905,8 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 .tp-section {
   margin: 8px 8px 3px;
   color: var(--text-4);
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
   display: flex;
   align-items: center;
   gap: 4px;
