@@ -1,9 +1,9 @@
 # Spec: v2, parte 2 (coisas úteis no dia a dia, sem IA)
 
-**Status:** Em Implementação
+**Status:** Implementado (em produção desde 05/11/2026: API 9197366 + aa3d162, front 5e45664)
 **Autor:** Nicolas (via spec-driven, Agentes 1 e 2)
 **Criado em:** 2026-11-05
-**Versão:** 0.1
+**Versão:** 0.3
 **Épico:** [workflow-v2](../../../epicos/workflow-v2.md)
 **Origem:** recorte da análise [nevo-utilidade-total-ideias.md](./nevo-utilidade-total-ideias.md). O dono pediu "coisas úteis de verdade, sem foco em IA, não quero 120 coisas".
 
@@ -51,9 +51,28 @@ Fora daqui (de propósito): agente com ações, MCP, release notes por IA, diagn
 
 Prova: `scripts/harness/uteis-e2e.cjs` (18 checagens, conferindo status, prazo e `TimeEntry` no banco do harness; repetível, devolve a tarefa para A fazer antes). Sondas de largura e do filtro do board no celular rodaram à parte.
 
+## U4 a U6 (Agente 2, revisado e reverificado pelo Agente 1)
+
+- **Senha por link:** `POST /auth/forgot-password` (sempre 200 igual, 3/min por IP, envio em segundo plano), `POST /auth/reset-password` (8 a 72 caracteres) e `POST /company/:companyId/members/:userId/access-link` (ADMIN da empresa e de todas as empresas da pessoa). Token sem estado: JWT com `purpose` e fingerprint do hash, assinado com chave derivada do `JWT_SECRET`; a troca é condicionada ao hash antigo (uso único). A `JwtStrategy` recusa token com `purpose`. Front: "Esqueci minha senha" no login, `/redefinir-senha` pública, link no cadastro e em "Pessoas e acessos".
+- **Cofre:** SECRET mascarado em toda resposta; `reveal` (um e em lote) grava `secret_revealed` antes de responder; aba Histórico; PATCH com SECRET sem valor mantém o guardado.
+- **CI:** `.github/workflows/ci.yml` nos dois repos (API: tsc, testes, build com 4 GB de heap; front: vue-tsc e vite build). Verde no primeiro push do front e no segundo da API.
+- **Prova:** 35 checagens do Agente 2 + 32 da reverificação independente na API do harness (link reutilizado, adulterado, usado como sessão; admin de uma empresa só; header trocado; revelar em lote atravessando empresa). Suíte da API: 84 suites, 1083 testes.
+
+## Decisões abertas (para o dono)
+
+1. **O link de acesso também vale para quem já tem senha.** Um ADMIN de todas as empresas da pessoa consegue trocar a senha dela e entrar como ela (inclusive notas pessoais). Fica registrado no feed (`access_link_created`). Alternativa: só para conta que nunca entrou (precisa de um "último login", que não existe hoje).
+2. **Quem revela segredo:** qualquer membro. Para "só ADMIN", trocar `SECRET_REVEAL_MIN_ROLE` em `company-variable/secret-policy.ts`.
+3. **E-mail:** sem `SENDGRID_API_KEY` e `SENDGRID_FROM` no Railway o "esqueci" não manda nada; a tela orienta pedir o link a um admin.
+
+## Achados que ficaram de fora
+
+- `/login` e `/redefinir-senha` chamam 5 rotas autenticadas sem sessão (`/time/current`, `/time/abandoned`, `/inbox`, `/inbox/unread-count`, `/streak/me`) e levam 401. Já acontecia no login; é ruído, não quebra nada.
+- `time-tracking-heartbeat.service.spec.ts` falha de vez em quando na suíte inteira (passa sozinho).
+
 ## Change Log
 
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-11-05 | 0.1 | U1 a U3 entregues e provados; U4 a U6 em andamento | Nicolas (via spec-driven, Agentes 1 e 2) |
 | 2026-11-05 | 0.2 | D6 + achados no caminho (vazamento do shell no celular, filtros do board, abas do tempo, Ctrl+K) | Nicolas (via spec-driven, Agente 1) |
+| 2026-11-05 | 0.3 | U4 a U6 revisados e reverificados; em produção; decisões abertas e achados | Nicolas (via spec-driven, Agente 1) |
