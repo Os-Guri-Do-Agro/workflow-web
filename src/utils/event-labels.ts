@@ -15,6 +15,8 @@ const ENTITY_LABEL: Record<string, string> = {
   roadmap_month: 'Roadmap',
   roadmap: 'Roadmap',
   comment: 'Comentário',
+  variable: 'Variável',
+  user: 'Pessoa',
 }
 
 /** Linha de apoio do evento da timeline (o resumo já diz o que aconteceu). */

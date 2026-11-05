@@ -14,13 +14,21 @@ import {
 } from 'lucide-vue-next'
 import authService from '@/service/auth/auth-service'
 import { useToast } from '@/composables/useToast'
+import ForgotPasswordDialog from './ForgotPasswordDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
-const email = ref('')
+const firstQuery = (raw: unknown): string => {
+  const v = Array.isArray(raw) ? raw[0] : raw
+  return typeof v === 'string' ? v : ''
+}
+// `?email=` vem da tela de criar senha: a pessoa só digita a senha nova.
+const email = ref(firstQuery(route.query.email))
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
+const forgotOpen = ref(false)
+const passwordJustSet = firstQuery(route.query.senha) === 'criada'
 const { error: showError } = useToast()
 
 /**
@@ -92,6 +100,10 @@ const features = [
           <p class="form-sub">Entre com suas credenciais para acessar sua conta.</p>
         </header>
 
+        <p v-if="passwordJustSet" class="form-notice" role="status">
+          Senha criada. Agora entre com ela.
+        </p>
+
         <form @submit.prevent="login" class="form-body" novalidate>
           <div class="field">
             <label class="field-label" for="login-email">E-mail</label>
@@ -110,7 +122,12 @@ const features = [
           </div>
 
           <div class="field">
-            <label class="field-label" for="login-password">Senha</label>
+            <div class="field-head">
+              <label class="field-label" for="login-password">Senha</label>
+              <button type="button" class="link-btn" @click="forgotOpen = true">
+                Esqueci minha senha
+              </button>
+            </div>
             <div class="input-wrap">
               <Lock :size="15" class="input-icon" />
               <input
@@ -147,6 +164,8 @@ const features = [
         </footer>
       </div>
     </section>
+
+    <ForgotPasswordDialog v-model="forgotOpen" :initial-email="email" />
 
     <!-- Hero side -->
     <aside class="hero-side" aria-hidden="true">
@@ -270,6 +289,53 @@ const features = [
   font-size: 12px;
   font-weight: 600;
   color: var(--text-3);
+}
+
+.field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Link de texto com alvo de toque de 44px sem empurrar a linha do rótulo. */
+.link-btn {
+  position: relative;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+
+.link-btn::after {
+  content: '';
+  position: absolute;
+  inset: -14px -8px;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.link-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.form-notice {
+  margin: -12px 0 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--success) 40%, var(--border));
+  border-radius: var(--radius-sm);
 }
 
 .input-wrap {

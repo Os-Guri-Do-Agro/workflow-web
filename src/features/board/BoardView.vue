@@ -896,6 +896,39 @@ function handleDrop(columnId: ColumnStatus) {
   .kanban {
     scroll-snap-type: x mandatory;
   }
+
+  /* Celular: os filtros viram UMA fileira que rola de lado, como no Jira
+     mobile. Antes cada select caía numa linha própria, alinhado à direita, e a
+     toolbar comia um terço da tela antes da primeira tarefa. O menu do select
+     abre num portal no <body>, então a rolagem não o corta. A fileira encosta
+     nas bordas da toolbar para o item cortado na direita mostrar que tem mais. */
+  .filter-group {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    width: calc(100% + 20px);
+    margin: 0 -10px;
+    padding: 0 10px 2px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .filter-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filter-group > * {
+    flex: none;
+  }
+
+  .filter-select-wrap {
+    min-width: 0;
+  }
+
+  .mine-btn,
+  .clear-btn {
+    min-height: 36px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

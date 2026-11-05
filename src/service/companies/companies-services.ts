@@ -1,5 +1,15 @@
 import api from '../api'
 
+/** Resposta de `POST /company/:companyId/members/:userId/access-link`. */
+export interface AccessLinkResult {
+  /** Endereço completo para a pessoa criar a senha (vale 7 dias, uso único). */
+  link: string
+  /** `true` quando a API também mandou o link por e-mail (SendGrid configurado). */
+  emailed: boolean
+  expiresAt: string
+  user: { id: string; name: string; email: string }
+}
+
 class companieService {
   private async handleRequest<T>(request: Promise<{ data: T }>, errorMessage: string): Promise<T> {
     try {
@@ -88,6 +98,21 @@ class companieService {
         },
       }),
       'Erro ao adicionar membros à empresa em lote',
+    )
+  }
+
+  /**
+   * Link de primeiro acesso de um membro. Só ADMIN da empresa (e de todas as
+   * empresas da pessoa). O `x-company-id` vai explícito com a empresa do card:
+   * a empresa ativa do topo pode ser outra, onde quem clica nem é admin.
+   */
+  createAccessLink(companyId: string, userId: string): Promise<AccessLinkResult> {
+    return this.handleRequest(
+      // Corpo `{}`, não `null`: o body-parser estrito do Express recusa "null" com 400.
+      api.post(`/company/${companyId}/members/${userId}/access-link`, {}, {
+        headers: { 'x-company-id': companyId },
+      }),
+      'Erro ao gerar link de acesso',
     )
   }
 

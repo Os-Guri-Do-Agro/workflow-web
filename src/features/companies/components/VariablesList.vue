@@ -4,7 +4,7 @@ import VariableRow from './VariableRow.vue'
 type VarType = 'TEXT' | 'URL' | 'SECRET'
 interface VariableField {
   key: string
-  value: string
+  value: string | null
   type: VarType
 }
 interface Variable {
@@ -77,5 +77,17 @@ const emit = defineEmits<{
   font-size: 12px;
   font-weight: 700;
   color: var(--text-4);
+}
+
+/* Celular: as colunas fixas engoliam o nome (0px a 375). Ficam ícone, nome,
+   tipos e ações; o mesmo grid do VariableRow. */
+@media (max-width: 640px) {
+  .list-header {
+    grid-template-columns: 40px minmax(0, 1fr) auto 36px;
+  }
+  .list-header > :nth-child(4),
+  .list-header > :nth-child(5) {
+    display: none;
+  }
 }
 </style>

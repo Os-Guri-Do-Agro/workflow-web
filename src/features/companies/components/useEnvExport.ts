@@ -1,10 +1,19 @@
+import companyVariableService from '@/service/companies/variables/variables-services'
+import { copyText } from '@/utils/clipboard'
+
 export interface VariableField {
   key: string
-  value: string
+  /** `null` = SECRET mascarado pela API (ainda não revelado). */
+  value: string | null
   type: 'TEXT' | 'SECRET' | 'URL'
+  masked?: boolean
+  hint?: string | null
+  /** Chave que o campo tinha ao carregar (o rascunho do drawer pode renomear). */
+  originalKey?: string
 }
 
 export interface VariableLike {
+  id?: string
   name: string
   description?: string
   fields: VariableField[]
@@ -30,6 +39,40 @@ const toEnvKey = (variableName: string, fieldKey: string): string => {
   return `${prefix}_${normalized}`
 }
 
+const isMaskedSecret = (f: VariableField) => f.type === 'SECRET' && f.value == null
+
+/**
+ * Preenche os segredos mascarados pela revelação em lote da API, que registra
+ * no Histórico de cada variável quem exportou. Sem segredo mascarado, nenhuma
+ * requisição sai. Falha (rede, 403) sobe para quem chamou: exportar `.env` com
+ * a senha em branco seria pior do que não exportar.
+ */
+async function withSecrets(variables: VariableLike[]): Promise<VariableLike[]> {
+  const ids = variables
+    .filter((v) => v.id && v.fields?.some(isMaskedSecret))
+    .map((v) => v.id as string)
+  if (!ids.length) return variables
+
+  const revealed = await companyVariableService.revealVariables(ids)
+  const byId = new Map(revealed.map((r) => [r.id, r]))
+
+  return variables.map((v) => {
+    const r = v.id ? byId.get(v.id) : undefined
+    if (!r) return v
+    // Chave repetida na mesma variável sai na ordem em que foi guardada.
+    const queue = new Map<string, string[]>()
+    for (const f of r.fields) queue.set(f.key, [...(queue.get(f.key) ?? []), f.value])
+    return {
+      ...v,
+      fields: v.fields.map((f) =>
+        isMaskedSecret(f)
+          ? { ...f, value: queue.get(f.originalKey ?? f.key)?.shift() ?? null }
+          : f,
+      ),
+    }
+  })
+}
+
 export function useEnvExport() {
   const buildEnv = (variables: VariableLike[]): string => {
     const blocks: string[] = []
@@ -46,8 +89,9 @@ export function useEnvExport() {
     return blocks.join('\n\n') + (blocks.length ? '\n' : '')
   }
 
-  const downloadEnv = (variables: VariableLike[], filename = '.env') => {
-    const content = buildEnv(variables)
+  /** Baixa o `.env`. Lança se a revelação dos segredos falhar. */
+  const downloadEnv = async (variables: VariableLike[], filename = '.env'): Promise<void> => {
+    const content = buildEnv(await withSecrets(variables))
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -59,13 +103,9 @@ export function useEnvExport() {
     URL.revokeObjectURL(url)
   }
 
-  const copyEnv = async (variables: VariableLike[]): Promise<boolean> => {
-    try {
-      await navigator.clipboard.writeText(buildEnv(variables))
-      return true
-    } catch {
-      return false
-    }
+  /** Copia o `.env`. Lança se a revelação ou a área de transferência falharem. */
+  const copyEnv = async (variables: VariableLike[]): Promise<void> => {
+    await copyText(withSecrets(variables).then(buildEnv))
   }
 
   return { buildEnv, downloadEnv, copyEnv, toEnvKey }

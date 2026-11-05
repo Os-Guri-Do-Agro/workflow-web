@@ -1400,6 +1400,29 @@ async function submitManual() {
   box-shadow: var(--shadow-sm);
 }
 
+/* Celular: as três abas dividem a largura e nunca quebram linha. Com a altura
+   fixa de 34px, "Meu tempo" quebrava em duas linhas em 360px e estourava a
+   pílula. Abaixo de 375px os ícones saem para caber. */
+@media (max-width: 640px) {
+  .tv-tabs {
+    display: flex;
+    width: 100%;
+  }
+
+  .tv-tab {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 374px) {
+  .tv-tab svg {
+    display: none;
+  }
+}
+
 /* ── Barra do timer ── */
 .tv-timer {
   display: flex;

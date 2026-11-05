@@ -106,6 +106,57 @@ export function buildMyDay(activities: readonly WorkspaceActivityLite[] | null |
   }
 }
 
+// ── Ações na própria linha (spec v2-uteis, U2) ───────────────────────────────
+
+export interface NextStep {
+  status: 'IN_PROGRESS' | 'IN_TESTING'
+  label: string
+  /** Rótulo do botão no celular, para caber na fileira da empresa e do prazo. */
+  short: string
+  /** O que o toast diz depois ("foi para Em teste"). */
+  done: string
+}
+
+/**
+ * O próximo passo que a própria pessoa dá na tarefa. Para em "Em teste" de
+ * propósito: dali em diante quem decide é quem testa (Revisados exige as três
+ * plataformas marcadas, regra da API).
+ */
+export function nextStepOf(status: string): NextStep | null {
+  const s = status === 'TESTING' ? 'IN_TESTING' : status
+  if (s === 'TODO') return { status: 'IN_PROGRESS', label: 'Começar', short: 'Começar', done: 'foi para Em andamento' }
+  if (s === 'IN_PROGRESS') return { status: 'IN_TESTING', label: 'Mandar pra teste', short: 'Pra teste', done: 'foi para Em teste' }
+  return null
+}
+
+export interface PostponeOption {
+  key: 'tomorrow' | 'monday' | 'week'
+  label: string
+  /** YYYY-MM-DD no dia civil local. */
+  date: string
+}
+
+function localDateOnly(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/** Amanhã, a próxima segunda (nunca hoje) e daqui a 7 dias. */
+export function postponeOptions(now: Date = new Date()): PostponeOption[] {
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const plus = (days: number) => {
+    const d = new Date(base)
+    d.setDate(d.getDate() + days)
+    return d
+  }
+  const untilMonday = ((8 - base.getDay()) % 7) || 7
+  return [
+    { key: 'tomorrow', label: 'Amanhã', date: localDateOnly(plus(1)) },
+    { key: 'monday', label: 'Próxima segunda', date: localDateOnly(plus(untilMonday)) },
+    { key: 'week', label: 'Daqui a uma semana', date: localDateOnly(plus(7)) },
+  ]
+}
+
 /** Link que abre a tarefa no painel sobre o board, valendo para qualquer empresa. */
 export function myDayTaskLink(activity: WorkspaceActivityLite): string {
   const params = new URLSearchParams({ task: activity.id })

@@ -11,7 +11,7 @@ type VarType = 'TEXT' | 'URL' | 'SECRET'
 
 interface VariableField {
   key: string
-  value: string
+  value: string | null
   type: VarType
 }
 
@@ -366,5 +366,19 @@ const editorName = computed(() => props.variable.updatedBy?.name?.trim() || '')
 
 .menu-title--danger {
   color: var(--err);
+}
+
+/* Celular: sem as colunas de campos e de atualizado, o nome ganha o espaço. */
+@media (max-width: 640px) {
+  .var-row,
+  .var-row--compact,
+  .var-row--comfortable {
+    grid-template-columns: 40px minmax(0, 1fr) auto 36px;
+    gap: 10px;
+  }
+  .row-fields,
+  .row-updated {
+    display: none;
+  }
 }
 </style>

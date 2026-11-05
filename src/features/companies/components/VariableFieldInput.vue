@@ -1,14 +1,28 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Eye, EyeOff, Copy, ExternalLink, Trash2, Check, ChevronDown } from 'lucide-vue-next'
+/**
+ * Linha chave / valor / tipo de uma variável.
+ *
+ * SECRET chega da API mascarado (`value: null`). Enquanto ninguém revela nem
+ * digita, o campo fica vazio com "••••••" (e a pista dos 2 últimos, quando a
+ * API manda). "Revelar" e "Copiar" passam pela API (quem fez fica no
+ * Histórico): esta linha só pede, quem chama é o drawer. Digitar num segredo
+ * mascarado é trocar o valor; o que não foi digitado nunca é reenviado.
+ */
+import { computed, ref } from 'vue'
+import { Eye, EyeOff, Copy, ExternalLink, Trash2, Check, ChevronDown, Loader2 } from 'lucide-vue-next'
 import VariableTypeChip from './VariableTypeChip.vue'
 
 type VarType = 'TEXT' | 'URL' | 'SECRET'
 
 const props = defineProps<{
-  field: { key: string; value: string; type: VarType }
+  field: { key: string; value: string | null; type: VarType; hint?: string | null }
   modelKey?: string
+  /** O segredo está à vista agora (some sozinho em 30 s, quem controla é o pai). */
   reveal?: boolean
+  /** Valor que a API revelou, enquanto `field.value` continua null (não editado). */
+  revealedValue?: string | null
+  /** Revelação em andamento. */
+  revealing?: boolean
   editable?: boolean
 }>()
 
@@ -19,6 +33,8 @@ const emit = defineEmits<{
   remove: []
   'toggle-reveal': []
   copy: [value: string]
+  /** Copiar um segredo mascarado: o pai revela pela API e copia. */
+  'copy-secret': []
 }>()
 
 const showTypeMenu = ref(false)
@@ -26,17 +42,42 @@ const copied = ref(false)
 
 const typeOptions: VarType[] = ['TEXT', 'URL', 'SECRET']
 
-const maskedValue = () => {
-  if (props.field.type !== 'SECRET' || props.reveal) return props.field.value
-  return '•'.repeat(Math.min(props.field.value?.length || 8, 20))
+const isSecret = computed(() => props.field.type === 'SECRET')
+/** Segredo que a tela não conhece (mascarado e não digitado). */
+const isMasked = computed(() => isSecret.value && props.field.value == null)
+
+const shownValue = computed(() => {
+  if (props.field.value != null) return props.field.value
+  return props.reveal ? (props.revealedValue ?? '') : ''
+})
+
+// Curto de propósito: a coluna do valor é estreita no drawer. O "termina em"
+// fica no title e no aria-label.
+const maskedPlaceholder = computed(() =>
+  props.field.hint ? `••••••${props.field.hint}` : '••••••',
+)
+
+const staticValue = computed(() => {
+  if (isSecret.value && !props.reveal) {
+    return props.field.hint ? `••••••${props.field.hint}` : '••••••'
+  }
+  return shownValue.value
+})
+
+function flashCopied() {
+  copied.value = true
+  setTimeout(() => (copied.value = false), 1200)
 }
 
 const handleCopy = async () => {
+  if (isMasked.value && !(props.reveal && props.revealedValue != null)) {
+    emit('copy-secret')
+    return
+  }
   try {
-    await navigator.clipboard.writeText(props.field.value || '')
-    copied.value = true
-    emit('copy', props.field.value || '')
-    setTimeout(() => (copied.value = false), 1200)
+    await navigator.clipboard.writeText(shownValue.value)
+    flashCopied()
+    emit('copy', shownValue.value)
   } catch {
     /* no-op */
   }
@@ -56,6 +97,7 @@ const openUrl = () => {
       class="field-key-input"
       :value="field.key"
       placeholder="chave"
+      aria-label="Chave do campo"
       @input="emit('update:key', ($event.target as HTMLInputElement).value)"
     />
     <div v-else class="field-key-static">{{ field.key || '-' }}</div>
@@ -64,18 +106,24 @@ const openUrl = () => {
       <input
         v-if="editable"
         class="field-value-input"
-        :value="field.value"
-        :type="field.type === 'SECRET' && !reveal ? 'password' : 'text'"
-        placeholder="valor"
+        :value="shownValue"
+        :type="isSecret && !reveal ? 'password' : 'text'"
+        :placeholder="isMasked && !reveal ? maskedPlaceholder : 'valor'"
+        :aria-label="isMasked && !reveal ? `Valor secreto de ${field.key}, oculto${field.hint ? `, termina em ${field.hint}` : ''}. Digite para trocar` : `Valor de ${field.key || 'campo'}`"
+        :title="isMasked && !reveal ? (field.hint ? `Oculto, termina em ${field.hint}. Digite para trocar` : 'Oculto. Digite para trocar') : undefined"
+        autocomplete="off"
+        spellcheck="false"
         @input="emit('update:value', ($event.target as HTMLInputElement).value)"
       />
       <code v-else class="field-value-static" :class="{ 'field-value-static--url': field.type === 'URL' }">
-        {{ maskedValue() }}
+        {{ staticValue }}
       </code>
     </div>
 
     <div class="field-type">
-      <v-menu v-model="showTypeMenu" location="bottom end">
+      <!-- Acima do drawer (4500) e do AppDialog (5000): o padrão do Vuetify
+           (2000) abria o menu atrás dos dois. -->
+      <v-menu v-model="showTypeMenu" location="bottom end" :z-index="5100">
         <template #activator="{ props: menuProps }">
           <button v-bind="menuProps" class="type-btn" :disabled="!editable">
             <VariableTypeChip :type="field.type" :show-label="true" />
@@ -99,25 +147,46 @@ const openUrl = () => {
 
     <div class="field-actions">
       <button
-        v-if="field.type === 'SECRET'"
-        class="act-btn"
-        :title="reveal ? 'Ocultar' : 'Revelar'"
+        v-if="isSecret"
+        class="act-btn act-btn--text"
+        type="button"
+        :disabled="revealing"
+        :aria-label="reveal ? `Ocultar ${field.key}` : `Revelar ${field.key}`"
+        :title="reveal ? 'Ocultar' : 'Revelar (fica no histórico)'"
         @click="emit('toggle-reveal')"
       >
-        <component :is="reveal ? EyeOff : Eye" :size="13" />
+        <Loader2 v-if="revealing" :size="13" class="act-spin" />
+        <component :is="reveal ? EyeOff : Eye" v-else :size="13" />
+        <span>{{ reveal ? 'Ocultar' : 'Revelar' }}</span>
       </button>
       <button
         v-if="field.type === 'URL' && field.value"
         class="act-btn"
+        type="button"
         title="Abrir URL"
+        aria-label="Abrir URL"
         @click="openUrl"
       >
         <ExternalLink :size="13" />
       </button>
-      <button class="act-btn" :title="copied ? 'Copiado!' : 'Copiar valor'" @click="handleCopy">
+      <button
+        class="act-btn"
+        type="button"
+        :disabled="revealing"
+        :title="copied ? 'Copiado!' : isMasked ? 'Copiar (revela e fica no histórico)' : 'Copiar valor'"
+        :aria-label="copied ? 'Copiado' : `Copiar ${field.key || 'valor'}`"
+        @click="handleCopy"
+      >
         <component :is="copied ? Check : Copy" :size="13" :class="{ 'act-success': copied }" />
       </button>
-      <button v-if="editable" class="act-btn act-btn--danger" title="Remover campo" @click="emit('remove')">
+      <button
+        v-if="editable"
+        class="act-btn act-btn--danger"
+        type="button"
+        title="Remover campo"
+        aria-label="Remover campo"
+        @click="emit('remove')"
+      >
         <Trash2 :size="13" />
       </button>
     </div>
@@ -127,7 +196,7 @@ const openUrl = () => {
 <style scoped>
 .field-input-row {
   display: grid;
-  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.6fr) auto auto;
+  grid-template-columns: minmax(96px, 0.9fr) minmax(0, 1.6fr) auto auto;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
@@ -144,6 +213,7 @@ const openUrl = () => {
 .field-key-input,
 .field-value-input {
   width: 100%;
+  min-width: 0;
   background: transparent;
   border: none;
   outline: none;
@@ -156,6 +226,11 @@ const openUrl = () => {
 .field-key-input::placeholder,
 .field-value-input::placeholder {
   color: var(--text-4);
+}
+
+.field-value-input::placeholder {
+  font-family: var(--font-family);
+  letter-spacing: 0.02em;
 }
 
 .field-key-static {
@@ -227,8 +302,9 @@ const openUrl = () => {
 }
 
 .act-btn {
-  width: 26px;
-  height: 26px;
+  position: relative;
+  min-width: 28px;
+  height: 28px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -237,15 +313,40 @@ const openUrl = () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   font-family: inherit;
   transition:
     background var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease);
 }
 
-.act-btn:hover {
+/* 28px de desenho, 44px de toque, sem empurrar a linha. */
+.act-btn::after {
+  content: '';
+  position: absolute;
+  inset: -8px -2px;
+}
+
+.act-btn--text {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.act-btn:hover:not(:disabled) {
   background: var(--surface-2);
   color: var(--text);
+}
+
+.act-btn:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.act-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .act-btn--danger:hover {
@@ -255,5 +356,46 @@ const openUrl = () => {
 
 .act-success {
   color: var(--success);
+}
+
+.act-spin {
+  animation: act-spin 0.85s linear infinite;
+}
+
+@keyframes act-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 520px) {
+  .field-input-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'key type'
+      'value value'
+      'actions actions';
+    row-gap: 6px;
+  }
+  .field-key-input,
+  .field-key-static {
+    grid-area: key;
+  }
+  .field-value-wrap {
+    grid-area: value;
+  }
+  .field-type {
+    grid-area: type;
+  }
+  .field-actions {
+    grid-area: actions;
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .act-spin {
+    animation-duration: 1.8s;
+  }
 }
 </style>

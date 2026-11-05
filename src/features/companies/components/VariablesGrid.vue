@@ -6,7 +6,7 @@ import VariableTypeChip from './VariableTypeChip.vue'
 type VarType = 'TEXT' | 'URL' | 'SECRET'
 interface VariableField {
   key: string
-  value: string
+  value: string | null
   type: VarType
 }
 interface Variable {

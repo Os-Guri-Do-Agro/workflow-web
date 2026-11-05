@@ -158,6 +158,11 @@ onBeforeUnmount(() => document.documentElement.style.removeProperty('--shell-bot
 <style scoped>
 .mobile-shell {
   display: grid;
+  /* Coluna presa à largura da tela. Sem isto a coluna implícita (auto) crescia
+     até o min-content do topo (o nome inteiro da empresa conta, mesmo com
+     reticências) e TODO o conteúdo ficava ~8px mais largo que a tela, cortado
+     na direita pelo overflow abaixo. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
   height: 100dvh;
@@ -206,6 +211,15 @@ onBeforeUnmount(() => document.documentElement.style.removeProperty('--shell-bot
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
+}
+
+/* Tela estreita (iPhone SE e mini, Android de 360px): a marca sai antes do nome
+   da empresa virar "PetJou...". O avatar da empresa fica ao lado e a aba
+   Início leva para a home; os alvos de toque de 44px não encolhem. */
+@media (max-width: 389px) {
+  .m-top > .brand-mark {
+    display: none;
+  }
 }
 
 .m-main {

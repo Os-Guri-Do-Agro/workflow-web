@@ -62,7 +62,8 @@ export const AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as co
 export interface CreateUserInput {
   name: string
   email: string
-  password: string
+  /** Opcional: sem senha, a pessoa cria a dela pelo link de primeiro acesso. */
+  password?: string
   role?: string
 }
 

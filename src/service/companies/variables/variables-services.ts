@@ -1,5 +1,22 @@
 import api from '../../api'
 
+/** Resposta do `reveal`: só os campos SECRET, já decifrados. */
+export interface RevealedVariable {
+  id: string
+  name: string
+  fields: { key: string; value: string }[]
+}
+
+/** Evento do Histórico da variável (`GET /company-variable/:id/history`). */
+export interface VariableHistoryEvent {
+  id: string
+  verb: string
+  summary: string
+  createdAt: string
+  actorId: string
+  actor: { id: string; name: string; email: string } | null
+}
+
 class companyVariableService {
   private async handleRequest<T>(request: Promise<{ data: T }>, errorMessage: string): Promise<T> {
     try {
@@ -64,6 +81,33 @@ class companyVariableService {
         },
       }),
       'Erro ao deletar variável',
+    )
+  }
+
+  /**
+   * Revela um campo SECRET (ou todos, sem `field`). A API grava quem viu ANTES
+   * de responder; é o único caminho para o valor, porque a listagem chega
+   * mascarada.
+   */
+  revealVariable(id: string, field?: string): Promise<RevealedVariable> {
+    return this.handleRequest(
+      api.post(`/company-variable/${id}/reveal`, field ? { field } : {}),
+      'Erro ao revelar segredo',
+    )
+  }
+
+  /** Revela os segredos de várias variáveis de uma vez (exportar `.env`). */
+  revealVariables(ids: string[]): Promise<RevealedVariable[]> {
+    return this.handleRequest(
+      api.post('/company-variable/reveal', { ids }),
+      'Erro ao revelar segredos',
+    )
+  }
+
+  getVariableHistory(id: string): Promise<VariableHistoryEvent[]> {
+    return this.handleRequest(
+      api.get(`/company-variable/${id}/history`),
+      'Erro ao buscar histórico da variável',
     )
   }
 

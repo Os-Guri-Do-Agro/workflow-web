@@ -22,8 +22,20 @@ import {
   MessageSquare,
   Sparkles,
   Compass,
+  KanbanSquare,
+  ListTodo,
+  Timer,
+  NotebookPen,
+  Plus,
+  CircleCheck,
   type LucideIcon,
 } from 'lucide-vue-next'
+import { useWorkspaceDashboard } from '@/composables/useWorkspaceDashboard'
+import { useNavQuarters } from '@/composables/useNavQuarters'
+import { currentMonthId } from '@/core/components/shells/shared/current-month'
+import { taskKey, matchesTaskKey } from '@/features/tasks/task-key'
+import { statusSpec } from '@/features/tasks/task-meta'
+import { myDayTaskLink, type WorkspaceActivityLite } from '@/features/dashboard/my-day'
 import aiService, { type SearchHit } from '@/service/ai/ai-service'
 import { clearSession } from '@/service/api'
 import companiesServices from '@/service/companies/companies-services'
@@ -96,10 +108,64 @@ interface Command {
   section: string
   action: () => void
   keywords?: string
+  /** Sem o destaque letra a letra (tarefa achada pela chave ou pelo título). */
+  plainLabel?: boolean
 }
 
+// ─── Tarefas pela chave ou pelo título (spec v2-uteis, U1) ───────────────────
+// "PJ-K7Q2XM", "k7q2" ou "cadastro do pet" abrem a tarefa no painel, de
+// qualquer empresa. Vem do mesmo /dashboard/workspace do Meu dia (cacheado),
+// pedido só com a paleta aberta.
+const { data: workspaceData } = useWorkspaceDashboard(isOpen)
+const { quarters: navQuarters } = useNavQuarters()
+const tasksMonthPath = computed(() => {
+  const id = currentMonthId(navQuarters.value)
+  return id ? `/tasks/${id}` : '/board'
+})
+
+const normalizeText = (t: string) =>
+  t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+const taskCommands = computed<Command[]>(() => {
+  const q = query.value.trim()
+  if (q.length < 2) return []
+  const nq = normalizeText(q)
+  const list = ((workspaceData.value as { activities?: WorkspaceActivityLite[] } | undefined)?.activities ?? [])
+  const hits: { item: WorkspaceActivityLite; key: string | null; rank: number }[] = []
+  for (const item of list) {
+    const key = taskKey({ id: item.id }, item.companyName)
+    const byKey = matchesTaskKey(key, q)
+    const title = normalizeText(item.title)
+    const byTitle = title.includes(nq)
+    if (!byKey && !byTitle) continue
+    const closed = item.status === 'DONE'
+    // Chave exata primeiro, depois chave parcial, depois título que começa
+    // com o termo; as abertas antes das concluídas.
+    const rank = (key && key === q.toUpperCase() ? 0 : byKey ? 1 : title.startsWith(nq) ? 2 : 3) + (closed ? 10 : 0)
+    hits.push({ item, key, rank })
+  }
+  return hits
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, 8)
+    .map(({ item, key }) => ({
+      id: `task-${item.id}`,
+      label: item.title,
+      hint: [key, item.companyName, statusSpec(item.status).label].filter(Boolean).join(' · '),
+      icon: item.status === 'DONE' ? CircleCheck : ListTodo,
+      section: 'Tarefas',
+      plainLabel: true,
+      action: () => go(myDayTaskLink(item)),
+    }))
+})
+
 const staticCommands = computed<Command[]>(() => [
-  { id: 'nav-dash', label: 'Dashboard', hint: 'Visão geral', icon: LayoutDashboard, section: 'Navegação', keywords: 'home inicio painel', action: () => go('/') },
+  { id: 'nav-dash', label: 'Dashboard', hint: 'Visão geral', icon: LayoutDashboard, section: 'Navegação', keywords: 'home inicio painel meu dia', action: () => go('/') },
+  { id: 'nav-board', label: 'Board', hint: 'Todas as empresas', icon: KanbanSquare, section: 'Navegação', keywords: 'kanban quadro tarefas todas', action: () => go('/board') },
+  { id: 'nav-tasks', label: 'Tarefas do mês', hint: 'Board do mês da empresa ativa', icon: ListTodo, section: 'Navegação', keywords: 'tarefas mes kanban lista agenda', action: () => go(tasksMonthPath.value) },
+  { id: 'nav-time', label: 'Meu tempo', hint: 'Timer e banco de horas', icon: Timer, section: 'Navegação', keywords: 'timer cronometro horas tempo banco', action: () => go('/time') },
+  { id: 'nav-notes', label: 'Notas', hint: 'Documentação do time', icon: NotebookPen, section: 'Navegação', keywords: 'notas anotacoes documentos', action: () => go('/notes') },
+  { id: 'act-new-task', label: 'Nova tarefa', hint: 'No mês atual da empresa ativa', icon: Plus, section: 'Ações', keywords: 'criar tarefa nova atividade', action: () => go(currentMonthId(navQuarters.value) ? `${tasksMonthPath.value}?new=1` : '/board') },
+  { id: 'act-new-note', label: 'Nova nota', hint: 'Abrir o editor', icon: NotebookPen, section: 'Ações', keywords: 'criar nota nova anotacao', action: () => go('/notes/new') },
   ...(isNavHidden('/roadmap')
     ? []
     : [{ id: 'nav-roadmap', label: 'Roadmap', hint: 'Eventos e atividades', icon: Milestone, section: 'Navegação', keywords: 'planejamento timeline estrategia entregas', action: () => go('/roadmap') } as Command]),
@@ -150,6 +216,9 @@ const workspaceCommands = computed<Command[]>(() =>
     icon: FileSearch,
     section: 'Busca no workspace',
     keywords: `${hit.entityType} ${hit.snippet}`,
+    // Achado por sentido (busca semântica), não por letra: destacar letras
+    // soltas do título ("P" e "j" para "pj-") só confunde.
+    plainLabel: true,
     action: () => go(hit.link),
   })),
 )
@@ -191,6 +260,8 @@ const filtered = computed(() => {
 const groups = computed(() => {
   const q = query.value.trim()
   const groupsMap = new Map<string, Command[]>()
+  // Tarefa achada pela chave ou título vem primeiro: é o que se procura mais.
+  if (taskCommands.value.length) groupsMap.set('Tarefas', taskCommands.value)
   if (!q && recentIds.value.length) {
     const recents = recentIds.value
       .map((id) => allCommands.value.find((c) => c.id === id))
@@ -394,7 +465,7 @@ defineExpose({ open })
                 <component :is="cmd.icon" :size="15" class="cmd-icon" />
                 <span class="cmd-label">
                   <span
-                    v-for="(seg, si) in highlightSegments(cmd.label, query)"
+                    v-for="(seg, si) in highlightSegments(cmd.label, cmd.plainLabel ? '' : query)"
                     :key="si"
                     :class="{ 'cmd-match': seg.match }"
                   >{{ seg.text }}</span>

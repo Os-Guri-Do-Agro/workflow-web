@@ -16,6 +16,7 @@ import { useActiveCompanyId } from '@/stores/authStores'
 import { useDashboardMetrics } from '@/composables/useDashboardMetrics'
 import { useWorkspaceDashboard } from '@/composables/useWorkspaceDashboard'
 import { useNavQuarters } from '@/composables/useNavQuarters'
+import { currentMonthId } from '@/core/components/shells/shared/current-month'
 import { useToast } from '@/composables/useToast'
 import { useAssistant } from '@/composables/useAssistant'
 import { useCurrentUser } from '@/composables/useCurrentUser'
@@ -135,7 +136,7 @@ export function useDashboardOrchestration() {
   const route = useRoute()
   const activeCompanyStore = useActiveCompanyId()
   const assistant = useAssistant()
-  const { firstMonth } = useNavQuarters()
+  const { firstMonth, quarters: navQuarters } = useNavQuarters()
   const { error: showError, success } = useToast()
 
   // ── Mode (company / workspace) ──
@@ -347,7 +348,10 @@ export function useDashboardOrchestration() {
   }
 
   const handleNewTask = () => {
-    if (firstMonth.value) router.push(`/tasks/${firstMonth.value.id}?new=1`)
+    // Mês CORRENTE da empresa ativa. Antes ia para o primeiro mês do ano
+    // (janeiro): a tarefa criada pela home caía no board errado.
+    const monthId = currentMonthId(navQuarters.value) ?? firstMonth.value?.id
+    if (monthId) router.push(`/tasks/${monthId}?new=1`)
   }
 
   const openCalendar = () => router.push('/calendar')

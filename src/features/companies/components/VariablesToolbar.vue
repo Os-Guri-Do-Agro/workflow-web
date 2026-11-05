@@ -242,7 +242,9 @@ const onSearchInput = (e: Event) => {
 .toolbar-right {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .sort-select-wrap {

@@ -95,7 +95,7 @@ Trocar a variante é feito em `/settings` e é aplicada em runtime (sem reload).
 - O `theme-color` da barra do sistema segue a cor do topo (sincronizado pelo `MobileShell` ao trocar tema/acento). O app é instalável (`public/manifest.webmanifest`).
 - Tela nova: teste em 375px no harness (`scripts/harness`) antes de fechar. Zero rolagem horizontal da página; alvo de toque de 44px.
 
-**Para rotas sem shell** (`login`, `download`, `public-file` e as públicas de board/roadmap/bug-report): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas. Rota nova sem shell precisa entrar em DOIS lugares: no `bare` do `AppShell` e no `PUBLIC_ROUTES` do router (senão o guard manda pro login).
+**Para rotas sem shell** (`login`, `reset-password` (`/redefinir-senha`), `download`, `public-file` e as públicas de board/roadmap/bug-report): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas. Rota nova sem shell precisa entrar em DOIS lugares: no `bare` do `AppShell` e no `PUBLIC_ROUTES` do router (senão o guard manda pro login).
 
 **Componentes shared dos shells** em [`core/components/shells/shared/`](./core/components/shells/shared/):
 
@@ -217,7 +217,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | OCR Digital     | [`features/ocr/OcrDigitalView.vue`](./features/ocr/OcrDigitalView.vue)                         | `/ocr`             | Ferramenta de integração (seção Ferramentas): leitura inteligente sem configuração (template opcional por empresa), acervo de documentos lidos, webhook. Spec: docs/specs/ocr-digital.md |
 | Biblioteca      | [`features/library/ResourceLibraryView.vue`](./features/library/ResourceLibraryView.vue) | `/recursos`        | Catálogo curado de bancos de vídeo, foto, trilha, ícone, 3D, edição e IA (seção Ferramentas). **Só leitura e sem escopo de empresa.** O dado vive em `features/library/marketing-resources.ts`, não no banco: é conteúdo que muda poucas vezes por ano e precisa de revisão antes de entrar, porque licença errada aqui vira problema jurídico depois. O campo que organiza a tela é a LICENÇA, não o preço — quem está editando às onze da noite precisa saber de uma olhada se pode usar em anúncio pago e se tem que creditar alguém. |
 | Acessos Públicos | [`features/public-access/PublicAccessView.vue`](./features/public-access/PublicAccessView.vue) | `/public-access`   | Tokens de API das ferramentas (seção Ferramentas): listagem agregada de todas as empresas onde o usuário é ADMIN, escopo por ferramenta (QR/OCR/ambas), revogação só pelo criador. Gate `meta.anyCompanyAdmin`. Spec: docs/specs/acessos-publicos.md |
-| Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only                                                            |
+| Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only. "Pessoas e acessos" (`CompanyMembersDialog`) gera o link de primeiro acesso por membro; o `CreateUserModal` cria sem senha, põe a pessoa na empresa ativa e já oferece o link (`components/AccessLinkBox.vue`). A pessoa cria a senha em `/redefinir-senha` (rota pública), a mesma do "Esqueci minha senha" do login |
 | Configurações   | [`features/settings/SettingsView.vue`](./features/settings/SettingsView.vue)                   | `/settings`        | Seu perfil (foto, `#perfil`), tema, acento, densidade, shell variant, cronômetro, notificações, integrações, atalhos |
 | Sequência (Nevo) | [`features/dashboard/components/StreakHero.vue`](./features/dashboard/components/StreakHero.vue) | `/#sequencia` (home) + chip nos 3 shells | Sequência diária, missões, níveis, marcos, ranking de pontos da equipe e vitrine 3D. Ver a seção **Nevo (sequência diária)**. Spec: [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md) |
 
@@ -785,11 +785,13 @@ Em [`features/companies/components/`](./features/companies/components/):
 - `VariablesToolbar.vue` — busca + filtro por tipo + sort + view toggle + export dropdown
 - `VariablesList.vue` + `VariableRow.vue` — tabela densa (view default)
 - `VariablesGrid.vue` — view em cards (opcional via toggle)
-- `VariableDrawer.vue` — drawer 480px com edit inline + tabs (Campos / Histórico)
-- `VariableCreateDialog.vue` — modal rápido de criação
-- `VariableFieldInput.vue` — linha key/value/type com copy, reveal SECRET (30s auto-hide), open URL
-- `VariableTypeChip.vue` — chip colorido por tipo (TEXT/URL/SECRET)
-- `useEnvExport.ts` — composable que gera `.env` a partir de variáveis (`KEY=value` com prefixo automático)
+- `VariableDrawer.vue`: painel lateral 480px (Teleport para o body, z 4500; dentro do `main` ele ficava atrás da topbar e da tab bar) com edit inline + tabs (Campos / Histórico, de `GET /company-variable/:id/history`)
+- `VariableCreateDialog.vue`: modal rápido de criação
+- `VariableFieldInput.vue`: linha key/value/type com copy, Revelar SECRET (30s auto-hide), open URL
+- `VariableTypeChip.vue`: chip colorido por tipo (TEXT/URL/SECRET)
+- `useEnvExport.ts`: composable que gera `.env` a partir de variáveis (`KEY=value` com prefixo automático)
+
+**Cofre (nov/2026):** a API devolve todo SECRET mascarado (`value: null`, `masked: true`, `hint` com os 2 últimos quando o valor tem 10+ caracteres). O valor só vem por `POST /company-variable/:id/reveal` (e `POST /company-variable/reveal` em lote, que o `.env` usa), e cada revelação vira um `FeedEvent` `secret_revealed` antes da resposta. Três regras: o valor revelado mora só na memória do drawer e some em 30 s ou ao fechar; o PATCH manda só o que mudou, e SECRET que ninguém digitou vai SEM `value` (com `originalKey`), para a API manter o guardado; copiar um segredo mascarado usa `utils/clipboard.ts` (`ClipboardItem` com Promise, senão o Safari recusa o `writeText` depois do `await`). Quem pode revelar: `SECRET_REVEAL_MIN_ROLE` em `workflow-api/src/company-variable/secret-policy.ts`.
 
 Atalhos globais na página Variables: `/` (foca busca), `N` (abre criação), `Esc` (fecha drawer).
 

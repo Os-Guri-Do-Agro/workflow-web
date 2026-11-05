@@ -1,15 +1,43 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { X, Plus, Download, Copy, Trash2, Camera, Save, KeyRound } from 'lucide-vue-next'
+/**
+ * Drawer da variável: edição dos campos e o Histórico.
+ *
+ * Segredo (nov/2026): a API devolve SECRET mascarado (`value: null`). Revelar e
+ * copiar um segredo pedem o valor ao `POST /company-variable/:id/reveal`, que
+ * registra quem viu. O valor revelado fica só na memória desta tela, some em
+ * 30 s ou ao fechar o drawer, e NUNCA vai no PATCH: salvar manda só o que
+ * mudou, e um SECRET que ninguém digitou vai sem `value` (a API mantém o
+ * guardado). É o que impede a edição de apagar a senha só porque a tela
+ * recebeu `null`.
+ */
+import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
+import {
+  X,
+  Plus,
+  Download,
+  Copy,
+  Trash2,
+  Camera,
+  Save,
+  KeyRound,
+  Eye,
+  Pencil,
+  PlusCircle,
+  History,
+  Loader2,
+} from 'lucide-vue-next'
 import VariableFieldInput from './VariableFieldInput.vue'
-import { useEnvExport } from './useEnvExport'
+import { useEnvExport, type VariableField } from './useEnvExport'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
+import companyVariableService, {
+  type VariableHistoryEvent,
+} from '@/service/companies/variables/variables-services'
+import { getApiErrorMessage } from '@/service/api'
+import { copyText } from '@/utils/clipboard'
+import { useToast } from '@/composables/useToast'
 
 type VarType = 'TEXT' | 'URL' | 'SECRET'
-interface VariableField {
-  key: string
-  value: string
-  type: VarType
-}
+
 interface Variable {
   id?: string
   name: string
@@ -18,6 +46,24 @@ interface Variable {
   fields: VariableField[]
   updatedAt?: string
 }
+
+/** Campo do rascunho: guarda de onde veio para o PATCH saber o que mudou. */
+interface DraftField extends VariableField {
+  uid: number
+  originalType?: VarType
+  /** O valor foi digitado nesta edição (só importa para SECRET). */
+  edited: boolean
+}
+
+interface Draft {
+  id?: string
+  name: string
+  description: string
+  imageUrl?: string
+  fields: DraftField[]
+}
+
+const REVEAL_MS = 30_000
 
 const props = defineProps<{
   modelValue: boolean
@@ -28,88 +74,264 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  save: [variable: Variable]
+  save: [id: string, patch: Record<string, unknown>]
   delete: [id: string]
   'upload-image': [file: File]
   copied: [message: string]
 }>()
 
-const activeTab = ref<'fields' | 'history'>('fields')
-const revealed = ref(new Set<number>())
-const draft = ref<Variable>(empty())
-const fileInput = ref<HTMLInputElement | null>(null)
+const { error: showError } = useToast()
 const { copyEnv, downloadEnv } = useEnvExport()
 
-function empty(): Variable {
+const activeTab = ref<'fields' | 'history'>('fields')
+const draft = ref<Draft>(emptyDraft())
+const fileInput = ref<HTMLInputElement | null>(null)
+let nextUid = 1
+
+/** Segredos à vista agora (por `uid`) e o texto que a API revelou. */
+const visible = ref(new Set<number>())
+const revealedValues = ref<Record<number, string>>({})
+const revealingUid = ref<number | null>(null)
+const timers = new Map<number, ReturnType<typeof setTimeout>>()
+
+const history = ref<VariableHistoryEvent[]>([])
+const historyLoading = ref(false)
+const historyError = ref('')
+const historyStale = ref(true)
+
+function emptyDraft(): Draft {
   return { name: '', description: '', imageUrl: '', fields: [] }
+}
+
+function toDraftField(f: VariableField): DraftField {
+  return {
+    ...f,
+    uid: nextUid++,
+    originalKey: f.key,
+    originalType: f.type,
+    edited: false,
+  }
+}
+
+function hideAll() {
+  for (const t of timers.values()) clearTimeout(t)
+  timers.clear()
+  visible.value = new Set()
+  revealedValues.value = {}
+}
+
+function hide(uid: number) {
+  const t = timers.get(uid)
+  if (t) clearTimeout(t)
+  timers.delete(uid)
+  const next = new Set(visible.value)
+  next.delete(uid)
+  visible.value = next
+  const { [uid]: _drop, ...rest } = revealedValues.value
+  revealedValues.value = rest
+}
+
+function show(uid: number) {
+  visible.value = new Set(visible.value).add(uid)
+  const old = timers.get(uid)
+  if (old) clearTimeout(old)
+  timers.set(
+    uid,
+    setTimeout(() => hide(uid), REVEAL_MS),
+  )
 }
 
 watch(
   () => props.variable,
   (v) => {
-    revealed.value.clear()
-    if (v) {
-      draft.value = {
-        ...v,
-        fields: v.fields?.length ? v.fields.map((f) => ({ ...f })) : [],
-      }
-    } else {
-      draft.value = empty()
-    }
+    hideAll()
+    draft.value = v
+      ? {
+          id: v.id,
+          name: v.name,
+          description: v.description ?? '',
+          imageUrl: v.imageUrl,
+          fields: (v.fields ?? []).map(toDraftField),
+        }
+      : emptyDraft()
     activeTab.value = 'fields'
+    history.value = []
+    historyStale.value = true
   },
   { immediate: true },
 )
 
-const hasChanges = computed(() => {
-  if (!props.variable) return false
-  const a = JSON.stringify(props.variable)
-  const b = JSON.stringify(draft.value)
-  return a !== b
+// Fechou o drawer: todo segredo revelado sai da tela e da memória. O foco entra
+// no painel ao abrir (Esc funciona sem clique) e volta para quem abriu.
+const panel = ref<HTMLElement | null>(null)
+let lastFocus: HTMLElement | null = null
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (open) {
+      lastFocus = document.activeElement as HTMLElement | null
+      void nextTick(() => panel.value?.focus())
+    } else {
+      hideAll()
+      lastFocus?.focus?.()
+      lastFocus = null
+    }
+  },
+)
+
+onBeforeUnmount(hideAll)
+
+const findField = (uid: number) => draft.value.fields.find((f) => f.uid === uid)
+
+/** Segredo guardado que a tela não conhece: o PATCH manda sem `value`. */
+const keepsStored = (f: DraftField) =>
+  f.type === 'SECRET' && f.originalType === 'SECRET' && !!f.originalKey && f.value == null
+
+/** Como o campo se compara para saber se mudou (segredo intacto = null). */
+const signature = (f: { key: string; type: VarType; value: string | null }) => ({
+  k: f.key.trim(),
+  t: f.type,
+  v: f.value,
 })
 
-const toggleReveal = (idx: number) => {
-  if (revealed.value.has(idx)) revealed.value.delete(idx)
-  else {
-    revealed.value.add(idx)
-    setTimeout(() => {
-      revealed.value.delete(idx)
-      revealed.value = new Set(revealed.value)
-    }, 30_000)
+const patch = computed<Record<string, unknown>>(() => {
+  const v = props.variable
+  if (!v) return {}
+  const out: Record<string, unknown> = {}
+  const name = draft.value.name.trim()
+  if (name && name !== v.name) out.name = name
+  if ((draft.value.description ?? '') !== (v.description ?? '')) {
+    out.description = draft.value.description
   }
-  revealed.value = new Set(revealed.value)
+  const current = draft.value.fields.filter((f) => f.key.trim())
+  const before = JSON.stringify((v.fields ?? []).map(signature))
+  const after = JSON.stringify(current.map(signature))
+  if (before !== after) {
+    out.fields = current.map((f) => {
+      const field: Record<string, unknown> = { key: f.key.trim(), type: f.type }
+      if (f.originalKey) field.originalKey = f.originalKey
+      if (f.value != null) field.value = f.value
+      return field
+    })
+  }
+  return out
+})
+
+const hasChanges = computed(() => Object.keys(patch.value).length > 0)
+
+/** Revela pela API (fica no Histórico). Devolve o valor do campo. */
+async function fetchSecret(f: DraftField): Promise<string> {
+  if (!draft.value.id || !f.originalKey) throw new Error('Salve a variável antes de revelar')
+  const res = await companyVariableService.revealVariable(draft.value.id, f.originalKey)
+  historyStale.value = true
+  // Mesma chave repetida: a ordem é a de quem tem essa chave no rascunho.
+  const sameKey = draft.value.fields.filter((x) => keepsStored(x) && x.originalKey === f.originalKey)
+  const pos = Math.max(0, sameKey.findIndex((x) => x.uid === f.uid))
+  const values = res.fields.filter((x) => x.key === f.originalKey).map((x) => x.value)
+  const value = values[pos] ?? values[0]
+  if (value === undefined) throw new Error('Segredo não encontrado')
+  return value
+}
+
+const toggleReveal = async (uid: number) => {
+  const f = findField(uid)
+  if (!f) return
+  if (visible.value.has(uid)) {
+    hide(uid)
+    return
+  }
+  // Valor digitado agora (ou campo novo): já está na tela, só mostra.
+  if (f.value != null) {
+    show(uid)
+    return
+  }
+  revealingUid.value = uid
+  try {
+    const value = await fetchSecret(f)
+    revealedValues.value = { ...revealedValues.value, [uid]: value }
+    show(uid)
+    if (activeTab.value === 'history') void loadHistory()
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não deu para revelar o segredo'))
+  } finally {
+    revealingUid.value = null
+  }
+}
+
+const copySecret = async (uid: number) => {
+  const f = findField(uid)
+  if (!f) return
+  revealingUid.value = uid
+  try {
+    const known = revealedValues.value[uid]
+    await copyText(known !== undefined ? known : fetchSecret(f))
+    emit('copied', 'Valor copiado')
+    if (activeTab.value === 'history') void loadHistory()
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não deu para copiar o segredo'))
+  } finally {
+    revealingUid.value = null
+  }
 }
 
 const addField = () => {
-  draft.value.fields.push({ key: '', value: '', type: 'TEXT' })
+  draft.value.fields.push({ key: '', value: '', type: 'TEXT', uid: nextUid++, edited: true })
 }
 
-const removeField = (idx: number) => {
-  draft.value.fields.splice(idx, 1)
+const removeField = (uid: number) => {
+  hide(uid)
+  draft.value.fields = draft.value.fields.filter((f) => f.uid !== uid)
 }
 
-const updateFieldKey = (idx: number, value: string) => {
-  const f = draft.value.fields[idx]
+const updateFieldKey = (uid: number, value: string) => {
+  const f = findField(uid)
   if (f) f.key = value
 }
 
-const updateFieldValue = (idx: number, value: string) => {
-  const f = draft.value.fields[idx]
-  if (f) f.value = value
+const updateFieldValue = (uid: number, value: string) => {
+  const f = findField(uid)
+  if (!f) return
+  // Apagou tudo num segredo guardado que não estava à vista: volta a "manter".
+  if (
+    value === '' &&
+    f.type === 'SECRET' &&
+    f.originalType === 'SECRET' &&
+    !visible.value.has(uid)
+  ) {
+    f.value = null
+    f.edited = false
+    return
+  }
+  f.value = value
+  f.edited = true
 }
 
-const updateFieldType = (idx: number, type: VarType) => {
-  const f = draft.value.fields[idx]
-  if (f) f.type = type
+const updateFieldType = (uid: number, type: VarType) => {
+  const f = findField(uid)
+  if (!f || f.type === type) return
+  // Deixar de ser segredo exige o valor na tela: o revelado, se houver, ou vazio
+  // para a pessoa digitar. Mandar sem valor faria a API recusar.
+  if (f.type === 'SECRET' && f.value == null) {
+    f.value = revealedValues.value[uid] ?? ''
+    f.edited = true
+  }
+  f.type = type
 }
 
 const save = () => {
-  const cleaned: Variable = {
-    ...draft.value,
-    fields: draft.value.fields.filter((f) => f.key.trim()),
+  if (!draft.value.id || !draft.value.name.trim()) return
+  const missing = draft.value.fields.find(
+    (f) => f.key.trim() && !keepsStored(f) && !(f.value ?? '').length,
+  )
+  if (missing) {
+    showError(`Preencha o valor de "${missing.key.trim()}".`)
+    return
   }
-  if (!cleaned.name.trim()) return
-  emit('save', cleaned)
+  if (!hasChanges.value) {
+    emit('copied', 'Nada mudou')
+    return
+  }
+  emit('save', draft.value.id, patch.value)
 }
 
 const close = () => emit('update:modelValue', false)
@@ -121,28 +343,97 @@ const onFileChange = (e: Event) => {
   if (file) emit('upload-image', file)
 }
 
+const envSource = () => ({
+  id: draft.value.id,
+  name: draft.value.name,
+  description: draft.value.description,
+  fields: draft.value.fields,
+})
+
 const copyAsEnv = async () => {
   if (!draft.value.name) return
-  const ok = await copyEnv([draft.value])
-  emit('copied', ok ? 'Variável copiada como .env' : 'Não foi possível copiar')
+  try {
+    await copyEnv([envSource()])
+    historyStale.value = true
+    emit('copied', 'Variável copiada como .env')
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não foi possível copiar'))
+  }
 }
 
-const downloadAsEnv = () => {
+const downloadAsEnv = async () => {
   if (!draft.value.name) return
-  downloadEnv([draft.value], `${draft.value.name}.env`)
+  try {
+    await downloadEnv([envSource()], `${draft.value.name}.env`)
+    historyStale.value = true
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não foi possível baixar o .env'))
+  }
 }
+
+// ─── Histórico ──────────────────────────────────────────────────────────────
+
+async function loadHistory() {
+  if (!draft.value.id) return
+  historyLoading.value = true
+  historyError.value = ''
+  try {
+    history.value = await companyVariableService.getVariableHistory(draft.value.id)
+    historyStale.value = false
+  } catch (err) {
+    historyError.value = getApiErrorMessage(err, 'Não deu para carregar o histórico.')
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'history' && historyStale.value) void loadHistory()
+})
+
+const VERB_ICON: Record<string, typeof Eye> = {
+  secret_revealed: Eye,
+  updated: Pencil,
+  created: PlusCircle,
+}
+
+const relative = (iso: string) => {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'agora'
+  if (mins < 60) return `há ${mins} min`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `há ${hours} h`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `há ${days} ${days === 1 ? 'dia' : 'dias'}`
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+}
+
+const absolute = (iso: string) =>
+  new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 </script>
 
 <template>
-  <v-navigation-drawer
-    :model-value="modelValue"
-    @update:model-value="emit('update:modelValue', $event)"
-    location="right"
-    width="480"
-    temporary
-    scrim
-    class="var-drawer"
-  >
+  <!-- Teleport para o body: dentro do <main> do shell o drawer ficava ATRÁS
+       da topbar (o nome e o fechar sumiam) e, no celular, da tab bar (o Salvar
+       sumia). Regra do src/CLAUDE.md para overlay de tela cheia. -->
+  <Teleport to="body">
+    <Transition name="vd">
+      <div v-if="modelValue" class="vd-overlay" @mousedown.self="close" @keydown.esc.stop="close">
+        <aside
+          ref="panel"
+          class="var-drawer"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="draft.name ? `Variável ${draft.name}` : 'Variável'"
+          tabindex="-1"
+        >
     <div class="drawer-body">
       <!-- Header -->
       <header class="drawer-header">
@@ -151,22 +442,24 @@ const downloadAsEnv = () => {
           <div v-else class="header-avatar">
             <KeyRound :size="18" />
           </div>
-          <button class="upload-btn" @click="triggerUpload" :disabled="uploadingImage">
+          <button class="upload-btn" aria-label="Trocar imagem" @click="triggerUpload" :disabled="uploadingImage">
             <Camera :size="12" />
           </button>
           <input ref="fileInput" type="file" accept="image/*" class="file-hidden" @change="onFileChange" />
         </div>
         <div class="header-info">
-          <input v-model="draft.name" class="header-name" placeholder="Nome da variável" />
-          <input v-model="draft.description" class="header-desc" placeholder="Descrição (opcional)" />
+          <input v-model="draft.name" class="header-name" placeholder="Nome da variável" aria-label="Nome da variável" />
+          <input v-model="draft.description" class="header-desc" placeholder="Descrição (opcional)" aria-label="Descrição" />
         </div>
-        <button class="close-btn" @click="close"><X :size="16" /></button>
+        <button class="close-btn" aria-label="Fechar" @click="close"><X :size="16" /></button>
       </header>
 
       <!-- Tabs -->
-      <div class="drawer-tabs">
+      <div class="drawer-tabs" role="tablist">
         <button
           class="tab-btn"
+          role="tab"
+          :aria-selected="activeTab === 'fields'"
           :class="{ 'tab-btn--active': activeTab === 'fields' }"
           @click="activeTab = 'fields'"
         >
@@ -175,16 +468,18 @@ const downloadAsEnv = () => {
         </button>
         <button
           class="tab-btn"
+          role="tab"
+          :aria-selected="activeTab === 'history'"
           :class="{ 'tab-btn--active': activeTab === 'history' }"
           @click="activeTab = 'history'"
         >
           Histórico
         </button>
         <div class="tab-actions">
-          <button class="tab-action-btn" title="Copiar como .env" @click="copyAsEnv">
+          <button class="tab-action-btn" title="Copiar como .env" aria-label="Copiar como .env" @click="copyAsEnv">
             <Copy :size="13" />
           </button>
-          <button class="tab-action-btn" title="Baixar .env" @click="downloadAsEnv">
+          <button class="tab-action-btn" title="Baixar .env" aria-label="Baixar .env" @click="downloadAsEnv">
             <Download :size="13" />
           </button>
         </div>
@@ -194,33 +489,68 @@ const downloadAsEnv = () => {
       <div class="drawer-content">
         <div v-if="activeTab === 'fields'" class="fields-content">
           <VariableFieldInput
-            v-for="(field, idx) in draft.fields"
-            :key="idx"
+            v-for="field in draft.fields"
+            :key="field.uid"
             :field="field"
-            :reveal="revealed.has(idx)"
+            :reveal="visible.has(field.uid)"
+            :revealed-value="revealedValues[field.uid] ?? null"
+            :revealing="revealingUid === field.uid"
             :editable="true"
-            @update:key="updateFieldKey(idx, $event)"
-            @update:value="updateFieldValue(idx, $event)"
-            @update:type="updateFieldType(idx, $event)"
-            @toggle-reveal="toggleReveal(idx)"
+            @update:key="updateFieldKey(field.uid, $event)"
+            @update:value="updateFieldValue(field.uid, $event)"
+            @update:type="updateFieldType(field.uid, $event)"
+            @toggle-reveal="toggleReveal(field.uid)"
             @copy="emit('copied', 'Valor copiado')"
-            @remove="removeField(idx)"
+            @copy-secret="copySecret(field.uid)"
+            @remove="removeField(field.uid)"
           />
+          <p v-if="draft.fields.some((f) => f.type === 'SECRET')" class="fields-note">
+            Segredo fica oculto. Revelar e copiar ficam no Histórico, e o valor some da tela em 30
+            segundos.
+          </p>
           <button class="add-field-btn" @click="addField">
             <Plus :size="13" />
             <span>Adicionar campo</span>
           </button>
         </div>
 
-        <div v-else class="history-content">
-          <div class="history-empty">
-            <div class="history-badge">Em breve</div>
-            <p class="history-title">Linha do tempo de alterações</p>
+        <div v-else class="history-content" aria-live="polite">
+          <div v-if="historyLoading && !history.length" class="history-state">
+            <Loader2 :size="15" class="history-spin" />
+            Carregando histórico
+          </div>
+          <div v-else-if="historyError" class="history-state history-state--err" role="alert">
+            {{ historyError }}
+            <button class="ghost-btn" type="button" @click="loadHistory">Tentar de novo</button>
+          </div>
+          <div v-else-if="!history.length" class="history-empty">
+            <History :size="18" class="history-empty-icon" />
+            <p class="history-title">Nada registrado ainda</p>
             <p class="history-desc">
-              Veremos aqui quem criou, editou e apagou valores, com timestamp e snapshot. Requer
-              evolução no backend.
+              Quem criar, editar ou revelar um segredo desta variável aparece aqui, com dia e hora.
             </p>
           </div>
+          <ol v-else class="history-list">
+            <li v-for="event in history" :key="event.id" class="history-item">
+              <PersonAvatar
+                :id="event.actor?.id ?? event.actorId"
+                :name="event.actor?.name ?? 'Alguém'"
+                :size="24"
+                variant="soft"
+                decorative
+              />
+              <div class="history-text">
+                <p class="history-line">
+                  <strong>{{ event.actor?.name ?? 'Alguém' }}</strong>
+                  {{ event.summary }}
+                </p>
+                <time class="history-time" :datetime="event.createdAt" :title="absolute(event.createdAt)">
+                  {{ relative(event.createdAt) }}
+                </time>
+              </div>
+              <component :is="VERB_ICON[event.verb] ?? Pencil" :size="13" class="history-verb" />
+            </li>
+          </ol>
         </div>
       </div>
 
@@ -242,12 +572,51 @@ const downloadAsEnv = () => {
         </button>
       </footer>
     </div>
-  </v-navigation-drawer>
+        </aside>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
-.var-drawer :deep(.v-navigation-drawer__content) {
+/* Abaixo do AppDialog (5000: o confirmar exclusão abre por cima) e acima do
+   shell e da comemoração do Nevo (4000). */
+.vd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4500;
+  display: flex;
+  justify-content: flex-end;
+  background: var(--scrim);
+}
+
+.var-drawer {
+  width: min(480px, 100vw);
+  height: 100%;
   background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-overlay);
+  outline: none;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+}
+
+.vd-enter-active,
+.vd-leave-active {
+  transition: opacity var(--motion) var(--motion-ease);
+}
+.vd-enter-active .var-drawer,
+.vd-leave-active .var-drawer {
+  transition: transform var(--motion) var(--motion-ease);
+}
+.vd-enter-from,
+.vd-leave-to {
+  opacity: 0;
+}
+.vd-enter-from .var-drawer,
+.vd-leave-to .var-drawer {
+  transform: translateX(24px);
 }
 
 .drawer-body {
@@ -473,6 +842,13 @@ const downloadAsEnv = () => {
   gap: 6px;
 }
 
+.fields-note {
+  margin: 2px 2px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
 .add-field-btn {
   display: inline-flex;
   align-items: center;
@@ -501,14 +877,39 @@ const downloadAsEnv = () => {
   color: var(--text);
 }
 
+/* ---- Histórico ---- */
 .history-content {
   display: flex;
-  justify-content: center;
-  padding-top: 40px;
+  flex-direction: column;
+}
+
+.history-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 16px 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.history-state--err {
+  color: var(--err);
+}
+
+.history-spin {
+  animation: history-spin 0.85s linear infinite;
+}
+
+@keyframes history-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .history-empty {
   max-width: 360px;
+  margin: 32px auto 0;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -516,15 +917,8 @@ const downloadAsEnv = () => {
   gap: 6px;
 }
 
-.history-badge {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  padding: 3px 8px;
-  border-radius: 999px;
+.history-empty-icon {
+  color: var(--text-3);
 }
 
 .history-title {
@@ -541,6 +935,52 @@ const downloadAsEnv = () => {
   line-height: 1.5;
 }
 
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-text {
+  min-width: 0;
+}
+
+.history-line {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.history-line strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.history-time {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.history-verb {
+  margin-top: 3px;
+  color: var(--text-3);
+}
+
 .drawer-footer {
   display: flex;
   align-items: center;
@@ -551,6 +991,15 @@ const downloadAsEnv = () => {
 
 .footer-spacer {
   flex: 1;
+}
+
+/* No desktop o botão do assistente (fixo, 52px a 22px do canto, z 9996) fica
+   por cima de qualquer overlay: o Salvar não pode morar embaixo dele. No
+   celular o botão não existe. */
+@media (min-width: 900px) {
+  .drawer-footer {
+    padding-right: 90px;
+  }
 }
 
 .danger-btn,
@@ -606,5 +1055,17 @@ const downloadAsEnv = () => {
 .save-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .history-spin {
+    animation-duration: 1.8s;
+  }
+  .vd-enter-active,
+  .vd-leave-active,
+  .vd-enter-active .var-drawer,
+  .vd-leave-active .var-drawer {
+    transition-duration: 1ms;
+  }
 }
 </style>

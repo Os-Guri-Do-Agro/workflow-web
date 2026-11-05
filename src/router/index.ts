@@ -140,6 +140,13 @@ const router = createRouter({
   },
   routes: [
     { path: '/login', name: 'login', component: () => import('@/features/auth/LoginView.vue') },
+    // Link de senha (primeiro acesso e esqueci a senha). Pública: quem abre
+    // ainda não tem senha. Está também no `bare` do AppShell.
+    {
+      path: '/redefinir-senha',
+      name: 'reset-password',
+      component: () => import('@/features/auth/ResetPasswordView.vue'),
+    },
     { path: '/download', name: 'download', component: () => import('@/features/download/DownloadView.vue') },
     // Link público de arquivo do Drive. Curto de propósito: é endereço colado
     // em conversa, e cada caractere a mais é chance de quebrar na cópia.
@@ -219,6 +226,7 @@ const router = createRouter({
 
 const PUBLIC_ROUTES = new Set([
   'login',
+  'reset-password',
   'download',
   'public-file',
   'bug-report',

@@ -8,12 +8,14 @@ import {
   Briefcase,
   Shield,
   Info,
+  KeyRound,
 } from 'lucide-vue-next'
 import companieService from '@/service/companies/companies-services'
 import { getApiErrorMessage } from '@/service/api'
 import AddUserModal from './components/AddUserModal.vue'
 import BulkAddUsersModal from './components/BulkAddUsersModal.vue'
 import CreateCompanyModal from './components/CreateCompanyModal.vue'
+import CompanyMembersDialog from './components/CompanyMembersDialog.vue'
 import CreateUserModal from '@/components/CreateUserModal.vue'
 import { isActiveCompanyAdmin } from '@/utils/authContent'
 import { useToast } from '@/composables/useToast'
@@ -171,6 +173,15 @@ const openUserAdd = (userCompany: UserCompany) => {
   showUserAddModal.value = true
 }
 
+// Pessoas da empresa com o link de primeiro acesso (só ADMIN abre).
+const membersOpen = ref(false)
+const membersCompany = ref<{ id: string; name: string } | null>(null)
+
+const openMembers = (userCompany: UserCompany) => {
+  membersCompany.value = { id: userCompany.company.id, name: userCompany.company.name }
+  membersOpen.value = true
+}
+
 const onModalMsg = (msg: string, color: string) => {
   if (color === 'success') showSuccess(msg)
   else showError(msg)
@@ -283,14 +294,16 @@ onMounted(() => {
           <!-- Gerenciar membros é ADMIN-only no backend. Para quem é membro, o
                botão não fica desabilitado sem explicação: some e dá o motivo. -->
           <footer class="card-actions">
-            <button
-              v-if="item.role === 'ADMIN'"
-              class="btn-primary press"
-              @click="openUserAdd(item)"
-            >
-              <UserPlus :size="13" />
-              Adicionar usuário
-            </button>
+            <template v-if="item.role === 'ADMIN'">
+              <button class="btn-primary press" @click="openUserAdd(item)">
+                <UserPlus :size="13" />
+                Adicionar usuário
+              </button>
+              <button class="btn-secondary press" @click="openMembers(item)">
+                <KeyRound :size="13" />
+                Pessoas e acessos
+              </button>
+            </template>
             <p v-else class="card-note">
               <Info :size="12" />
               Só admins desta empresa podem adicionar pessoas.
@@ -374,6 +387,7 @@ onMounted(() => {
       :viewer-role="selectedCompanyRole"
       @success="onModalMsg"
     />
+    <CompanyMembersDialog v-model="membersOpen" :company="membersCompany" />
   </div>
 </template>
 

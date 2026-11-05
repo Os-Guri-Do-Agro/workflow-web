@@ -9,16 +9,86 @@
  * funciona para tarefa de qualquer empresa sem trocar a empresa ativa.
  */
 import { computed, ref } from 'vue'
-import { ArrowRight, Camera, KanbanSquare, Timer } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
+import { useQueryClient } from '@tanstack/vue-query'
+import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
+import { ArrowRight, CalendarClock, Camera, KanbanSquare, Pause, Play, Timer } from 'lucide-vue-next'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import LottiePlayer from '@/components/ui/LottiePlayer.vue'
 import { useWorkspaceDashboard } from '@/composables/useWorkspaceDashboard'
 import { useCurrentUser } from '@/composables/useCurrentUser'
+import { useTaskTimer } from '@/composables/useTaskTimer'
+import { useToast } from '@/composables/useToast'
+import { getApiErrorMessage } from '@/service/api'
+import activityService from '@/service/activities/activity-service'
+import { dueDatePatchValue } from '@/utils/date'
+import { formatTimer } from '@/utils/duration'
 import { dueSignal, prioritySpec, statusSpec } from '@/features/tasks/task-meta'
-import { buildMyDay, myDayTaskLink, type MyDayGroupKey, type WorkspaceActivityLite } from '../my-day'
+import { taskKey } from '@/features/tasks/task-key'
+import {
+  buildMyDay,
+  myDayTaskLink,
+  nextStepOf,
+  postponeOptions,
+  type MyDayGroupKey,
+  type PostponeOption,
+  type WorkspaceActivityLite,
+} from '../my-day'
 
 const { data, isLoading, isError, refetch } = useWorkspaceDashboard(ref(true))
 const { me } = useCurrentUser()
+const queryClient = useQueryClient()
+const router = useRouter()
+const { success, error: showError } = useToast()
+const timer = useTaskTimer()
+
+// ─── Ações na própria linha (spec v2-uteis, U2) ──────────────────────────────
+// Avançar, adiar e ligar o timer sem abrir a tarefa. Cada chamada vai com a
+// empresa da tarefa: a lista mistura empresas, e o interceptor mandaria a ativa.
+const pending = ref<Set<string>>(new Set())
+function markPending(id: string, on: boolean) {
+  const next = new Set(pending.value)
+  if (on) next.add(id)
+  else next.delete(id)
+  pending.value = next
+}
+
+const keyOf = (item: WorkspaceActivityLite) => taskKey({ id: item.id }, item.companyName) ?? item.title
+
+async function refreshLists() {
+  await queryClient.invalidateQueries({ queryKey: ['dashboard', 'workspace'] })
+}
+
+async function advance(item: WorkspaceActivityLite) {
+  const step = nextStepOf(item.status)
+  if (!step || pending.value.has(item.id)) return
+  markPending(item.id, true)
+  try {
+    await activityService.patchActivityStatus(item.id, step.status, item.companyId)
+    success(`${keyOf(item)} ${step.done}`)
+    await refreshLists()
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não deu para mudar o status'))
+  } finally {
+    markPending(item.id, false)
+  }
+}
+
+async function postpone(item: WorkspaceActivityLite, option: PostponeOption) {
+  if (pending.value.has(item.id)) return
+  markPending(item.id, true)
+  try {
+    await activityService.patchActivity(item.id, { dueDate: dueDatePatchValue(option.date) }, item.companyId)
+    success(`${keyOf(item)} adiada para ${option.label.toLowerCase()}`)
+    await refreshLists()
+  } catch (err) {
+    showError(getApiErrorMessage(err, 'Não deu para adiar'))
+  } finally {
+    markPending(item.id, false)
+  }
+}
+
+const postponeList = computed(() => postponeOptions())
 
 const activities = computed<WorkspaceActivityLite[]>(
   () => ((data.value as { activities?: WorkspaceActivityLite[] } | undefined)?.activities ?? []),
@@ -128,28 +198,87 @@ const firstSteps = computed(() => [
           <span class="group-count">{{ group.items.length }}</span>
         </h3>
         <ul class="rows">
-          <li v-for="item in visible(group.key, group.items)" :key="item.id">
+          <li
+            v-for="item in visible(group.key, group.items)"
+            :key="item.id"
+            class="row-wrap"
+            :class="{ 'row-wrap--live': timer.isRunningFor(item.id), 'row-wrap--busy': pending.has(item.id) }"
+          >
             <RouterLink :to="myDayTaskLink(item)" class="row">
               <component :is="statusSpec(item.status).icon" class="row-status" :aria-label="statusSpec(item.status).label" />
               <span class="row-title">{{ item.title }}</span>
-              <span class="row-meta">
-                <span v-if="item.companyName" class="row-company">{{ item.companyName }}</span>
-                <component
-                  :is="prioritySpec(item.priority).icon"
-                  v-if="prioritySpec(item.priority).signal"
-                  class="row-prio"
-                  :aria-label="`Prioridade ${prioritySpec(item.priority).label}`"
-                />
-                <span
-                  v-if="dueSignal(item.dueDate)"
-                  class="row-due"
-                  :class="dueSignal(item.dueDate)?.tone ? `row-due--${dueSignal(item.dueDate)?.tone}` : ''"
-                  :title="dueSignal(item.dueDate)?.full"
-                >
-                  {{ dueSignal(item.dueDate)?.label }}
-                </span>
-              </span>
             </RouterLink>
+            <!-- A meta fica fora do link para dividir a linha com as ações no
+                 celular (botão dentro de <a> é HTML inválido). O clique nela abre
+                 a tarefa como o resto da linha; no teclado o alvo é o link. -->
+            <span class="row-meta" @click="router.push(myDayTaskLink(item))">
+              <span v-if="item.companyName" class="row-company">{{ item.companyName }}</span>
+              <component
+                :is="prioritySpec(item.priority).icon"
+                v-if="prioritySpec(item.priority).signal"
+                class="row-prio"
+                :aria-label="`Prioridade ${prioritySpec(item.priority).label}`"
+              />
+              <span
+                v-if="dueSignal(item.dueDate)"
+                class="row-due"
+                :class="dueSignal(item.dueDate)?.tone ? `row-due--${dueSignal(item.dueDate)?.tone}` : ''"
+                :title="dueSignal(item.dueDate)?.full"
+              >
+                {{ dueSignal(item.dueDate)?.label }}
+              </span>
+            </span>
+            <div class="row-actions" role="group" :aria-label="`Ações de ${item.title}`">
+              <button
+                type="button"
+                class="act act--timer"
+                :class="{ 'act--on': timer.isRunningFor(item.id) }"
+                :disabled="timer.busy.value"
+                :aria-label="timer.isRunningFor(item.id) ? `Parar o timer de ${item.title}` : `Ligar o timer em ${item.title}`"
+                :title="timer.isRunningFor(item.id) ? 'Parar o timer' : 'Ligar o timer nesta tarefa'"
+                @click="timer.toggleFor({ id: item.id, title: item.title, companyId: item.companyId })"
+              >
+                <Pause v-if="timer.isRunningFor(item.id)" :size="14" aria-hidden="true" />
+                <Play v-else :size="14" aria-hidden="true" />
+                <span v-if="timer.isRunningFor(item.id)" class="act-clock">{{ formatTimer(timer.elapsedSec.value) }}</span>
+              </button>
+              <button
+                v-if="nextStepOf(item.status)"
+                type="button"
+                class="act act--step"
+                :disabled="pending.has(item.id)"
+                :aria-label="nextStepOf(item.status)?.label"
+                @click="advance(item)"
+              >
+                <span class="act-label">{{ nextStepOf(item.status)?.label }}</span>
+                <span class="act-label-short" aria-hidden="true">{{ nextStepOf(item.status)?.short }}</span>
+              </button>
+              <DropdownMenuRoot>
+                <DropdownMenuTrigger as-child>
+                  <button
+                    type="button"
+                    class="act act--icon"
+                    :disabled="pending.has(item.id)"
+                    :aria-label="`Adiar ${item.title}`"
+                    title="Adiar"
+                  >
+                    <CalendarClock :size="14" aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuContent class="dd-menu" :side-offset="4" align="end">
+                    <DropdownMenuItem
+                      v-for="opt in postponeList"
+                      :key="opt.key"
+                      class="dd-item"
+                      @select="postpone(item, opt)"
+                    >
+                      {{ opt.label }}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenuPortal>
+              </DropdownMenuRoot>
+            </div>
           </li>
         </ul>
         <button
@@ -300,21 +429,138 @@ const firstSteps = computed(() => [
   padding: 0;
 }
 
+/*
+ * Linha = link da tarefa (status + título) + meta + ações. O link se estica
+ * sobre a linha inteira (::after), então clicar em qualquer vão abre a tarefa;
+ * meta e ações ficam por cima dele. O fundo de hover é da linha inteira.
+ */
+.row-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  column-gap: 8px;
+  margin: 0 -8px;
+  padding-right: 6px;
+  border-radius: var(--radius-sm);
+}
+
+.row::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.row-meta,
+.row-actions {
+  position: relative;
+  z-index: 1;
+  flex: none;
+}
+
+.row-meta {
+  cursor: pointer;
+}
+
+.row-wrap:hover,
+.row-wrap:focus-within {
+  background: var(--surface-2);
+}
+
+.row-wrap--live {
+  background: var(--accent-soft);
+}
+
+.row-wrap--busy {
+  opacity: 0.6;
+}
+
 .row {
+  flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: center;
   column-gap: 12px;
   min-height: 40px;
   padding: 6px 8px;
-  margin: 0 -8px;
   border-radius: var(--radius-sm);
   color: var(--text);
   text-decoration: none;
+  min-width: 0;
 }
 
-.row:hover {
-  background: var(--surface-2);
+/* Ações: somem até o hover/foco no desktop (densidade); com timer rodando
+   ficam à vista; em tela de toque, sempre. */
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+}
+
+.row-wrap:hover .row-actions,
+.row-wrap:focus-within .row-actions,
+.row-wrap--live .row-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .row-actions {
+    opacity: 1;
+  }
+}
+
+.act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.act:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.act:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.act:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.act--icon,
+.act--timer:not(.act--on) {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
+.act--on {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-fg);
+}
+
+.act-clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.act-label-short {
+  display: none;
 }
 
 .row-status {
@@ -468,24 +714,27 @@ const firstSteps = computed(() => [
     padding: 14px 16px 10px;
   }
 
+  /* Título ocupa a linha de cima; embaixo, empresa e prazo à esquerda
+     (alinhados com o título) e as ações à direita, na MESMA fileira. Quando as
+     duas coisas não cabem juntas, o flex-wrap joga as ações para baixo sozinho.
+     Uma fileira só de botões por tarefa deixava a lista três vezes mais alta. */
+  .row-wrap {
+    flex-wrap: wrap;
+    padding: 0 6px 6px 0;
+  }
+
   .row {
-    grid-template-columns: 16px minmax(0, 1fr);
-    grid-template-areas:
-      'status title'
-      '.      meta';
-    row-gap: 3px;
-    min-height: 52px;
-    padding: 8px;
+    flex-basis: 100%;
+    min-height: 0;
+    padding: 8px 8px 2px;
   }
 
   .row-status {
-    grid-area: status;
     align-self: start;
     margin-top: 2px;
   }
 
   .row-title {
-    grid-area: title;
     white-space: normal;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -493,11 +742,41 @@ const firstSteps = computed(() => [
   }
 
   .row-meta {
-    grid-area: meta;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 36px;
+    padding-left: 36px;
+  }
+
+  .row-actions {
+    margin-left: auto;
+  }
+
+  .act-label {
+    display: none;
+  }
+
+  .act-label-short {
+    display: inline;
+  }
+
+  .act {
+    min-height: 36px;
+  }
+
+  .act--icon,
+  .act--timer:not(.act--on) {
+    width: 36px;
   }
 
   .group-more {
     margin-left: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-actions {
+    transition: none;
   }
 }
 </style>

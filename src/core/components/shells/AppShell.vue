@@ -163,6 +163,7 @@ onUnmounted(() => window.removeEventListener('keydown', onAssistantHotkey, true)
 const bare = computed(
   () =>
     route.name === 'login' ||
+    route.name === 'reset-password' ||
     route.name === 'download' ||
     route.name === 'public-file' ||
     route.name === 'bug-report' ||

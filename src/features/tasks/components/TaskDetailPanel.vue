@@ -50,11 +50,15 @@ import {
   Maximize2,
   Minimize2,
   MoreHorizontal,
+  Pause,
+  Play,
   Plus,
   Repeat,
   Trash2,
   X,
 } from 'lucide-vue-next'
+import { useTaskTimer } from '@/composables/useTaskTimer'
+import { formatTimer } from '@/utils/duration'
 import activityService from '@/service/activities/activity-service'
 import companiesServices from '@/service/companies/companies-services'
 import backlogService, { type BacklogEntry } from '@/service/backlog/backlog-service'
@@ -154,6 +158,15 @@ const route = useRoute()
 
 const taskIdRef = toRef(props, 'taskId')
 const companyIdRef = computed(() => props.companyId ?? null)
+
+// Timer direto na tarefa (spec v2-uteis, U3): antes o vínculo tarefa e timer
+// era feito escolhendo a tarefa num menu do widget do topo.
+const taskTimer = useTaskTimer()
+const timerOnHere = computed(() => taskTimer.isRunningFor(props.taskId))
+function toggleTaskTimer() {
+  const title = (activity.value as { title?: string } | null | undefined)?.title ?? 'Tarefa'
+  void taskTimer.toggleFor({ id: props.taskId, title, companyId: companyIdRef.value })
+}
 
 const {
   activity,
@@ -890,6 +903,21 @@ onBeforeUnmount(() => {
           <span class="task-panel__spacer" />
 
           <button
+            v-if="activity"
+            type="button"
+            class="task-timer"
+            :class="{ 'task-timer--on': timerOnHere }"
+            :disabled="taskTimer.busy.value"
+            :aria-label="timerOnHere ? 'Parar o timer desta tarefa' : 'Ligar o timer nesta tarefa'"
+            :title="timerOnHere ? 'Parar o timer' : taskTimer.isRunning.value ? 'Trocar o timer para esta tarefa' : 'Ligar o timer nesta tarefa'"
+            @click="toggleTaskTimer"
+          >
+            <Pause v-if="timerOnHere" :size="14" aria-hidden="true" />
+            <Play v-else :size="14" aria-hidden="true" />
+            <span>{{ timerOnHere ? formatTimer(taskTimer.elapsedSec.value) : 'Timer' }}</span>
+          </button>
+
+          <button
             type="button"
             class="icon-btn"
             :disabled="!boardLink"
@@ -1536,6 +1564,43 @@ onBeforeUnmount(() => {
 
 .task-panel__spacer {
   flex: 1;
+}
+
+.task-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-timer:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.task-timer:disabled {
+  opacity: 0.5;
+}
+
+.task-timer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.task-timer--on {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-fg);
 }
 
 /* 44px de alvo; o fundo do hover desenha um quadrado de 32px no meio. */
