@@ -2,9 +2,10 @@
 /**
  * Folha de baixo do Acervo no celular (pastas e detalhes do arquivo), no
  * desenho da folha "Mover para" do board: Teleport para o body, fundo escuro,
- * Esc e o fundo fecham, o foco entra e volta para quem abriu.
+ * Esc e o fundo fecham, o foco entra, fica PRESO dentro da folha (Tab e
+ * Shift+Tab dão a volta) e volta para quem abriu.
  */
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 
 const props = defineProps<{ title: string; tall?: boolean }>()
@@ -27,12 +28,54 @@ watch(open, async (isOpen) => {
 function close() {
   open.value = false
 }
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, video[controls], [tabindex]:not([tabindex="-1"])'
+
+/** Tab no último volta ao primeiro (e Shift+Tab no primeiro vai ao último). */
+function trapTab(event: KeyboardEvent) {
+  if (event.key !== 'Tab' || !sheet.value) return
+  const list = Array.from(sheet.value.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => el.offsetParent !== null || el === document.activeElement,
+  )
+  if (!list.length) {
+    event.preventDefault()
+    sheet.value.focus()
+    return
+  }
+  const first = list[0]!
+  const last = list[list.length - 1]!
+  const active = document.activeElement as HTMLElement | null
+  const inside = !!active && sheet.value.contains(active)
+  if (event.shiftKey && (active === first || active === sheet.value || !inside)) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && (active === last || !inside)) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+/** Foco que escapa (clique fora, script) volta para a folha enquanto ela está aberta. */
+function onFocusIn(event: FocusEvent) {
+  const target = event.target as Node | null
+  if (!open.value || !sheet.value || !target) return
+  if (sheet.value.contains(target)) return
+  // Menus e diálogos abertos A PARTIR da folha (teleportados) são dela.
+  if ((target as HTMLElement).closest?.('[role="menu"], [role="dialog"], [role="listbox"]')) return
+  sheet.value.focus({ preventScroll: true })
+}
+watch(open, (isOpen) => {
+  if (isOpen) document.addEventListener('focusin', onFocusIn)
+  else document.removeEventListener('focusin', onFocusIn)
+}, { immediate: true })
+onBeforeUnmount(() => document.removeEventListener('focusin', onFocusIn))
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="lsh">
-      <div v-if="open" class="lsh-scrim" @click.self="close" @keydown.esc.stop.prevent="close">
+      <div v-if="open" class="lsh-scrim" @click.self="close" @keydown.esc.stop.prevent="close" @keydown.tab="trapTab">
         <section
           ref="sheet"
           class="lsh"

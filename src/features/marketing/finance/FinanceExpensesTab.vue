@@ -612,6 +612,9 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  /* A linha de lançamento rápido se arruma pela largura DESTA área (com ou sem
+     o menu lateral), não pela da janela. */
+  container-type: inline-size;
 }
 
 .fe-filters {
@@ -657,7 +660,7 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
 
 .fe-quick {
   display: grid;
-  grid-template-columns: 140px minmax(160px, 1fr) 180px 110px 150px auto auto;
+  grid-template-columns: minmax(118px, 140px) minmax(140px, 1fr) minmax(120px, 180px) minmax(92px, 110px) minmax(120px, 150px) auto auto;
   align-items: center;
   gap: 6px;
   padding: 8px;
@@ -667,7 +670,32 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
 }
 
 .fe-quick--brand {
-  grid-template-columns: 140px minmax(160px, 1fr) 170px 150px 110px 150px auto auto;
+  grid-template-columns: minmax(118px, 140px) minmax(140px, 1fr) minmax(120px, 170px) minmax(110px, 150px) minmax(92px, 110px) minmax(120px, 150px) auto auto;
+}
+
+/* Área estreita (1024 px com o menu lateral): a descrição ganha a linha de
+   cima e o resto quebra embaixo, sem passar da largura. */
+@container (max-width: 1000px) {
+  .fe-quick,
+  .fe-quick--brand {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .fe-quick > * {
+    flex: 1 1 130px;
+    min-width: 0;
+  }
+
+  .fe-quick > :nth-child(2) {
+    flex-basis: 100%;
+    order: -1;
+  }
+
+  .fe-quick > .mk-btn,
+  .fe-quick > .fe-full {
+    flex: 0 0 auto;
+  }
 }
 
 .fe-full {

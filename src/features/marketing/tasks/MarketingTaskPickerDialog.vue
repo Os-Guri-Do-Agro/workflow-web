@@ -83,6 +83,15 @@ const query = useQuery({
 })
 
 const companies = computed(() => query.data.value?.companies ?? [])
+
+/** Frase curta para leitor de tela: só ela é anunciada, não a lista inteira. */
+const statusText = computed(() => {
+  if (query.isLoading.value) return 'Carregando tarefas.'
+  if (query.isError.value) return 'Não deu para carregar as tarefas.'
+  const n = items.value.length
+  if (!n) return 'Nenhuma tarefa encontrada.'
+  return n === 1 ? '1 tarefa encontrada.' : `${n} tarefas encontradas.`
+})
 const companyItems = computed(() => [
   { label: 'Todas as empresas', value: ALL },
   ...companies.value.map((c) => ({ label: c.name, value: c.companyId })),
@@ -161,7 +170,9 @@ const MAX_FACES = 3
       <p v-if="full" class="mk-error" role="alert">Este card já tem {{ max }} tarefas. Desligue uma para ligar outra.</p>
       <p v-else-if="error" class="mk-error" role="alert" data-testid="task-link-error">{{ error }}</p>
 
-      <div class="mtp__body" aria-live="polite">
+      <p class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="task-picker-status">{{ statusText }}</p>
+
+      <div class="mtp__body">
         <div v-if="query.isLoading.value" class="mtp__loading">
           <Skeleton v-for="i in 4" :key="i" type="row" />
         </div>
@@ -238,6 +249,15 @@ const MAX_FACES = 3
 </template>
 
 <style scoped>
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .mtp {
   display: flex;
   flex: 1;
@@ -455,6 +475,11 @@ const MAX_FACES = 3
 @media (max-width: 640px) {
   .mtp__tools {
     flex-direction: column;
+  }
+
+  /* AppSelect compacto tem 36px; no celular o toque pede 44px. */
+  .mtp__company :deep(.app-select__trigger) {
+    min-height: 44px;
   }
 
   .mtp__company {

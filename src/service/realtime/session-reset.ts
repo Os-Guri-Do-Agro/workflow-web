@@ -1,15 +1,19 @@
 import type { QueryKey } from '@tanstack/vue-query'
 import { queryClient } from '@/service/query-client'
 import realtimeService from '@/service/realtime/realtime-service'
+import { runSessionResetHooks } from '@/service/session-hooks'
 
 /**
  * Derruba tudo que sobrevive a um logout feito por navegação SPA (sem reload):
  * o socket (singleton de módulo, que continuava autenticado como o usuário
- * anterior e entregando eventos das empresas dele) e o cache do Vue Query
- * (dados da conta antiga apareciam pro próximo usuário na mesma aba).
+ * anterior e entregando eventos das empresas dele), o cache do Vue Query
+ * (dados da conta antiga apareciam pro próximo usuário na mesma aba) e o
+ * estado de módulo registrado em `session-hooks` (fila de envio da ala e as
+ * miniaturas dela, rascunhos de versão, versões fechadas, teto de upload).
  */
 export function resetSessionState(): void {
   realtimeService.disconnect()
+  runSessionResetHooks()
   queryClient.clear()
 }
 

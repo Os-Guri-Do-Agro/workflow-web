@@ -198,8 +198,8 @@ function fmtDate(iso: string) {
           <div class="up-qr__side">
             <span class="up-share__label">QR Code</span>
             <div class="up-share__btns">
-              <button type="button" class="mk-btn" @click="download('png')"><Download :size="14" aria-hidden="true" />PNG</button>
-              <button type="button" class="mk-btn" @click="download('svg')"><Download :size="14" aria-hidden="true" />SVG</button>
+              <button type="button" class="mk-btn" aria-label="Baixar PNG do QR" @click="download('png')"><Download :size="14" aria-hidden="true" />PNG</button>
+              <button type="button" class="mk-btn" aria-label="Baixar SVG do QR" @click="download('svg')"><Download :size="14" aria-hidden="true" />SVG</button>
             </div>
             <span class="mk-hint">Conta cada leitura. Para gráfica, use o SVG (vetor).</span>
           </div>

@@ -56,6 +56,9 @@ const activationId = ref('')
 /** Só na criação; padrão marcado (D10). */
 const withQr = ref(true)
 
+/** O texto só fala de QR quando haverá um: o que vai ser criado, ou o que a UTM editada já tem. */
+const hasQr = computed(() => (editing.value ? !!props.utm?.qr : withQr.value))
+
 const error = ref('')
 const duplicateId = ref<string | null>(null)
 const saving = computed(() => mut.create.isPending.value || mut.update.isPending.value)
@@ -281,8 +284,14 @@ async function submit(force = false) {
       <form class="uf-body" @submit.prevent="submit(false)">
         <div class="uf-grid">
           <p v-if="!editing" class="mk-hint uf-wide uf-intro">
-            O Nevo cria um <strong>link curto</strong>, que conta cada clique, e o <strong>QR Code</strong>, que conta cada
-            leitura. Os dois levam ao destino com as UTMs, que dizem ao Google Analytics de onde veio a visita.
+            <template v-if="hasQr">
+              O Nevo cria um <strong>link curto</strong>, que conta cada clique, e o <strong>QR Code</strong>, que conta cada
+              leitura. Os dois levam ao destino com as UTMs, que dizem ao Google Analytics de onde veio a visita.
+            </template>
+            <template v-else>
+              O Nevo cria um <strong>link curto</strong>, que conta cada clique e leva ao destino com as UTMs, que dizem ao
+              Google Analytics de onde veio a visita. O QR Code pode ser criado depois, no painel da UTM.
+            </template>
           </p>
 
           <div v-if="!editing && brands.length > 1" class="mk-field uf-wide" data-testid="utm-brand">
@@ -410,11 +419,12 @@ async function submit(force = false) {
           <span class="mk-label">URL com UTM (prévia)</span>
           <code class="uf-url" data-testid="utm-final-preview">{{ finalUrl ?? 'Informe o destino para ver a URL com UTM.' }}</code>
           <span class="mk-hint">
-            É o destino com as UTMs coladas. Ela não passa pelo Nevo, então não conta clique: para divulgar, use o link curto
-            ou o QR.
+            É o destino com as UTMs coladas. Ela não passa pelo Nevo, então não conta clique: para divulgar, use o link curto{{
+              hasQr ? ' ou o QR' : ''
+            }}.
           </span>
           <span v-if="editing" class="mk-hint">
-            Mudar o destino ou as UTMs não troca o link curto nem o QR: o que já foi impresso continua valendo.
+            Mudar o destino ou as UTMs não troca o link curto{{ hasQr ? ' nem o QR' : '' }}: o que já foi impresso continua valendo.
           </span>
         </div>
 

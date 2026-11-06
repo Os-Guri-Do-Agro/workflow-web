@@ -1,8 +1,10 @@
 <script setup lang="ts">
 /**
  * Conteúdo da pasta: subpastas no topo e os arquivos em grade de miniaturas
- * ou em lista densa. Clique abre o painel de detalhes; duplo clique (ou
- * Enter) abre em tela cheia; a caixa, Ctrl+clique e Shift+clique selecionam.
+ * ou em lista densa. Clique (ou Enter) abre o painel de detalhes; duplo
+ * clique abre em tela cheia (no teclado, pelo botão "Tela cheia" do painel);
+ * a caixa, espaço, Ctrl+clique e Shift+clique selecionam. Enter na caixa de
+ * seleção só marca (não abre nada).
  * Arrastar arquivo selecionado para uma pasta da árvore move todos.
  */
 import { Folder, Star } from 'lucide-vue-next'
@@ -60,8 +62,12 @@ function onClick(item: LibraryItem, index: number, event: MouseEvent) {
 }
 
 function onKey(item: LibraryItem, index: number, event: KeyboardEvent) {
-  if (event.key === 'Enter') emit('view', item, index)
-  else if (event.key === ' ') {
+  // Só a tecla no próprio cartão: dentro dele (a caixa de seleção) a tecla é dela.
+  if (event.target !== event.currentTarget) return
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    emit('open', item, index, event)
+  } else if (event.key === ' ') {
     event.preventDefault()
     emit('toggle', item, index, event as unknown as MouseEvent)
   }
@@ -70,21 +76,21 @@ function onKey(item: LibraryItem, index: number, event: KeyboardEvent) {
 
 <template>
   <div class="lg" :class="`lg--${view}`">
-    <div v-if="subfolders.length" class="lg-folders" role="list" aria-label="Pastas">
-      <button
-        v-for="f in subfolders"
-        :key="f.id"
-        type="button"
-        class="lg-folder"
-        role="listitem"
-        :data-folder-tile="f.id"
-        @click="emit('openFolder', f)"
-      >
-        <Folder :size="16" class="lg-folder__icon" aria-hidden="true" />
-        <span class="lg-folder__name">{{ f.name }}</span>
-        <span class="lg-folder__count">{{ f.totalCount }}</span>
-      </button>
-    </div>
+    <ul v-if="subfolders.length" class="lg-folders" aria-label="Pastas">
+      <li v-for="f in subfolders" :key="f.id">
+        <button
+          type="button"
+          class="lg-folder"
+          :data-folder-tile="f.id"
+          :aria-label="`Abrir a pasta ${f.name}, ${f.totalCount} ${f.totalCount === 1 ? 'arquivo' : 'arquivos'}`"
+          @click="emit('openFolder', f)"
+        >
+          <Folder :size="16" class="lg-folder__icon" aria-hidden="true" />
+          <span class="lg-folder__name">{{ f.name }}</span>
+          <span class="lg-folder__count" aria-hidden="true">{{ f.totalCount }}</span>
+        </button>
+      </li>
+    </ul>
 
     <ul v-if="view === 'grade'" class="lg-grid" aria-label="Arquivos">
       <li
@@ -207,10 +213,14 @@ function onKey(item: LibraryItem, index: number, event: KeyboardEvent) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .lg-folder {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 8px;
   min-width: 0;

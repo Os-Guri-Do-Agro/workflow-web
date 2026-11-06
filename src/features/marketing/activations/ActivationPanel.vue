@@ -197,8 +197,20 @@ function onPick(event: Event) {
   uploadFiles(filesFromInput(event))
 }
 const drop = useFileDrop({ enabled: () => canEdit.value && !!a.value, onFiles: uploadFiles })
+// Colar só com o painel na frente: nenhum diálogo dele aberto (editar, tirar
+// foto, apagar, mandar para o acervo, tela cheia) e, com um diálogo de fora
+// aberto (o do orçamento, por exemplo), o `root` não está nele e a colagem não cai aqui.
+const panelEl = ref<HTMLElement | null>(null)
 usePasteFiles({
-  enabled: () => canEdit.value && !!a.value && !viewer.value && !editOpen.value,
+  enabled: () =>
+    canEdit.value &&
+    !!a.value &&
+    !viewer.value &&
+    !editOpen.value &&
+    !photoRemoveOpen.value &&
+    !deleteOpen.value &&
+    !sendOpen.value,
+  root: () => panelEl.value,
   onFiles: uploadFiles,
 })
 
@@ -279,7 +291,7 @@ function ddmm(ymd: string) {
 </script>
 
 <template>
-  <aside class="ap" aria-label="Detalhe da ativação" v-on="drop.on">
+  <aside ref="panelEl" class="ap" aria-label="Detalhe da ativação" v-on="drop.on">
     <div v-if="drop.isOver.value" class="ap__drop-overlay" aria-hidden="true">
       <Upload :size="20" />
       Solte para adicionar às fotos e vídeos
@@ -850,6 +862,8 @@ function ddmm(ymd: string) {
   align-items: center;
   gap: 4px;
   min-height: 32px;
+  min-width: 44px;
+  justify-content: center;
   padding: 0 6px;
   border: 0;
   background: transparent;
@@ -1045,6 +1059,13 @@ function ddmm(ymd: string) {
 
   .ap__exp .mk-chip {
     display: none;
+  }
+}
+
+/* Toque: "Tentar de novo" da foto com 44 px de altura no celular. */
+@media (max-width: 640px), (hover: none) {
+  .ap__tile-retry {
+    min-height: 44px;
   }
 }
 </style>

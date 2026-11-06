@@ -107,7 +107,11 @@ export interface TaskMarketingCard {
   status: string
   kind: string
   archived: boolean
-  brand: TaskBrand
+  /**
+   * `companyId` é a marca do card (a cor do ponto é a mesma da ala). API
+   * anterior não mandava: aí o ponto usa o nome da marca como semente.
+   */
+  brand: TaskBrand & { companyId?: string }
   /** Rota da ala com o grupo (`/marketing/cards/<id>?grupo=<g>`). */
   link: string
 }

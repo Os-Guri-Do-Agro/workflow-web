@@ -3,10 +3,12 @@
  * fase que VALIDA O DONO e devolve o ticket; o resto (hash, storage, confirm,
  * repetição) é da fila.
  *
- * Para um destino novo (o Acervo, por exemplo), crie um objeto `UploadTarget`
- * com `key` estável, `kind`, `label` e `requestTicket`; `accept`, `onUploaded`
+ * Para um destino novo, crie um objeto `UploadTarget` (o do Acervo mora em
+ * `library/library-upload.ts`)
+ * com `key` estável, `kind`, `label` e `requestTicket` (que recebe o `signal`
+ * do cancelar: passe ao axios); `accept`, `onUploaded`
  * e `invalidate` são opcionais. O `requestTicket` pode devolver `{ prompt }`
- * (duplicata: "Manter os dois" ou "Pular") ou `{ skip: true }`.
+ * (repetido: "Manter os dois" ou "Pular") ou `{ skip: true }`.
  */
 import api from '@/service/api'
 import { mkt, type MarketingUploadMeta, type MarketingUploadTicket } from '@/service/marketing/marketing-core'
@@ -20,8 +22,9 @@ function phaseMeta(meta: MarketingUploadMeta) {
   return { name: meta.name, mimeType: meta.mimeType, size: meta.size, sha256: meta.sha256 }
 }
 
-async function ticket(route: string, meta: MarketingUploadMeta): Promise<MarketingUploadTicket> {
-  const { data } = await api.post<MarketingUploadTicket>(route, phaseMeta(meta))
+async function ticket(route: string, meta: MarketingUploadMeta, signal: AbortSignal): Promise<MarketingUploadTicket> {
+  // Cancelar aborta o pedido; ticket que chega mesmo assim a fila devolve (abort no servidor).
+  const { data } = await api.post<MarketingUploadTicket>(route, phaseMeta(meta), { signal })
   return data
 }
 
@@ -34,7 +37,7 @@ export function cardVersionTarget(groupId: string, cardId: string, cardTitle: st
     key: `card:${cardId}`,
     kind: 'card-version',
     label: `Card ${cardTitle}`,
-    requestTicket: (g, meta) => ticket(mkt(g, `/cards/${id(cardId)}/assets`), meta),
+    requestTicket: (g, meta, { signal }) => ticket(mkt(g, `/cards/${id(cardId)}/assets`), meta, signal),
     invalidate: (g) => [cardKeys.detail(g, cardId)],
   }
 }
@@ -47,7 +50,7 @@ export function activationPhotoTarget(activationId: string, title: string): Uplo
     kind: 'activation-photo',
     label: `Ativação ${title}`,
     accept: (file) => (PHOTO_OR_VIDEO.test(file.type) ? null : 'Só foto e vídeo entram na ativação.'),
-    requestTicket: (g, meta) => ticket(mkt(g, `/activations/${id(activationId)}/photos`), meta),
+    requestTicket: (g, meta, { signal }) => ticket(mkt(g, `/activations/${id(activationId)}/photos`), meta, signal),
     invalidate: (g) => [['marketing', g, 'activations']],
   }
 }
@@ -63,7 +66,7 @@ export function expenseInvoiceTarget(expenseId: string, description: string): Up
     label: `Nota de ${description}`,
     accept: (file) =>
       INVOICE_EXT.test(file.name) || INVOICE_MIME.test(file.type) ? null : 'Nota fiscal: envie PDF, XML ou imagem.',
-    requestTicket: (g, meta) => ticket(mkt(g, `/finance/expenses/${id(expenseId)}/invoices`), meta),
+    requestTicket: (g, meta, { signal }) => ticket(mkt(g, `/finance/expenses/${id(expenseId)}/invoices`), meta, signal),
     invalidate: (g) => [['marketing', g, 'finance'], ['marketing', g, 'activations']],
   }
 }
@@ -73,7 +76,7 @@ export function quoteFileTarget(quoteId: string, description: string): UploadTar
     key: `quote:${quoteId}`,
     kind: 'quote-file',
     label: `Orçamento ${description}`,
-    requestTicket: (g, meta) => ticket(mkt(g, `/quotes/${id(quoteId)}/files`), meta),
+    requestTicket: (g, meta, { signal }) => ticket(mkt(g, `/quotes/${id(quoteId)}/files`), meta, signal),
     invalidate: (g) => [['marketing', g, 'quotes']],
   }
 }

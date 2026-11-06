@@ -4,6 +4,11 @@
  * pastas dentro. A mesma árvore serve à tela (modo `browse`: contagem, menu,
  * arrastar para mover, soltar arquivo para enviar) e aos diálogos de escolher
  * pasta (modo `pick`).
+ *
+ * Acessibilidade: é uma lista de botões (padrão "disclosure" de navegação), não
+ * um `role="tree"` (que exigiria navegação por setas entre linhas com vários
+ * botões dentro). A seta de cada lugar ou pasta é um botão com `aria-expanded`;
+ * o lugar ou pasta aberto tem `aria-current`.
  */
 import { computed, reactive, ref, watch } from 'vue'
 import { ChevronRight, FolderPlus, Images, Layers } from 'lucide-vue-next'
@@ -13,7 +18,7 @@ import { useMarketing } from '../composables/useMarketing'
 import LibraryTreeRow from './LibraryTreeRow.vue'
 import { buildFolderTree, DRAG_FOLDER, DRAG_ITEMS, locationKey, type FolderNode, type LibrarySelection } from './library-meta'
 import { clearDrag, draggingFolder } from './drag-state'
-import { isFileDrag } from './file-sources'
+import { isFileDrag } from '../uploads/file-sources'
 
 const props = withDefaults(
   defineProps<{
@@ -111,14 +116,13 @@ function rootDragOver(loc: LibraryLocation, event: DragEvent) {
 </script>
 
 <template>
-  <div class="lft" role="tree" aria-label="Pastas do Acervo">
+  <div class="lft" role="group" aria-label="Pastas do Acervo">
     <button
       v-if="showAll"
       type="button"
       class="lft-loc lft-loc--all"
       :class="{ 'is-active': selection.companyId === undefined }"
-      role="treeitem"
-      :aria-selected="selection.companyId === undefined"
+      :aria-current="selection.companyId === undefined ? 'true' : undefined"
       @click="emit('select', { companyId: undefined, folderId: null })"
     >
       <Layers :size="14" class="lft-loc__icon" aria-hidden="true" />
@@ -126,7 +130,7 @@ function rootDragOver(loc: LibraryLocation, event: DragEvent) {
       <span v-if="allCount" class="lft-count">{{ allCount }}</span>
     </button>
 
-    <div v-for="loc in locations" :key="locationKey(loc.companyId)" class="lft-group" role="none">
+    <div v-for="loc in locations" :key="locationKey(loc.companyId)" class="lft-group">
       <div
         class="lft-loc"
         :class="{
@@ -134,9 +138,6 @@ function rootDragOver(loc: LibraryLocation, event: DragEvent) {
           'is-over': overLocation === locationKey(loc.companyId),
           'is-disabled': mode === 'pick' && writableOnly && !loc.canWrite,
         }"
-        role="treeitem"
-        :aria-selected="isActiveLocation(loc)"
-        :aria-expanded="(tree.get(locationKey(loc.companyId)) ?? []).length ? !collapsed.has(`loc:${locationKey(loc.companyId)}`) : undefined"
         :data-location="locationKey(loc.companyId)"
         @dragover="rootDragOver(loc, $event)"
         @dragleave="overLocation = null"
@@ -147,7 +148,8 @@ function rootDragOver(loc: LibraryLocation, event: DragEvent) {
           type="button"
           class="lft-chev"
           :class="{ 'is-open': !collapsed.has(`loc:${locationKey(loc.companyId)}`) }"
-          :aria-label="collapsed.has(`loc:${locationKey(loc.companyId)}`) ? `Abrir ${loc.name}` : `Recolher ${loc.name}`"
+          :aria-label="`Pastas de ${loc.name}`"
+          :aria-expanded="!collapsed.has(`loc:${locationKey(loc.companyId)}`)"
           @click.stop="toggle(`loc:${locationKey(loc.companyId)}`)"
         >
           <ChevronRight :size="12" aria-hidden="true" />
@@ -158,6 +160,7 @@ function rootDragOver(loc: LibraryLocation, event: DragEvent) {
           class="lft-loc__main"
           :disabled="mode === 'pick' && writableOnly && !loc.canWrite"
           :title="mode === 'pick' && writableOnly && !loc.canWrite ? 'Você não envia arquivos aqui' : loc.name"
+          :aria-current="isActiveLocation(loc) ? 'true' : undefined"
           @click="emit('select', { companyId: loc.companyId, folderId: null })"
         >
           <span
@@ -181,7 +184,7 @@ function rootDragOver(loc: LibraryLocation, event: DragEvent) {
           <FolderPlus :size="14" aria-hidden="true" />
         </button>
       </div>
-      <div v-if="!collapsed.has(`loc:${locationKey(loc.companyId)}`)" role="group">
+      <div v-if="!collapsed.has(`loc:${locationKey(loc.companyId)}`)">
         <LibraryTreeRow
           v-for="node in tree.get(locationKey(loc.companyId)) ?? []"
           :key="node.id"
@@ -373,9 +376,16 @@ function rootDragOver(loc: LibraryLocation, event: DragEvent) {
   }
 
   .lft-add {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     opacity: 1;
+  }
+
+  /* A seta que abre e recolhe: alvo de 44 px (o desenho segue pequeno). */
+  .lft-chev {
+    width: 36px;
+    height: 44px;
+    margin-left: 0;
   }
 }
 </style>

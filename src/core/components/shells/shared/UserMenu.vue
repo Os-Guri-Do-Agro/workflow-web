@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Settings, LogOut, Camera } from 'lucide-vue-next'
 import { getUserToken } from '@/utils/authContent'
-import { clearSession } from '@/service/api'
+import { requestLogout } from '@/composables/useLogout'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 
 withDefaults(
@@ -21,11 +21,8 @@ const userName = computed(() => user?.name?.trim() || 'Você')
 
 const firstName = computed(() => user?.name?.split(' ')[0] || '')
 
-const handleLogout = () => {
-  // clearSession preserva preferências de UI (tema, acento, shell).
-  clearSession()
-  router.push('/login')
-}
+// Com envio da ala Marketing subindo, pergunta antes (o `LogoutGuard` do App).
+const handleLogout = () => requestLogout(router)
 </script>
 
 <template>

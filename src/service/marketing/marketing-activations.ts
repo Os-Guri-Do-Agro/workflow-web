@@ -1,5 +1,5 @@
 import api from '../api'
-import { mkt, uploadMarketingFile, type MarketingAsset } from './marketing-core'
+import { mkt, type MarketingAsset } from './marketing-core'
 
 /**
  * Cliente das Ativações (M3-B). Rotas em `/marketing/g/:groupId/activations`.
@@ -204,24 +204,6 @@ export async function applyChecklistTemplate(groupId: string, id: string) {
     mkt(groupId, `/activations/${encodeURIComponent(id)}/checklist/template`),
   )
   return data
-}
-
-/** Sobe uma foto ou vídeo: ticket, PUT direto no storage e confirmação. */
-export function uploadActivationPhoto(
-  groupId: string,
-  id: string,
-  file: File,
-  onProgress?: (percent: number) => void,
-) {
-  return uploadMarketingFile(
-    groupId,
-    file,
-    async (meta) => {
-      const { data } = await api.post(mkt(groupId, `/activations/${encodeURIComponent(id)}/photos`), meta)
-      return data
-    },
-    onProgress,
-  )
 }
 
 export async function deleteActivationPhoto(groupId: string, id: string, assetId: string) {

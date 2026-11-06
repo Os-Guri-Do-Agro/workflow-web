@@ -1,6 +1,6 @@
 import axios from 'axios'
 import api from '../api'
-import { hashFile, mediaDuration, sendToStorage } from '@/features/marketing/uploads/transport'
+import { onSessionReset } from '../session-hooks'
 
 /**
  * Cliente da FUNDAÇÃO da ala Marketing (spec
@@ -188,18 +188,6 @@ export async function getAssetDownload(groupId: string, assetId: string) {
 
 // ── Arquivos (motor de envio da R1: features/marketing/uploads) ─────────────
 
-/**
- * sha256 hex do arquivo, no navegador (é o que prova que a gráfica recebeu o
- * original). Incremental num Web Worker: 300 MB não travam a tela.
- */
-export async function sha256OfFile(file: File): Promise<string | undefined> {
-  try {
-    return await hashFile(file)
-  } catch {
-    return undefined
-  }
-}
-
 /** Metadados que a rota da fase recebe para emitir o ticket. */
 export interface MarketingUploadMeta {
   name: string
@@ -211,6 +199,8 @@ export interface MarketingUploadMeta {
 }
 
 const limitsCache = new Map<string, Promise<MarketingUploadLimits | null>>()
+// O teto é do plano do grupo: outra conta na mesma aba lê de novo.
+onSessionReset(() => limitsCache.clear())
 
 /**
  * Teto por arquivo do grupo, lido uma vez por sessão. `null` quando a API é
@@ -237,15 +227,24 @@ export async function confirmMarketingAsset(
   groupId: string,
   assetId: string,
   meta: { durationSec?: number; width?: number; height?: number } = {},
+  opts: { signal?: AbortSignal } = {},
 ): Promise<MarketingAsset> {
-  const { data } = await api.post<MarketingAsset>(mkt(groupId, `/assets/${encodeURIComponent(assetId)}/confirm`), meta)
+  const { data } = await api.post<MarketingAsset>(mkt(groupId, `/assets/${encodeURIComponent(assetId)}/confirm`), meta, {
+    signal: opts.signal,
+  })
   return data
 }
 
 /** Token novo para retomar um envio que ainda não terminou (o assinado vale 2 h). */
-export async function renewUploadTicket(groupId: string, assetId: string): Promise<MarketingUploadTicket> {
+export async function renewUploadTicket(
+  groupId: string,
+  assetId: string,
+  opts: { signal?: AbortSignal } = {},
+): Promise<MarketingUploadTicket> {
   const { data } = await api.post<MarketingUploadTicket>(
     mkt(groupId, `/assets/${encodeURIComponent(assetId)}/upload-token`),
+    undefined,
+    { signal: opts.signal },
   )
   return data
 }
@@ -253,34 +252,4 @@ export async function renewUploadTicket(groupId: string, assetId: string): Promi
 /** Cancela um envio pendente (apaga a linha e o que já chegou ao storage). */
 export async function abortMarketingUpload(groupId: string, assetId: string): Promise<void> {
   await api.post(mkt(groupId, `/assets/${encodeURIComponent(assetId)}/abort`))
-}
-
-/**
- * Sobe UM arquivo da ala sem passar pela bandeja (compatibilidade): a fase pede
- * o ticket (rota dela, que valida o dono), o navegador sobe direto no storage
- * (PUT único ou TUS em partes acima de 6 MB) e a fundação confirma.
- *
- * Tela nova deve usar `useUploadQueue().enqueue(...)` (features/marketing/
- * uploads/upload-queue.ts), que dá bandeja, repetição, retomada e cancelar.
- */
-export async function uploadMarketingFile(
-  groupId: string,
-  file: File,
-  requestTicket: (meta: MarketingUploadMeta) => Promise<MarketingUploadTicket>,
-  onProgress?: (percent: number) => void,
-): Promise<MarketingAsset> {
-  const [sha256, durationSec] = await Promise.all([sha256OfFile(file), mediaDuration(file)])
-  const ticket = await requestTicket({
-    name: file.name,
-    mimeType: file.type || 'application/octet-stream',
-    size: file.size,
-    sha256,
-  })
-  await sendToStorage(file, ticket, {
-    contentType: file.type || 'application/octet-stream',
-    onProgress: (sent) => onProgress?.(file.size ? Math.min(98, Math.round((sent / file.size) * 98)) : 90),
-  })
-  const asset = await confirmMarketingAsset(groupId, ticket.asset.id, { durationSec })
-  onProgress?.(100)
-  return asset
 }

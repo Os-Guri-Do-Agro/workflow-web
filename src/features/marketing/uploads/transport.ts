@@ -109,7 +109,7 @@ export function xhrSend(opts: XhrOptions): Promise<XhrResult> {
         arm(stallMs, 'A conexão parou de responder.')
         opts.onUploadProgress?.(e.loaded)
       }
-      xhr.upload.onload = () => arm(responseMs, 'O storage demorou demais para responder.')
+      xhr.upload.onload = () => arm(responseMs, 'O servidor demorou demais para responder.')
     }
     xhr.onload = () => {
       if (settled) return
@@ -143,20 +143,24 @@ export function storageError(status: number, text: string): UploadError {
     // corpo não é JSON (proxy, HTML de erro): decide pelo status
   }
   const msg = `${body.error ?? ''} ${body.message ?? ''} ${text.slice(0, 300)}`
+  if (/Bucket not found/i.test(msg)) {
+    // O lugar dos arquivos da ala não existe no storage: repetir não resolve.
+    return new UploadError('O espaço de arquivos da ala não está pronto no servidor. Avise quem cuida do Nevo.', 'refused', status)
+  }
   if (status === 409 || /Duplicate|already exists/i.test(msg)) {
-    return new UploadError('O arquivo já está no storage.', 'exists', status)
+    return new UploadError('O arquivo já tinha chegado.', 'exists', status)
   }
   if (status === 413 || /Payload too large|maximum allowed size|EntityTooLarge/i.test(msg)) {
-    return new UploadError('O storage recusou: o arquivo passa do limite do plano.', 'too-large', status)
+    return new UploadError('O arquivo passa do limite do plano.', 'too-large', status)
   }
   if ((status === 400 || status === 401 || status === 403) && /signature|jwt|expired|token|unauthori/i.test(msg)) {
     return new UploadError('A autorização de envio venceu.', 'expired', status)
   }
   if (status === 0 || status === 408 || status === 429 || status >= 500) {
-    return new UploadError('O storage não respondeu. Tentando de novo.', 'network', status)
+    return new UploadError('O servidor não respondeu. Tentando de novo.', 'network', status)
   }
-  if (status === 404 || status === 410) return new UploadError('O envio expirou no storage.', 'gone', status)
-  return new UploadError(`O storage recusou o arquivo (código ${status}).`, 'refused', status)
+  if (status === 404 || status === 410) return new UploadError('O envio em partes expirou. Recomeçando.', 'gone', status)
+  return new UploadError('O servidor recusou o arquivo. Tente de novo; se continuar, fale com o suporte.', 'refused', status)
 }
 
 // ── Hash (worker, com plano B na thread principal) ───────────────────────────
@@ -167,6 +171,8 @@ const HASH_SLICE = 8 * 1024 * 1024
  * subir um worker para uma nota fiscal de 200 KB custava mais que o cálculo.
  */
 const INLINE_HASH_MAX = 2 * 1024 * 1024
+/** Sem progresso do worker por este tempo, ele é dado como travado. */
+export const HASH_STALL_MS = 30_000
 
 /** sha256 hex do arquivo, lido em fatias num Web Worker (arquivo pequeno: na hora). */
 export function hashFile(
@@ -202,8 +208,10 @@ export function hashFile(
     }
     const w = worker
     let done = false
+    let watchdog: ReturnType<typeof setTimeout> | undefined
     const finish = () => {
       done = true
+      clearTimeout(watchdog)
       w.terminate()
       opts.signal?.removeEventListener('abort', onAbort)
     }
@@ -212,11 +220,25 @@ export function hashFile(
       finish()
       reject(abortError())
     }
+    // Vigia: worker que parou de avisar progresso (travou, foi suspenso pelo
+    // navegador) é encerrado, e o cálculo recomeça aqui na thread da tela.
+    const arm = () => {
+      clearTimeout(watchdog)
+      watchdog = setTimeout(() => {
+        if (done) return
+        finish()
+        hashOnMainThread(file, opts).then(resolve, reject)
+      }, HASH_STALL_MS)
+    }
+    arm()
     opts.signal?.addEventListener('abort', onAbort, { once: true })
     w.onmessage = (event: MessageEvent<{ type: string; loaded?: number; hex?: string; message?: string }>) => {
       const m = event.data
-      if (m.type === 'progress') opts.onProgress?.(m.loaded ?? 0)
-      else if (m.type === 'done') {
+      if (done) return
+      if (m.type === 'progress') {
+        arm()
+        opts.onProgress?.(m.loaded ?? 0)
+      } else if (m.type === 'done') {
         finish()
         resolve(m.hex!)
       } else if (m.type === 'error') {
@@ -394,13 +416,15 @@ async function tusUpload(
       headers: { ...base, 'Upload-Length': String(file.size), 'Upload-Metadata': metadata },
       signal: opts.signal,
     })
+    // "Bucket not found" é recusa definitiva (o `storageError` diz), não rota ausente nem rede.
+    if (/Bucket not found/i.test(res.text)) throw storageError(res.status, res.text)
     if (res.status === 404 || res.status === 405 || res.status === 501) {
       // rota do TUS ausente neste storage: o PUT único resolve até o teto
-      if (!/Bucket not found/i.test(res.text)) throw new UploadError('Upload em partes indisponível.', 'unsupported', res.status)
+      throw new UploadError('Upload em partes indisponível.', 'unsupported', res.status)
     }
     if (res.status !== 201 && res.status !== 200) throw storageError(res.status, res.text)
     const location = res.header('Location')
-    if (!location) throw new UploadError('O storage não devolveu o endereço do envio.', 'network', res.status)
+    if (!location) throw new UploadError('O servidor não abriu o envio em partes. Tentando de novo.', 'network', res.status)
     state.url = new URL(location, r.endpoint).toString()
     offset = 0
   }
@@ -428,7 +452,7 @@ async function tusUpload(
       const at = await head(state.url)
       if (at === null) {
         state.url = null
-        throw new UploadError('O envio expirou no storage.', 'gone', 404)
+        throw new UploadError('O envio em partes expirou. Recomeçando.', 'gone', 404)
       }
       offset = at
       opts.onProgress?.(offset)
@@ -436,7 +460,7 @@ async function tusUpload(
     }
     if (res.status === 404 || res.status === 410) {
       state.url = null
-      throw new UploadError('O envio expirou no storage.', 'gone', res.status)
+      throw new UploadError('O envio em partes expirou. Recomeçando.', 'gone', res.status)
     }
     throw storageError(res.status, res.text)
   }

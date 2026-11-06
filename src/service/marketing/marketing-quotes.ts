@@ -1,5 +1,5 @@
 import api from '../api'
-import { mkt, uploadMarketingFile, type MarketingAsset } from './marketing-core'
+import { mkt, type MarketingAsset } from './marketing-core'
 
 /**
  * Cliente dos Orçamentos (M3-B). Rotas em `/marketing/g/:groupId/quotes`.
@@ -85,23 +85,6 @@ export async function chooseQuote(
     createExpense ? { createExpense } : {},
   )
   return data
-}
-
-export function uploadQuoteFile(
-  groupId: string,
-  id: string,
-  file: File,
-  onProgress?: (percent: number) => void,
-) {
-  return uploadMarketingFile(
-    groupId,
-    file,
-    async (meta) => {
-      const { data } = await api.post(mkt(groupId, `/quotes/${encodeURIComponent(id)}/files`), meta)
-      return data
-    },
-    onProgress,
-  )
 }
 
 export async function deleteQuoteFile(groupId: string, id: string, assetId: string) {

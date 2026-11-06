@@ -11,6 +11,7 @@ import {
   type MarketingRole,
 } from '@/service/marketing/marketing-core'
 import { safeStorage } from '@/utils/safe-storage'
+import { isActivationPagesKey, refreshActivationPages } from '../activations/useActivations'
 
 /**
  * Estado da ala Marketing no front (spec 00-fundacao.md).
@@ -124,7 +125,16 @@ export function useMarketingRealtime() {
   const queryClient = useQueryClient()
   const unsubscribe = realtimeService.connect({
     marketingChanged: (payload) => {
-      void queryClient.invalidateQueries({ queryKey: marketingKeys.group(payload.groupId) })
+      // A lista paginada de Ativações é a exceção: invalidar refaz todas as
+      // páginas abertas. Ela tem refresh próprio (só a primeira página).
+      void queryClient.invalidateQueries({
+        queryKey: marketingKeys.group(payload.groupId),
+        predicate: (q) => !isActivationPagesKey(q.queryKey, payload.groupId),
+      })
+      void refreshActivationPages(queryClient, payload.groupId)
+      // O painel "Cards de marketing" da tarefa (fora da ala, chave própria):
+      // o status do card ou o vínculo mudou, o chip lá fica velho.
+      void queryClient.invalidateQueries({ queryKey: ['marketing-task-cards'] })
       // Grupo (configurações, marcas, nome) ou membro (papel, marcas visíveis):
       // o `/marketing/me` dos OUTROS membros também muda (papel, `can()`,
       // `viewerSeesFinance`), e ele não mora sob a chave do grupo.

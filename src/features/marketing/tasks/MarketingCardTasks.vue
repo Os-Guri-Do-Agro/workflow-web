@@ -79,10 +79,21 @@ function apply(next: CardTasks) {
   queryClient.setQueryData(key.value, next)
 }
 
+/**
+ * Ligar, desligar e "tentar de novo" mexem em coisas que outras telas leem:
+ * o painel "Cards de marketing" da tarefa (fora da ala, com chave própria e 30s
+ * de cache) e o seletor de tarefa (o "Já ligada" de cada candidata).
+ */
+function refreshRelated() {
+  void queryClient.invalidateQueries({ queryKey: taskKeys.ofTaskAll })
+  void queryClient.invalidateQueries({ queryKey: taskKeys.allCandidates(props.groupId) })
+}
+
 // ── Ligar ──────────────────────────────────────────────────────────────────
 const pickerOpen = ref(false)
 function onLinked(result: CardTasks & { sync: { ok: boolean; error?: string } }) {
   apply(result)
+  refreshRelated()
   void queryClient.invalidateQueries({ queryKey: ['marketing', props.groupId, 'cards', 'history', props.cardId] })
   if (result.sync.ok) toast.success('Tarefa ligada. Ela segue o status do card no board.')
   else toast.error(result.sync.error ?? 'A tarefa foi ligada, mas não andou no board.')
@@ -97,6 +108,7 @@ async function confirmUnlink() {
   unlinking.value = true
   try {
     apply(await unlinkCardTask(props.groupId, props.cardId, target.id))
+    refreshRelated()
     unlinkTarget.value = null
     toast.success('Tarefa desligada do card.')
   } catch (err) {
@@ -114,6 +126,7 @@ async function retry(item: CardTaskItem) {
   try {
     const result = await retryCardTask(props.groupId, props.cardId, item.id)
     apply(result)
+    refreshRelated()
     if (result.sync.ok) toast.success('Pronto: a tarefa andou no board.')
     else toast.error(result.sync.error ?? 'Ainda não deu para mover a tarefa.')
   } catch (err) {

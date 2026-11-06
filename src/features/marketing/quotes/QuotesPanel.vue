@@ -744,6 +744,14 @@ function linkOf(q: Quote) {
   cursor: pointer;
 }
 
+/* Toque: o "Tentar de novo" do arquivo do orçamento com 44 px no celular. */
+@media (max-width: 640px), (hover: none) {
+  .qp__retry {
+    min-height: 44px;
+    padding: 0 10px;
+  }
+}
+
 .qp__item.is-drop {
   outline: 2px dashed var(--accent);
   outline-offset: -2px;

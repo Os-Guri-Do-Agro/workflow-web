@@ -8,6 +8,10 @@
  *
  * A etiqueta é normalizada como o servidor guarda (minúscula, sem acento),
  * então "Pet Shop" e "pet shop" nunca viram duas.
+ *
+ * As sugestões ficam à vista enquanto o foco está em QUALQUER parte do campo
+ * (caixa ou sugestões): Tab do texto para a sugestão, ou o toque no celular,
+ * não as fazem sumir antes do clique.
  */
 import { computed, ref } from 'vue'
 import { X } from 'lucide-vue-next'
@@ -30,6 +34,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
 const text = ref('')
 const focused = ref(false)
 const input = ref<HTMLInputElement | null>(null)
+const root = ref<HTMLElement | null>(null)
 
 const shown = computed(() => {
   const q = normalizeTag(text.value)
@@ -63,14 +68,26 @@ function onKey(event: KeyboardEvent) {
   }
 }
 
-function onBlur() {
+function onFocusIn() {
+  focused.value = true
+}
+
+/** Saiu do campo inteiro (não só da caixa de texto): o que ficou digitado vira etiqueta. */
+function onFocusOut(event: FocusEvent) {
+  const to = event.relatedTarget as Node | null
+  if (to && root.value?.contains(to)) return
   focused.value = false
   if (text.value.trim()) add(text.value)
+}
+
+function pick(tag: string) {
+  add(tag)
+  input.value?.focus()
 }
 </script>
 
 <template>
-  <div class="lti" :class="{ 'is-disabled': disabled }">
+  <div ref="root" class="lti" :class="{ 'is-disabled': disabled }" @focusin="onFocusIn" @focusout="onFocusOut">
     <div class="lti-box" :class="{ 'is-focused': focused }" @click="input?.focus()">
       <span v-for="tag in modelValue" :key="tag" class="lti-chip">
         {{ tag }}
@@ -95,19 +112,18 @@ function onBlur() {
         :disabled="disabled || modelValue.length >= max"
         maxlength="60"
         @keydown="onKey"
-        @focus="focused = true"
-        @blur="onBlur"
       />
       <span v-else-if="!modelValue.length" class="lti-empty">Sem etiquetas</span>
     </div>
-    <div v-if="!disabled && (focused || text) && shown.length" class="lti-sugs" aria-label="Sugestões">
+    <div v-if="!disabled && (focused || text) && shown.length" class="lti-sugs" role="group" aria-label="Sugestões de etiqueta">
       <button
         v-for="s in shown"
         :key="s.tag"
         type="button"
         class="lti-sug"
+        :aria-label="`Adicionar a etiqueta ${s.tag} (usada ${s.count} ${s.count === 1 ? 'vez' : 'vezes'})`"
         @mousedown.prevent
-        @click="add(s.tag)"
+        @click="pick(s.tag)"
       >
         {{ s.tag }} <span class="lti-sug__n">{{ s.count }}</span>
       </button>
@@ -164,6 +180,7 @@ function onBlur() {
 }
 
 .lti-chip__x {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -239,8 +256,15 @@ function onBlur() {
     height: 24px;
   }
 
+  /* Alvo de toque de 44 px sem engordar o chip. */
+  .lti-chip__x::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+
   .lti-sug {
-    min-height: 36px;
+    min-height: 44px;
   }
 }
 </style>

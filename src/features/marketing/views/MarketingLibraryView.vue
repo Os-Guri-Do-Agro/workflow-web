@@ -10,8 +10,9 @@
  * - Grade de miniaturas (ou lista), seleção por caixa e Shift+clique, barra de
  *   ações em lote, painel de detalhes e tela cheia com setas e Esc.
  * - Entrada: arrastar arquivos E pastas (recria as subpastas), Ctrl+V de
- *   imagem na pasta aberta, Enviar arquivos ou pasta; no celular "Tirar foto"
- *   e "Galeria". Arquivo repetido pergunta "Manter os dois" ou "Pular".
+ *   imagem na pasta aberta, Enviar arquivos ou pasta; no celular "Tirar foto",
+ *   "Galeria" e "Arquivos". Tudo sobe pela fila global da ala (bandeja
+ *   "Envios"); arquivo repetido pergunta lá "Manter os dois" ou "Pular".
  *
  * Quem decide o que cada um pode é o servidor; a tela só esconde o que não dá.
  */
@@ -61,10 +62,10 @@ import {
   deleteLibraryItem,
   downloadLibraryZip,
   getLibraryDownload,
+  getLibraryItem,
   isLibraryUnavailable,
   updateLibraryFolder,
   type LibraryBulkAction,
-  type LibraryDuplicate,
   type LibraryFilters,
   type LibraryFolder,
   type LibraryItem,
@@ -74,7 +75,6 @@ import {
 import axios from 'axios'
 import { useMarketing, useMarketingMembers } from '../composables/useMarketing'
 import LibraryDetails from '../library/LibraryDetails.vue'
-import LibraryDuplicateDialog from '../library/LibraryDuplicateDialog.vue'
 import LibraryFolderPickDialog from '../library/LibraryFolderPickDialog.vue'
 import LibraryFolderTree from '../library/LibraryFolderTree.vue'
 import LibraryGrid from '../library/LibraryGrid.vue'
@@ -83,7 +83,7 @@ import LibraryNameDialog from '../library/LibraryNameDialog.vue'
 import LibrarySheet from '../library/LibrarySheet.vue'
 import LibraryTagsDialog from '../library/LibraryTagsDialog.vue'
 import LibraryUploadPanel from '../library/LibraryUploadPanel.vue'
-import { filesFromDrop, filesFromInput, imagesFromPaste, isEditableTarget, isFileDrag, type SourcedFile } from '../library/file-sources'
+import { filesFromDrop, filesFromInput, isFileDrag, usePasteFiles, type SourcedFile } from '../uploads/file-sources'
 import {
   fileExtOf,
   GERAL_PARAM,
@@ -94,7 +94,7 @@ import {
   viewUrlOf,
   type LibrarySelection,
 } from '../library/library-meta'
-import { enqueueLibraryUploads, libraryUploads, type DuplicateDecision } from '../library/library-upload'
+import { enqueueLibraryUploads } from '../library/library-upload'
 import { useLibraryItem, useLibraryItems, useLibraryRefresh, useLibraryTags, useLibraryTree } from '../library/useLibrary'
 import '../library/library.css'
 
@@ -170,7 +170,11 @@ const allCount = computed(() => locations.value.reduce((s, l) => s + l.totalCoun
 
 const selection = computed<LibrarySelection>(() => {
   const key = qs('local')
-  if (key === 'todos') return { companyId: undefined, folderId: null }
+  // "Todos os arquivos" com o filtro de marca do layout é a marca filtrada (a
+  // árvore nem mostra "Todos" nesse caso); sem filtro, todos os lugares.
+  if (key === 'todos') {
+    return mk.brandFilter.value ? { companyId: mk.brandFilter.value, folderId: null } : { companyId: undefined, folderId: null }
+  }
   if (key) {
     const companyId = locationFromKey(key)
     if (companyId !== undefined && locations.value.some((l) => l.companyId === companyId)) {
@@ -316,13 +320,18 @@ function clearFilters() {
 
 const selected = ref(new Set<string>())
 const anchor = ref<number | null>(null)
-watch(
-  () => [selection.value.companyId, selection.value.folderId, filters.value] as const,
-  () => {
-    selected.value = new Set()
-    anchor.value = null
-  },
+/**
+ * Troca de lugar, pasta ou filtro zera a seleção. Vigia uma CHAVE de texto:
+ * o objeto `filters` é recriado a cada refetch da árvore (com os mesmos
+ * valores), e vigiar o objeto zerava a seleção sozinha no meio do uso.
+ */
+const viewKey = computed(() =>
+  JSON.stringify([selection.value.companyId === undefined ? '*' : selection.value.companyId, selection.value.folderId, { ...filters.value, limit: undefined }]),
 )
+watch(viewKey, () => {
+  selected.value = new Set()
+  anchor.value = null
+})
 // O que sumiu da lista (apagado por outra pessoa) sai da seleção.
 watch(items, (list) => {
   if (!selected.value.size) return
@@ -378,67 +387,51 @@ function closeDetails() {
 }
 
 const viewerIndex = ref<number | null>(null)
-type LibViewerFile = ViewerFile & { itemId: string; viewUrl: string | null }
+/** Arquivo aberto em tela cheia que não está entre os carregados (link com `?item=`, página seguinte). */
+const viewerExtra = ref<LibraryItem | null>(null)
+type LibViewerFile = ViewerFile & { itemId: string; hasPreview: boolean }
 const viewerItems = computed<LibViewerFile[]>(() => {
-  const list = items.value.length ? items.value : openItemData.value ? [openItemData.value] : []
+  const list = [...items.value]
+  const extra = viewerExtra.value ?? openItemData.value
+  if (extra && !list.some((i) => i.id === extra.id)) list.push(extra)
   return list.map((i) => ({
     itemId: i.id,
-    viewUrl: viewUrlOf(i),
+    hasPreview: !!viewUrlOf(i),
     filename: `${i.title}${fileExtOf(i.asset.name, i.title)}`,
     mimeType: i.asset.hasPreview ? 'image/webp' : i.asset.mimeType,
     size: i.asset.size,
     uploadedBy: i.createdBy,
   }))
 })
+/**
+ * A URL assinada da lista vence (a tela pode ficar aberta horas): a tela cheia
+ * pede as duas na hora, a de ver (prévia RGB quando há) e a do original.
+ */
 async function resolveViewerUrl(file: ViewerFile): Promise<ResolvedFileUrl> {
   const f = file as LibViewerFile
-  const dl = await getLibraryDownload(groupId.value, f.itemId)
-  return { url: f.viewUrl ?? dl.url, downloadUrl: dl.url }
+  const [dl, fresh] = await Promise.all([
+    getLibraryDownload(groupId.value, f.itemId),
+    f.hasPreview ? getLibraryItem(groupId.value, f.itemId).catch(() => null) : Promise.resolve(null),
+  ])
+  return { url: (fresh && viewUrlOf(fresh)) || dl.url, downloadUrl: dl.url }
 }
 function viewItem(item: LibraryItem) {
+  viewerExtra.value = items.value.some((i) => i.id === item.id) ? null : item
   const idx = viewerItems.value.findIndex((v) => v.itemId === item.id)
-  viewerIndex.value = idx >= 0 ? idx : 0
+  viewerIndex.value = idx >= 0 ? idx : viewerItems.value.length - 1
+}
+function closeViewer() {
+  viewerIndex.value = null
+  viewerExtra.value = null
 }
 
 // ── Envio ──────────────────────────────────────────────────────────────────
 
-const dup = reactive({
-  open: false,
-  fileName: '',
-  where: '',
-  existingTitle: '',
-  more: false,
-  resolve: null as ((d: DuplicateDecision) => void) | null,
-})
-const batchDecision = new Map<string, DuplicateDecision>()
-
-function askDuplicate(d: LibraryDuplicate, task: { batchId: string; name: string }): Promise<DuplicateDecision> {
-  const remembered = batchDecision.get(task.batchId)
-  if (remembered) return Promise.resolve(remembered)
-  return new Promise((resolve) => {
-    const batchLeft = libraryUploads.tasks.filter(
-      (t) => t.batchId === task.batchId && t.name !== task.name && ['queued', 'uploading'].includes(t.status),
-    ).length
-    Object.assign(dup, {
-      open: true,
-      fileName: task.name,
-      where: d.folderPath,
-      existingTitle: d.title,
-      more: batchLeft > 0,
-      resolve,
-    })
-  })
-}
-
-function onDuplicateDecide(decision: DuplicateDecision, applyAll: boolean, batchId: string | null) {
-  if (applyAll && batchId) batchDecision.set(batchId, decision)
-  const r = dup.resolve
-  dup.open = false
-  dup.resolve = null
-  r?.(decision)
-}
-const dupBatch = ref<string | null>(null)
-
+/**
+ * Tudo vai para a fila GLOBAL da ala de uma vez (`enqueueLibraryUploads`): a
+ * bandeja "Envios" mostra o progresso, pergunta o repetido e tenta de novo; a
+ * faixa no topo desta tela só lê a mesma fila. Sair da tela não para nada.
+ */
 function startUpload(entries: SourcedFile[], dest?: { companyId: string | null; folderId: string | null } | null) {
   if (!entries.length) return
   const target = dest ?? uploadDest.value
@@ -453,25 +446,7 @@ function startUpload(entries: SourcedFile[], dest?: { companyId: string | null; 
   }
   const loc = locations.value.find((l) => l.companyId === target.companyId)
   const folder = target.folderId ? folders.value.find((f) => f.id === target.folderId) : undefined
-  const label = placeLabel(loc, folder)
-  enqueueLibraryUploads(groupId.value, entries, target, {
-    onDuplicate: (d, task) => {
-      dupBatch.value = task.batchId
-      return askDuplicate(d, task)
-    },
-    onDone: (s) => {
-      batchDecision.delete(s.batchId)
-      refresh()
-      const parts: string[] = []
-      if (s.done) parts.push(s.done === 1 ? `1 arquivo enviado para ${label}` : `${s.done} arquivos enviados para ${label}`)
-      if (s.skipped) parts.push(s.skipped === 1 ? '1 pulado' : `${s.skipped} pulados`)
-      if (s.failed) parts.push(s.failed === 1 ? '1 não subiu (veja nos envios)' : `${s.failed} não subiram (veja nos envios)`)
-      if (s.flattened) parts.push('pastas além de 5 níveis ficaram no 5º nível')
-      if (!parts.length) return
-      if (s.failed) toast.warning(parts.join('; ') + '.')
-      else toast.success(parts.join('; ') + '.')
-    },
-  })
+  enqueueLibraryUploads(groupId.value, entries, target, placeLabel(loc, folder), { onSettled: () => refresh() })
 }
 
 const pendingEntries = ref<SourcedFile[]>([])
@@ -488,10 +463,7 @@ const folderInput = ref<HTMLInputElement | null>(null)
 const cameraInput = ref<HTMLInputElement | null>(null)
 const galleryInput = ref<HTMLInputElement | null>(null)
 function onInput(event: Event) {
-  const input = event.target as HTMLInputElement
-  const entries = filesFromInput(input)
-  input.value = ''
-  startUpload(entries)
+  startUpload(filesFromInput(event))
 }
 
 // Arrastar arquivos e pastas do computador para a área de conteúdo.
@@ -511,44 +483,52 @@ function onDropFiles(event: DragEvent, dest?: { companyId: string | null; folder
   })
 }
 
-// Ctrl+V de imagem na pasta aberta.
-function onPaste(event: ClipboardEvent) {
-  if (isEditableTarget(event.target) || pickDest.open || dup.open) return
-  const files = imagesFromPaste(event)
-  if (!files.length) return
-  event.preventDefault()
-  if (!uploadDest.value) {
-    toast.info(
-      canUploadSomewhere.value
-        ? 'Abra uma marca ou pasta onde você envia arquivos para colar a imagem lá.'
-        : 'Seu papel não envia arquivos para o Acervo.',
-    )
-    return
-  }
-  startUpload(files)
-}
+/** Algum diálogo ou folha desta tela está aberto: a colagem não é da pasta de trás. */
+const anyDialogOpen = computed(
+  () =>
+    pickDest.open ||
+    nameDlg.open ||
+    folderDel.open ||
+    moveDlg.open ||
+    tagsDlg.open ||
+    delDlg.open ||
+    dropMove.open ||
+    viewerIndex.value !== null ||
+    treeSheet.value ||
+    detailsSheet.value,
+)
+
+// Ctrl+V de imagem na pasta aberta (a implementação de colar é a da ala inteira).
+const pageEl = ref<HTMLElement | null>(null)
+usePasteFiles({
+  enabled: () => !unavailable.value && !anyDialogOpen.value,
+  root: () => pageEl.value,
+  onFiles: (files) => {
+    if (!uploadDest.value) {
+      toast.info(
+        canUploadSomewhere.value
+          ? 'Abra uma marca ou pasta onde você envia arquivos para colar a imagem lá.'
+          : 'Seu papel não envia arquivos para o Acervo.',
+      )
+      return
+    }
+    startUpload(files)
+  },
+})
+
 /**
- * Arquivo solto fora de um alvo (barra de cima, margem) faria o navegador
- * abrir o arquivo e sair da ala: nesta tela, soltar fora não faz nada.
+ * Soltar fora de um alvo o `MarketingLayout` já segura (o navegador não abre
+ * o arquivo). Aqui só apaga o destaque da área quando o arrasto acaba.
  */
-function swallowStrayDrop(event: DragEvent) {
-  if (!isFileDrag(event)) return
-  event.preventDefault()
-  if (event.type === 'drop') dropActive.value = false
-}
 function endDrag() {
   dropActive.value = false
 }
 onMounted(() => {
-  document.addEventListener('paste', onPaste)
-  document.addEventListener('dragover', swallowStrayDrop)
-  document.addEventListener('drop', swallowStrayDrop)
+  document.addEventListener('drop', endDrag)
   document.addEventListener('dragend', endDrag)
 })
 onBeforeUnmount(() => {
-  document.removeEventListener('paste', onPaste)
-  document.removeEventListener('dragover', swallowStrayDrop)
-  document.removeEventListener('drop', swallowStrayDrop)
+  document.removeEventListener('drop', endDrag)
   document.removeEventListener('dragend', endDrag)
 })
 
@@ -683,7 +663,17 @@ async function onDropFolder(folderId: string, dest: { companyId: string | null; 
 
 const busy = ref(false)
 const moveDlg = reactive({ open: false, ids: [] as string[], loading: false, error: '' })
-const tagsDlg = reactive({ open: false, loading: false, error: '' })
+/** Os ids ficam guardados ao abrir: a seleção pode mudar por trás (tempo real) sem mudar o alvo. */
+const tagsDlg = reactive({ open: false, ids: [] as string[], loading: false, error: '' })
+/** Arrastar para a pasta de OUTRA marca pede confirmação, com o mesmo aviso do "Mover". */
+const dropMove = reactive({
+  open: false,
+  ids: [] as string[],
+  dest: null as { companyId: string | null; folderId: string | null } | null,
+  message: '',
+  loading: false,
+})
+const MOVE_BRAND_HINT = 'Mudar de marca faz o arquivo aparecer para quem vê a nova marca e sumir para quem só via a antiga.'
 const delDlg = reactive({ open: false, ids: [] as string[], loading: false })
 
 async function runBulk(acao: LibraryBulkAction, ids: string[], extra: { folderId?: string | null; companyId?: string | null; tags?: string[] } = {}) {
@@ -717,21 +707,57 @@ async function confirmMove(dest: { companyId: string | null; folderId: string | 
   }
 }
 
-async function onDropItems(ids: string[], dest: { companyId: string | null; folderId: string | null }) {
+async function moveDropped(ids: string[], dest: { companyId: string | null; folderId: string | null }) {
   try {
     await runBulk('mover', ids, { folderId: dest.folderId, companyId: dest.companyId })
     selected.value = new Set()
     toast.success(ids.length === 1 ? 'Arquivo movido.' : `${ids.length} arquivos movidos.`)
+    return true
   } catch (error) {
     toast.error(getApiErrorMessage(error, 'Não foi possível mover.'))
+    return false
   }
+}
+
+function onDropItems(ids: string[], dest: { companyId: string | null; folderId: string | null }) {
+  // Item que não está carregado: na dúvida, trata como de outro lugar (pergunta).
+  const changesBrand = ids.some((id) => {
+    const it = items.value.find((i) => i.id === id)
+    return !it || it.companyId !== dest.companyId
+  })
+  if (!changesBrand) {
+    void moveDropped(ids, dest)
+    return
+  }
+  const loc = locations.value.find((l) => l.companyId === dest.companyId)
+  const folder = dest.folderId ? folders.value.find((f) => f.id === dest.folderId) : undefined
+  const what = ids.length === 1 ? 'o arquivo' : `os ${ids.length} arquivos`
+  Object.assign(dropMove, {
+    open: true,
+    ids,
+    dest,
+    message: `Levar ${what} para ${placeLabel(loc, folder)}? ${MOVE_BRAND_HINT}`,
+    loading: false,
+  })
+}
+
+async function confirmDropMove() {
+  if (!dropMove.dest) return
+  dropMove.loading = true
+  await moveDropped(dropMove.ids, dropMove.dest)
+  dropMove.loading = false
+  dropMove.open = false
+}
+
+function askTags() {
+  Object.assign(tagsDlg, { open: true, ids: [...selected.value], loading: false, error: '' })
 }
 
 async function applyTags(tags: string[], mode: 'etiquetar' | 'desetiquetar') {
   tagsDlg.loading = true
   tagsDlg.error = ''
   try {
-    await runBulk(mode, [...selected.value], { tags })
+    await runBulk(mode, tagsDlg.ids, { tags })
     tagsDlg.open = false
     toast.success(mode === 'etiquetar' ? 'Etiquetas adicionadas.' : 'Etiquetas tiradas.')
   } catch (error) {
@@ -753,10 +779,12 @@ async function toggleStarBulk() {
 async function downloadZip() {
   busy.value = true
   try {
-    const name = await downloadLibraryZip(groupId.value, [...selected.value])
-    toast.success(`Zip pronto: ${name}`)
+    const { filename } = await downloadLibraryZip(groupId.value, [...selected.value], {
+      onLateError: (message) => toast.error(message),
+    })
+    toast.success(`Baixando ${filename}. O andamento aparece nos downloads do navegador.`)
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : 'Não foi possível montar o zip.')
+    toast.error(getApiErrorMessage(error, 'Não foi possível montar o zip. Tente de novo.'))
   } finally {
     busy.value = false
   }
@@ -845,7 +873,7 @@ const emptyDescription = computed(() => {
   if (searching.value) return 'Tente outra busca ou limpe os filtros.'
   if (uploadDest.value) {
     return phone.value
-      ? 'Use "Tirar foto" ou "Galeria" para enviar.'
+      ? 'Use "Tirar foto", "Galeria" ou "Arquivos" para enviar.'
       : 'Arraste arquivos ou pastas para cá, cole uma imagem com Ctrl+V ou use Enviar.'
   }
   if (isAll.value && canUploadSomewhere.value) return 'Escolha uma marca à esquerda e envie o material dela: logo, fotos, vídeos, PDFs.'
@@ -854,7 +882,7 @@ const emptyDescription = computed(() => {
 </script>
 
 <template>
-  <div class="mk-page lib-page">
+  <div ref="pageEl" class="mk-page lib-page">
     <EmptyState
       v-if="unavailable"
       :icon="Images"
@@ -924,6 +952,11 @@ const emptyDescription = computed(() => {
               <ImagePlus :size="15" aria-hidden="true" />
               Galeria
             </button>
+            <!-- PDF, logo em AI, planilha: no celular também sobe qualquer arquivo. -->
+            <button type="button" class="mk-btn" data-action="phone-files" @click="fileInput?.click()">
+              <Upload :size="15" aria-hidden="true" />
+              Arquivos
+            </button>
           </template>
           <DropdownMenuRoot v-else>
             <DropdownMenuTrigger as-child>
@@ -962,7 +995,7 @@ const emptyDescription = computed(() => {
           <FolderInput :size="14" aria-hidden="true" />
           Mover
         </button>
-        <button v-if="canEditSelection" type="button" class="mk-btn mk-btn--ghost" data-bulk="etiquetar" :disabled="busy" @click="tagsDlg.open = true">
+        <button v-if="canEditSelection" type="button" class="mk-btn mk-btn--ghost" data-bulk="etiquetar" :disabled="busy" @click="askTags">
           <Tags :size="14" aria-hidden="true" />
           Etiquetar
         </button>
@@ -1218,7 +1251,7 @@ const emptyDescription = computed(() => {
       :items="viewerItems"
       :start-index="viewerIndex"
       :resolve-url="resolveViewerUrl"
-      @close="viewerIndex = null"
+      @close="closeViewer"
     />
 
     <LibraryNameDialog
@@ -1267,7 +1300,7 @@ const emptyDescription = computed(() => {
 
     <LibraryTagsDialog
       v-model="tagsDlg.open"
-      :count="selected.size"
+      :count="tagsDlg.ids.length"
       :suggestions="tagSuggestions"
       :loading="tagsDlg.loading"
       :error="tagsDlg.error"
@@ -1277,20 +1310,20 @@ const emptyDescription = computed(() => {
     <ConfirmDialog
       v-model="delDlg.open"
       :title="delDlg.ids.length === 1 ? 'Apagar do Acervo?' : `Apagar ${delDlg.ids.length} arquivos do Acervo?`"
-      message="Sai do Acervo e do storage. As versões de card que usaram estes arquivos têm cópia própria e continuam intactas."
+      message="O arquivo sai do Acervo de vez. As versões de card que usaram estes arquivos têm cópia própria e continuam intactas."
       confirm-label="Apagar"
       :loading="delDlg.loading"
       danger
       @confirm="confirmDelete"
     />
 
-    <LibraryDuplicateDialog
-      v-model="dup.open"
-      :file-name="dup.fileName"
-      :where="dup.where"
-      :existing-title="dup.existingTitle"
-      :more="dup.more"
-      @decide="(d, all) => onDuplicateDecide(d, all, dupBatch)"
+    <ConfirmDialog
+      v-model="dropMove.open"
+      title="Mudar de marca?"
+      :message="dropMove.message"
+      confirm-label="Mover para cá"
+      :loading="dropMove.loading"
+      @confirm="confirmDropMove"
     />
   </div>
 </template>
@@ -1576,11 +1609,13 @@ const emptyDescription = computed(() => {
     grid-template-columns: 200px minmax(0, 1fr);
   }
 
+  /* Painel por cima do conteúdo: termina ACIMA da bandeja "Envios" e do
+     mascote do assistente (canto de baixo), que cobriam o fim dele. */
   .lib__details {
     position: fixed;
     top: 72px;
     right: 12px;
-    bottom: 12px;
+    bottom: max(86px, calc(12px + var(--mkt-tray-space, 0px)));
     z-index: 40;
     width: min(340px, calc(100vw - 24px));
     max-height: none;

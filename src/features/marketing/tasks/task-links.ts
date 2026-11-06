@@ -11,8 +11,12 @@ import type { CardTaskItem, TaskMonth } from '@/service/marketing/marketing-task
 export const taskKeys = {
   card: (groupId: string, cardId: string) => ['marketing', groupId, 'cards', 'tasks', cardId] as const,
   candidates: (groupId: string, filter: unknown) => ['marketing', groupId, 'tasks', 'candidates', filter] as const,
+  /** Todas as listas de candidatas do grupo (qualquer card, busca ou empresa). */
+  allCandidates: (groupId: string) => ['marketing', groupId, 'tasks', 'candidates'] as const,
   /** Painel da tarefa no Nevo: fora da ala (não tem grupo na chave). */
   ofTask: (activityId: string, companyId: string | null) => ['marketing-task-cards', activityId, companyId] as const,
+  /** Prefixo de todos os painéis de tarefa (o socket da ala não alcança esta chave). */
+  ofTaskAll: ['marketing-task-cards'] as const,
 }
 
 /**

@@ -68,9 +68,12 @@ const pages = computed(() => listQuery.data.value?.pages ?? [])
 const rows = computed<ActivationListItem[]>(() => pages.value.flatMap((p) => p.items))
 /** Contagem da página mais nova (todas trazem; a última é a mais fresca). */
 const counts = computed(() => pages.value[pages.value.length - 1]?.counts ?? null)
-const upcomingCount = computed(() => counts.value?.upcoming ?? (when.value === 'proximas' ? rows.value.length : 0))
-const pastCount = computed(() => counts.value?.past ?? (when.value === 'passadas' ? rows.value.length : 0))
-const shownTotal = computed(() => (when.value === 'passadas' ? pastCount.value : upcomingCount.value))
+/** Carregando, a aba mostra "..." (um "0" parece lista vazia); com erro, "-". */
+const countText = (n: number | undefined) =>
+  n !== undefined ? String(n) : listQuery.isError.value ? '-' : '...'
+const upcomingCount = computed(() => counts.value?.upcoming)
+const pastCount = computed(() => counts.value?.past)
+const shownTotal = computed(() => (when.value === 'passadas' ? pastCount.value : upcomingCount.value) ?? rows.value.length)
 const loadingMore = computed(() => listQuery.isFetchingNextPage.value)
 function loadMore() {
   if (listQuery.hasNextPage.value && !loadingMore.value) void listQuery.fetchNextPage()
@@ -117,7 +120,7 @@ function checklistLabel(a: ActivationListItem) {
             :aria-selected="when === 'proximas'"
             @click="setQuery({ quando: null })"
           >
-            Próximas <span class="av__n" data-testid="av-count-upcoming">{{ upcomingCount }}</span>
+            Próximas <span class="av__n" data-testid="av-count-upcoming">{{ countText(upcomingCount) }}</span>
           </button>
           <button
             type="button"
@@ -127,7 +130,7 @@ function checklistLabel(a: ActivationListItem) {
             :aria-selected="when === 'passadas'"
             @click="setQuery({ quando: 'passadas' })"
           >
-            Passadas <span class="av__n" data-testid="av-count-past">{{ pastCount }}</span>
+            Passadas <span class="av__n" data-testid="av-count-past">{{ countText(pastCount) }}</span>
           </button>
         </div>
         <div class="av__filter" data-testid="av-filter-status">

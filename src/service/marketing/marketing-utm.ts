@@ -133,6 +133,35 @@ export async function deleteUtm(groupId: string, utmId: string) {
   await api.delete(mkt(groupId, `/utm/${encodeURIComponent(utmId)}`))
 }
 
+/**
+ * Uma UTM pelo id (`GET utm/:id`): o painel `?utm=` abre UTM que a lista
+ * filtrada (ou o teto de 500 da lista) não trouxe. 404 = não existe ou é de
+ * marca que a pessoa não vê. API anterior à rota (404 do Nest, "Cannot GET"):
+ * cai na lista sem filtros.
+ */
+export async function findUtmById(groupId: string, utmId: string): Promise<{ utm: MarketingUtm | null }> {
+  try {
+    const { data } = await api.get<MarketingUtm>(mkt(groupId, `/utm/${encodeURIComponent(utmId)}`))
+    return { utm: data }
+  } catch (error) {
+    const message = axios.isAxiosError(error) ? String((error.response?.data as { message?: unknown })?.message ?? '') : ''
+    if (!(axios.isAxiosError(error) && error.response?.status === 404 && /^Cannot GET/i.test(message))) throw error
+  }
+  const found = (await listUtms(groupId)).find((u) => u.id === utmId)
+  if (!found) throw new UtmNotFoundError()
+  return { utm: found }
+}
+
+export class UtmNotFoundError extends Error {
+  constructor() {
+    super('UTM não encontrada.')
+  }
+}
+
+export function isUtmNotFound(error: unknown): boolean {
+  return error instanceof UtmNotFoundError || (axios.isAxiosError(error) && error.response?.status === 404)
+}
+
 /** Id da UTM que já existe, quando a criação deu 409 (duplicada). */
 export function duplicateUtmId(error: unknown): string | null {
   if (!axios.isAxiosError(error) || error.response?.status !== 409) return null

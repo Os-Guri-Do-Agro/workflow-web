@@ -2,21 +2,31 @@
  * Fila GLOBAL de envio da ala Marketing (spec r1-acervo-tarefas-convite, D4 e D5).
  *
  * Um motor só para todos os uploads da ala (versão de card, foto de ativação,
- * nota fiscal, arquivo de orçamento e, na junção, o Acervo):
+ * nota fiscal, arquivo de orçamento e o Acervo):
  *
  * - sobe 3 arquivos em paralelo, cada um passando por
- *   `queued -> hashing -> uploading -> confirming -> done` (ou `error`/`canceled`);
+ *   `queued -> hashing -> uploading -> confirming -> done` (ou `error`,
+ *   `canceled`, `skipped`);
  * - o sha256 sai de um Web Worker incremental (`transport.hashFile`);
  * - acima de 6 MB sobe em partes pelo TUS do storage, que retoma de onde parou;
  * - erro de rede repete sozinho com recuo (1, 2, 4, 8, 15, 30 s...) e, sem
  *   internet, espera o evento `online` sem gastar tentativa;
- * - cancelar aborta o que está no ar e apaga o envio pendente na API;
+ * - cancelar aborta o que está no ar e apaga o envio pendente na API. Cada
+ *   execução tem um id: depois de um cancelar (ou de um "Tentar de novo"), a
+ *   execução velha sai sem tocar no estado, e todo `await` corre contra o sinal
+ *   de cancelar (nada fica preso esperando uma promessa que não volta);
+ * - pergunta do destino (repetido no Acervo) pausa o arquivo SEM segurar vaga:
+ *   a bandeja mostra a pergunta e a resposta volta no `meta.choice`;
+ * - o passo final do destino (`onUploaded`, ex.: criar o item do Acervo) também
+ *   repete erro de rede; se falhar, o arquivo fica com erro e o "Tentar de
+ *   novo" refaz SÓ esse passo, com o mesmo arquivo já guardado;
  * - é um singleton de módulo: sobrevive à troca de rota (e ao fechar o diálogo
  *   que o chamou). A bandeja `UploadTray.vue` só desenha este estado;
- * - fechar a aba com envio pendente pede confirmação (`beforeunload`).
+ * - fechar a aba com envio pendente pede confirmação (`beforeunload`); sair da
+ *   conta cancela tudo e esvazia a fila (`session-hooks`).
  *
- * Destinos entram por `UploadTarget` (ver `upload-targets.ts`); o Acervo pluga
- * o dele sem mexer aqui.
+ * Destinos entram por `UploadTarget` (ver `upload-targets.ts` e o do Acervo em
+ * `library/library-upload.ts`).
  */
 import { computed, markRaw, reactive, type ComputedRef } from 'vue'
 import axios from 'axios'
@@ -31,26 +41,40 @@ import {
   type MarketingUploadTicket,
 } from '@/service/marketing/marketing-core'
 import { queryClient } from '@/service/query-client'
+import { onSessionReset, registerPendingWork } from '@/service/session-hooks'
 import { hashFile, isAbort, mediaDuration, sendToStorage, UploadError } from './transport'
 
 // ── Tipos públicos ───────────────────────────────────────────────────────────
 
-export type UploadStatus = 'queued' | 'hashing' | 'uploading' | 'confirming' | 'done' | 'error' | 'canceled'
+export type UploadStatus = 'queued' | 'hashing' | 'uploading' | 'confirming' | 'done' | 'error' | 'canceled' | 'skipped'
 
-/** Pergunta que o destino pode fazer antes de subir (ex.: duplicata no Acervo). */
+/** Pergunta que o destino pode fazer antes de subir (ex.: repetido no Acervo). */
 export interface UploadPrompt {
   message: string
   choices: Array<{ value: string; label: string; primary?: boolean }>
+  /**
+   * Texto da caixa "fazer o mesmo para os outros deste envio". Marcada, a
+   * resposta vale para as outras perguntas do MESMO lote (as abertas e as que
+   * vierem depois).
+   */
+  batchLabel?: string
 }
 
 /**
  * O que o `requestTicket` do destino devolve:
  * - o ticket da rota da fase (o normal);
- * - `{ prompt }`: a fila pausa o arquivo e mostra a pergunta na bandeja; a
- *   escolha volta no `meta.choice` da próxima chamada;
- * - `{ skip }`: não sobe (fica como cancelado, com o motivo).
+ * - `{ prompt }`: a fila pausa o arquivo (sem segurar vaga) e mostra a pergunta
+ *   na bandeja; a escolha volta no `meta.choice` da próxima chamada;
+ * - `{ skip }`: não sobe (fica como pulado, com o motivo).
  */
 export type TicketResult = MarketingUploadTicket | { prompt: UploadPrompt } | { skip: true; reason?: string }
+
+/** O que a fila passa ao destino em cada chamada. */
+export interface UploadCallContext {
+  /** Cancelar aborta a requisição (passe para o axios: `{ signal }`). */
+  signal: AbortSignal
+  item: UploadItem
+}
 
 export interface UploadTarget {
   /** Destino estável, ex.: `card:<id>`, `activation:<id>`. Agrupa na bandeja e nas telas. */
@@ -60,11 +84,19 @@ export interface UploadTarget {
   /** Rótulo curto na bandeja ("Card Post do Dia dos Pets") */
   label: string
   /** Chama a rota da fase que valida o dono e devolve o ticket. */
-  requestTicket(groupId: string, meta: MarketingUploadMeta & { choice?: string }): Promise<TicketResult>
+  requestTicket(
+    groupId: string,
+    meta: MarketingUploadMeta & { choice?: string },
+    ctx: UploadCallContext,
+  ): Promise<TicketResult>
   /** Filtro antes de entrar na fila: devolve a frase de recusa, ou null. */
   accept?(file: File): string | null
-  /** Depois do confirm (arquivo READY no servidor). */
-  onUploaded?(asset: MarketingAsset, item: UploadItem): void | Promise<void>
+  /**
+   * Depois do confirm (arquivo READY no servidor). Erro de rede repete sozinho;
+   * outro erro deixa o arquivo com erro, e o "Tentar de novo" chama de novo
+   * (só este passo). Precisa ser idempotente.
+   */
+  onUploaded?(asset: MarketingAsset, item: UploadItem, ctx: UploadCallContext): void | Promise<void>
   /** Chaves do Vue Query a invalidar quando um arquivo fica pronto (padrão: `['marketing', groupId]`). */
   invalidate?(groupId: string): ReadonlyArray<readonly unknown[]>
 }
@@ -77,7 +109,7 @@ export interface UploadEntry {
 
 export interface UploadHooks {
   onItemDone?(item: UploadItem, asset: MarketingAsset): void
-  /** done, error ou canceled */
+  /** done, error, canceled ou skipped */
   onItemSettled?(item: UploadItem): void
   /** Toda vez que o lote inteiro fica sem nada ativo (pode voltar a rodar num "Tentar de novo"). */
   onBatchSettled?(batch: UploadBatch): void
@@ -97,6 +129,8 @@ export interface UploadItem {
   readonly thumbUrl: string | null
   readonly addedAt: number
   status: UploadStatus
+  /** Uma execução ainda está terminando (logo depois de cancelar): "Tentar de novo" espera. */
+  running: boolean
   /** bytes já lidos pelo hash */
   hashed: number
   /** bytes que o storage já tem */
@@ -105,7 +139,7 @@ export interface UploadItem {
   etaSec: number | null
   /** erro em pt-BR, para a pessoa */
   error: string | null
-  /** aviso enquanto a fila tenta de novo sozinha */
+  /** aviso enquanto a fila tenta de novo sozinha (ou o motivo do pulado) */
   notice: string | null
   retryAt: number | null
   attempts: number
@@ -125,11 +159,11 @@ export interface UploadBatch {
   readonly items: UploadItem[]
   /** Arquivos que o `accept` do destino recusou (não entraram) */
   readonly rejected: Array<{ name: string; reason: string }>
-  /** Resolve na primeira vez que o lote inteiro termina (done, error ou canceled) */
+  /** Resolve na primeira vez que o lote inteiro termina */
   readonly settled: Promise<UploadItem[]>
 }
 
-export type UploadEvent = { type: 'done' | 'error' | 'canceled' | 'removed' | 'queued'; item: UploadItem }
+export type UploadEvent = { type: 'done' | 'error' | 'canceled' | 'skipped' | 'removed' | 'queued'; item: UploadItem }
 
 // ── Estado ───────────────────────────────────────────────────────────────────
 
@@ -140,6 +174,8 @@ const PREVIEWABLE = /^image\/(png|jpe?g|gif|webp|avif|bmp|svg\+xml)$/i
 
 interface Internal {
   ctrl: AbortController | null
+  /** id da execução no ar; execução com id velho não mexe em nada */
+  runId: number
   ticket: MarketingUploadTicket | null
   tus: { url: string | null }
   durationSec: number | null | undefined
@@ -148,6 +184,8 @@ interface Internal {
   renewals: number
   /** o último erro foi de rede depois de esgotar as tentativas (retomar mantém o ticket) */
   networkExhausted: boolean
+  /** o arquivo já está READY no servidor: só falta (ou falhou) o `onUploaded` */
+  confirmed: boolean
   sample: { t: number; sent: number } | null
 }
 
@@ -156,6 +194,8 @@ interface BatchState {
   hooks: UploadHooks
   resolve: (items: UploadItem[]) => void
   resolved: boolean
+  /** "Fazer o mesmo para os outros deste envio" */
+  choice: string | null
 }
 
 const state = reactive({ items: [] as UploadItem[] })
@@ -164,6 +204,7 @@ const batches = new Map<string, BatchState>()
 const listeners = new Set<(e: UploadEvent) => void>()
 let active = 0
 let seq = 0
+let runSeq = 0
 
 const uid = (p: string) => `${p}${Date.now().toString(36)}${(++seq).toString(36)}`
 
@@ -180,7 +221,32 @@ function emit(type: UploadEvent['type'], item: UploadItem) {
 const ACTIVE: UploadStatus[] = ['hashing', 'uploading', 'confirming']
 const isActive = (i: UploadItem) => ACTIVE.includes(i.status)
 const isPending = (i: UploadItem) => i.status === 'queued' || isActive(i)
-const isSettled = (i: UploadItem) => i.status === 'done' || i.status === 'error' || i.status === 'canceled'
+const isSettled = (i: UploadItem) =>
+  i.status === 'done' || i.status === 'error' || i.status === 'canceled' || i.status === 'skipped'
+
+const abortError = () => new UploadError('Envio cancelado.', 'aborted')
+
+/** Corre a promessa contra o cancelar: abortou, rejeita na hora (a promessa original segue sozinha). */
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    promise.catch(() => {})
+    return Promise.reject(abortError())
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
 
 // ── Ambiente: rede, aba ──────────────────────────────────────────────────────
 
@@ -219,7 +285,7 @@ const offline = () => typeof navigator !== 'undefined' && navigator.onLine === f
 /** Espera o recuo (ou a rede voltar, o que vier antes). `ms = null`: só a rede. */
 function waitRetry(ms: number | null, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (signal.aborted) return reject(new UploadError('Envio cancelado.', 'aborted'))
+    if (signal.aborted) return reject(abortError())
     let timer: ReturnType<typeof setTimeout> | undefined
     const done = () => {
       clearTimeout(timer)
@@ -230,7 +296,7 @@ function waitRetry(ms: number | null, signal: AbortSignal): Promise<void> {
     const onAbort = () => {
       clearTimeout(timer)
       wakers.delete(done)
-      reject(new UploadError('Envio cancelado.', 'aborted'))
+      reject(abortError())
     }
     wakers.add(done)
     signal.addEventListener('abort', onAbort, { once: true })
@@ -247,22 +313,26 @@ function isRetryable(error: unknown): boolean {
   return false
 }
 
-function describe(error: unknown): string {
+function describe(error: unknown, fallback = 'Não deu para enviar este arquivo. Tente de novo.'): string {
   if (error instanceof UploadError) return error.message
-  return getApiErrorMessage(error, 'Não deu para enviar este arquivo. Tente de novo.')
+  return getApiErrorMessage(error, fallback)
 }
 
-/** Roda `fn` repetindo erro de rede com recuo; sem internet, espera a rede sem gastar tentativa. */
+/**
+ * Roda `fn` repetindo erro de rede com recuo; sem internet, espera a rede sem
+ * gastar tentativa. Cada tentativa corre contra o `signal`: cancelar rejeita na
+ * hora, mesmo que `fn` nunca volte.
+ */
 async function withRetry<T>(item: UploadItem, signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
   const int = internals.get(item.id)!
   for (;;) {
     try {
-      const out = await fn()
+      const out = await raceAbort(Promise.resolve().then(fn), signal)
       item.notice = null
       item.retryAt = null
       return out
     } catch (error) {
-      if (signal.aborted || isAbort(error)) throw new UploadError('Envio cancelado.', 'aborted')
+      if (signal.aborted || isAbort(error) || axios.isCancel(error)) throw abortError()
       if (!isRetryable(error)) throw error
       if (offline()) {
         item.notice = OFFLINE_NOTICE
@@ -276,7 +346,7 @@ async function withRetry<T>(item: UploadItem, signal: AbortSignal, fn: () => Pro
       item.attempts++
       if (item.attempts > MAX_AUTO_RETRIES) {
         int.networkExhausted = true
-        throw new UploadError('O storage não respondeu depois de várias tentativas. Tente de novo.', 'network')
+        throw new UploadError('A conexão falhou várias vezes seguidas. Confira a internet e tente de novo.', 'network')
       }
       const ms = BACKOFF_MS[Math.min(item.attempts - 1, BACKOFF_MS.length - 1)]! + Math.floor(Math.random() * 400)
       item.notice = `Falha de rede. Nova tentativa em ${Math.max(1, Math.round(ms / 1000))} s.`
@@ -291,7 +361,8 @@ async function withRetry<T>(item: UploadItem, signal: AbortSignal, fn: () => Pro
 // ── Progresso, velocidade e tempo restante ───────────────────────────────────
 
 function progress(item: UploadItem, sent: number) {
-  const int = internals.get(item.id)!
+  const int = internals.get(item.id)
+  if (!int) return
   const now = performance.now()
   item.sent = Math.max(0, Math.min(item.size, sent))
   const s = int.sample
@@ -309,90 +380,142 @@ function progress(item: UploadItem, sent: number) {
   item.etaSec = item.speedBps > 1 ? Math.ceil((item.size - item.sent) / item.speedBps) : null
 }
 
-// ── Invalidação do cache (em lote: 30 fotos não viram 30 ondas de refetch) ───
+// ── Invalidação do cache (30 fotos não viram 30 ondas de refetch) ────────────
 
+/**
+ * No máximo uma onda por segundo (throttle, não debounce): o primeiro arquivo
+ * pronto aparece na hora e, num lote de 30, a tela atualiza a cada segundo em
+ * vez de esperar o último.
+ */
+const INVALIDATE_EVERY_MS = 1000
 const pendingKeys = new Map<string, readonly unknown[]>()
 let flushTimer: ReturnType<typeof setTimeout> | undefined
+let lastFlush = 0
+
+function flushInvalidations() {
+  flushTimer = undefined
+  lastFlush = Date.now()
+  const all = [...pendingKeys.values()]
+  pendingKeys.clear()
+  for (const queryKey of all) void queryClient.invalidateQueries({ queryKey: [...queryKey] })
+}
 
 function invalidateLater(keys: ReadonlyArray<readonly unknown[]>) {
   for (const k of keys) pendingKeys.set(JSON.stringify(k), k)
-  clearTimeout(flushTimer)
-  flushTimer = setTimeout(() => {
-    const all = [...pendingKeys.values()]
-    pendingKeys.clear()
-    for (const queryKey of all) void queryClient.invalidateQueries({ queryKey: [...queryKey] })
-  }, 250)
+  if (flushTimer) return
+  flushTimer = setTimeout(flushInvalidations, Math.max(0, INVALIDATE_EVERY_MS - (Date.now() - lastFlush)))
 }
 
 // ── Execução ─────────────────────────────────────────────────────────────────
 
 function pump() {
   while (active < MAX_ACTIVE) {
-    const next = state.items.find((i) => i.status === 'queued' && !internals.get(i.id)?.paused)
+    const next = state.items.find((i) => i.status === 'queued' && !i.running && !internals.get(i.id)?.paused)
     if (!next) return
     void run(next)
   }
 }
 
+const isTicket = (r: TicketResult): r is MarketingUploadTicket => !('prompt' in r) && !('skip' in r)
+
 async function run(item: UploadItem) {
-  const int = internals.get(item.id)!
+  const int = internals.get(item.id)
+  if (!int) return
   const ctrl = new AbortController()
+  const runId = ++runSeq
   int.ctrl = ctrl
+  int.runId = runId
   const signal = ctrl.signal
+  /** Esta execução ainda é a dona do item (não foi cancelada nem trocada por outra). */
+  const live = () => !signal.aborted && int.runId === runId && internals.get(item.id) === int
+  const call: UploadCallContext = { signal, item }
   active++
-  item.status = 'hashing'
+  item.running = true
   item.error = null
   item.notice = null
   try {
+    // Só o passo final falhou antes: o arquivo já está guardado, refaz só ele.
+    if (int.confirmed && item.asset) {
+      item.status = 'confirming'
+      await finish(item, int, item.asset, call, live)
+      return
+    }
+
+    item.status = 'hashing'
     if (item.size <= 0) throw new UploadError('Arquivo vazio.', 'refused')
     // Teto por arquivo ANTES do hash quando o arquivo é grande (não calcula 300 MB
     // à toa); arquivo pequeno calcula enquanto o teto chega (é uma ida à API só por sessão).
     const limitsP = getUploadLimits(item.groupId).catch(() => null)
     const checkLimits = async () => {
-      const limits = await limitsP
+      const limits = await raceAbort(limitsP, signal)
       if (limits && item.size > limits.maxBytes) {
         throw new UploadError(`Passa do limite de ${limits.maxMb} MB por arquivo.`, 'too-large')
       }
     }
     if (item.size > 32 * 1024 * 1024) await checkLimits()
+    if (!live()) return
 
     // 1. sha256 no worker (e a duração do vídeo, em paralelo)
     if (!item.sha256) {
       item.hashed = 0
-      const [hex, duration] = await Promise.all([
-        hashFile(item.file, { signal, onProgress: (n) => (item.hashed = n) }),
-        int.durationSec === undefined ? mediaDuration(item.file) : Promise.resolve(int.durationSec ?? undefined),
-      ])
+      const [hex, duration] = await raceAbort(
+        Promise.all([
+          hashFile(item.file, { signal, onProgress: (n) => live() && (item.hashed = n) }),
+          int.durationSec === undefined ? mediaDuration(item.file) : Promise.resolve(int.durationSec ?? undefined),
+        ]),
+        signal,
+      )
+      if (!live()) return
       item.sha256 = hex
       item.hashed = item.size
       int.durationSec = duration ?? null
     }
     await checkLimits()
+    if (!live()) return
 
     // 2. ticket na rota da fase (que valida o dono)
     item.status = 'uploading'
-    if (!int.ticket) {
-      const result = await withRetry(item, signal, () =>
-        item.target.requestTicket(item.groupId, {
-          name: item.name,
-          mimeType: item.mimeType,
-          size: item.size,
-          sha256: item.sha256 ?? undefined,
-          relativePath: item.relativePath ?? undefined,
-          choice: int.choice,
-        }),
-      )
+    while (!int.ticket) {
+      const result = await withRetry(item, signal, () => {
+        const p = item.target.requestTicket(
+          item.groupId,
+          {
+            name: item.name,
+            mimeType: item.mimeType,
+            size: item.size,
+            sha256: item.sha256 ?? undefined,
+            relativePath: item.relativePath ?? undefined,
+            choice: int.choice,
+          },
+          call,
+        )
+        // Ticket que chega DEPOIS do cancelar: o envio pendente sai do servidor.
+        p.then(
+          (r) => {
+            if (!live() && isTicket(r)) void abortMarketingUpload(item.groupId, r.asset.id).catch(() => {})
+          },
+          () => {},
+        )
+        return p
+      })
+      if (!live()) return
       if ('prompt' in result) {
+        // "Fazer o mesmo para os outros": a resposta do lote já vale para esta pergunta.
+        const remembered = batches.get(item.batchId)?.choice
+        if (remembered && result.prompt.choices.some((c) => c.value === remembered) && int.choice !== remembered) {
+          int.choice = remembered
+          continue
+        }
         item.prompt = result.prompt
         item.status = 'queued'
         int.paused = true
         return
       }
       if ('skip' in result) {
-        item.status = 'canceled'
+        item.status = 'skipped'
         item.notice = result.reason ?? 'Pulado.'
         item.finishedAt = Date.now()
-        emit('canceled', item)
+        emit('skipped', item)
         return
       }
       int.ticket = markRaw(result)
@@ -404,17 +527,19 @@ async function run(item: UploadItem) {
     int.sample = null
     await withRetry(item, signal, async () => {
       try {
-        item.transport = await sendToStorage(item.file, int.ticket!, {
+        const transport = await sendToStorage(item.file, int.ticket!, {
           contentType: item.mimeType,
           signal,
           tus: int.tus,
-          onProgress: (sent) => progress(item, sent),
+          onProgress: (sent) => live() && progress(item, sent),
         })
+        if (live()) item.transport = transport
       } catch (error) {
-        if (error instanceof UploadError && error.kind === 'expired' && int.renewals < 3) {
+        if (error instanceof UploadError && error.kind === 'expired' && int.renewals < 3 && live()) {
           // token assinado venceu (2 h): pede outro para o MESMO objeto e retoma
           int.renewals++
-          int.ticket = markRaw(await renewUploadTicket(item.groupId, int.ticket!.asset.id))
+          const renewed = await raceAbort(renewUploadTicket(item.groupId, int.ticket!.asset.id, { signal }), signal)
+          if (live()) int.ticket = markRaw(renewed)
           throw new UploadError(error.message, 'network')
         }
         if (error instanceof UploadError && error.kind === 'gone') {
@@ -424,36 +549,33 @@ async function run(item: UploadItem) {
         throw error
       }
     })
+    if (!live()) return
     item.sent = item.size
     item.speedBps = null
     item.etaSec = 0
 
     // 4. confirm da fundação (confere no storage, mede, prévia RGB, sha256)
     item.status = 'confirming'
+    const assetId = int.ticket!.asset.id
     const asset = await withRetry(item, signal, () =>
-      confirmMarketingAsset(item.groupId, int.ticket!.asset.id, {
-        durationSec: int.durationSec ?? undefined,
-      }),
+      confirmMarketingAsset(item.groupId, assetId, { durationSec: int.durationSec ?? undefined }, { signal }),
     )
+    if (!live()) return
     item.asset = asset
-    item.status = 'done'
-    item.finishedAt = Date.now()
-    item.notice = null
+    int.confirmed = true
     int.ticket = null
-    try {
-      await item.target.onUploaded?.(asset, item)
-    } catch (error) {
-      console.error('[uploads] onUploaded falhou', error)
-    }
-    invalidateLater(item.target.invalidate?.(item.groupId) ?? [['marketing', item.groupId]])
-    batches.get(item.batchId)?.hooks.onItemDone?.(item, asset)
-    emit('done', item)
+
+    // 5. passo final do destino (ex.: o item do Acervo), com repetição
+    await finish(item, int, asset, call, live)
   } catch (error) {
-    if (item.status === 'canceled' || isAbort(error)) {
-      // cancel() já marcou e limpou
+    if (!live() || item.status === 'canceled' || isAbort(error)) {
+      // cancelado (ou trocado por outra execução): quem cancelou já marcou e limpou
     } else {
       item.status = 'error'
-      item.error = describe(error)
+      item.error = describe(
+        error,
+        int.confirmed ? 'O arquivo subiu, mas não deu para terminar de guardar. Tente de novo.' : undefined,
+      )
       item.notice = null
       item.retryAt = null
       item.speedBps = null
@@ -462,11 +584,36 @@ async function run(item: UploadItem) {
       emit('error', item)
     }
   } finally {
-    if (int.ctrl === ctrl) int.ctrl = null
+    // Só uma execução por item fica no ar (o "Tentar de novo" espera o `ctrl`
+    // sair), então esta é a dona do `ctrl` e do `running`.
+    if (int.ctrl === ctrl) {
+      int.ctrl = null
+      item.running = false
+    }
     active--
-    if (isSettled(item)) settleCheck(item)
+    // Cancelado: o `cancel` já conferiu o lote. Aqui só o que esta execução decidiu.
+    if (int.runId === runId && isSettled(item)) settleCheck(item)
     pump()
   }
+}
+
+async function finish(
+  item: UploadItem,
+  int: Internal,
+  asset: MarketingAsset,
+  call: UploadCallContext,
+  live: () => boolean,
+) {
+  const onUploaded = item.target.onUploaded
+  if (onUploaded) await withRetry(item, call.signal, async () => onUploaded(asset, item, call))
+  if (!live()) return
+  item.status = 'done'
+  item.finishedAt = Date.now()
+  item.notice = null
+  int.confirmed = false
+  invalidateLater(item.target.invalidate?.(item.groupId) ?? [['marketing', item.groupId]])
+  batches.get(item.batchId)?.hooks.onItemDone?.(item, asset)
+  emit('done', item)
 }
 
 function settleCheck(item: UploadItem) {
@@ -518,6 +665,7 @@ function enqueue(groupId: string, entries: UploadEntry[], target: UploadTarget, 
       thumbUrl: PREVIEWABLE.test(mimeType) ? URL.createObjectURL(file) : null,
       addedAt: Date.now(),
       status: 'queued',
+      running: false,
       hashed: 0,
       sent: 0,
       speedBps: null,
@@ -534,12 +682,14 @@ function enqueue(groupId: string, entries: UploadEntry[], target: UploadTarget, 
     }) as UploadItem
     internals.set(item.id, {
       ctrl: null,
+      runId: 0,
       ticket: null,
       tus: { url: null },
       durationSec: undefined,
       paused: false,
       renewals: 0,
       networkExhausted: false,
+      confirmed: false,
       sample: null,
     })
     state.items.push(item)
@@ -549,7 +699,7 @@ function enqueue(groupId: string, entries: UploadEntry[], target: UploadTarget, 
   let resolve!: (items: UploadItem[]) => void
   const settled = new Promise<UploadItem[]>((r) => (resolve = r))
   const batch: UploadBatch = { id: batchId, groupId, target: raw, items, rejected, settled }
-  batches.set(batchId, { batch, hooks, resolve, resolved: false })
+  batches.set(batchId, { batch, hooks, resolve, resolved: false, choice: null })
   if (!items.length) {
     batches.get(batchId)!.resolved = true
     resolve([])
@@ -563,10 +713,10 @@ function find(itemId: string) {
   return state.items.find((i) => i.id === itemId)
 }
 
-/** Cancela: aborta o que está no ar e apaga o envio pendente na API. */
-function cancel(itemId: string) {
+/** Cancela: aborta o que está no ar e apaga o envio pendente na API. Resolve quando a API soube. */
+function cancel(itemId: string): Promise<void> {
   const item = find(itemId)
-  if (!item || isSettled(item)) return
+  if (!item || isSettled(item)) return Promise.resolve()
   const int = internals.get(item.id)!
   item.status = 'canceled'
   item.prompt = null
@@ -576,22 +726,34 @@ function cancel(itemId: string) {
   item.etaSec = null
   item.finishedAt = Date.now()
   int.paused = false
+  int.choice = undefined
+  // A execução no ar vira "velha": nada do que ela ainda receber mexe no item.
+  int.runId = ++runSeq
   int.ctrl?.abort()
-  const pendingAsset = int.ticket?.asset.id
+  const pendingAsset = int.confirmed ? undefined : int.ticket?.asset.id
   int.ticket = null
   int.tus = { url: null }
-  if (pendingAsset) void abortMarketingUpload(item.groupId, pendingAsset).catch(() => {})
+  if (!int.confirmed) item.asset = null
+  const aborted = pendingAsset
+    ? abortMarketingUpload(item.groupId, pendingAsset).catch(() => {})
+    : Promise.resolve()
   emit('canceled', item)
-  // ativo: o `finally` do run libera a vaga e confere o lote
-  if (!int.ctrl) settleCheck(item)
+  // A vaga da execução velha é liberada no `finally` dela; o lote confere agora.
+  settleCheck(item)
+  return aborted
 }
 
-/** Tenta de novo um arquivo com erro ou cancelado. Erro de rede retoma do ponto (mesmo ticket e TUS). */
+/**
+ * Tenta de novo um arquivo com erro ou cancelado. Erro de rede retoma do ponto
+ * (mesmo ticket e TUS); erro depois do arquivo guardado refaz só o passo final.
+ * Recusa enquanto a execução anterior ainda está terminando.
+ */
 function retry(itemId: string) {
   const item = find(itemId)
-  if (!item || (item.status !== 'error' && item.status !== 'canceled')) return
+  if (!item || (item.status !== 'error' && item.status !== 'canceled')) return false
   const int = internals.get(item.id)!
-  if (item.status === 'error' && int.ticket && !int.networkExhausted) {
+  if (int.ctrl || item.running) return false
+  if (!int.confirmed && item.status === 'error' && int.ticket && !int.networkExhausted) {
     // recusa definitiva (storage ou confirm): recomeça com ticket novo
     void abortMarketingUpload(item.groupId, int.ticket.asset.id).catch(() => {})
     int.ticket = null
@@ -600,45 +762,97 @@ function retry(itemId: string) {
   }
   int.networkExhausted = false
   int.renewals = 0
+  int.paused = false
   item.status = 'queued'
   item.error = null
   item.notice = null
   item.attempts = 0
-  item.sent = int.ticket ? item.sent : 0
+  item.sent = int.ticket || int.confirmed ? item.sent : 0
   item.finishedAt = null
   emit('queued', item)
   pump()
+  return true
 }
 
-/** Responde à pergunta do destino (ex.: "Manter os dois" ou "Pular"). */
-function answer(itemId: string, choice: string) {
+/**
+ * Responde à pergunta do destino (ex.: "Manter os dois" ou "Pular"). Com
+ * `all`, a resposta vale para as outras perguntas do mesmo lote (abertas e
+ * futuras).
+ */
+function answer(itemId: string, choice: string, opts: { all?: boolean } = {}) {
   const item = find(itemId)
   if (!item || !item.prompt) return
-  const int = internals.get(item.id)!
-  int.choice = choice
-  int.paused = false
-  item.prompt = null
-  item.status = 'queued'
+  const targets = [item]
+  if (opts.all) {
+    const b = batches.get(item.batchId)
+    if (b) b.choice = choice
+    for (const other of state.items) {
+      if (other !== item && other.batchId === item.batchId && other.prompt?.choices.some((c) => c.value === choice)) {
+        targets.push(other)
+      }
+    }
+  }
+  for (const t of targets) {
+    const int = internals.get(t.id)
+    if (!int) continue
+    int.choice = choice
+    int.paused = false
+    t.prompt = null
+    t.status = 'queued'
+  }
   pump()
+}
+
+/**
+ * Quem desenha a pergunta saiu (a pessoa saiu da ala): o que esperava resposta
+ * fica como se tivesse escolhido `choice` (o padrão é pular), para nada ficar
+ * pendente para sempre.
+ */
+function answerPending(choice = 'skip') {
+  for (const item of [...state.items]) {
+    if (item.prompt && item.prompt.choices.some((c) => c.value === choice)) answer(item.id, choice)
+    else if (item.prompt) void cancel(item.id)
+  }
 }
 
 /** Tira da lista (só o que não está subindo). O arquivo já enviado continua no servidor. */
 function dismiss(itemId: string) {
   const item = find(itemId)
-  if (!item || isActive(item) || item.status === 'queued') return
+  if (!item || isActive(item) || item.status === 'queued' || item.running) return
   state.items.splice(state.items.indexOf(item), 1)
   internals.delete(item.id)
   if (item.thumbUrl) URL.revokeObjectURL(item.thumbUrl)
+  dropBatchIfEmpty(item.batchId)
   emit('removed', item)
 }
 
-/** Limpa os prontos e os cancelados (os com erro ficam até a pessoa decidir). */
-function clearFinished() {
-  for (const item of [...state.items]) if (item.status === 'done' || item.status === 'canceled') dismiss(item.id)
+function dropBatchIfEmpty(batchId: string) {
+  if (!state.items.some((i) => i.batchId === batchId)) batches.delete(batchId)
 }
 
-function cancelAll() {
-  for (const item of [...state.items]) if (isPending(item)) cancel(item.id)
+/** Limpa os prontos, os pulados e os cancelados (os com erro ficam até a pessoa decidir). */
+function clearFinished() {
+  for (const item of [...state.items]) {
+    if (item.status === 'done' || item.status === 'canceled' || item.status === 'skipped') dismiss(item.id)
+  }
+}
+
+/** Cancela tudo o que está pendente. Resolve quando a API soube (no máximo 4 s). */
+function cancelAll(): Promise<void> {
+  const all = Promise.allSettled(state.items.filter(isPending).map((i) => cancel(i.id))).then(() => undefined)
+  return Promise.race([all, new Promise<void>((r) => setTimeout(r, 4000))])
+}
+
+/** Sair da conta: cancela tudo e esvazia a fila (as miniaturas saem da memória). */
+function reset() {
+  void cancelAll()
+  for (const item of state.items) if (item.thumbUrl) URL.revokeObjectURL(item.thumbUrl)
+  state.items.splice(0)
+  internals.clear()
+  batches.clear()
+  pendingKeys.clear()
+  clearTimeout(flushTimer)
+  flushTimer = undefined
 }
 
 const items = computed(() => state.items)
@@ -665,7 +879,12 @@ function itemsFor(targetKey: string): ComputedRef<UploadItem[]> {
   return computed(() => state.items.filter((i) => i.target.key === targetKey))
 }
 
-/** Avisa a cada mudança de estado relevante (fila, pronto, erro, cancelado, removido). */
+/** Outros arquivos do mesmo lote que ainda não terminaram (para "fazer o mesmo para os outros"). */
+function batchHasOthers(item: UploadItem): boolean {
+  return state.items.some((i) => i.batchId === item.batchId && i.id !== item.id && !isSettled(i))
+}
+
+/** Avisa a cada mudança de estado relevante (fila, pronto, erro, cancelado, pulado, removido). */
 function subscribe(fn: (e: UploadEvent) => void): () => void {
   listeners.add(fn)
   return () => listeners.delete(fn)
@@ -676,11 +895,13 @@ const queue = {
   cancel,
   retry,
   answer,
+  answerPending,
   dismiss,
   clearFinished,
   cancelAll,
   subscribe,
   itemsFor,
+  batchHasOthers,
   find,
   items,
   pending,
@@ -699,3 +920,12 @@ export function useUploadQueue(): UploadQueue {
 export function isUploadPending(item: UploadItem) {
   return isPending(item)
 }
+
+/** done, error, canceled ou skipped */
+export function isUploadSettled(item: UploadItem) {
+  return isSettled(item)
+}
+
+// Logout: o próximo usuário da aba não herda a fila (nem as miniaturas em memória).
+onSessionReset(reset)
+registerPendingWork({ count: () => state.items.filter(isPending).length, cancel: cancelAll })

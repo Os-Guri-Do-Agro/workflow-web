@@ -3,6 +3,8 @@
  * Caixa de seleção do Acervo, no padrão das listas do Nevo (botão com
  * `role="checkbox"`, como a lista de tarefas), não o checkbox cru do
  * navegador. O clique passa o evento (shift-clique seleciona o intervalo).
+ * Enter e espaço marcam a caixa e param aqui: não abrem o que está por trás
+ * (o cartão da grade abre a tela cheia no Enter).
  */
 defineProps<{ checked: boolean; label: string; indeterminate?: boolean }>()
 const emit = defineEmits<{ toggle: [event: MouseEvent] }>()
@@ -17,6 +19,8 @@ const emit = defineEmits<{ toggle: [event: MouseEvent] }>()
     :aria-checked="indeterminate ? 'mixed' : checked"
     :aria-label="label"
     @click.stop="emit('toggle', $event)"
+    @keydown.enter.stop
+    @keydown.space.stop
   >
     <span class="lck__box" aria-hidden="true">
       <svg v-if="indeterminate" width="10" height="10" viewBox="0 0 16 16" fill="none">
@@ -72,10 +76,11 @@ const emit = defineEmits<{ toggle: [event: MouseEvent] }>()
   border-radius: 6px;
 }
 
+/* Toque: alvo de 44 px (a caixa desenhada continua pequena). */
 @media (max-width: 640px), (hover: none) {
   .lck {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
   .lck__box {

@@ -64,7 +64,7 @@ function plural(n: number) {
 
     <ul v-if="cards.length" class="tmc__list" role="list">
       <li v-for="card in cards" :key="card.id" class="tmc__item">
-        <span class="tmc__dot" :style="toneStyle(brandTone({ companyId: card.id, color: card.brand.color }))" aria-hidden="true" />
+        <span class="tmc__dot" :style="toneStyle(brandTone({ companyId: card.brand.companyId ?? card.brand.name, color: card.brand.color }))" aria-hidden="true" />
         <RouterLink :to="card.link" class="tmc__name" :title="`Abrir “${card.title}” na ala Marketing`">
           {{ card.title }}
         </RouterLink>

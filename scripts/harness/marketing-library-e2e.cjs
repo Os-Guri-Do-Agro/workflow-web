@@ -565,19 +565,21 @@ async function mountDialog(page, opts) {
     const pasted = await waitFor(async () => (await q(`SELECT id, title FROM "MarketingLibraryItem" WHERE "groupId"=$1 AND "folderId"=$2 AND title LIKE 'Colado %'`, [G, ids.camp]))[0], 15000)
     check('colar', !!pasted, 'Ctrl+V de uma imagem cai na pasta aberta, com nome "Colado <data hora>"', pasted?.title)
 
-    // Mesmo arquivo de novo: "já está no acervo em <pasta>", Pular e Manter os dois
+    // Mesmo arquivo de novo: "já está no acervo em <pasta>", Pular e Manter os dois.
+    // A pergunta mora na bandeja "Envios" (fila global), não num diálogo da tela.
+    const dupPrompt = '[data-testid="upload-tray"] [data-prompt]'
     await mPage.setInputFiles('input[name="files"]', { name: 'de-novo.jpg', mimeType: 'image/jpeg', buffer: photos[0] })
-    const dupDlg = await waitFor(async () => (await mPage.locator('[data-dialog="duplicate"]').count()) > 0, 15000)
-    const dupText = dupDlg ? await mPage.locator('[data-dialog="duplicate"]').innerText() : ''
-    check('duplicata', dupDlg && /já está no acervo em/.test(dupText) && /PetJourney \/ E2E Campanha \/ E2E Viagem \/ Dia 1/.test(dupText), 'mesmo arquivo de novo avisa "já está no acervo em <pasta>"', dupText.replace(/\s+/g, ' '))
+    const dupDlg = await waitFor(async () => (await mPage.locator(dupPrompt).count()) > 0, 15000)
+    const dupText = dupDlg ? await mPage.locator('[data-testid="upload-tray"] .mkt__row:has([data-prompt])').innerText() : ''
+    check('duplicata', dupDlg && /[Jj]á está no acervo em/.test(dupText) && /PetJourney \/ E2E Campanha \/ E2E Viagem \/ Dia 1/.test(dupText), 'mesmo arquivo de novo avisa "já está no acervo em <pasta>" (na bandeja)', dupText.replace(/\s+/g, ' '))
     await shot(mPage, 'duplicata-d1440.png')
-    await mPage.click('[data-action="dup-skip"]')
+    await mPage.click('[data-testid="upload-tray"] [data-choice="skip"]')
     await sleep(1500)
     const afterSkip = await q(`SELECT count(*)::int n FROM "MarketingLibraryItem" i JOIN "MarketingAsset" a ON a.id=i."assetId" WHERE i."groupId"=$1 AND a.sha256=$2`, [G, sha(photos[0])])
     check('duplicata', afterSkip[0].n === 1, 'Pular: nada novo no Acervo', afterSkip[0].n)
     await mPage.setInputFiles('input[name="files"]', { name: 'de-novo.jpg', mimeType: 'image/jpeg', buffer: photos[0] })
-    await mPage.waitForSelector('[data-action="dup-keep"]', { timeout: 15000 })
-    await mPage.click('[data-action="dup-keep"]')
+    await mPage.waitForSelector('[data-testid="upload-tray"] [data-choice="keep"]', { timeout: 15000 })
+    await mPage.click('[data-testid="upload-tray"] [data-choice="keep"]')
     const kept = await waitFor(async () => {
       const r = await q(`SELECT count(*)::int n FROM "MarketingLibraryItem" i JOIN "MarketingAsset" a ON a.id=i."assetId" WHERE i."groupId"=$1 AND a.sha256=$2`, [G, sha(photos[0])])
       return r[0].n === 2 ? 2 : null
@@ -638,8 +640,16 @@ async function mountDialog(page, opts) {
       return r[0]?.title === 'Pôr do sol na praia' && r[0]?.tags.includes('verao') && r[0]?.note === 'Foto livre para usar em post.' ? r[0] : null
     })
     check('detalhes', !!detSaved, 'painel salva título, etiqueta ("verao") e nota', JSON.stringify(detSaved))
-    const facts = await mPage.locator('[data-panel="details"] .ldt__facts').innerText()
-    check('detalhes', /640 × 480 px/.test(facts) && /Hash/.test(facts) && /Marcel/.test(facts) && /RGB/.test(facts), 'dados técnicos: dimensões, espaço de cor, tamanho, hash curto, quem enviou e quando', facts.replace(/\s+/g, ' ').slice(0, 200))
+    const facts = await mPage.locator('[data-panel="details"] .ldt__facts').first().innerText()
+    // O sha256 fica em "Mais detalhes", como "Código de conferência" (sem jargão na tela).
+    await mPage.locator('[data-panel="details"] [data-section="more"] summary').click()
+    const more = await mPage.locator('[data-panel="details"] [data-section="more"]').innerText()
+    check(
+      'detalhes',
+      /640 × 480 px/.test(facts) && /Marcel/.test(facts) && /RGB/.test(facts) && !/Hash|sha256/i.test(facts) && /Código de conferência/.test(more) && /[0-9a-f]{6}/.test(more),
+      'dados técnicos: dimensões, espaço de cor, tamanho, quem enviou e quando; o código de conferência em "Mais detalhes"',
+      `${facts.replace(/\s+/g, ' ').slice(0, 160)} | ${more.replace(/\s+/g, ' ').slice(0, 80)}`,
+    )
     await shot(mPage, 'detalhes-d1440.png')
     await mPage.locator('.lg-tile').nth(1).dblclick()
     await mPage.waitForSelector('.viewer', { timeout: 8000 })

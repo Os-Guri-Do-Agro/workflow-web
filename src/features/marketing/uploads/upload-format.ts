@@ -52,6 +52,8 @@ export function itemStatusText(item: UploadItem): string {
     case 'error':
       return item.error ?? 'Não deu para enviar.'
     case 'canceled':
-      return item.notice && item.notice !== 'Envio cancelado.' ? item.notice : 'Cancelado'
+      return 'Cancelado'
+    case 'skipped':
+      return item.notice ?? 'Pulado'
   }
 }

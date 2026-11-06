@@ -1,79 +1,92 @@
 /**
- * De onde vêm os arquivos da ala: arrastar (arquivos ou pastas, na área
- * inteira do diálogo ou painel), Ctrl+V de imagem e os seletores do celular
- * ("Tirar foto" e "Galeria", em `UploadSourceButtons.vue`).
+ * De onde vêm os arquivos da ala (o mesmo para o Acervo e para os outros
+ * destinos): arrastar (arquivos E pastas, na área inteira do diálogo, painel
+ * ou tela), Ctrl+V, o seletor de arquivo (inclusive de pasta) e, no celular,
+ * "Tirar foto" e "Galeria" (`UploadSourceButtons.vue`).
  *
- * Tudo devolve `UploadEntry[]` (`{ file, relativePath? }`), o formato do
- * `enqueue` da fila. Pasta arrastada vem achatada, com o `relativePath` de cada
- * arquivo (`fotos/2026/gato.jpg`): o Acervo usa para recriar as subpastas, os
- * outros destinos ignoram.
+ * Tudo devolve `UploadEntry` (`{ file, relativePath? }`), o formato do
+ * `enqueue` da fila. Pasta arrastada vem achatada, com o `relativePath` de
+ * cada arquivo ("Viagem/Dia 1/IMG_001.jpg", a pasta arrastada incluída): o
+ * Acervo recria as subpastas a partir dele, os outros destinos ignoram.
  */
 import { onScopeDispose, ref, type Ref } from 'vue'
 import type { UploadEntry } from './upload-queue'
 
-/** Teto de arquivos por gesto (arrastar a pasta errada não vira 20 mil envios). */
-export const MAX_FILES_PER_DROP = 1000
+export type SourcedFile = UploadEntry
 
-export function hasFiles(dt: DataTransfer | null | undefined): boolean {
-  return !!dt && [...dt.types].includes('Files')
+export interface SourcedFiles {
+  files: UploadEntry[]
+  /** Passou do teto (`maxFiles`): o resto ficou de fora */
+  truncated: boolean
+  /** Pastas ou arquivos que o navegador não deixou ler (permissão, atalho quebrado) */
+  unreadable: number
 }
 
-// ── Arrastar ─────────────────────────────────────────────────────────────────
+/** Teto de arquivos por gesto (arrastar a pasta errada não vira 20 mil envios). */
+export const MAX_FILES_PER_DROP = 2000
+
+/** Lixo de sistema que nunca deve subir (macOS, Windows, Office). */
+const JUNK = new Set(['.ds_store', 'thumbs.db', 'desktop.ini', '.localized', 'ehthumbs.db', 'icon\r'])
+
+export function isJunkFile(name: string): boolean {
+  const n = name.toLowerCase()
+  return JUNK.has(n) || n.startsWith('._') || n.startsWith('~$')
+}
+
+/** O arrasto traz arquivos do sistema (não texto, não um item da própria tela). */
+export function hasFiles(dt: DataTransfer | null | undefined): boolean {
+  return !!dt && Array.from(dt.types ?? []).includes('Files')
+}
+
+export function isFileDrag(event: DragEvent): boolean {
+  return hasFiles(event.dataTransfer)
+}
+
+// ── Arrastar (com pastas) ────────────────────────────────────────────────────
 
 /** Entrada do File System Access (Chromium, Firefox e Safari têm o `webkitGetAsEntry`). */
 interface FsEntry {
   isFile: boolean
   isDirectory: boolean
   name: string
-  file?: (ok: (f: File) => void, fail: (e: unknown) => void) => void
-  createReader?: () => { readEntries: (ok: (list: FsEntry[]) => void, fail: (e: unknown) => void) => void }
+  fullPath: string
+}
+interface FsFileEntry extends FsEntry {
+  file(success: (file: File) => void, error?: (err: unknown) => void): void
+}
+interface FsDirectoryEntry extends FsEntry {
+  createReader(): { readEntries(success: (entries: FsEntry[]) => void, error?: (err: unknown) => void): void }
 }
 
-function readAll(dir: FsEntry): Promise<FsEntry[]> {
-  const reader = dir.createReader!()
+function entryFile(entry: FsFileEntry): Promise<File> {
+  return new Promise((resolve, reject) => entry.file(resolve, reject))
+}
+
+/** `readEntries` devolve em lotes (o Chrome manda até 100): lê até vir vazio. */
+async function readAll(dir: FsDirectoryEntry): Promise<FsEntry[]> {
+  const reader = dir.createReader()
   const out: FsEntry[] = []
-  return new Promise((resolve) => {
-    const next = () =>
-      reader.readEntries(
-        (batch) => {
-          if (!batch.length) return resolve(out)
-          out.push(...batch)
-          next()
-        },
-        () => resolve(out),
-      )
-    next()
-  })
-}
-
-async function walk(entry: FsEntry, prefix: string, out: UploadEntry[]) {
-  if (out.length >= MAX_FILES_PER_DROP) return
-  if (entry.isFile && entry.file) {
-    const file = await new Promise<File | null>((resolve) => entry.file!(resolve, () => resolve(null)))
-    if (file && !isJunk(file.name)) out.push({ file, relativePath: prefix ? `${prefix}/${file.name}` : undefined })
-    return
+  for (;;) {
+    const batch = await new Promise<FsEntry[]>((resolve, reject) => reader.readEntries(resolve, reject))
+    if (!batch.length) return out
+    out.push(...batch)
   }
-  if (entry.isDirectory && entry.createReader) {
-    const path = prefix ? `${prefix}/${entry.name}` : entry.name
-    for (const child of await readAll(entry)) await walk(child, path, out)
-  }
-}
-
-/** Arquivo de sistema que ninguém quer subir. */
-function isJunk(name: string) {
-  return name === '.DS_Store' || name === 'Thumbs.db' || name === 'desktop.ini' || name.startsWith('._')
 }
 
 /**
- * Lê o que veio no `drop`. A lista de entradas precisa ser pega AINDA dentro do
- * evento (depois o navegador esvazia o DataTransfer), por isso a primeira
- * parte é síncrona. DataTransfer criado por script (testes) não tem entrada de
- * sistema de arquivos: cai no `getAsFile`.
+ * Arquivos de um `drop`, atravessando as pastas com `webkitGetAsEntry`.
+ *
+ * IMPORTANTE: chame no próprio handler do `drop`, ANTES de qualquer `await`.
+ * O `DataTransfer` só vale durante o evento; as entradas são capturadas na
+ * hora e a travessia segue depois. DataTransfer criado por script (testes) e
+ * navegador sem `webkitGetAsEntry` caem nos arquivos soltos, sem pasta.
  */
-export function entriesFromDrop(dt: DataTransfer): Promise<UploadEntry[]> {
+export function filesFromDrop(dt: DataTransfer | null, opts: { maxFiles?: number } = {}): Promise<SourcedFiles> {
+  const max = opts.maxFiles ?? MAX_FILES_PER_DROP
+  if (!dt) return Promise.resolve({ files: [], truncated: false, unreadable: 0 })
   const roots: FsEntry[] = []
   const loose: File[] = []
-  const items = dt.items ? [...dt.items] : []
+  const items = dt.items ? Array.from(dt.items) : []
   for (const item of items) {
     if (item.kind !== 'file') continue
     const entry = (item as DataTransferItem & { webkitGetAsEntry?: () => FsEntry | null }).webkitGetAsEntry?.() ?? null
@@ -83,12 +96,54 @@ export function entriesFromDrop(dt: DataTransfer): Promise<UploadEntry[]> {
       if (f) loose.push(f)
     }
   }
-  if (!items.length) loose.push(...dt.files)
+  if (!items.length && dt.files) loose.push(...Array.from(dt.files))
+
   return (async () => {
-    const out: UploadEntry[] = loose.filter((f) => !isJunk(f.name)).map((file) => ({ file }))
-    for (const root of roots) await walk(root, '', out)
-    return out.slice(0, MAX_FILES_PER_DROP)
+    const files: UploadEntry[] = []
+    let truncated = false
+    let unreadable = 0
+    const push = (file: File, relativePath?: string) => {
+      if (isJunkFile(file.name)) return
+      if (files.length >= max) {
+        truncated = true
+        return
+      }
+      files.push(relativePath ? { file, relativePath } : { file })
+    }
+    for (const f of loose) push(f)
+    const walk = async (entry: FsEntry): Promise<void> => {
+      if (files.length >= max) {
+        truncated = true
+        return
+      }
+      if (entry.isFile) {
+        try {
+          const file = await entryFile(entry as FsFileEntry)
+          const rel = entry.fullPath.replace(/^\/+/, '')
+          // Arquivo solto na raiz do arrasto: sem caminho (não cria pasta).
+          push(file, rel.includes('/') ? rel : undefined)
+        } catch {
+          unreadable++
+        }
+        return
+      }
+      if (entry.isDirectory) {
+        if (isJunkFile(entry.name)) return
+        try {
+          for (const child of await readAll(entry as FsDirectoryEntry)) await walk(child)
+        } catch {
+          unreadable++
+        }
+      }
+    }
+    for (const root of roots) await walk(root)
+    return { files, truncated, unreadable }
   })()
+}
+
+/** Só os arquivos do `drop` (quem não precisa saber do teto nem do ilegível). */
+export async function entriesFromDrop(dt: DataTransfer): Promise<UploadEntry[]> {
+  return (await filesFromDrop(dt)).files
 }
 
 /**
@@ -145,6 +200,20 @@ export function useFileDrop(opts: { enabled?: () => boolean; onFiles: (entries: 
   return { isOver: isOver as Readonly<Ref<boolean>>, on }
 }
 
+/**
+ * Arquivo solto FORA de um alvo (barra de cima, margem, aba) faria o navegador
+ * abrir o arquivo e sair da ala. Ligado no documento enquanto a ala está
+ * montada (`MarketingLayout`): soltar fora não faz nada. Alvos de verdade
+ * chamam `preventDefault` antes e seguem funcionando.
+ */
+export function swallowStrayDrop(event: DragEvent) {
+  if (!isFileDrag(event)) return
+  // Nenhuma área aceitou (ninguém chamou preventDefault antes): cursor de "não pode".
+  const unhandled = !event.defaultPrevented
+  event.preventDefault()
+  if (unhandled && event.type === 'dragover' && event.dataTransfer) event.dataTransfer.dropEffect = 'none'
+}
+
 // ── Colar (Ctrl+V) ───────────────────────────────────────────────────────────
 
 const NOT_TEXT_INPUTS = new Set(['checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'range', 'color', 'image', 'hidden'])
@@ -154,31 +223,58 @@ export function isTextField(el: Element | null): boolean {
   if (!el) return false
   if (el instanceof HTMLTextAreaElement) return !el.readOnly && !el.disabled
   if (el instanceof HTMLInputElement) return !NOT_TEXT_INPUTS.has(el.type) && !el.readOnly && !el.disabled
+  if (el instanceof HTMLSelectElement) return true
   return (el as HTMLElement).isContentEditable === true
 }
 
-function two(n: number) {
-  return String(n).padStart(2, '0')
+const EXT_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+  'image/bmp': 'bmp',
+  'image/tiff': 'tif',
+}
+
+function stamp(d = new Date()) {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}`
 }
 
 /**
- * Imagem copiada vem como "image.png" (print, copiar imagem do navegador). Vira
- * `colado-AAAA-MM-DD-HHMMSS.png` para não chegar no card um monte de "image.png".
+ * Imagem copiada vem como "image.png" (print, copiar imagem do navegador): o
+ * mesmo nome sempre. Vira "Colado <data hora>.png", com " (2)" quando vêm
+ * várias de uma vez. Arquivo com nome de verdade fica como está.
  */
-export function pastedFile(file: File, index = 0): File {
-  const generic = !file.name || /^image\.(png|jpe?g|gif|webp|bmp|tiff?)$/i.test(file.name)
-  if (!generic) return file
-  const d = new Date()
-  const ext = (file.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*/, '')
-  const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`
-  return new File([file], `colado-${stamp}${index ? `-${index + 1}` : ''}.${ext}`, {
-    type: file.type || 'image/png',
-    lastModified: file.lastModified,
+export function pastedFiles(files: File[], when = new Date()): UploadEntry[] {
+  const at = stamp(when)
+  return files.map((f, i) => {
+    const generic = !f.name || /^image\.(png|jpe?g|gif|webp|avif|bmp|tiff?)$/i.test(f.name)
+    if (!generic) return { file: f }
+    const ext = EXT_BY_MIME[f.type] ?? 'png'
+    const name = `Colado ${at}${files.length > 1 ? ` (${i + 1})` : ''}.${ext}`
+    return { file: new File([f], name, { type: f.type || 'image/png', lastModified: Date.now() }) }
   })
+}
+
+/** Os arquivos de um `paste` (imagem copiada, print ou arquivo copiado do sistema). */
+export function filesFromPaste(event: ClipboardEvent): File[] {
+  const files = Array.from(event.clipboardData?.files ?? [])
+  if (!files.length) {
+    for (const item of Array.from(event.clipboardData?.items ?? [])) {
+      if (item.kind !== 'file') continue
+      const f = item.getAsFile()
+      if (f) files.push(f)
+    }
+  }
+  return files
 }
 
 interface PasteHandler {
   enabled: () => boolean
+  /** Elemento da área: com um diálogo aberto, só a área DENTRO do diálogo da frente recebe. */
+  root?: () => HTMLElement | null | undefined
   priority: number
   order: number
   onFiles: (entries: UploadEntry[]) => void
@@ -188,34 +284,48 @@ const pasteHandlers = new Set<PasteHandler>()
 let pasteOrder = 0
 let pasteListening = false
 
+/** O diálogo modal da frente (o último aberto fica por último no `body`). */
+function topModal(): Element | null {
+  const open = Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]'))
+  return open.length ? open[open.length - 1]! : null
+}
+
 function onDocumentPaste(e: ClipboardEvent) {
   if (isTextField(document.activeElement)) return
-  const files = [...(e.clipboardData?.files ?? [])]
-  if (!files.length) {
-    for (const item of e.clipboardData?.items ?? []) {
-      if (item.kind === 'file') {
-        const f = item.getAsFile()
-        if (f) files.push(f)
-      }
-    }
-  }
+  const files = filesFromPaste(e)
   if (!files.length) return
+  const modal = topModal()
   const handler = [...pasteHandlers]
-    .filter((h) => h.enabled())
+    .filter((h) => {
+      if (!h.enabled()) return false
+      // Com um diálogo aberto, a colagem é dele: a tela de trás (ou o painel
+      // de trás) não recebe, mesmo ligada.
+      if (!modal) return true
+      const root = h.root?.()
+      return !!root && modal.contains(root)
+    })
     .sort((a, b) => b.priority - a.priority || b.order - a.order)[0]
   if (!handler) return
   e.preventDefault()
-  handler.onFiles(files.map((f, i) => ({ file: pastedFile(f, files.length > 1 ? i : 0) })))
+  handler.onFiles(pastedFiles(files))
 }
 
 /**
  * Ctrl+V de arquivo (imagem copiada, print) cai na área que está na frente.
  * Vale só com o foco FORA de campo de texto. Diálogo usa prioridade maior que
- * painel: com o diálogo aberto, a colagem é dele.
+ * painel; e, com qualquer diálogo modal aberto, só recebe a área cujo `root`
+ * está dentro dele (o "Mover", a confirmação ou o diálogo de outra tela não
+ * deixam a colagem cair na tela de trás).
  */
-export function usePasteFiles(opts: { enabled: () => boolean; onFiles: (entries: UploadEntry[]) => void; priority?: number }) {
+export function usePasteFiles(opts: {
+  enabled: () => boolean
+  onFiles: (entries: UploadEntry[]) => void
+  priority?: number
+  root?: () => HTMLElement | null | undefined
+}) {
   const handler: PasteHandler = {
     enabled: opts.enabled,
+    root: opts.root,
     priority: opts.priority ?? 0,
     order: ++pasteOrder,
     onFiles: opts.onFiles,
@@ -228,12 +338,22 @@ export function usePasteFiles(opts: { enabled: () => boolean; onFiles: (entries:
   onScopeDispose(() => pasteHandlers.delete(handler))
 }
 
-// ── Seletor de arquivo ───────────────────────────────────────────────────────
+// ── Seletor de arquivo e de pasta ────────────────────────────────────────────
 
-/** Os arquivos de um `<input type=file>` (e limpa o input para escolher o mesmo de novo). */
-export function filesFromInput(event: Event): UploadEntry[] {
-  const input = event.target as HTMLInputElement
-  const files = [...(input.files ?? [])]
-  input.value = ''
-  return files.map((file) => ({ file }))
+/**
+ * Os arquivos de um `<input type=file>` (o evento `change` ou o próprio input),
+ * sem lixo de sistema, e limpa o input para escolher o mesmo de novo. Com
+ * `webkitdirectory` o navegador preenche `webkitRelativePath`
+ * ("Viagem/Dia 1/IMG.jpg"), que vira o caminho.
+ */
+export function filesFromInput(source: Event | HTMLInputElement | null): UploadEntry[] {
+  const input = (source instanceof Event ? source.target : source) as HTMLInputElement | null
+  const list = input?.files ? Array.from(input.files) : []
+  if (input) input.value = ''
+  return list
+    .filter((f) => !isJunkFile(f.name))
+    .map((file) => {
+      const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath
+      return rel && rel.includes('/') ? { file, relativePath: rel } : { file }
+    })
 }

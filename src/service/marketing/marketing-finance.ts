@@ -1,6 +1,6 @@
 import axios from 'axios'
 import api from '../api'
-import { mkt, type MarketingAsset, type MarketingUploadTicket } from './marketing-core'
+import { mkt, type MarketingAsset } from './marketing-core'
 
 /**
  * Cliente do financeiro da ala Marketing (spec
@@ -224,14 +224,6 @@ export async function updateExpense(
 export async function deleteExpense(groupId: string, expenseId: string) {
   const { data } = await api.delete<{ ok: true; removedInvoices: number }>(fin(groupId, `/expenses/${id(expenseId)}`))
   return data
-}
-
-/** Ticket da nota fiscal (o `uploadMarketingFile` faz o PUT e o confirm). */
-export function invoiceTicket(groupId: string, expenseId: string) {
-  return async (meta: { name: string; mimeType: string; size: number; sha256?: string }) => {
-    const { data } = await api.post<MarketingUploadTicket>(fin(groupId, `/expenses/${id(expenseId)}/invoices`), meta)
-    return data
-  }
 }
 
 export async function removeInvoice(groupId: string, expenseId: string, assetId: string) {

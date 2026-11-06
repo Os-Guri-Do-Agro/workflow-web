@@ -1,5 +1,5 @@
 import axios from 'axios'
-import api from '../api'
+import api, { apiBaseUrl } from '../api'
 import { mkt, type MarketingUploadTicket } from './marketing-core'
 import type { MarketingCardDetail } from './marketing-cards'
 import { blobErrorMessage, filenameFromDisposition } from './marketing-finance'
@@ -241,16 +241,18 @@ export async function deleteLibraryFolder(groupId: string, folderId: string, mov
 export async function requestLibraryUploads(
   groupId: string,
   body: { companyId: string | null; folderId?: string | null; files: LibraryUploadFileInput[] },
+  opts: { signal?: AbortSignal } = {},
 ) {
-  const { data } = await api.post<LibraryUploadResult>(lib(groupId, '/uploads'), body)
+  const { data } = await api.post<LibraryUploadResult>(lib(groupId, '/uploads'), body, { signal: opts.signal })
   return data
 }
 
 export async function createLibraryItem(
   groupId: string,
   body: { assetId: string; title?: string; tags?: string[]; folderId?: string | null; companyId: string | null },
+  opts: { signal?: AbortSignal } = {},
 ) {
-  const { data } = await api.post<LibraryItemDetail>(lib(groupId, '/items'), body)
+  const { data } = await api.post<LibraryItemDetail>(lib(groupId, '/items'), body, { signal: opts.signal })
   return data
 }
 
@@ -302,8 +304,92 @@ export async function downloadLibraryItem(groupId: string, itemId: string) {
   return name
 }
 
-/** Zip de até 200 arquivos. Erro vem como Blob: a frase da API sobe no `Error`. */
-export async function downloadLibraryZip(groupId: string, ids: string[]): Promise<string> {
+export interface LibraryZipTicket {
+  token: string
+  /** `/marketing/g/<g>/library/zip/<token>` (relativo à API) */
+  url: string
+  filename: string
+  count: number
+  totalBytes: number
+  expiresAt: string
+}
+
+/**
+ * Zip de até 200 arquivos, baixado pelo PRÓPRIO navegador (barra de download
+ * com progresso, sem montar o zip inteiro na memória da aba).
+ *
+ * 1. `POST library/zip/ticket` confere tudo (marca, teto de 200 arquivos e de
+ *    tamanho) e devolve um link de uso único que vale 60 s; a frase de recusa
+ *    vem aqui, como erro normal.
+ * 2. O link abre num iframe escondido. Link ou `window.location` disparariam o
+ *    "Sair do site?" quando a fila de envio tem arquivo pendente; o iframe não.
+ *    Se o link falhar mesmo assim (venceu, perdeu o acesso), a página de erro
+ *    da API avisa por `postMessage` e a promessa rejeita com a frase dela.
+ *
+ * Resolve com o nome do arquivo assim que o download é entregue ao navegador.
+ */
+export async function downloadLibraryZip(
+  groupId: string,
+  ids: string[],
+  opts: { onLateError?: (message: string) => void } = {},
+): Promise<{ filename: string }> {
+  let ticket: LibraryZipTicket
+  try {
+    ticket = (await api.post<LibraryZipTicket>(lib(groupId, '/zip/ticket'), { ids })).data
+  } catch (error) {
+    // API anterior a este link (deploy fora de ordem): o zip antigo, pela memória.
+    const message = axios.isAxiosError(error) ? String((error.response?.data as { message?: unknown })?.message ?? '') : ''
+    if (axios.isAxiosError(error) && error.response?.status === 404 && /^Cannot POST/i.test(message)) {
+      return { filename: await downloadLibraryZipInMemory(groupId, ids) }
+    }
+    throw error
+  }
+  const href = `${apiBaseUrl()}${ticket.url}`
+  const origin = new URL(href, window.location.href).origin
+  const frame = document.createElement('iframe')
+  frame.hidden = true
+  frame.setAttribute('aria-hidden', 'true')
+  frame.tabIndex = -1
+  frame.title = 'Download do zip'
+  frame.dataset.zipDownload = ticket.token.slice(0, 8)
+  return new Promise<{ filename: string }>((resolve, reject) => {
+    let settled = false
+    let listening = true
+    const stopListening = () => {
+      if (!listening) return
+      listening = false
+      window.removeEventListener('message', onMessage)
+    }
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frame.contentWindow || event.origin !== origin) return
+      const data = event.data as { source?: string; error?: string } | null
+      if (data?.source !== 'nevo-zip') return
+      stopListening()
+      frame.remove()
+      const message = data.error || 'Não foi possível baixar o zip. Tente de novo.'
+      if (!settled) {
+        settled = true
+        reject(new Error(message))
+      } else opts.onLateError?.(message)
+    }
+    window.addEventListener('message', onMessage)
+    frame.src = href
+    document.body.appendChild(frame)
+    // Sem aviso de erro em 1,5 s, o navegador já está baixando (o zip começa a sair na hora).
+    setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve({ filename: ticket.filename })
+    }, 1500)
+    // Segue ouvindo um pouco (erro tardio vira aviso). O iframe fica: tirar no
+    // meio cancela o download em alguns navegadores; sai depois de 10 min.
+    setTimeout(stopListening, 15_000)
+    setTimeout(() => frame.remove(), 10 * 60_000)
+  })
+}
+
+/** O caminho antigo (API sem o link de uso único): o zip inteiro passa pela memória da aba. */
+async function downloadLibraryZipInMemory(groupId: string, ids: string[]): Promise<string> {
   try {
     const response = await api.post<Blob>(lib(groupId, '/zip'), { ids }, { responseType: 'blob' })
     const name = filenameFromDisposition(response.headers['content-disposition'] as string | undefined, 'acervo.zip')

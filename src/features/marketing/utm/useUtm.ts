@@ -2,10 +2,12 @@ import { useMediaQuery } from '@vueuse/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { hasSession } from '@/composables/useSession'
+import { qrKeys } from '@/composables/useQrCodes'
 import {
   createUtm,
   createUtmQr,
   deleteUtm,
+  findUtmById,
   getUtmMetrics,
   getUtmOptions,
   listUtms,
@@ -25,6 +27,7 @@ export const utmKeys = {
   list: (g: string, f: UtmFilters) => ['marketing', g, 'utm', 'list', f] as const,
   options: (g: string) => ['marketing', g, 'utm', 'options'] as const,
   metrics: (g: string, id: string) => ['marketing', g, 'utm', 'metrics', id] as const,
+  lookup: (g: string, id: string) => ['marketing', g, 'utm', 'lookup', id] as const,
 }
 
 /** Largura em que a lista e o painel cabem lado a lado (a moldura do app já tira 248px). */
@@ -36,6 +39,25 @@ export function useUtmList(groupId: MaybeRefOrGetter<string | null>, filters: Ma
     queryFn: () => listUtms(toValue(groupId)!, toValue(filters)),
     enabled: computed(() => hasSession.value && !!toValue(groupId)),
     staleTime: 15_000,
+  })
+}
+
+/**
+ * Abre a UTM de um `?utm=<id>` que a lista (filtrada e limitada a 500 pela
+ * API) não trouxe, pelo `GET utm/:id`. Só roda quando `enabled` (a tela liga
+ * depois que a lista carregou e não achou a UTM).
+ */
+export function useUtmLookup(
+  groupId: MaybeRefOrGetter<string | null>,
+  utmId: MaybeRefOrGetter<string | null>,
+  enabled: MaybeRefOrGetter<boolean>,
+) {
+  return useQuery({
+    queryKey: computed(() => utmKeys.lookup(toValue(groupId) ?? '-', toValue(utmId) ?? '-')),
+    queryFn: () => findUtmById(toValue(groupId)!, toValue(utmId)!),
+    enabled: computed(() => hasSession.value && !!toValue(groupId) && !!toValue(utmId) && toValue(enabled)),
+    staleTime: 15_000,
+    retry: false,
   })
 }
 
@@ -60,7 +82,14 @@ export function useUtmMetrics(groupId: MaybeRefOrGetter<string | null>, utmId: M
 export function useUtmMutations(groupId: MaybeRefOrGetter<string | null>) {
   const qc = useQueryClient()
   const g = () => toValue(groupId)!
-  const refresh = () => qc.invalidateQueries({ queryKey: utmKeys.all(g()) })
+  // A tela "QR Codes" do Nevo (fora da ala) lista os mesmos QR: criar, editar,
+  // desativar ou apagar aqui muda o que ela mostra. Prefixo `['qr']`; só refaz
+  // quem está montado, o resto fica velho e é buscado ao abrir.
+  const refresh = () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: utmKeys.all(g()) }),
+      qc.invalidateQueries({ queryKey: qrKeys.all }),
+    ])
   return {
     create: useMutation({ mutationFn: (input: UtmInput) => createUtm(g(), input), onSuccess: refresh }),
     update: useMutation({

@@ -6,7 +6,7 @@ import XpIcon from './XpIcon.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { getUserToken } from '@/utils/authContent'
-import { clearSession } from '@/service/api'
+import { requestLogout } from '@/composables/useLogout'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { isNavHidden } from '@/config/nav-visibility'
 
@@ -72,9 +72,9 @@ function decorative(): void {
 // Fazer Logoff: logout real (limpa sessão, preserva preferências de UI) e vai
 // pro login.
 function logoff(): void {
-  clearSession()
   emit('close')
-  void router.push('/login')
+  // Com envio da ala Marketing subindo, pergunta antes (o `LogoutGuard` do App).
+  requestLogout(router)
 }
 
 // Desligar: "desliga" o computador = sai do modo XP.

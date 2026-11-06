@@ -17,7 +17,7 @@ import {
 import { ChevronRight, Folder, FolderOpen, FolderPlus, MoreVertical, Pencil, Trash2 } from 'lucide-vue-next'
 import { DRAG_FOLDER, DRAG_ITEMS, type FolderNode } from './library-meta'
 import { clearDrag, draggingFolder } from './drag-state'
-import { isFileDrag } from './file-sources'
+import { isFileDrag } from '../uploads/file-sources'
 
 const props = defineProps<{
   node: FolderNode
@@ -97,15 +97,11 @@ function onDrop(event: DragEvent) {
 </script>
 
 <template>
-  <div class="ltr-branch" role="none">
+  <div class="ltr-branch">
     <div
       class="ltr-row"
       :class="{ 'is-active': active, 'is-over': over, 'is-disabled': disabled }"
       :style="{ paddingLeft: `${6 + level * 14}px` }"
-      role="treeitem"
-      :aria-selected="active"
-      :aria-expanded="node.children.length ? open : undefined"
-      :aria-level="level + 1"
       :data-folder-id="node.id"
       :draggable="browse && node.canWrite"
       @dragstart="onDragStart"
@@ -119,7 +115,8 @@ function onDrop(event: DragEvent) {
         type="button"
         class="ltr-chev"
         :class="{ 'is-open': open }"
-        :aria-label="open ? `Recolher ${node.name}` : `Abrir ${node.name}`"
+        :aria-label="`Subpastas de ${node.name}`"
+        :aria-expanded="open"
         @click.stop="emit('toggle', node.id)"
       >
         <ChevronRight :size="12" aria-hidden="true" />
@@ -130,6 +127,7 @@ function onDrop(event: DragEvent) {
         class="ltr-main"
         :disabled="disabled"
         :title="disabled ? 'Você não envia arquivos nesta pasta' : node.path.join(' / ')"
+        :aria-current="active ? 'true' : undefined"
         @click="emit('select', node)"
       >
         <component :is="active ? FolderOpen : Folder" :size="14" class="ltr-icon" aria-hidden="true" />
@@ -165,7 +163,7 @@ function onDrop(event: DragEvent) {
         </DropdownMenuRoot>
       </span>
     </div>
-    <div v-if="open && node.children.length" role="group">
+    <div v-if="open && node.children.length">
       <LibraryTreeRow
         v-for="child in node.children"
         :key="child.id"
@@ -353,8 +351,14 @@ function onDrop(event: DragEvent) {
   }
 
   .ltr-act {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
+  }
+
+  /* A seta que abre e recolhe: alvo de 44 px (o desenho segue pequeno). */
+  .ltr-chev {
+    width: 36px;
+    height: 44px;
   }
 }
 </style>

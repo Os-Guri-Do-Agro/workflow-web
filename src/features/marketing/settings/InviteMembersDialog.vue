@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, useId, watch } from 'vue'
 import { refDebounced } from '@vueuse/core'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Loader2, Mail, Search, Users, X } from 'lucide-vue-next'
@@ -23,6 +23,7 @@ import {
   type AccessLinkResult,
   type MemberCandidate,
 } from '@/service/marketing/marketing-settings'
+import LibraryCheck from '../library/LibraryCheck.vue'
 import { brandTone, toneStyle } from '../marketing-labels'
 import SettingsDialog from './SettingsDialog.vue'
 
@@ -46,6 +47,26 @@ const queryClient = useQueryClient()
 
 type Tab = 'nevo' | 'email'
 const tab = ref<Tab>('nevo')
+const TABS: Tab[] = ['nevo', 'email']
+const uid = useId()
+const panelId = `inv-panel-${uid}`
+const tabId = (t: Tab) => `inv-tab-${t}-${uid}`
+const tabEls = ref<Partial<Record<Tab, HTMLElement>>>({})
+
+/** Abas com tabindex móvel: setas, Home e End trocam e levam o foco junto. */
+function onTabKey(e: KeyboardEvent) {
+  const i = TABS.indexOf(tab.value)
+  let next = -1
+  if (e.key === 'ArrowRight') next = (i + 1) % TABS.length
+  else if (e.key === 'ArrowLeft') next = (i - 1 + TABS.length) % TABS.length
+  else if (e.key === 'Home') next = 0
+  else if (e.key === 'End') next = TABS.length - 1
+  if (next < 0) return
+  e.preventDefault()
+  const target = TABS[next]!
+  tab.value = target
+  void nextTick(() => tabEls.value[target]?.focus())
+}
 const busy = ref(false)
 const error = ref('')
 
@@ -75,9 +96,11 @@ const list = computed(() => candidates.data.value ?? [])
 const searching = computed(() => !!searchDebounced.value.trim())
 const capped = computed(() => list.value.length >= CANDIDATES_LIMIT)
 const full = computed(() => selected.value.size >= MEMBERS_BATCH_MAX)
+/** "nas empresas do grupo", "na PetJourney", "na PetJourney, na Sentia e na EMMI" (com a preposição). */
 const brandNamesText = computed(() => {
-  const names = props.brands.map((b) => b.name)
-  if (names.length <= 1) return names[0] ?? 'nas empresas do grupo'
+  const names = props.brands.map((b) => `na ${b.name}`)
+  if (!names.length) return 'nas empresas do grupo'
+  if (names.length === 1) return names[0]!
   return `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`
 })
 
@@ -175,24 +198,32 @@ function listText(names: string[]) {
     @update:model-value="emit('update:modelValue', $event)"
   >
     <template v-if="!result">
-      <div class="inv__tabs" role="tablist" aria-label="Como convidar">
+      <div class="inv__tabs" role="tablist" aria-label="Como convidar" @keydown="onTabKey">
         <button
+          :id="tabId('nevo')"
+          :ref="(el) => (tabEls.nevo = (el as HTMLElement) ?? undefined)"
           type="button"
           role="tab"
           class="inv__tab"
           :class="{ 'is-active': tab === 'nevo' }"
           :aria-selected="tab === 'nevo'"
+          :aria-controls="panelId"
+          :tabindex="tab === 'nevo' ? 0 : -1"
           data-testid="inv-tab-nevo"
           @click="tab = 'nevo'"
         >
           <Users :size="14" aria-hidden="true" /> Do Nevo
         </button>
         <button
+          :id="tabId('email')"
+          :ref="(el) => (tabEls.email = (el as HTMLElement) ?? undefined)"
           type="button"
           role="tab"
           class="inv__tab"
           :class="{ 'is-active': tab === 'email' }"
           :aria-selected="tab === 'email'"
+          :aria-controls="panelId"
+          :tabindex="tab === 'email' ? 0 : -1"
           data-testid="inv-tab-email"
           @click="tab = 'email'"
         >
@@ -200,10 +231,11 @@ function listText(names: string[]) {
         </button>
       </div>
 
+      <div :id="panelId" class="inv__panel" role="tabpanel" :aria-labelledby="tabId(tab)">
       <!-- Do Nevo -->
       <template v-if="tab === 'nevo'">
         <p class="mk-hint">
-          Pessoas que já trabalham em {{ brandNamesText }} e ainda não estão na ala. Elas entram com o login de sempre.
+          Pessoas que já trabalham {{ brandNamesText }} e ainda não estão na ala. Elas entram com o login de sempre.
         </p>
         <div class="inv__search">
           <Search :size="14" aria-hidden="true" />
@@ -224,7 +256,7 @@ function listText(names: string[]) {
             <PersonAvatar :id="c.userId" :name="c.name" :avatar-url="c.avatarUrl" :size="16" decorative />
             {{ c.name }}
             <button type="button" class="inv__chip-x" :aria-label="`Tirar ${c.name}`" @click="unselect(c.userId)">
-              <X :size="12" />
+              <X :size="12" aria-hidden="true" />
             </button>
           </span>
         </div>
@@ -241,19 +273,24 @@ function listText(names: string[]) {
               {{ searching ? `Ninguém com "${searchDebounced.trim()}" nas empresas do grupo.` : 'Ninguém para incluir por aqui.' }}
             </p>
             <p class="mk-hint">
-              Aqui aparecem só as pessoas que já trabalham em {{ brandNamesText }} e ainda não estão na ala.
+              Aqui aparecem só as pessoas que já trabalham {{ brandNamesText }} e ainda não estão na ala.
               Quem não é dessas empresas (um freelancer, por exemplo) entra pela aba Por e-mail.
             </p>
             <button type="button" class="mk-btn" @click="tab = 'email'"><Mail :size="14" /> Convidar por e-mail</button>
           </div>
           <ul v-else class="inv__rows">
             <li v-for="c in list" :key="c.userId">
-              <label class="inv__row" :class="{ 'is-on': selected.has(c.userId) }" :data-user="c.userId">
-                <input
-                  type="checkbox"
+              <div
+                class="inv__row"
+                :class="{ 'is-on': selected.has(c.userId), 'is-locked': !selected.has(c.userId) && full }"
+                :data-user="c.userId"
+                @click="toggle(c)"
+              >
+                <LibraryCheck
                   :checked="selected.has(c.userId)"
-                  :disabled="!selected.has(c.userId) && full"
-                  @change="toggle(c)"
+                  :label="`Escolher ${c.name}`"
+                  :aria-disabled="!selected.has(c.userId) && full ? 'true' : undefined"
+                  @toggle="toggle(c)"
                 />
                 <PersonAvatar :id="c.userId" :name="c.name" :avatar-url="c.avatarUrl" :size="28" decorative />
                 <span class="inv__who">
@@ -266,7 +303,7 @@ function listText(names: string[]) {
                     {{ co.name }}
                   </span>
                 </span>
-              </label>
+              </div>
             </li>
           </ul>
         </div>
@@ -306,14 +343,19 @@ function listText(names: string[]) {
         </div>
         <fieldset v-if="brands.length > 1" class="inv__brands">
           <legend class="mk-label">Marcas (nenhuma marcada = todas)</legend>
-          <label v-for="b in brands" :key="b.companyId" class="inv__brand">
-            <input type="checkbox" :checked="form.brandIds.includes(b.companyId)" @change="toggleBrand(b.companyId)" />
+          <div v-for="b in brands" :key="b.companyId" class="inv__brand" @click="toggleBrand(b.companyId)">
+            <LibraryCheck
+              :checked="form.brandIds.includes(b.companyId)"
+              :label="b.name"
+              @toggle="toggleBrand(b.companyId)"
+            />
             <span class="mk-dot" :style="toneStyle(brandTone(b))" aria-hidden="true" />
             {{ b.name }}
-          </label>
+          </div>
         </fieldset>
       </div>
       <p v-if="error" class="mk-error" role="alert">{{ error }}</p>
+      </div>
     </template>
 
     <template v-else>
@@ -352,6 +394,13 @@ function listText(names: string[]) {
 </template>
 
 <style scoped>
+.inv__panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
 .inv__tabs {
   display: inline-flex;
   align-self: flex-start;
@@ -451,7 +500,9 @@ function listText(names: string[]) {
 }
 
 .inv__list {
-  max-height: 300px;
+  /* No celular a lista não come a tela: o rodapé do diálogo precisa aparecer. */
+  max-height: min(300px, 40vh);
+  max-height: min(300px, 40dvh);
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -504,11 +555,9 @@ function listText(names: string[]) {
   background: var(--accent-soft);
 }
 
-.inv__row input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--accent);
+.inv__row.is-locked {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .inv__who {
@@ -591,10 +640,7 @@ function listText(names: string[]) {
   gap: 6px;
   min-height: 32px;
   font-size: 13px;
-}
-
-.inv__brand input {
-  accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .inv__done {
@@ -640,6 +686,28 @@ function listText(names: string[]) {
 
   .inv__brand {
     min-height: 44px;
+  }
+
+  /* O X do chip de pessoa: alvo de toque de 44px sem engordar o chip. */
+  .inv__chip {
+    height: 28px;
+    padding-right: 0;
+  }
+
+  .inv__chip-x {
+    position: relative;
+    width: 24px;
+    height: 24px;
+  }
+
+  .inv__chip-x::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
   }
 }
 

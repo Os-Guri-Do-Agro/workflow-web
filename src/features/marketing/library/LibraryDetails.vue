@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Detalhes do arquivo do Acervo: prévia, dados técnicos (dimensões, espaço de
- * cor, tamanho, hash curto), quem enviou e quando, etiquetas e nota editáveis
+ * cor, tamanho; o código de conferência, o sha256, fica em "Mais detalhes"),
+ * quem enviou e quando, etiquetas e nota editáveis
  * e o "Usado em" com link para o card. Salva campo a campo; se a API recusar,
  * o campo volta ao valor anterior e a frase aparece.
  */
@@ -71,6 +72,16 @@ const note = ref('')
 const tags = ref<string[]>([])
 const saving = ref(false)
 /**
+ * Etiquetas salvam a cada mudança, e duas mudanças seguidas podem estar no ar
+ * juntas. Só a ÚLTIMA decide o que fica na tela: se ela falhar, volta ao
+ * último valor que o servidor aceitou (não ao de antes da primeira mudança), e
+ * o refetch do meio não pisa no que ainda está indo.
+ */
+let tagSeq = 0
+let tagsConfirmedSeq = 0
+let tagsInFlight = 0
+let confirmedTags: string[] = []
+/**
  * Campo com o foco não é sobrescrito pelo que chega do servidor (o detalhe
  * completo, o tempo real de outra pessoa, o refetch depois de salvar outro
  * campo): quem está digitando não perde o texto no meio.
@@ -82,7 +93,10 @@ watch(
   (v) => {
     if (!editing.title) title.value = v.title
     if (!editing.note) note.value = v.note ?? ''
-    tags.value = [...v.tags]
+    if (!tagsInFlight) {
+      tags.value = [...v.tags]
+      confirmedTags = [...v.tags]
+    }
   },
   { immediate: true },
 )
@@ -121,9 +135,26 @@ function saveNote() {
 }
 
 function onTags(next: string[]) {
-  const before = [...it.value.tags]
-  tags.value = next
-  void save({ tags: next }, () => (tags.value = before))
+  const seq = ++tagSeq
+  const sent = [...next]
+  tags.value = sent
+  tagsInFlight++
+  updateLibraryItem(props.groupId, props.item.id, { tags: sent })
+    .then(() => {
+      if (seq > tagsConfirmedSeq) {
+        tagsConfirmedSeq = seq
+        confirmedTags = sent
+      }
+    })
+    .catch((error) => {
+      if (seq !== tagSeq) return
+      tags.value = [...confirmedTags]
+      toast.error(getApiErrorMessage(error, 'Não foi possível salvar as etiquetas. Tente de novo.'))
+    })
+    .finally(() => {
+      tagsInFlight--
+      if (!tagsInFlight) refresh()
+    })
 }
 
 function toggleStar() {
@@ -143,7 +174,7 @@ async function copyHash() {
   if (!sha) return
   try {
     await navigator.clipboard.writeText(sha)
-    toast.success('Hash copiado.')
+    toast.success('Código de conferência copiado.')
   } catch {
     toast.error('Não deu para copiar. Selecione e copie à mão.')
   }
@@ -181,16 +212,14 @@ const colorSpace = computed(() => formatColorSpace(it.value.asset.colorSpace))
       </button>
     </header>
 
-    <button type="button" class="ldt__preview" :aria-label="`Ver ${it.title} em tela cheia`" @click="emit('view', it)">
+    <!-- Vídeo tem os próprios controles: fica fora de botão (controle dentro de
+         controle não funciona no teclado nem no leitor de tela). Tela cheia
+         pelo botão da barra de ações. -->
+    <div v-if="it.kind === 'video' && it.url" class="ldt__preview is-video">
+      <video :src="it.url" controls preload="metadata" playsinline :aria-label="`Vídeo ${it.title}`" />
+    </div>
+    <button v-else type="button" class="ldt__preview" :aria-label="`Ver ${it.title} em tela cheia`" @click="emit('view', it)">
       <img v-if="it.kind === 'imagem' && preview" :src="preview" alt="" />
-      <video
-        v-else-if="it.kind === 'video' && it.url"
-        :src="it.url"
-        controls
-        preload="metadata"
-        playsinline
-        @click.stop
-      />
       <component :is="KIND_ICON[it.kind]" v-else :size="40" class="ldt__preview-icon" aria-hidden="true" />
     </button>
     <p v-if="it.asset.hasPreview" class="mk-hint ldt__rgb">Prévia aproximada em RGB; o original em {{ colorSpace ?? 'CMYK' }} segue intacto.</p>
@@ -268,15 +297,6 @@ const colorSpace = computed(() => formatColorSpace(it.value.asset.colorSpace))
           <dt>Arquivo</dt>
           <dd class="ldt__mono" :title="it.asset.name">{{ it.asset.name }}</dd>
         </div>
-        <div v-if="it.asset.sha256">
-          <dt>Hash</dt>
-          <dd class="ldt__hash">
-            <code :title="it.asset.sha256">{{ shortHash(it.asset.sha256) }}</code>
-            <button type="button" class="mk-icon-btn ldt__copy" aria-label="Copiar o hash sha256 completo" @click="copyHash">
-              <Copy :size="13" aria-hidden="true" />
-            </button>
-          </dd>
-        </div>
         <div>
           <dt>Enviado por</dt>
           <dd class="ldt__person">
@@ -289,6 +309,30 @@ const colorSpace = computed(() => formatColorSpace(it.value.asset.colorSpace))
           </dd>
         </div>
       </dl>
+
+      <details v-if="it.asset.sha256" class="ldt__more" data-section="more">
+        <summary>Mais detalhes</summary>
+        <dl class="ldt__facts">
+          <div>
+            <dt>Código de conferência</dt>
+            <dd class="ldt__hash">
+              <code :title="it.asset.sha256">{{ shortHash(it.asset.sha256) }}</code>
+              <button
+                type="button"
+                class="mk-icon-btn ldt__copy"
+                aria-label="Copiar o código de conferência completo"
+                title="Copiar o código completo"
+                @click="copyHash"
+              >
+                <Copy :size="13" aria-hidden="true" />
+              </button>
+            </dd>
+          </div>
+        </dl>
+        <p class="mk-hint ldt__more-hint">
+          É a impressão digital do arquivo: se o código de quem recebeu for igual a este, o arquivo chegou sem nenhuma mudança.
+        </p>
+      </details>
 
       <div class="mk-field">
         <span class="mk-label">Etiquetas</span>
@@ -392,6 +436,10 @@ const colorSpace = computed(() => formatColorSpace(it.value.asset.colorSpace))
   overflow: hidden;
 }
 
+.ldt__preview.is-video {
+  cursor: default;
+}
+
 .ldt__preview img,
 .ldt__preview video {
   display: block;
@@ -482,6 +530,36 @@ const colorSpace = computed(() => formatColorSpace(it.value.asset.colorSpace))
   height: 24px;
 }
 
+.ldt__more {
+  font-size: 12.5px;
+}
+
+.ldt__more > summary {
+  width: fit-content;
+  padding: 2px 0;
+  color: var(--text-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ldt__more > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.ldt__more .ldt__facts {
+  margin-top: 6px;
+}
+
+.ldt__more .ldt__facts > div {
+  grid-template-columns: 150px 1fr;
+}
+
+.ldt__more-hint {
+  margin: 6px 0 0;
+}
+
 .ldt__person {
   display: flex;
   flex-wrap: wrap;
@@ -560,6 +638,11 @@ const colorSpace = computed(() => formatColorSpace(it.value.asset.colorSpace))
     min-height: 200px;
   }
 
+  .ldt__more > summary {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
 
   .ldt__copy {
     width: 40px;

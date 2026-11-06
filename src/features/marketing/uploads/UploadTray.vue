@@ -25,6 +25,8 @@ import {
 } from 'lucide-vue-next'
 import { useOnline } from '@vueuse/core'
 import { usePhoneViewport } from '@/composables/usePhoneViewport'
+import LibraryCheck from '../library/LibraryCheck.vue'
+import { useMarketing } from '../composables/useMarketing'
 import { useUploadQueue, type UploadItem } from './upload-queue'
 import { formatBytes, formatEta, itemPercent, itemStatusText } from './upload-format'
 import {
@@ -40,6 +42,13 @@ import {
 const queue = useUploadQueue()
 const isPhone = usePhoneViewport()
 const online = useOnline()
+const mk = useMarketing()
+
+/** Quem está em mais de um grupo vê de que grupo é cada envio. */
+const groupNames = computed(() => new Map(mk.groups.value.map((g) => [g.id, g.name])))
+function groupOf(item: UploadItem): string | null {
+  return mk.groups.value.length > 1 ? (groupNames.value.get(item.groupId) ?? null) : null
+}
 
 const items = computed(() => queue.items.value)
 const drafts = computed(() => scheduledDrafts.value)
@@ -50,10 +59,11 @@ const hidden = ref(items.value.length === 0 && drafts.value.length === 0)
 const open = ref(!isPhone.value && queue.hasPending())
 const recentClosed = computed(() => closedVersions.filter((v) => Date.now() - v.at < 10 * 60 * 1000))
 
-const counted = computed(() => items.value.filter((i) => i.status !== 'canceled'))
+const counted = computed(() => items.value.filter((i) => i.status !== 'canceled' && i.status !== 'skipped'))
 const doneCount = computed(() => counted.value.filter((i) => i.status === 'done').length)
 const errorCount = computed(() => counted.value.filter((i) => i.status === 'error').length)
 const pendingCount = computed(() => queue.pending.value.length)
+const askingCount = computed(() => items.value.filter((i) => !!i.prompt).length)
 
 const percent = computed(() => {
   const list = counted.value
@@ -65,12 +75,16 @@ const percent = computed(() => {
 
 const summary = computed(() => {
   const t = queue.totals.value
+  if (askingCount.value && askingCount.value === pendingCount.value) {
+    return askingCount.value === 1 ? '1 arquivo esperando a sua resposta' : `${askingCount.value} arquivos esperando a sua resposta`
+  }
   if (pendingCount.value) {
     if (!online.value) return 'Sem internet. Continua quando a rede voltar.'
     const parts = [`${doneCount.value} de ${counted.value.length} enviados`, `${percent.value}%`]
     const eta = formatEta(t.etaSec)
     if (eta) parts.push(`falta ${eta}`)
     if (errorCount.value) parts.push(`${errorCount.value} com erro`)
+    if (askingCount.value) parts.push(`${askingCount.value} esperando resposta`)
     return parts.join(' · ')
   }
   if (errorCount.value) {
@@ -84,7 +98,7 @@ const summary = computed(() => {
 
 const tone = computed(() => {
   if (pendingCount.value && !online.value) return 'offline'
-  if (errorCount.value || drafts.value.some((d) => d.state === 'failed')) return 'error'
+  if (errorCount.value || askingCount.value || drafts.value.some((d) => d.state === 'failed')) return 'error'
   if (pendingCount.value || drafts.value.some((d) => d.state === 'creating')) return 'busy'
   return 'done'
 })
@@ -107,6 +121,61 @@ watch(
     if (n) hidden.value = false
   },
 )
+// Pergunta nova (repetido no Acervo): a bandeja aparece aberta para a resposta.
+watch(askingCount, (n, old) => {
+  if (n > (old ?? 0)) {
+    hidden.value = false
+    open.value = true
+    announce('Um arquivo repetido espera a sua resposta na bandeja de envios.')
+  }
+})
+
+/** "Fazer o mesmo para os outros deste envio", por pergunta aberta. */
+const applyAll = ref(new Set<string>())
+function toggleApplyAll(id: string) {
+  const next = new Set(applyAll.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  applyAll.value = next
+}
+function answer(item: UploadItem, choice: string) {
+  const all = applyAll.value.has(item.id)
+  queue.answer(item.id, choice, { all })
+  if (all) applyAll.value = new Set()
+}
+
+/*
+ * Leitor de tela: a região escondida fala só o começo, cada arquivo pronto, o
+ * erro, a pergunta e o fim. O resumo visível muda a cada progresso e, com
+ * `aria-live`, falaria sem parar.
+ */
+const announcement = ref('')
+let announceTimer: ReturnType<typeof setTimeout> | undefined
+function announce(text: string) {
+  clearTimeout(announceTimer)
+  // limpa antes: a mesma frase duas vezes seguidas também é lida
+  announcement.value = ''
+  announceTimer = setTimeout(() => (announcement.value = text), 60)
+}
+let wasBusy = queue.hasPending()
+const unsubscribe = queue.subscribe(({ type, item }) => {
+  if (type === 'queued' && !wasBusy) {
+    wasBusy = true
+    const n = queue.pending.value.length
+    announce(n === 1 ? `Enviando ${item.name}.` : `Enviando ${n} arquivos.`)
+    return
+  }
+  if (type === 'done') announce(`${item.name} enviado.`)
+  else if (type === 'error') announce(`${item.name}: ${item.error ?? 'não deu para enviar.'}`)
+  const settledNow = type === 'done' || type === 'error' || type === 'canceled' || type === 'skipped'
+  if (settledNow && wasBusy && !queue.hasPending()) {
+    wasBusy = false
+    const done = items.value.filter((i) => i.status === 'done').length
+    const errors = items.value.filter((i) => i.status === 'error').length
+    const tail = errors ? `, ${errors} com erro` : ''
+    setTimeout(() => announce(`Envios terminados: ${done} ${done === 1 ? 'enviado' : 'enviados'}${tail}.`), 700)
+  }
+})
 
 // Tudo pronto e sem erro: recolhe depois de 4 s (a barra fica com o resumo).
 let collapseTimer: ReturnType<typeof setTimeout> | undefined
@@ -189,7 +258,50 @@ onMounted(() => {
     liftTimer = setInterval(measureLift, 1500)
   }
 })
-onBeforeUnmount(() => clearInterval(liftTimer))
+/*
+ * Reserva o espaço da bandeja no fim da página (`--mkt-tray-space`, lido pelo
+ * `MarketingLayout` e pelo painel de detalhes do Acervo): a última fileira e o
+ * "Carregar mais" rolam para cima dela em vez de ficar por baixo. Com a
+ * bandeja fora, a reserva some.
+ */
+let spaceObserver: ResizeObserver | null = null
+function setSpace() {
+  const el = root.value
+  if (!el || !visible.value) {
+    document.documentElement.style.removeProperty('--mkt-tray-space')
+    return
+  }
+  const r = el.getBoundingClientRect()
+  const space = Math.max(0, Math.ceil(window.innerHeight - r.top + 8))
+  document.documentElement.style.setProperty('--mkt-tray-space', `${space}px`)
+}
+watch(
+  () => [visible.value, open.value, lift.value, isPhone.value] as const,
+  () => void nextTick(setSpace),
+)
+watch(root, (el, old) => {
+  if (old) spaceObserver?.unobserve(old)
+  if (el) spaceObserver?.observe(el)
+  void nextTick(setSpace)
+})
+onMounted(() => {
+  spaceObserver = new ResizeObserver(() => setSpace())
+  if (root.value) spaceObserver.observe(root.value)
+  window.addEventListener('resize', setSpace)
+  void nextTick(setSpace)
+})
+
+onBeforeUnmount(() => {
+  clearInterval(liftTimer)
+  clearTimeout(announceTimer)
+  unsubscribe()
+  spaceObserver?.disconnect()
+  window.removeEventListener('resize', setSpace)
+  document.documentElement.style.removeProperty('--mkt-tray-space')
+  // Saiu da ala: ninguém mais vê a pergunta. O repetido que esperava resposta
+  // é pulado, para a fila não ficar presa (o resto continua subindo).
+  queue.answerPending('skip')
+})
 
 function iconFor(item: UploadItem) {
   return item.mimeType.startsWith('video/') ? Film : FileText
@@ -206,6 +318,10 @@ function draftText(d: VersionDraft) {
 function canCancel(item: UploadItem) {
   return item.status === 'queued' || item.status === 'hashing' || item.status === 'uploading' || item.status === 'confirming'
 }
+
+function canRetry(item: UploadItem) {
+  return item.status === 'error' || item.status === 'canceled'
+}
 </script>
 
 <template>
@@ -218,6 +334,7 @@ function canCancel(item: UploadItem) {
     aria-label="Envios"
     data-testid="upload-tray"
   >
+    <div class="mkt__sr" aria-live="polite" aria-atomic="true" data-testid="upload-announce">{{ announcement }}</div>
     <header class="mkt__head">
       <button
         type="button"
@@ -234,7 +351,7 @@ function canCancel(item: UploadItem) {
           <CircleCheck v-else :size="15" />
         </span>
         <span class="mkt__title">Envios</span>
-        <span class="mkt__sum" data-testid="upload-summary" aria-live="polite">{{ summary }}</span>
+        <span class="mkt__sum" data-testid="upload-summary">{{ summary }}</span>
         <ChevronDown v-if="open" :size="15" class="mkt__chev" aria-hidden="true" />
         <ChevronUp v-else :size="15" class="mkt__chev" aria-hidden="true" />
       </button>
@@ -290,8 +407,12 @@ function canCancel(item: UploadItem) {
             <span class="mkt__size">{{ formatBytes(item.size) }}</span>
             <span class="mkt__dot" aria-hidden="true">·</span>
             <span class="mkt__target" :title="item.target.label">{{ item.target.label }}</span>
+            <template v-if="groupOf(item)">
+              <span class="mkt__dot" aria-hidden="true">·</span>
+              <span class="mkt__group" :title="`Grupo ${groupOf(item)}`" data-testid="upload-group">{{ groupOf(item) }}</span>
+            </template>
           </span>
-          <span class="mkt__state" :class="{ 'is-error': item.status === 'error' }" :role="item.status === 'error' ? 'alert' : undefined">
+          <span class="mkt__state" :class="{ 'is-error': item.status === 'error', 'is-asking': !!item.prompt }">
             {{ itemStatusText(item) }}
           </span>
           <span
@@ -305,27 +426,40 @@ function canCancel(item: UploadItem) {
           >
             <span :style="{ width: `${itemPercent(item)}%` }" />
           </span>
-          <span v-if="item.prompt" class="mkt__choices">
-            <button
-              v-for="c in item.prompt.choices"
-              :key="c.value"
-              type="button"
-              class="mk-btn"
-              :class="{ 'mk-btn--primary': c.primary }"
-              @click="queue.answer(item.id, c.value)"
-            >
-              {{ c.label }}
-            </button>
+          <span v-if="item.prompt" class="mkt__ask" data-prompt>
+            <span class="mkt__choices">
+              <button
+                v-for="c in item.prompt.choices"
+                :key="c.value"
+                type="button"
+                class="mk-btn"
+                :class="{ 'mk-btn--primary': c.primary }"
+                :data-choice="c.value"
+                @click="answer(item, c.value)"
+              >
+                {{ c.label }}
+              </button>
+            </span>
+            <span v-if="item.prompt.batchLabel && queue.batchHasOthers(item)" class="mkt__all">
+              <LibraryCheck
+                :checked="applyAll.has(item.id)"
+                :label="item.prompt.batchLabel"
+                data-testid="upload-apply-all"
+                @toggle="toggleApplyAll(item.id)"
+              />
+              <span aria-hidden="true" @click="toggleApplyAll(item.id)">{{ item.prompt.batchLabel }}</span>
+            </span>
           </span>
         </span>
         <span class="mkt__acts">
           <button
-            v-if="item.status === 'error' || item.status === 'canceled'"
+            v-if="canRetry(item)"
             type="button"
             class="mk-icon-btn"
             :aria-label="`Tentar de novo ${item.name}`"
             title="Tentar de novo"
             data-action="retry"
+            :disabled="item.running"
             @click="queue.retry(item.id)"
           >
             <RotateCw :size="14" />
@@ -383,6 +517,19 @@ function canCancel(item: UploadItem) {
   box-shadow: var(--shadow-overlay);
   font-size: 12.5px;
   overflow: hidden;
+}
+
+/* Só para leitor de tela (a região que anuncia começo, pronto, erro e fim). */
+.mkt__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Celular: não tem o mascote (o assistente abre pela folha "Mais"), a faixa usa a largura toda. */
@@ -644,10 +791,42 @@ function canCancel(item: UploadItem) {
   background: color-mix(in srgb, var(--accent) 55%, var(--surface-3));
 }
 
+.mkt__ask {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
 .mkt__choices {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  margin-top: 4px;
+}
+
+.mkt__all {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: -6px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.mkt__state.is-asking {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mkt__group {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--text-2);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mkt__acts {
@@ -660,8 +839,23 @@ function canCancel(item: UploadItem) {
   color: var(--text-3);
 }
 
+/* Toque: todo alvo da bandeja com 44 px no celular. */
 .mkt.is-phone .mkt__acts :deep(.mk-icon-btn) {
-  min-width: 40px;
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.mkt.is-phone .mkt__x {
+  width: 44px;
+  height: 44px;
+}
+
+.mkt.is-phone .mkt__link {
+  min-height: 44px;
+  padding: 0 10px;
+}
+
+.mkt.is-phone .mkt__choices :deep(.mk-btn) {
+  min-height: 44px;
 }
 </style>

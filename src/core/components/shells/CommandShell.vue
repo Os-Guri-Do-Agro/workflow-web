@@ -194,6 +194,11 @@ function crumbTooltip(crumb: string): string | undefined {
 .command-shell {
   display: grid;
   grid-template-rows: 56px 1fr;
+  /* minmax(0, ...): conteúdo largo (a barra de cima com um caminho longo, uma
+     tabela) não empurra a moldura para fora da janela; quem é largo rola ou
+     encolhe dentro dela. Com `1fr` puro, em 1024 px a moldura passava da tela
+     e cortava a ponta direita de toda página (abas, marcas, botões). */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   color: var(--text);
   overflow: hidden;
@@ -205,6 +210,7 @@ function crumbTooltip(crumb: string): string | undefined {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   padding: 0 14px;
   /* O mesmo fio da cor escolhida do menu: barra e menu formam a moldura do
      app, e o conteúdo continua neutro. */
@@ -225,6 +231,10 @@ function crumbTooltip(crumb: string): string | undefined {
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Encolhe antes de tudo: o caminho corta com reticências, os botões ficam. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-size: 12.5px;
   padding: 5px 10px;
   border-radius: 7px;
@@ -259,6 +269,24 @@ function crumbTooltip(crumb: string): string | undefined {
   font-weight: 500;
 }
 
+.crumb,
+.crumb--link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumb-sep {
+  flex: none;
+}
+
+/* Sem espaço, o caminho de cima corta antes do lugar atual. */
+.crumb:not(.crumb--active),
+.crumb--link {
+  flex-shrink: 4;
+}
+
 .crumb {
   color: var(--text-3);
   font-weight: 500;
@@ -281,9 +309,15 @@ function crumbTooltip(crumb: string): string | undefined {
   flex: 1;
 }
 
+/* A busca também cede um pouco em janela estreita (1024 px com menu lateral). */
+.topbar :deep(.cmdk-btn--full) {
+  flex: 0 1 auto;
+  min-width: 150px;
+}
+
 .body {
   display: grid;
-  grid-template-columns: 248px 1fr;
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
   position: relative;

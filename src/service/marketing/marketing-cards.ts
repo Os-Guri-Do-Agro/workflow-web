@@ -1,10 +1,5 @@
 import api from '../api'
-import {
-  mkt,
-  uploadMarketingFile,
-  type MarketingAsset,
-  type MarketingUploadTicket,
-} from './marketing-core'
+import { mkt, type MarketingAsset } from './marketing-core'
 import type { CardKind, CardNetwork, CardStatus } from '@/features/marketing/marketing-labels'
 
 /**
@@ -228,24 +223,6 @@ export async function moveCard(
 ): Promise<MarketingCardDetail> {
   const { data } = await api.post<MarketingCardDetail>(card(groupId, cardId, '/move'), { status, position })
   return data
-}
-
-/** Sobe um arquivo SOLTO do card (fica para a próxima versão). */
-export function uploadCardFile(
-  groupId: string,
-  cardId: string,
-  file: File,
-  onProgress?: (percent: number) => void,
-): Promise<MarketingAsset> {
-  return uploadMarketingFile(
-    groupId,
-    file,
-    async (meta) => {
-      const { data } = await api.post<MarketingUploadTicket>(card(groupId, cardId, '/assets'), meta)
-      return data
-    },
-    onProgress,
-  )
 }
 
 export async function deleteCardAsset(groupId: string, cardId: string, assetId: string) {

@@ -31,11 +31,18 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 <style scoped>
 .sd {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  /* Cabe na tela: o corpo rola e o cabeçalho e o rodapé ficam. `dvh` acompanha
+     a barra do navegador no celular (o `.dlg` usa `vh`, que passa dela). */
+  min-height: 0;
   min-width: 0;
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
 }
 
 .sd__head {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -51,13 +58,24 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 
 .sd__body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px 16px 14px;
+}
+
+/* Quem rola é o corpo: os blocos de dentro não encolhem (a lista com rolagem
+   própria não pode virar uma faixa de 0px). */
+.sd__body > :deep(*) {
+  flex-shrink: 0;
 }
 
 .sd__foot {
   display: flex;
+  flex: none;
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;

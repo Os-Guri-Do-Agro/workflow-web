@@ -16,6 +16,7 @@ import { getApiErrorMessage } from '@/service/api'
 import { createVersion, type MarketingCardDetail } from '@/service/marketing/marketing-cards'
 import { queryClient } from '@/service/query-client'
 import { useToast } from '@/composables/useToast'
+import { onSessionReset } from '@/service/session-hooks'
 import { cardKeys } from '../approvals/approvals-meta'
 import { useUploadQueue, type UploadItem } from './upload-queue'
 
@@ -260,6 +261,12 @@ useUploadQueue().subscribe(({ type, item }) => {
     draft.order.splice(at, 1)
   }
   void tryFinalize(draft)
+})
+
+// Saiu da conta: rascunho e "V3 fechada" são da pessoa, não passam para a próxima.
+onSessionReset(() => {
+  drafts.clear()
+  closedVersions.splice(0)
 })
 
 function assetOf(item: UploadItem): DraftAsset {

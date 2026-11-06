@@ -37,7 +37,7 @@ import { taskKey, matchesTaskKey } from '@/features/tasks/task-key'
 import { statusSpec } from '@/features/tasks/task-meta'
 import { myDayTaskLink, type WorkspaceActivityLite } from '@/features/dashboard/my-day'
 import aiService, { type SearchHit } from '@/service/ai/ai-service'
-import { clearSession } from '@/service/api'
+import { requestLogout } from '@/composables/useLogout'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
 import { getInfoAuth } from '@/utils/authContent'
@@ -296,9 +296,8 @@ function go(path: string) {
 
 function logout() {
   close()
-  // clearSession preserva preferências de UI (tema, acento, shell).
-  clearSession()
-  router.push('/login')
+  // Com envio da ala Marketing subindo, pergunta antes (o `LogoutGuard` do App).
+  requestLogout(router)
 }
 
 function switchCompany(id: string) {

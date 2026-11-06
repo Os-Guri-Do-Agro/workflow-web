@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Megaphone } from 'lucide-vue-next'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -10,6 +10,7 @@ import { visibleSections, type MarketingSection } from './marketing-nav'
 import { brandTone, toneStyle } from './marketing-labels'
 import CreateGroupDialog from './settings/CreateGroupDialog.vue'
 import UploadTray from './uploads/UploadTray.vue'
+import { swallowStrayDrop } from './uploads/file-sources'
 import './marketing.css'
 
 /**
@@ -40,6 +41,68 @@ watch(
   },
   { immediate: true },
 )
+
+/**
+ * Troca de grupo pelo seletor: a URL volta limpa. Filtro, item aberto
+ * (`?utm=`, `?item=`, `?ativacao=`...), pasta e a marca são do grupo anterior
+ * e abririam vazio ou errado no novo. O card aberto em página própria é do
+ * grupo anterior: volta para a lista de Aprovação.
+ */
+function switchGroup(id: string) {
+  if (!id || id === mk.groupId.value) return
+  mk.selectGroup(id)
+  const name = route.name === 'marketing-card' ? 'marketing-approvals' : (route.name ?? 'marketing')
+  void router.replace({ name, query: {} })
+}
+
+/*
+ * Arquivo solto fora de uma área de envio (as abas, a margem, a barra de cima)
+ * faria o navegador abrir o arquivo e sair da ala, perdendo a fila de envio.
+ * Vale para a ala inteira; as áreas de verdade tratam o drop antes.
+ */
+onMounted(() => {
+  document.addEventListener('dragover', swallowStrayDrop)
+  document.addEventListener('drop', swallowStrayDrop)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('dragover', swallowStrayDrop)
+  document.removeEventListener('drop', swallowStrayDrop)
+})
+
+/*
+ * Abas que não cabem (1024 px com o menu lateral) rolam na horizontal: a
+ * borda que esconde aba ganha um esmaecido, e a aba ativa entra à vista.
+ */
+const tabsEl = ref<HTMLElement | null>(null)
+const tabsEdge = ref({ start: false, end: false })
+function measureTabs() {
+  const el = tabsEl.value
+  if (!el) return
+  tabsEdge.value = {
+    start: el.scrollLeft > 2,
+    end: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
+  }
+}
+function revealActiveTab() {
+  const el = tabsEl.value?.querySelector<HTMLElement>('.mk-tab.is-active')
+  el?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  measureTabs()
+}
+let tabsObserver: ResizeObserver | null = null
+onMounted(() => {
+  tabsObserver = new ResizeObserver(measureTabs)
+  if (tabsEl.value) tabsObserver.observe(tabsEl.value)
+  void nextTick(revealActiveTab)
+})
+watch(tabsEl, (el, old) => {
+  if (old) tabsObserver?.unobserve(old)
+  if (el) {
+    tabsObserver?.observe(el)
+    void nextTick(revealActiveTab)
+  }
+})
+watch(() => route.name, () => void nextTick(revealActiveTab))
+onBeforeUnmount(() => tabsObserver?.disconnect())
 
 const sections = computed(() => visibleSections(mk.group.value))
 const groupsOrdered = computed(() => {
@@ -96,7 +159,7 @@ function onCreated(groupId: string) {
             class="mk-select mk-layout__group"
             :value="mk.groupId.value ?? ''"
             aria-label="Grupo de empresas"
-            @change="mk.selectGroup(($event.target as HTMLSelectElement).value)"
+            @change="switchGroup(($event.target as HTMLSelectElement).value)"
           >
             <option v-for="g in mk.groups.value" :key="g.id" :value="g.id">{{ g.name }}</option>
           </select>
@@ -136,7 +199,13 @@ function onCreated(groupId: string) {
         </div>
       </header>
 
-      <nav class="mk-layout__tabs" aria-label="Seções da ala Marketing">
+      <nav
+        ref="tabsEl"
+        class="mk-layout__tabs"
+        :class="{ 'is-cut-start': tabsEdge.start, 'is-cut-end': tabsEdge.end }"
+        aria-label="Seções da ala Marketing"
+        @scroll.passive="measureTabs"
+      >
         <template v-for="(grp, gi) in groupsOrdered" :key="grp.name">
           <span v-if="gi > 0" class="mk-layout__sep" aria-hidden="true" />
           <RouterLink
@@ -170,7 +239,9 @@ function onCreated(groupId: string) {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
-  padding: 16px 20px 32px;
+  /* Fim da página acima da bandeja "Envios" (ela publica a altura em
+     --mkt-tray-space): a última fileira e o "Carregar mais" ficam à vista. */
+  padding: 16px 20px calc(32px + var(--mkt-tray-space, 0px));
 }
 
 .mk-layout__loading {
@@ -191,6 +262,11 @@ function onCreated(groupId: string) {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.mk-layout__title > * {
   min-width: 0;
 }
 
@@ -215,6 +291,9 @@ function onCreated(groupId: string) {
 
 .mk-layout__brands {
   display: flex;
+  /* Encolhe e rola (a barra de rolagem fica escondida; o arrasto e a roda andam). */
+  flex: 0 1 auto;
+  min-width: 0;
   gap: 4px;
   padding: 3px;
   border: 1px solid var(--border);
@@ -251,9 +330,28 @@ function onCreated(groupId: string) {
   display: flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
+}
+
+.mk-layout__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Tem aba escondida para o lado: a borda esmaece (dá para rolar). */
+.mk-layout__tabs.is-cut-end {
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+
+.mk-layout__tabs.is-cut-start {
+  mask-image: linear-gradient(to right, transparent, #000 40px);
+}
+
+.mk-layout__tabs.is-cut-start.is-cut-end {
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
 }
 
 .mk-layout__sep {
@@ -294,7 +392,7 @@ function onCreated(groupId: string) {
 
 @media (max-width: 640px) {
   .mk-layout {
-    padding: 12px 12px 24px;
+    padding: 12px 12px calc(24px + var(--mkt-tray-space, 0px));
   }
 
   .mk-tab {

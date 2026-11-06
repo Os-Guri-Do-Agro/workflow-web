@@ -7,12 +7,13 @@ import AppDialog from '@/components/ui/AppDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
-import type { MarketingUtm } from '@/service/marketing/marketing-utm'
+import { useToast } from '@/composables/useToast'
+import { isUtmNotFound, type MarketingUtm } from '@/service/marketing/marketing-utm'
 import { useMarketing } from '../composables/useMarketing'
 import { brandTone, toneStyle } from '../marketing-labels'
 import UtmFormDialog from '../utm/UtmFormDialog.vue'
 import UtmPanel from '../utm/UtmPanel.vue'
-import { useUtmList, useUtmOptions, useWideViewport } from '../utm/useUtm'
+import { useUtmList, useUtmLookup, useUtmOptions, useWideViewport } from '../utm/useUtm'
 
 /**
  * UTMs e QR (M2-A): lista densa com filtros na URL e painel do item (`?utm=`).
@@ -22,6 +23,7 @@ import { useUtmList, useUtmOptions, useWideViewport } from '../utm/useUtm'
 const route = useRoute()
 const router = useRouter()
 const mk = useMarketing()
+const toast = useToast()
 const wide = useWideViewport()
 
 const one = (v: unknown) => (typeof v === 'string' ? v : '')
@@ -58,15 +60,41 @@ const hasFilters = computed(() => Object.keys(filters.value).some((k) => k !== '
 const list = useUtmList(mk.groupId, filters)
 const options = useUtmOptions(mk.groupId)
 const rows = computed(() => list.data.value ?? [])
-const selected = computed(() => rows.value.find((r) => r.id === selectedId.value) ?? null)
+const inList = computed(() => rows.value.find((r) => r.id === selectedId.value) ?? null)
+// `?utm=` que a lista (filtrada, 500 no máximo) não trouxe: procura a UTM fora do filtro.
+const lookup = useUtmLookup(
+  mk.groupId,
+  selectedId,
+  computed(() => !!selectedId.value && list.isSuccess.value && !list.isFetching.value && !inList.value),
+)
+const selected = computed(() => inList.value ?? (selectedId.value ? (lookup.data.value?.utm ?? null) : null))
 const canEdit = computed(() => mk.can('EDITOR'))
 const canDelete = computed(() => mk.can('ADMIN'))
 const multiBrand = computed(() => mk.brands.value.length > 1)
 
-// A UTM aberta sumiu da lista (apagada aqui ou em outra aba): fecha o painel,
-// senão a URL fica com um `?utm=` que não aponta para nada.
-watch([selectedId, rows, () => list.isFetching.value], () => {
-  if (selectedId.value && list.isSuccess.value && !list.isFetching.value && !selected.value) closePanel()
+// A UTM aberta não existe mais (apagada aqui ou em outra aba, ou link velho):
+// fecha o painel, senão a URL fica com um `?utm=` que não aponta para nada.
+// Fora da lista filtrada, a busca por id decide antes de fechar.
+let closedFor = ''
+watch(
+  [selectedId, rows, () => list.isFetching.value, () => lookup.status.value, () => lookup.isFetching.value],
+  () => {
+    const id = selectedId.value
+    if (!id || !list.isSuccess.value || list.isFetching.value || inList.value) return
+    if (lookup.isFetching.value || lookup.status.value === 'pending') return
+    if (lookup.status.value === 'success' && lookup.data.value?.utm) return
+    if (closedFor === id) return
+    closedFor = id
+    if (isUtmNotFound(lookup.error.value)) {
+      toast.info('Essa UTM não existe mais ou você não tem acesso a ela.')
+    } else {
+      toast.error('Não foi possível abrir essa UTM. Tente de novo em instantes.')
+    }
+    closePanel()
+  },
+)
+watch(selectedId, (id) => {
+  if (!id) closedFor = ''
 })
 
 function select(id: string) {
@@ -98,8 +126,28 @@ function openEdit() {
   editing.value = selected.value
   formOpen.value = true
 }
+/**
+ * Criada ou editada fora do filtro ativo: sem limpar os filtros o painel não
+ * achava a linha e fechava sozinho (mesmo caso do `openExisting`). Só limpa se
+ * ela ficaria de fora; com a UTM dentro do filtro, a lista continua como está.
+ */
 function onSaved(utm: MarketingUtm) {
-  setQuery({ utm: utm.id })
+  if (hasFilters.value && !matchesFilters(utm)) openExisting(utm.id)
+  else setQuery({ utm: utm.id })
+}
+function matchesFilters(utm: MarketingUtm) {
+  const f = filters.value as { companyId?: string; source?: string; medium?: string; campaignId?: string; q?: string }
+  if (f.companyId && utm.companyId !== f.companyId) return false
+  if (f.campaignId && utm.campaign?.id !== f.campaignId) return false
+  if (f.source && utm.shortLink.utmSource !== f.source) return false
+  if (f.medium && utm.shortLink.utmMedium !== f.medium) return false
+  if (f.q) {
+    const q = f.q.toLowerCase()
+    const l = utm.shortLink
+    const hay = [utm.placement, l.code, l.targetUrl, l.utmCampaign, l.utmContent].map((v) => (v ?? '').toLowerCase())
+    if (!hay.some((v) => v.includes(q))) return false
+  }
+  return true
 }
 
 const campaignOptions = computed(() => {

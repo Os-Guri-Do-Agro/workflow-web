@@ -5,6 +5,11 @@
  * servidor, mesmo sha256). Escolhe a pasta e o título. Já no Acervo: mostra
  * onde e oferece "Manter os dois".
  *
+ * Destino: só a MARCA DO ARQUIVO ou a Geral do grupo (a API recusa outra
+ * marca com 400). É o espelho do "Escolher do acervo", que só aceita item da
+ * marca do card ou da Geral: a cópia numa marca B mostraria a arte da marca A
+ * a quem só vê a B.
+ *
  * Uso (no visualizador de versão ou na ativação):
  *   <SendToLibraryDialog v-model="sendOpen" :group-id="groupId" :asset-id="asset.id"
  *     :company-id="card.companyId" :default-title="asset.name" @sent="onSent" />
@@ -44,8 +49,11 @@ const emit = defineEmits<{
 const toast = useToast()
 const refresh = useLibraryRefresh(() => props.groupId)
 const treeQuery = useLibraryTree(() => (props.modelValue ? props.groupId : null))
-const locations = computed(() => treeQuery.data.value?.locations ?? [])
-const folders = computed(() => treeQuery.data.value?.folders ?? [])
+/** Só os dois lugares que aceitam a cópia: a marca do arquivo e a Geral do grupo. */
+const allowed = (companyId: string | null) => companyId === null || companyId === props.companyId
+const locations = computed(() => (treeQuery.data.value?.locations ?? []).filter((l) => allowed(l.companyId)))
+const folders = computed(() => (treeQuery.data.value?.folders ?? []).filter((f) => allowed(f.companyId)))
+const brandName = computed(() => locations.value.find((l) => l.companyId !== null)?.name ?? null)
 
 const place = ref<LibrarySelection>({ companyId: undefined, folderId: null })
 const title = ref('')
@@ -145,6 +153,10 @@ async function send(keepBoth = false) {
       <p v-else-if="noWrite" class="lib-warn" role="status">Seu papel não envia arquivos para o Acervo.</p>
       <template v-else>
         <p class="lib-note">Vai uma cópia: o arquivo daqui continua como está, e apagar um não apaga o outro.</p>
+        <p class="mk-hint" data-hint="places">
+          {{ brandName ? `Vai para ${brandName} ou para a Geral do grupo.` : 'Vai para a Geral do grupo.' }}
+          Outra marca não entra: lá o arquivo apareceria para quem não vê esta marca.
+        </p>
         <label class="mk-field">
           <span class="mk-label">Título no acervo</span>
           <input v-model="title" class="mk-input" name="libraryTitle" maxlength="200" :disabled="saving" />

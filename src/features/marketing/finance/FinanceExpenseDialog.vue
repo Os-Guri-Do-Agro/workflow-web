@@ -564,7 +564,7 @@ async function doDelete() {
   <ConfirmDialog
     v-model="confirmDelete"
     title="Apagar lançamento?"
-    message="As notas fiscais anexadas saem do storage junto. Não dá para desfazer."
+    message="As notas fiscais anexadas são apagadas junto. Não dá para desfazer."
     confirm-label="Apagar"
     danger
     :loading="removing"
@@ -573,7 +573,7 @@ async function doDelete() {
   <ConfirmDialog
     :model-value="!!confirmRemove"
     title="Tirar a nota fiscal?"
-    :message="`${confirmRemove?.name ?? ''} sai do lançamento e do storage.`"
+    :message="`${confirmRemove?.name ?? ''} sai do lançamento e é apagada de vez.`"
     confirm-label="Tirar"
     danger
     :loading="removing"

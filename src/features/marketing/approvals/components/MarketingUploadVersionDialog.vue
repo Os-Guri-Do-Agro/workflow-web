@@ -146,6 +146,8 @@ const entries = computed<Entry[]>(() => {
 })
 
 const uploading = computed(() => entries.value.some((e) => e.status === 'uploading'))
+/** "Escolher do acervo" só com a lista vazia: a versão nasce só com os itens do acervo. */
+const libraryBlocked = computed(() => entries.value.length > 0)
 const errored = computed(() => entries.value.filter((e) => e.status === 'error').length)
 const canSubmit = computed(
   () =>
@@ -176,8 +178,15 @@ function onInput(e: Event) {
   add(filesFromInput(e))
 }
 
-const drop = useFileDrop({ enabled: () => props.modelValue && !saving.value, onFiles: add })
-usePasteFiles({ enabled: () => props.modelValue && !saving.value, onFiles: add, priority: 10 })
+// Com o "Escolher do acervo" (ou outro diálogo) por cima, soltar e colar não caem aqui.
+const rootEl = ref<HTMLElement | null>(null)
+const drop = useFileDrop({ enabled: () => props.modelValue && !saving.value && !pickerOpen.value, onFiles: add })
+usePasteFiles({
+  enabled: () => props.modelValue && !saving.value && !pickerOpen.value,
+  root: () => rootEl.value,
+  onFiles: add,
+  priority: 10,
+})
 
 function move(index: number, delta: number) {
   const list = entries.value
@@ -222,6 +231,11 @@ function close() {
 const pickerOpen = ref(false)
 const picking = ref(false)
 const pickError = ref('')
+/** Abre o seletor limpo: o erro da tentativa anterior não aparece de novo. */
+function openPicker() {
+  pickError.value = ''
+  pickerOpen.value = true
+}
 async function onPicked(itemIds: string[]) {
   if (!itemIds.length || picking.value) return
   picking.value = true
@@ -285,7 +299,7 @@ onBeforeUnmount(stopCreated)
 
 <template>
   <AppDialog :model-value="modelValue" :label="`Subir a V${nextNumber}`" size="lg" :loading="saving" persistent @update:model-value="close">
-    <div class="mkup" :class="{ 'is-over': drop.isOver.value }" v-on="drop.on">
+    <div ref="rootEl" class="mkup" :class="{ 'is-over': drop.isOver.value }" v-on="drop.on">
       <header class="mkup__head">
         <span class="mkup__icon" aria-hidden="true"><Upload :size="16" /></span>
         <h2 class="mkup__title">Subir a V{{ nextNumber }}</h2>
@@ -316,12 +330,15 @@ onBeforeUnmount(stopCreated)
             type="button"
             class="mk-btn"
             data-action="pick-from-library"
-            :disabled="saving || entries.length > 0"
-            :title="entries.length ? 'A versão do acervo nasce só com os itens escolhidos. Tire os arquivos enviados aqui para usar o acervo.' : undefined"
-            @click="pickerOpen = true"
+            :disabled="saving || libraryBlocked"
+            :aria-describedby="libraryBlocked ? 'mkup-lib-why' : undefined"
+            @click="openPicker"
           >
             <LibraryBig :size="14" aria-hidden="true" /> Escolher do acervo
           </button>
+          <span v-if="libraryBlocked" id="mkup-lib-why" class="mkup__why" data-hint="library-blocked">
+            Para usar o acervo, tire os arquivos enviados aqui: a versão do acervo leva só os itens escolhidos.
+          </span>
         </div>
 
         <p v-if="draft.scheduled" class="mkup__banner" role="status">
@@ -339,7 +356,7 @@ onBeforeUnmount(stopCreated)
             </span>
             <span class="mkup__info">
               <span class="mkup__name" :title="e.name">{{ e.name }}</span>
-              <span v-if="e.status === 'error'" class="mk-error">{{ e.detail }}</span>
+              <span v-if="e.status === 'error'" class="mk-error mkup__err">{{ e.detail }}</span>
               <template v-else-if="e.status === 'uploading'">
                 <span class="mkup__progress" role="progressbar" :aria-valuenow="e.progress" aria-valuemin="0" aria-valuemax="100" :aria-label="`Enviando ${e.name}`">
                   <span :style="{ width: `${e.progress}%` }" />
@@ -354,6 +371,7 @@ onBeforeUnmount(stopCreated)
                 type="button"
                 class="mk-icon-btn"
                 :aria-label="`Tentar de novo ${e.name}`"
+                :disabled="e.item.running"
                 @click="queue.retry(e.item.id)"
               >
                 <RotateCw :size="14" />
@@ -613,6 +631,40 @@ onBeforeUnmount(stopCreated)
 .mkup__acts {
   display: flex;
   gap: 2px;
+}
+
+.mkup__why {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.mkup__err {
+  overflow-wrap: anywhere;
+}
+
+/* Celular: a linha com erro ganha os 4 botões embaixo; o nome não fica espremido. */
+@media (max-width: 640px) {
+  .mkup__item {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .mkup__item[data-entry='error'] .mkup__info {
+    flex-basis: calc(100% - 72px);
+  }
+
+  .mkup__item[data-entry='error'] .mkup__acts {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+
+  .mkup__acts :deep(.mk-icon-btn) {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 .mkup__foot {
