@@ -15,6 +15,24 @@
 // Metadados (content-type etc.): fake-storage-data/.meta/<bucket>/<path>.json
 // Tokens assinados: fake-storage-data/.tokens.json (sobrevivem a reinicio)
 //
+// Upload retomavel (TUS 1.0.0), no molde do Supabase Storage (conferido no
+// codigo do supabase/storage, src/http/routes/tus): POST em
+// /upload/resumable/sign com o token de createSignedUploadUrl no cabecalho
+// `x-signature` (sem service key), Upload-Metadata com bucketName/objectName/
+// contentType/cacheControl, PATCH com Upload-Offset e HEAD para retomar. O
+// Location devolvido e /upload/resumable/sign/<id>. Bytes recebidos de um PATCH
+// cortado no meio FICAM (como no servidor real), entao o HEAD devolve o offset
+// de onde parou, nem sempre multiplo de 6 MB.
+//
+// Controle do harness (so para teste, nao existe no storage real):
+//   GET  /__harness            config e contadores
+//   POST /__harness  {throttleBps?, dropAfterBytes?, failPatches?, maxBytes?, reset?}
+//     throttleBps     limita a leitura dos uploads (PUT e PATCH), em bytes/s
+//     dropAfterBytes  derruba a conexao do PROXIMO PATCH depois de N bytes
+//     failPatches     responde 503 aos proximos N PATCH
+//     maxBytes        teto por arquivo (o "limite global do projeto"), 413 acima
+//     reset           zera os contadores
+//
 // Node puro, sem dependencias.
 
 import http from 'node:http'
@@ -169,7 +187,59 @@ const CORS = {
   'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
   'Access-Control-Max-Age': '86400',
   'Access-Control-Expose-Headers':
-    'Content-Length, Content-Range, Content-Type, Accept-Ranges, ETag, Last-Modified, Cache-Control',
+    'Content-Length, Content-Range, Content-Type, Accept-Ranges, ETag, Last-Modified, Cache-Control, ' +
+    'Location, Upload-Offset, Upload-Length, Upload-Expires, Tus-Resumable, Tus-Version, Tus-Max-Size, Tus-Extension',
+}
+
+// --------------------------------------------------------------------------
+// Controle do harness (throttle e falhas de proposito) e contadores
+// --------------------------------------------------------------------------
+
+const harness = {
+  throttleBps: 0,
+  dropAfterBytes: 0,
+  failPatches: 0,
+  maxBytes: Number(process.env.FAKE_STORAGE_MAX_BYTES) || 0,
+}
+const novosContadores = () => ({
+  puts: 0,
+  putBytes: 0,
+  tusCreates: 0,
+  tusHeads: 0,
+  tusPatches: 0,
+  tusPatchBytes: 0,
+  tusDrops: 0,
+  tusFails: 0,
+  tusCompleted: 0,
+  tusOffsetConflicts: 0,
+  /** objectName -> quantas vezes o upload foi CRIADO (retomar nao cria de novo) */
+  createsPorObjeto: {},
+})
+let contadores = novosContadores()
+
+/**
+ * Le o corpo respeitando o throttle do harness (o gerador repassa os pedacos).
+ * Espera ate o horario em que aqueles bytes "deveriam" ter chegado, em vez de
+ * um setTimeout por pedaco: no Windows o timer minimo e ~15 ms e o throttle
+ * por pedaco saia bem mais lento que o pedido.
+ */
+async function* comThrottle(src) {
+  const t0 = Date.now()
+  let bytes = 0
+  for await (const c of src) {
+    if (harness.throttleBps > 0) {
+      // pedacos pequenos para o progresso no navegador andar liso
+      for (let i = 0; i < c.length; i += 32 * 1024) {
+        const parte = c.subarray(i, i + 32 * 1024)
+        bytes += parte.length
+        const espera = t0 + (bytes / harness.throttleBps) * 1000 - Date.now()
+        if (espera > 0) await new Promise((r) => setTimeout(r, espera))
+        yield parte
+      }
+    } else {
+      yield c
+    }
+  }
 }
 
 class HttpError extends Error {
@@ -305,6 +375,7 @@ async function receberUpload(req) {
   } else {
     await pipeline(
       req,
+      comThrottle,
       async function* (src) {
         for await (const c of src) {
           hash.update(c)
@@ -322,6 +393,9 @@ async function gravarObjeto(bucketId, segs, up, upsert) {
   const b = exigirBucket(bucketId)
   const destino = arquivoDe(bucketId, segs)
   try {
+    if (harness.maxBytes && up.size > harness.maxBytes) {
+      throw new HttpError(413, 'Payload too large', 'The object exceeded the maximum allowed size')
+    }
     if (b.file_size_limit && up.size > b.file_size_limit) {
       throw new HttpError(413, 'Payload too large', 'The object exceeded the maximum allowed size')
     }
@@ -443,6 +517,227 @@ function validarToken(url, kind, bucketId, segs) {
   if (t.exp < Date.now() / 1000) throw erros.tokenInvalido('"exp" claim timestamp check failed')
   if (t.b !== bucketId || t.p !== segs.join('/')) throw erros.tokenInvalido('Invalid token for this object')
   return t
+}
+
+// --------------------------------------------------------------------------
+// Upload retomavel (TUS 1.0.0)
+// --------------------------------------------------------------------------
+
+/** @type {Map<string, {id:string,bucket:string,path:string,length:number,offset:number,tmp:string,contentType:string,cacheControl:string,metadata:object,upsert:boolean,expira:number,completo:boolean}>} */
+const tusUploads = new Map()
+const TUS_TTL_MS = 24 * 60 * 60 * 1000
+
+function tusHeaders(extra = {}) {
+  return { 'Tus-Resumable': '1.0.0', 'Cache-Control': 'no-store', ...extra }
+}
+
+/** Upload-Metadata: "chave base64,chave base64". */
+function parseUploadMetadata(header) {
+  const out = {}
+  for (const par of String(header ?? '').split(',')) {
+    const [k, v] = par.trim().split(' ')
+    if (!k) continue
+    out[k] = v ? Buffer.from(v, 'base64').toString('utf8') : ''
+  }
+  return out
+}
+
+/** O token de createSignedUploadUrl vem em `x-signature` e vale para UM objeto. */
+function tusAssinatura(req, bucketId, objectName) {
+  const token = req.headers['x-signature']
+  if (!token || typeof token !== 'string') {
+    throw new HttpError(400, 'InvalidSignature', 'Missing x-signature header', '400')
+  }
+  const t = tokens[token]
+  if (!t || t.k !== 'upload') throw new HttpError(400, 'InvalidSignature', 'The signature is invalid', '400')
+  if (t.exp < Date.now() / 1000) throw new HttpError(400, 'ExpiredSignature', 'The signature has expired', '400')
+  if (t.b !== bucketId || t.p !== objectName) {
+    throw new HttpError(400, 'InvalidSignature', 'The signature does not match this object', '400')
+  }
+  return t
+}
+
+function tusRegistro(id) {
+  const u = tusUploads.get(id)
+  if (!u || u.expira < Date.now()) throw new HttpError(404, 'not_found', 'Upload not found')
+  return u
+}
+
+async function tusCriar(req, res, url, assinado) {
+  if (!assinado) exigirAuth(req)
+  if (req.headers['upload-defer-length']) {
+    throw new HttpError(400, 'invalid_request', 'Upload-Defer-Length is not supported')
+  }
+  const length = Number(req.headers['upload-length'])
+  if (!Number.isInteger(length) || length < 0) {
+    throw new HttpError(400, 'invalid_request', 'Upload-Length header is missing or invalid')
+  }
+  const meta = parseUploadMetadata(req.headers['upload-metadata'])
+  const bucketId = meta.bucketName
+  const objectName = String(meta.objectName ?? '').replace(/^\/+/, '')
+  if (!bucketId || !objectName) throw new HttpError(400, 'invalid_request', 'bucketName and objectName are required')
+  const bk = exigirBucket(bucketId)
+  const segs = chave(objectName.split('/').filter(Boolean))
+  const tok = assinado ? tusAssinatura(req, bk.id, segs.join('/')) : null
+  const upsert = tok ? !!tok.upsert : String(req.headers['x-upsert']) === 'true'
+  const limite = harness.maxBytes || bk.file_size_limit || 0
+  if (limite && length > limite) {
+    throw new HttpError(413, 'Payload too large', 'The object exceeded the maximum allowed size')
+  }
+  if (!upsert && (await statArquivo(arquivoDe(bk.id, segs)))) throw erros.jaExiste()
+
+  const id = crypto.randomUUID()
+  const tmp = path.join(TMP, `tus-${id}`)
+  await fsp.writeFile(tmp, Buffer.alloc(0))
+  let metadata = {}
+  try {
+    metadata = meta.metadata ? JSON.parse(meta.metadata) : {}
+  } catch {
+    // ignora, como o servidor real faria com metadata invalido opcional
+  }
+  tusUploads.set(id, {
+    id,
+    bucket: bk.id,
+    path: segs.join('/'),
+    length,
+    offset: 0,
+    tmp,
+    contentType: meta.contentType || 'application/octet-stream',
+    cacheControl: meta.cacheControl ? `max-age=${meta.cacheControl}` : 'max-age=3600',
+    metadata,
+    upsert,
+    expira: Date.now() + TUS_TTL_MS,
+    completo: false,
+  })
+  contadores.tusCreates++
+  contadores.createsPorObjeto[segs.join('/')] = (contadores.createsPorObjeto[segs.join('/')] ?? 0) + 1
+  const host = req.headers.host ?? `127.0.0.1:${PORT}`
+  const base = `http://${host}${PREFIX}/upload/resumable${assinado ? '/sign' : ''}`
+  res.writeHead(
+    201,
+    tusHeaders({
+      Location: `${base}/${id}`,
+      'Upload-Expires': new Date(Date.now() + TUS_TTL_MS).toUTCString(),
+      'Content-Length': 0,
+    }),
+  )
+  return res.end()
+}
+
+async function tusConcluir(u) {
+  const st = await fsp.stat(u.tmp)
+  const hash = crypto.createHash('md5')
+  await pipeline(fs.createReadStream(u.tmp), async function* (src) {
+    for await (const c of src) hash.update(c)
+  })
+  await gravarObjeto(
+    u.bucket,
+    u.path.split('/'),
+    {
+      tmp: u.tmp,
+      size: st.size,
+      etag: `"${hash.digest('hex')}"`,
+      contentType: u.contentType,
+      cacheControl: u.cacheControl,
+      metadata: u.metadata,
+    },
+    u.upsert,
+  )
+  u.completo = true
+  contadores.tusCompleted++
+}
+
+/** PATCH: anexa os bytes no offset atual. Conexao cortada no meio guarda o que chegou. */
+async function tusPatch(req, res, u) {
+  const tipo = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase()
+  if (tipo !== 'application/offset+octet-stream') {
+    throw new HttpError(415, 'invalid_content_type', 'Content-Type must be application/offset+octet-stream')
+  }
+  const offset = Number(req.headers['upload-offset'])
+  if (!Number.isInteger(offset)) throw new HttpError(400, 'invalid_request', 'Upload-Offset header is missing')
+  if (u.completo) {
+    res.writeHead(204, tusHeaders({ 'Upload-Offset': String(u.length) }))
+    return res.end()
+  }
+  if (offset !== u.offset) {
+    contadores.tusOffsetConflicts++
+    throw new HttpError(409, 'offset_mismatch', `Upload-Offset ${offset} does not match ${u.offset}`)
+  }
+  contadores.tusPatches++
+  if (harness.failPatches > 0) {
+    harness.failPatches--
+    contadores.tusFails++
+    req.resume()
+    throw new HttpError(503, 'unavailable', 'Fake storage refused this part (harness failPatches)')
+  }
+  const cortarEm = harness.dropAfterBytes > 0 ? harness.dropAfterBytes : 0
+  if (cortarEm) harness.dropAfterBytes = 0
+  const restante = u.length - u.offset
+  const sock = req.socket
+  const out = fs.createWriteStream(u.tmp, { flags: 'a' })
+  let recebidos = 0
+  let cortou = false
+  try {
+    for await (const c of comThrottle(req)) {
+      // byte a mais que o declarado e descartado (o loop segue ate o fim do corpo:
+      // sair antes derruba o socket e a resposta nao chega)
+      let parte = recebidos + c.length > restante ? c.subarray(0, Math.max(0, restante - recebidos)) : c
+      if (cortarEm && recebidos + parte.length >= cortarEm) {
+        parte = parte.subarray(0, Math.max(0, cortarEm - recebidos))
+        cortou = true
+      }
+      if (parte.length) {
+        if (!out.write(parte)) await new Promise((r) => out.once('drain', r))
+        recebidos += parte.length
+      }
+      if (cortou) break
+    }
+  } catch {
+    // conexao caiu no meio: o que chegou fica (o HEAD conta)
+  }
+  await new Promise((r) => out.end(r))
+  u.offset += recebidos
+  contadores.tusPatchBytes += recebidos
+  if (cortou) {
+    contadores.tusDrops++
+    sock?.destroy()
+    return
+  }
+  if (u.offset >= u.length) await tusConcluir(u)
+  if (!res.headersSent && !sock?.destroyed) {
+    res.writeHead(204, tusHeaders({ 'Upload-Offset': String(u.offset) }))
+    res.end()
+  }
+}
+
+async function rotearTus(req, res, url, segs) {
+  // segs: ['upload', 'resumable', ('sign')?, (id)?]
+  const assinado = segs[2] === 'sign'
+  const id = segs[assinado ? 3 : 2]
+  const metodo = req.method
+  if (!id) {
+    if (metodo === 'POST') return tusCriar(req, res, url, assinado)
+    throw erros.rotaNaoExiste()
+  }
+  const u = tusRegistro(id)
+  if (assinado) tusAssinatura(req, u.bucket, u.path)
+  else exigirAuth(req)
+  if (metodo === 'HEAD') {
+    contadores.tusHeads++
+    res.writeHead(
+      200,
+      tusHeaders({ 'Upload-Offset': String(u.completo ? u.length : u.offset), 'Upload-Length': String(u.length) }),
+    )
+    return res.end()
+  }
+  if (metodo === 'PATCH') return tusPatch(req, res, u)
+  if (metodo === 'DELETE') {
+    tusUploads.delete(id)
+    await fsp.rm(u.tmp, { force: true })
+    res.writeHead(204, tusHeaders())
+    return res.end()
+  }
+  throw erros.rotaNaoExiste()
 }
 
 // --------------------------------------------------------------------------
@@ -576,6 +871,21 @@ async function rotear(req, res, url, segs) {
     return enviarJson(res, 200, { status: 'ok', fake: true })
   }
 
+  // ---- controle do harness (nao existe no storage real) -------------------
+  if (raiz === '__harness') {
+    if (metodo === 'POST') {
+      const c = await lerJsonCorpo(req)
+      for (const k of ['throttleBps', 'dropAfterBytes', 'failPatches', 'maxBytes']) {
+        if (k in c) harness[k] = Math.max(0, Number(c[k]) || 0)
+      }
+      if (c.reset) contadores = novosContadores()
+    }
+    return enviarJson(res, 200, { harness, contadores, tusAbertos: tusUploads.size })
+  }
+
+  // ---- upload retomavel (TUS) ---------------------------------------------
+  if (raiz === 'upload' && r[0] === 'resumable') return rotearTus(req, res, url, segs)
+
   // ---- buckets ----------------------------------------------------------
   if (raiz === 'bucket') {
     exigirAuth(req)
@@ -654,7 +964,9 @@ async function rotear(req, res, url, segs) {
     if (metodo === 'PUT') {
       const t = validarToken(url, 'upload', bucketId, ks)
       exigirBucket(bucketId)
+      contadores.puts++
       const up = await receberUpload(req)
+      contadores.putBytes += up.size
       const r2 = await gravarObjeto(bucketId, ks, up, !!t.upsert)
       return enviarJson(res, 200, { Key: r2.Key })
     }
@@ -819,7 +1131,8 @@ const server = http.createServer(async (req, res) => {
   res.setHeader(
     'Access-Control-Allow-Headers',
     req.headers['access-control-request-headers'] ||
-      'authorization, apikey, content-type, x-upsert, x-client-info, cache-control, range, x-metadata, if-none-match',
+      'authorization, apikey, content-type, x-upsert, x-client-info, cache-control, range, x-metadata, if-none-match, ' +
+        'x-signature, tus-resumable, upload-length, upload-metadata, upload-offset, upload-defer-length',
   )
 
   if (req.method === 'OPTIONS') {
@@ -860,6 +1173,17 @@ for (const b of BUCKETS_INICIAIS) {
 }
 for (const id of Object.keys(buckets)) fs.mkdirSync(path.join(DATA, encSeg(id)), { recursive: true })
 flushTokens()
+
+// Upload retomavel abandonado expira (24 h, como o Location do servidor real).
+setInterval(() => {
+  const agora = Date.now()
+  for (const [id, u] of tusUploads) {
+    if (u.expira < agora || u.completo) {
+      if (!u.completo) fsp.rm(u.tmp, { force: true }).catch(() => {})
+      if (u.expira < agora) tusUploads.delete(id)
+    }
+  }
+}, 10 * 60 * 1000).unref()
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`fake-storage ouvindo em http://127.0.0.1:${PORT}${PREFIX}  (dados: ${DATA})`)

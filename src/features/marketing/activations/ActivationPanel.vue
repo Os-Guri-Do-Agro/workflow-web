@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
-import { ArrowLeft, Camera, Film, ListChecks, MapPin, Pencil, Plus, Trash2, X } from 'lucide-vue-next'
+import { ArrowLeft, Camera, Film, FolderInput, ListChecks, MapPin, Pencil, Plus, RotateCw, Trash2, Upload, X } from 'lucide-vue-next'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import FileViewer, { type ViewerFile } from '@/components/ui/FileViewer.vue'
 import { useToast } from '@/composables/useToast'
@@ -14,16 +14,22 @@ import {
   deleteChecklistItem,
   updateActivation,
   updateChecklistItem,
-  uploadActivationPhoto,
   type ActivationDetail,
   type ActivationStatus,
 } from '@/service/marketing/marketing-activations'
+import { getUploadLimits } from '@/service/marketing/marketing-core'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { useCurrentUser } from '@/composables/useCurrentUser'
 import { useMarketing } from '../composables/useMarketing'
+import { filesFromInput, useFileDrop, usePasteFiles } from '../uploads/file-sources'
+import UploadSourceButtons from '../uploads/UploadSourceButtons.vue'
+import { isUploadPending, useUploadQueue, type UploadEntry } from '../uploads/upload-queue'
+import { activationPhotoTarget } from '../uploads/upload-targets'
+import { itemPercent } from '../uploads/upload-format'
 import { brandTone, formatCents, toneStyle } from '../marketing-labels'
 import QuotesPanel from '../quotes/QuotesPanel.vue'
 import ActivationFormDialog from './ActivationFormDialog.vue'
+import SendToLibraryDialog from '../library/SendToLibraryDialog.vue'
 import {
   ACTIVATION_KIND_LABEL,
   ACTIVATION_STATUS_LABEL,
@@ -51,6 +57,14 @@ const query = useActivation(
 )
 const a = computed<ActivationDetail | null>(() => query.data.value ?? null)
 const canEdit = computed(() => mk.can('EDITOR'))
+// "Mandar para o acervo" (R1): a foto vai por cópia; a da ativação fica onde está.
+const sendPhoto = ref<{ id: string; name: string } | null>(null)
+const sendOpen = computed({
+  get: () => !!sendPhoto.value,
+  set: (open: boolean) => {
+    if (!open) sendPhoto.value = null
+  },
+})
 const brand = computed(() => mk.brandById(a.value?.companyId))
 const canDelete = computed(() => {
   if (mk.can('ADMIN')) return true
@@ -142,41 +156,51 @@ const progress = computed(() => {
 
 // ── Fotos ──────────────────────────────────────────────────────────────────
 
+/*
+ * Fotos e vídeos sobem pela fila global da ala (bandeja "Envios"): 3 em
+ * paralelo, com retomada, e sem prender o painel. Fechar o painel ou trocar de
+ * tela não cancela. Entram por "Adicionar fotos", soltando no painel inteiro,
+ * Ctrl+V de imagem e, no celular, "Tirar foto" e "Galeria".
+ */
 const photoInput = ref<HTMLInputElement | null>(null)
-const uploading = ref<Record<string, number>>({})
-const dragging = ref(false)
+const queue = useUploadQueue()
+const maxMb = ref<number | null>(null)
+void getUploadLimits(props.groupId)
+  .then((l) => (maxMb.value = l?.maxMb ?? null))
+  .catch(() => {})
 
-async function uploadFiles(files: File[]) {
-  const accepted = files.filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
-  if (accepted.length < files.length) toastError('Só foto e vídeo entram na ativação.')
-  for (const file of accepted) {
-    const key = `${file.name}:${file.size}`
-    uploading.value = { ...uploading.value, [key]: 0 }
-    try {
-      await uploadActivationPhoto(props.groupId, props.activationId, file, (p) => {
-        uploading.value = { ...uploading.value, [key]: p }
-      })
-    } catch (e) {
-      fail(e, `Não foi possível enviar "${file.name}".`)
-    } finally {
-      const { [key]: _done, ...rest } = uploading.value
-      uploading.value = rest
-    }
+const photoUploads = computed(() =>
+  queue.items.value.filter(
+    (i) =>
+      i.groupId === props.groupId &&
+      i.target.key === `activation:${props.activationId}` &&
+      (isUploadPending(i) || i.status === 'error'),
+  ),
+)
+
+function uploadFiles(entries: UploadEntry[]) {
+  if (!canEdit.value || !entries.length) return
+  const batch = queue.enqueue(
+    props.groupId,
+    entries.map((e) => ({ file: e.file })),
+    activationPhotoTarget(props.activationId, a.value?.title ?? 'Ativação'),
+  )
+  if (batch.rejected.length) {
+    toastError(
+      batch.items.length
+        ? `${batch.rejected.length} arquivo(s) ficaram de fora: só foto e vídeo entram na ativação.`
+        : 'Só foto e vídeo entram na ativação.',
+    )
   }
-  refresh()
 }
 function onPick(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = [...(input.files ?? [])]
-  input.value = ''
-  if (files.length) void uploadFiles(files)
+  uploadFiles(filesFromInput(event))
 }
-function onDrop(event: DragEvent) {
-  dragging.value = false
-  if (!canEdit.value) return
-  const files = [...(event.dataTransfer?.files ?? [])]
-  if (files.length) void uploadFiles(files)
-}
+const drop = useFileDrop({ enabled: () => canEdit.value && !!a.value, onFiles: uploadFiles })
+usePasteFiles({
+  enabled: () => canEdit.value && !!a.value && !viewer.value && !editOpen.value,
+  onFiles: uploadFiles,
+})
 
 const viewer = ref<{ items: ViewerFile[]; start: number } | null>(null)
 function openPhoto(index: number) {
@@ -255,7 +279,11 @@ function ddmm(ymd: string) {
 </script>
 
 <template>
-  <aside class="ap" aria-label="Detalhe da ativação">
+  <aside class="ap" aria-label="Detalhe da ativação" v-on="drop.on">
+    <div v-if="drop.isOver.value" class="ap__drop-overlay" aria-hidden="true">
+      <Upload :size="20" />
+      Solte para adicionar às fotos e vídeos
+    </div>
     <header class="ap__head">
       <button type="button" class="mk-btn mk-btn--ghost ap__back" @click="emit('close')">
         <ArrowLeft :size="15" aria-hidden="true" />
@@ -388,21 +416,29 @@ function ddmm(ymd: string) {
       <!-- Fotos -->
       <section
         class="ap__sec"
-        :class="{ 'is-drag': dragging }"
+        :class="{ 'is-drag': drop.isOver.value }"
         aria-labelledby="ap-photos"
-        @dragover.prevent="canEdit && (dragging = true)"
-        @dragleave="dragging = false"
-        @drop.prevent="onDrop"
       >
         <h3 id="ap-photos" class="ap__h">
           Fotos e vídeos
           <span v-if="a.photos.length" class="ap__count">{{ a.photos.length }}</span>
         </h3>
-        <div v-if="a.photos.length || Object.keys(uploading).length" class="ap__grid">
+        <div v-if="a.photos.length || photoUploads.length" class="ap__grid">
           <div v-for="(p, i) in a.photos" :key="p.id" class="ap__tile">
             <button type="button" class="ap__tile-open" :aria-label="`Abrir ${p.name}`" @click="openPhoto(i)">
               <img v-if="p.mimeType.startsWith('image/') && (p.previewUrl || p.url)" :src="p.previewUrl ?? p.url ?? ''" :alt="p.name" loading="lazy" />
               <span v-else class="ap__tile-ph"><Film :size="22" aria-hidden="true" /></span>
+            </button>
+            <button
+              v-if="canEdit"
+              type="button"
+              class="ap__tile-x ap__tile-x--lib"
+              :aria-label="`Mandar ${p.name} para o acervo`"
+              title="Mandar para o acervo"
+              data-action="send-to-library"
+              @click="sendPhoto = { id: p.id, name: p.name }"
+            >
+              <FolderInput :size="13" aria-hidden="true" />
             </button>
             <button
               v-if="canEdit"
@@ -414,15 +450,38 @@ function ddmm(ymd: string) {
               <Trash2 :size="13" aria-hidden="true" />
             </button>
           </div>
-          <div v-for="(pct, key) in uploading" :key="key" class="ap__tile ap__tile--busy">{{ pct }}%</div>
+          <!-- Na fila ou subindo: miniatura de fundo (sem <img>, a grade conta só as prontas) -->
+          <div
+            v-for="u in photoUploads"
+            :key="u.id"
+            class="ap__tile ap__tile--busy"
+            :class="{ 'is-error': u.status === 'error' }"
+            :data-upload="u.status"
+            :style="u.thumbUrl ? { backgroundImage: `url(${u.thumbUrl})` } : undefined"
+            :title="u.status === 'error' ? `${u.name}: ${u.error}` : u.name"
+          >
+            <span v-if="u.status === 'error'" class="ap__tile-state">
+              <button type="button" class="ap__tile-retry" :aria-label="`Tentar de novo ${u.name}`" @click="queue.retry(u.id)">
+                <RotateCw :size="14" aria-hidden="true" />
+                Tentar de novo
+              </button>
+            </span>
+            <span v-else class="ap__tile-state" role="progressbar" :aria-valuenow="itemPercent(u)" aria-valuemin="0" aria-valuemax="100" :aria-label="`Enviando ${u.name}`">
+              {{ u.status === 'queued' ? 'Na fila' : `${itemPercent(u)}%` }}
+            </span>
+          </div>
         </div>
-        <p v-else class="mk-hint">Nenhuma foto ainda.{{ canEdit ? ' Arraste aqui ou escolha os arquivos.' : '' }}</p>
+        <p v-else class="mk-hint">
+          Nenhuma foto ainda.{{ canEdit ? ' Arraste para o painel, cole com Ctrl+V ou escolha os arquivos.' : '' }}
+        </p>
         <div v-if="canEdit" class="ap__row-actions">
           <button type="button" class="mk-btn" @click="photoInput?.click()">
             <Camera :size="14" aria-hidden="true" />
             Adicionar fotos
           </button>
+          <span v-if="maxMb" class="ap__limit">Até {{ maxMb }} MB por arquivo</span>
         </div>
+        <UploadSourceButtons v-if="canEdit" accept="image/*,video/*" @files="uploadFiles" />
         <input ref="photoInput" type="file" accept="image/*,video/*" multiple class="ap__input" tabindex="-1" aria-hidden="true" @change="onPick" />
       </section>
 
@@ -501,18 +560,49 @@ function ddmm(ymd: string) {
       :loading="deleteMutation.isPending.value"
       @confirm="deleteMutation.mutate()"
     />
+    <SendToLibraryDialog
+      v-if="sendPhoto && a"
+      v-model="sendOpen"
+      :group-id="groupId"
+      :asset-id="sendPhoto.id"
+      :company-id="a.companyId"
+      :default-title="sendPhoto.name"
+    />
     <FileViewer v-if="viewer" :items="viewer.items" :start-index="viewer.start" @close="viewer = null" />
   </aside>
 </template>
 
 <style scoped>
 .ap {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
+}
+
+.ap__drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent-soft) 88%, transparent);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.ap__limit {
+  font-size: 12px;
+  color: var(--text-3);
 }
 
 .ap__head {
@@ -733,9 +823,41 @@ function ddmm(ymd: string) {
 .ap__tile--busy {
   display: grid;
   place-items: center;
+  background-size: cover;
+  background-position: center;
   color: var(--text-3);
   font-size: 12px;
   font-weight: 600;
+}
+
+.ap__tile-state {
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.ap__tile--busy.is-error {
+  border-color: color-mix(in srgb, var(--err) 45%, var(--border));
+}
+
+.ap__tile-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--err);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .ap__tile-open {
@@ -799,6 +921,25 @@ function ddmm(ymd: string) {
 
 .ap__tile-x:hover {
   color: var(--err);
+}
+
+/* "Mandar para o acervo": o mesmo quadradinho, no canto esquerdo. */
+.ap__tile-x--lib {
+  right: auto;
+  left: 0;
+}
+
+.ap__tile-x--lib::before {
+  right: auto;
+  left: 4px;
+}
+
+.ap__tile-x--lib svg {
+  left: -2px;
+}
+
+.ap__tile-x--lib:hover {
+  color: var(--accent);
 }
 
 .ap__input {

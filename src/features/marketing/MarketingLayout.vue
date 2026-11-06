@@ -9,6 +9,7 @@ import { useMarketing, useMarketingRealtime } from './composables/useMarketing'
 import { visibleSections, type MarketingSection } from './marketing-nav'
 import { brandTone, toneStyle } from './marketing-labels'
 import CreateGroupDialog from './settings/CreateGroupDialog.vue'
+import UploadTray from './uploads/UploadTray.vue'
 import './marketing.css'
 
 /**
@@ -157,6 +158,8 @@ function onCreated(groupId: string) {
           <component :is="Component" v-if="mk.groupId.value" :key="mk.groupId.value" />
         </RouterView>
       </div>
+      <!-- Bandeja "Envios" (R1, D4): a fila é global e segue subindo na troca de tela -->
+      <UploadTray />
     </template>
   </div>
 </template>

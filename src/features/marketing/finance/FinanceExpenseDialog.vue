@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { Download, FileText, Paperclip, Repeat, Trash2, Wallet, X } from 'lucide-vue-next'
+import { Download, FileText, Paperclip, RotateCw, Repeat, Trash2, Upload, Wallet, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import FileViewer, { type ViewerFile } from '@/components/ui/FileViewer.vue'
 import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
-import { getAssetDownload, uploadMarketingFile, type MarketingBrand } from '@/service/marketing/marketing-core'
+import { getAssetDownload, type MarketingBrand } from '@/service/marketing/marketing-core'
 import {
   createExpense,
   deleteExpense,
-  invoiceTicket,
   removeInvoice,
   updateExpense,
   type ExpenseInput,
@@ -19,12 +18,22 @@ import {
   type MarketingExpense,
 } from '@/service/marketing/marketing-finance'
 import { formatBytes } from '../marketing-labels'
+import { filesFromInput, useFileDrop, usePasteFiles } from '../uploads/file-sources'
+import UploadSourceButtons from '../uploads/UploadSourceButtons.vue'
+import { isUploadPending, useUploadQueue, type UploadEntry } from '../uploads/upload-queue'
+import { expenseInvoiceTarget } from '../uploads/upload-targets'
+import { itemStatusText } from '../uploads/upload-format'
 import MoneyInput from './MoneyInput.vue'
 import { defaultDateFor } from './finance-format'
 
 /**
  * Lançamento completo: criar (com notas na fila, sobem depois de salvar),
  * editar, ver (Visualizador) e as notas fiscais (ver, baixar o original, tirar).
+ *
+ * As notas sobem pela fila global da ala (bandeja "Envios"). No lançamento
+ * novo, a janela espera as notas subirem antes de fechar (como antes), mas
+ * pode ser fechada no meio: o envio continua na bandeja. Entradas: "Anexar
+ * nota", soltar na janela, Ctrl+V de imagem e, no celular, "Fotografar nota".
  */
 const props = defineProps<{
   modelValue: boolean
@@ -66,7 +75,13 @@ const form = reactive({
 const error = ref('')
 const saving = ref(false)
 const queued = ref<File[]>([])
-const uploading = ref<{ name: string; percent: number } | null>(null)
+/** Lançamento novo salvo nesta janela: as notas dele aparecem subindo aqui. */
+const savedId = ref<string | null>(null)
+/** Esperando as notas do lançamento novo subirem para fechar a janela. */
+const waitingUploads = ref(false)
+/** Muda a cada abertura: a espera de um envio antigo não fecha a janela reaberta. */
+let session = 0
+const queue = useUploadQueue()
 const confirmDelete = ref(false)
 const confirmRemove = ref<{ id: string; name: string } | null>(null)
 const removing = ref(false)
@@ -98,7 +113,9 @@ function reset() {
   form.notes = e?.notes ?? ''
   error.value = ''
   queued.value = []
-  uploading.value = null
+  savedId.value = null
+  waitingUploads.value = false
+  session++
   openedBrand = form.companyId
 }
 
@@ -146,14 +163,57 @@ const viewerItems = computed<ViewerFile[]>(() =>
   invoices.value.map((a) => ({ filename: a.name, mimeType: a.mimeType, size: a.size, url: a.url ?? a.previewUrl ?? null })),
 )
 
+/** Notas deste lançamento na fila, subindo ou com erro (as prontas já vêm em `invoices`). */
+const liveUploads = computed(() => {
+  const id = props.expense?.id ?? savedId.value
+  if (!id) return []
+  return queue.items.value.filter(
+    (i) => i.groupId === props.groupId && i.target.key === `expense:${id}` && (isUploadPending(i) || i.status === 'error'),
+  )
+})
+const uploadingCount = computed(() => liveUploads.value.filter(isUploadPending).length)
+
 const missing = computed(
-  () => form.status === 'PAID' && !form.noInvoiceNeeded && invoices.value.length + queued.value.length === 0,
+  () =>
+    form.status === 'PAID' &&
+    !form.noInvoiceNeeded &&
+    invoices.value.length + queued.value.length + liveUploads.value.length === 0,
 )
 
 function close() {
-  if (saving.value || uploading.value) return
+  if (saving.value) return
   emit('update:modelValue', false)
 }
+
+/** O filtro da nota (PDF, XML ou imagem), o mesmo da API. */
+const invoiceFilter = expenseInvoiceTarget('-', '-').accept!
+
+function sendInvoices(expense: { id: string; description: string }, files: File[]) {
+  return queue.enqueue(
+    props.groupId,
+    files.map((file) => ({ file })),
+    expenseInvoiceTarget(expense.id, expense.description),
+    { onItemDone: () => emit('changed') },
+  )
+}
+
+/** Arquivo escolhido, solto ou colado: na fila local (lançamento novo) ou direto para a bandeja. */
+function addFiles(entries: UploadEntry[]) {
+  if (readOnly.value || !entries.length) return
+  const files = entries.map((e) => e.file)
+  const ok = files.filter((f) => !invoiceFilter(f))
+  if (ok.length < files.length) toast.error('Nota fiscal: envie PDF, XML ou imagem.')
+  if (!ok.length) return
+  if (isNew.value && !savedId.value) {
+    queued.value = [...queued.value, ...ok]
+    return
+  }
+  const id = props.expense?.id ?? savedId.value!
+  sendInvoices({ id, description: props.expense?.description ?? form.description }, ok)
+}
+
+const drop = useFileDrop({ enabled: () => props.modelValue && !readOnly.value && !saving.value, onFiles: addFiles })
+usePasteFiles({ enabled: () => props.modelValue && !readOnly.value && !saving.value, onFiles: addFiles, priority: 10 })
 
 function payload(): ExpenseInput {
   const opt = (v: string) => (v.trim() ? v.trim() : null)
@@ -176,76 +236,57 @@ function payload(): ExpenseInput {
   }
 }
 
-async function uploadFiles(expenseId: string, files: File[]) {
-  let ok = 0
-  for (const file of files) {
-    uploading.value = { name: file.name, percent: 0 }
-    try {
-      await uploadMarketingFile(props.groupId, file, invoiceTicket(props.groupId, expenseId), (p) => {
-        uploading.value = { name: file.name, percent: p }
-      })
-      ok++
-    } catch (e) {
-      toast.error(getApiErrorMessage(e, `Não foi possível anexar ${file.name}.`))
-    }
-  }
-  uploading.value = null
-  return ok
-}
-
 async function save() {
-  if (readOnly.value) return
+  if (readOnly.value || waitingUploads.value) return
   error.value = ''
   if (!form.description.trim()) return void (error.value = 'Descreva o lançamento.')
   if (!form.amountCents || form.amountCents <= 0) return void (error.value = 'Informe um valor maior que zero.')
   if (!form.date) return void (error.value = 'Escolha a data.')
   saving.value = true
+  const mine = session
+  let saved: MarketingExpense
   try {
-    const saved = props.expense
+    saved = props.expense
       ? await updateExpense(props.groupId, props.expense.id, payload())
       : await createExpense(props.groupId, payload())
-    if (queued.value.length) {
-      const n = await uploadFiles(saved.id, queued.value)
-      queued.value = []
-      if (n) toast.success(n === 1 ? 'Lançamento salvo com a nota.' : `Lançamento salvo com ${n} notas.`)
-    } else {
-      toast.success(props.expense ? 'Lançamento atualizado.' : 'Lançamento criado.')
-    }
-    emit('changed')
-    emit('update:modelValue', false)
   } catch (e) {
     error.value = getApiErrorMessage(e, 'Não foi possível salvar o lançamento.')
-  } finally {
     saving.value = false
-  }
-}
-
-async function onPick(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = [...(input.files ?? [])]
-  input.value = ''
-  if (!files.length) return
-  if (isNew.value) {
-    queued.value = [...queued.value, ...files]
     return
   }
-  const n = await uploadFiles(props.expense!.id, files)
-  if (n) {
-    toast.success(n === 1 ? 'Nota anexada.' : `${n} notas anexadas.`)
+  saving.value = false
+  if (!queued.value.length) {
+    toast.success(props.expense ? 'Lançamento atualizado.' : 'Lançamento criado.')
     emit('changed')
-  }
-}
-
-async function onDrop(event: DragEvent) {
-  if (readOnly.value) return
-  const files = [...(event.dataTransfer?.files ?? [])]
-  if (!files.length) return
-  if (isNew.value) {
-    queued.value = [...queued.value, ...files]
+    emit('update:modelValue', false)
     return
   }
-  const n = await uploadFiles(props.expense!.id, files)
-  if (n) emit('changed')
+  // As notas da fila local vão para a bandeja. A janela mostra o progresso e
+  // fecha quando terminarem; fechar antes não cancela nada.
+  const batch = sendInvoices(saved, queued.value)
+  queued.value = []
+  savedId.value = saved.id
+  waitingUploads.value = true
+  const items = await batch.settled
+  if (mine !== session) return
+  waitingUploads.value = false
+  const ok = items.filter((i) => i.status === 'done').length
+  const failed = items.filter((i) => i.status === 'error').length
+  if (failed) {
+    toast.error(
+      failed === 1
+        ? 'Lançamento salvo, mas uma nota não subiu. Tente de novo em Envios.'
+        : `Lançamento salvo, mas ${failed} notas não subiram. Tente de novo em Envios.`,
+    )
+  } else {
+    toast.success(ok === 1 ? 'Lançamento salvo com a nota.' : ok ? `Lançamento salvo com ${ok} notas.` : 'Lançamento salvo.')
+  }
+  emit('changed')
+  if (props.modelValue) emit('update:modelValue', false)
+}
+
+function onPick(event: Event) {
+  addFiles(filesFromInput(event))
 }
 
 async function download(assetId: string) {
@@ -299,7 +340,7 @@ async function doDelete() {
     :model-value="modelValue"
     :label="title"
     size="lg"
-    :loading="saving || !!uploading"
+    :loading="saving"
     persistent
     @update:model-value="close"
   >
@@ -314,7 +355,7 @@ async function doDelete() {
       </button>
     </header>
 
-    <form class="fx-body" novalidate @submit.prevent="save" @dragover.prevent @drop.prevent="onDrop">
+    <form class="fx-body" :class="{ 'is-over': drop.isOver.value }" novalidate @submit.prevent="save" v-on="drop.on">
       <div class="fx-grid">
         <label v-if="brands.length > 1" class="mk-field">
           <span class="mk-label">Marca</span>
@@ -421,7 +462,7 @@ async function doDelete() {
           </label>
         </div>
 
-        <ul v-if="invoices.length || queued.length" class="fx-files">
+        <ul v-if="invoices.length || queued.length || liveUploads.length" class="fx-files">
           <li v-for="(a, i) in invoices" :key="a.id" class="fx-file">
             <FileText :size="15" aria-hidden="true" />
             <button type="button" class="fx-file__name" :title="a.name" @click="viewerIndex = i">{{ a.name }}</button>
@@ -447,18 +488,47 @@ async function doDelete() {
               <X :size="15" />
             </button>
           </li>
+          <li
+            v-for="u in liveUploads"
+            :key="u.id"
+            class="fx-up"
+            :class="{ 'is-error': u.status === 'error' }"
+            :data-upload="u.status"
+          >
+            <Upload :size="15" aria-hidden="true" />
+            <span class="fx-file__name" :title="u.name">{{ u.name }}</span>
+            <span class="fx-up__state" :role="u.status === 'error' ? 'alert' : 'status'">{{ itemStatusText(u) }}</span>
+            <button
+              v-if="u.status === 'error'"
+              type="button"
+              class="mk-icon-btn"
+              :aria-label="`Tentar de novo ${u.name}`"
+              @click="queue.retry(u.id)"
+            >
+              <RotateCw :size="15" />
+            </button>
+            <button v-else type="button" class="mk-icon-btn" :aria-label="`Cancelar o envio de ${u.name}`" @click="queue.cancel(u.id)">
+              <X :size="15" />
+            </button>
+          </li>
         </ul>
         <p v-else class="mk-hint">Nenhuma nota anexada.</p>
 
-        <div v-if="uploading" class="fx-progress" role="status">
-          Enviando {{ uploading.name }}: {{ uploading.percent }}%
+        <div v-if="waitingUploads" class="fx-progress" role="status">
+          Enviando {{ uploadingCount === 1 ? 'a nota' : `${uploadingCount} notas` }}. Pode fechar a janela: o envio continua em Envios.
         </div>
 
         <div v-if="canEdit" class="fx-drop">
-          <button type="button" class="mk-btn" :disabled="!!uploading" @click="fileInput?.click()">
+          <button type="button" class="mk-btn" @click="fileInput?.click()">
             <Paperclip :size="15" aria-hidden="true" /> Anexar nota
           </button>
-          <span class="mk-hint">PDF, XML ou imagem. Pode soltar o arquivo aqui.</span>
+          <span class="mk-hint">PDF, XML ou imagem. Pode soltar aqui ou colar com Ctrl+V.</span>
+          <UploadSourceButtons
+            class="fx-sources"
+            accept="image/*,application/pdf,.pdf,.xml,text/xml,application/xml"
+            camera-label="Fotografar nota"
+            @files="addFiles"
+          />
           <input
             ref="fileInput"
             type="file"
@@ -484,8 +554,8 @@ async function doDelete() {
         </button>
         <span class="mk-toolbar__spacer" />
         <button type="button" class="mk-btn mk-btn--ghost" @click="close">{{ readOnly ? 'Fechar' : 'Cancelar' }}</button>
-        <button v-if="!readOnly" type="submit" class="mk-btn mk-btn--primary" :disabled="saving || !!uploading">
-          {{ saving ? 'Salvando...' : isNew ? 'Lançar' : 'Salvar' }}
+        <button v-if="!readOnly" type="submit" class="mk-btn mk-btn--primary" :disabled="saving || waitingUploads">
+          {{ saving ? 'Salvando...' : waitingUploads ? 'Enviando as notas...' : isNew ? 'Lançar' : 'Salvar' }}
         </button>
       </footer>
     </form>
@@ -640,6 +710,41 @@ button.fx-file__name:hover {
   color: var(--text-2);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.fx-body.is-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+}
+
+.fx-up {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 4px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.fx-up__state {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fx-up.is-error .fx-up__state {
+  color: var(--err);
+}
+
+.fx-sources {
+  flex-basis: 100%;
 }
 
 .fx-drop {

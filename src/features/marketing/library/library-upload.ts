@@ -1,30 +1,18 @@
 /**
  * Adaptador de envio do Acervo.
  *
- * HOJE: cada arquivo sobe pelo `uploadMarketingFile` da fundação (sha256 no
- * navegador, PUT direto no storage, confirm), até 3 ao mesmo tempo, com
- * progresso por arquivo. O ticket vem de `POST library/uploads` (que avisa
- * duplicata e recria a subpasta do `relativePath`) e, no fim, `POST
- * library/items` cria o item. A fila mora no módulo (`libraryUploads`), então
- * sair da tela não cancela o envio.
- *
- * TROCA PELA FILA GLOBAL DA ALA (R1-B, bandeja "Envios"): só o miolo de
- * `runTask` muda. Hoje ele chama
- *     uploadMarketingFile(groupId, file, requestTicket, onProgress)
- * e depois `finishTask`. Com o motor do R1-B, troque essa chamada pelo
- * enfileirar dele passando O MESMO `requestTicket` (que já resolve duplicata,
- * subpasta e "Manter os dois") e chame `finishTask(task, asset)` quando ele
- * confirmar o arquivo. Assinatura pública (`enqueueLibraryUploads`), ganchos,
- * diálogo de duplicata e criação do item ficam iguais. Aí o estado
- * `libraryUploads` e o aviso de aba fechando podem sair (a bandeja faz).
- *
- * O que este adaptador NÃO faz (fica para o motor do R1-B): hash fora da
- * thread da tela, envio retomável em partes, cancelar no meio de um arquivo.
- * Dá para tirar da fila o que ainda não começou e tentar de novo o que falhou.
+ * Cada arquivo sobe pela FILA GLOBAL da ala (`useUploadQueue`, bandeja
+ * "Envios"): hash fora da thread da tela, upload em partes (TUS) acima de 6 MB,
+ * retomada e cancelar no meio. O ticket vem de `POST library/uploads` (que avisa
+ * duplicata e recria a subpasta do `relativePath`) e o item nasce no gancho
+ * `onUploaded` do destino, então até um "Tentar de novo" feito pela bandeja cria
+ * o item. Este módulo guarda o estado por pasta que a tela do Acervo mostra
+ * (`libraryUploads`), o diálogo de duplicata (um de cada vez) e o resumo do lote.
  */
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import { getApiErrorMessage } from '@/service/api'
-import { uploadMarketingFile, type MarketingUploadTicket } from '@/service/marketing/marketing-core'
+import type { MarketingUploadTicket } from '@/service/marketing/marketing-core'
+import { useUploadQueue, type UploadTarget } from '../uploads/upload-queue'
 import {
   createLibraryItem,
   requestLibraryUploads,
@@ -159,11 +147,61 @@ async function runTask(task: LibraryUploadTask) {
   task.status = 'uploading'
   task.error = undefined
   task.progress = 0
+  let skipped = false
+  const ticketFor = requestTicketFor(task)
+  const target: UploadTarget = {
+    key: `library:${task.dest.companyId ?? 'geral'}:${task.dest.folderId ?? 'raiz'}`,
+    kind: 'library',
+    label: 'Acervo',
+    async requestTicket(_groupId, meta) {
+      try {
+        return await ticketFor(meta)
+      } catch (error) {
+        if (error instanceof SkipUpload) {
+          skipped = true
+          return { skip: true, reason: 'Já estava no acervo (pulado).' }
+        }
+        throw error
+      }
+    },
+    // O item nasce aqui: vale também para o "Tentar de novo" feito pela bandeja.
+    onUploaded: (asset) => finishTask(task, asset.id),
+    invalidate: (groupId) => [['marketing', groupId, 'library']],
+  }
   try {
-    const asset = await uploadMarketingFile(task.groupId, task.file, requestTicketFor(task), (p) => {
-      task.progress = Math.max(task.progress, p)
-    })
-    await finishTask(task, asset.id)
+    const batch = useUploadQueue().enqueue(
+      task.groupId,
+      [{ file: task.file, relativePath: task.relativePath }],
+      target,
+    )
+    const item = batch.items[0]
+    if (!item) {
+      task.status = 'error'
+      task.error = batch.rejected[0]?.reason ?? 'Este arquivo não pode ir para o acervo.'
+      return
+    }
+    const stop = watch(
+      () => item.sent,
+      (sent) => {
+        if (task.status === 'uploading') {
+          task.progress = Math.max(task.progress, Math.round((sent / Math.max(1, item.size)) * 100))
+        }
+      },
+    )
+    try {
+      await batch.settled
+    } finally {
+      stop()
+    }
+    if (item.status === 'done') {
+      // O `onUploaded` (finishTask) já criou o item e marcou feito; reafirma.
+      task.status = 'done'
+    } else if (skipped) {
+      task.status = 'skipped'
+    } else {
+      task.status = 'error'
+      task.error = item.status === 'canceled' ? 'Envio cancelado.' : (item.error ?? 'Não foi possível enviar este arquivo. Tente de novo.')
+    }
   } catch (error) {
     if (error instanceof SkipUpload) {
       task.status = 'skipped'

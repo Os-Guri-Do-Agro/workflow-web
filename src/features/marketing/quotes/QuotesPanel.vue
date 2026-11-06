@@ -16,12 +16,15 @@ import {
   deleteQuoteFile,
   listQuotes,
   updateQuote,
-  uploadQuoteFile,
   type Quote,
   type QuoteInput,
   type QuoteStatus,
 } from '@/service/marketing/marketing-quotes'
 import { useMarketing } from '../composables/useMarketing'
+import { entriesFromDrop, filesFromInput, hasFiles } from '../uploads/file-sources'
+import { isUploadPending, useUploadQueue, type UploadEntry } from '../uploads/upload-queue'
+import { quoteFileTarget } from '../uploads/upload-targets'
+import { itemPercent } from '../uploads/upload-format'
 import { formatBytes, formatCents, parseMoneyToCents } from '../marketing-labels'
 import { todaySp } from '../calendar/calendar-time'
 import FormDialog from '../events/FormDialog.vue'
@@ -274,40 +277,65 @@ const fileRemoveMutation = useMutation({
 
 // ── Arquivos ───────────────────────────────────────────────────────────────
 
+/*
+ * Arquivos do orçamento sobem pela fila global da ala (bandeja "Envios"): o
+ * clipe escolhe, e soltar o arquivo em cima do orçamento também anexa. Sem
+ * Ctrl+V aqui de propósito: com vários orçamentos na lista não há um destino
+ * óbvio para a imagem colada.
+ */
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploadFor = ref<string | null>(null)
-const uploading = ref<Record<string, number>>({})
+const queue = useUploadQueue()
+const dropOn = ref<string | null>(null)
+const canAttach = computed(() => canEdit.value && seesFinance.value)
 
 function pickFiles(q: Quote) {
   uploadFor.value = q.id
   fileInput.value?.click()
 }
 
-async function onFiles(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = [...(input.files ?? [])]
-  const quoteId = uploadFor.value
-  input.value = ''
-  if (!quoteId || !files.length) return
-  for (const file of files) {
-    const key = `${quoteId}:${file.name}`
-    uploading.value = { ...uploading.value, [key]: 0 }
-    try {
-      await uploadQuoteFile(props.groupId, quoteId, file, (p) => {
-        uploading.value = { ...uploading.value, [key]: p }
-      })
-    } catch (error) {
-      fail(error, `Não foi possível enviar "${file.name}".`)
-    } finally {
-      const { [key]: _done, ...rest } = uploading.value
-      uploading.value = rest
-    }
-  }
-  refresh()
+function attach(q: Quote, entries: UploadEntry[]) {
+  if (!entries.length || !canAttach.value) return
+  queue.enqueue(
+    props.groupId,
+    entries.map((e) => ({ file: e.file })),
+    quoteFileTarget(q.id, q.description),
+  )
+}
+
+function onFiles(event: Event) {
+  const entries = filesFromInput(event)
+  const q = quotes.value.find((x) => x.id === uploadFor.value)
+  uploadFor.value = null
+  if (q) attach(q, entries)
+}
+
+function onQuoteDragOver(event: DragEvent, q: Quote) {
+  if (!canAttach.value || !hasFiles(event.dataTransfer)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+  dropOn.value = q.id
+}
+
+function onQuoteDragLeave(event: DragEvent, q: Quote) {
+  const to = event.relatedTarget as Node | null
+  if (to && (event.currentTarget as HTMLElement).contains(to)) return
+  if (dropOn.value === q.id) dropOn.value = null
+}
+
+function onQuoteDrop(event: DragEvent, q: Quote) {
+  if (!canAttach.value || !hasFiles(event.dataTransfer)) return
+  event.preventDefault()
+  event.stopPropagation()
+  dropOn.value = null
+  void entriesFromDrop(event.dataTransfer!).then((entries) => attach(q, entries))
 }
 
 function uploadingFor(q: Quote) {
-  return Object.entries(uploading.value).filter(([k]) => k.startsWith(`${q.id}:`))
+  return queue.items.value.filter(
+    (i) => i.groupId === props.groupId && i.target.key === `quote:${q.id}` && (isUploadPending(i) || i.status === 'error'),
+  )
 }
 
 const viewer = ref<{ items: ViewerFile[]; start: number } | null>(null)
@@ -372,7 +400,16 @@ function linkOf(q: Quote) {
     </p>
 
     <ul v-else class="qp__list">
-      <li v-for="q in quotes" :key="q.id" class="qp__item" :class="`is-${q.status.toLowerCase()}`">
+      <li
+        v-for="q in quotes"
+        :key="q.id"
+        class="qp__item"
+        :class="[`is-${q.status.toLowerCase()}`, { 'is-drop': dropOn === q.id }]"
+        @dragenter="onQuoteDragOver($event, q)"
+        @dragover="onQuoteDragOver($event, q)"
+        @dragleave="onQuoteDragLeave($event, q)"
+        @drop="onQuoteDrop($event, q)"
+      >
         <div class="qp__main">
           <div class="qp__line">
             <strong class="qp__desc">{{ q.description }}</strong>
@@ -403,8 +440,18 @@ function linkOf(q: Quote) {
                 <X :size="12" aria-hidden="true" />
               </button>
             </span>
-            <span v-for="[key, pct] in uploadingFor(q)" :key="key" class="qp__file qp__file--busy">
-              Enviando {{ key.split(':').slice(1).join(':') }} ({{ pct }}%)
+            <span
+              v-for="u in uploadingFor(q)"
+              :key="u.id"
+              class="qp__file qp__file--busy"
+              :class="{ 'is-error': u.status === 'error' }"
+              :title="u.status === 'error' ? (u.error ?? '') : u.name"
+            >
+              <template v-if="u.status === 'error'">
+                Não subiu: {{ u.name }}
+                <button type="button" class="qp__retry" :aria-label="`Tentar de novo ${u.name}`" @click="queue.retry(u.id)">Tentar de novo</button>
+              </template>
+              <template v-else>Enviando {{ u.name }} ({{ itemPercent(u) }}%)</template>
             </span>
           </div>
         </div>
@@ -680,6 +727,27 @@ function linkOf(q: Quote) {
 .qp__file--busy {
   padding: 3px 8px;
   color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.qp__file--busy.is-error {
+  color: var(--err);
+}
+
+.qp__retry {
+  padding: 0 0 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.qp__item.is-drop {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent-soft);
 }
 
 .qp__file-open {

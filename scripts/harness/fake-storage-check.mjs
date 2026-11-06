@@ -223,5 +223,65 @@ const caminho2 = `teste/b-${Date.now()}.png`
   ok(g2.status === 404, 'URL publica depois de remover: 404', `(${g2.status})`)
 }
 
+// 9. Upload retomavel (TUS) com o token de createSignedUploadUrl em x-signature,
+//    no formato do Supabase Storage. Retoma depois de uma conexao cortada no meio.
+{
+  const b64 = (s) => Buffer.from(s, 'utf8').toString('base64')
+  const TUS = `${BASE}/storage/v1/upload/resumable/sign`
+  const CH = 6 * 1024 * 1024
+  const grande = crypto.randomBytes(CH * 2 + 12345)
+  const alvo = `teste/tus-${Date.now()}.bin`
+  const tk = await files.createSignedUploadUrl(alvo)
+  const meta = `bucketName ${b64(BUCKET)},objectName ${b64(alvo)},contentType ${b64('application/octet-stream')},cacheControl ${b64('3600')}`
+  const base = { 'Tus-Resumable': '1.0.0' }
+
+  const pre = await fetch(TUS, {
+    method: 'OPTIONS',
+    headers: { Origin: 'http://localhost:5182', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'x-signature,tus-resumable,upload-length,upload-metadata' },
+  })
+  ok(pre.status === 204 && /x-signature/i.test(pre.headers.get('access-control-allow-headers') ?? ''), 'TUS: preflight libera x-signature')
+
+  const sem = await fetch(TUS, { method: 'POST', headers: { ...base, 'Upload-Length': String(grande.length), 'Upload-Metadata': meta } })
+  ok(sem.status === 400, 'TUS: criar sem x-signature recusado', `(${sem.status})`)
+  const outroTk = await files.createSignedUploadUrl(`teste/outro-tus-${Date.now()}.bin`)
+  const errado = await fetch(TUS, { method: 'POST', headers: { ...base, 'x-signature': outroTk.data.token, 'Upload-Length': String(grande.length), 'Upload-Metadata': meta } })
+  ok(errado.status === 400, 'TUS: token de outro objeto recusado', `(${errado.status})`)
+
+  const cria = await fetch(TUS, { method: 'POST', headers: { ...base, 'x-signature': tk.data.token, 'Upload-Length': String(grande.length), 'Upload-Metadata': meta } })
+  const loc = cria.headers.get('location')
+  ok(cria.status === 201 && /\/upload\/resumable\/sign\/[0-9a-f-]{36}$/.test(loc ?? ''), 'TUS: criar com x-signature devolve 201 e Location', `(${cria.status} ${loc})`)
+  const h = { ...base, 'x-signature': tk.data.token }
+  const patch = (off, body) => fetch(loc, { method: 'PATCH', headers: { ...h, 'Upload-Offset': String(off), 'Content-Type': 'application/offset+octet-stream' }, body })
+
+  const p1 = await patch(0, grande.subarray(0, CH))
+  ok(p1.status === 204 && p1.headers.get('upload-offset') === String(CH), 'TUS: PATCH da 1a parte (6 MB)', `(${p1.status} ${p1.headers.get('upload-offset')})`)
+  const fora = await patch(0, grande.subarray(0, 10))
+  ok(fora.status === 409, 'TUS: PATCH com Upload-Offset errado da 409', `(${fora.status})`)
+
+  // corta a conexao da 2a parte depois de 1 MB
+  await fetch(`${BASE}/__harness`, { method: 'POST', body: JSON.stringify({ dropAfterBytes: 1024 * 1024 }) })
+  const cortado = await patch(CH, grande.subarray(CH, CH * 2)).then((r) => r.status).catch(() => 'rede')
+  ok(cortado === 'rede', 'TUS: conexao cortada no meio da 2a parte', `(${cortado})`)
+  const head = await fetch(loc, { method: 'HEAD', headers: h })
+  const offAgora = Number(head.headers.get('upload-offset'))
+  ok(head.status === 200 && offAgora > CH && offAgora < CH * 2, 'TUS: HEAD devolve o offset de onde parou (bytes recebidos ficam)', `(${offAgora})`)
+  const p2 = await patch(offAgora, grande.subarray(offAgora, offAgora + CH))
+  const off2 = Number(p2.headers.get('upload-offset'))
+  const p3 = await patch(off2, grande.subarray(off2))
+  ok(p2.status === 204 && p3.status === 204 && p3.headers.get('upload-offset') === String(grande.length), 'TUS: retoma do offset e termina', `(${p3.headers.get('upload-offset')})`)
+  const dl = await files.download(alvo)
+  ok(!dl.error && sha(Buffer.from(await dl.data.arrayBuffer())) === sha(grande), 'TUS: objeto final confere byte a byte (sha256)')
+  const dup = await fetch(TUS, { method: 'POST', headers: { ...base, 'x-signature': tk.data.token, 'Upload-Length': '10', 'Upload-Metadata': meta } })
+  ok(dup.status === 409, 'TUS: criar de novo sobre objeto existente (sem upsert) da 409', `(${dup.status})`)
+  await fetch(`${BASE}/__harness`, { method: 'POST', body: JSON.stringify({ maxBytes: 1000 }) })
+  const alvo2 = `teste/tus-grande-${Date.now()}.bin`
+  const tk2 = await files.createSignedUploadUrl(alvo2)
+  const meta2 = `bucketName ${b64(BUCKET)},objectName ${b64(alvo2)}`
+  const big = await fetch(TUS, { method: 'POST', headers: { ...base, 'x-signature': tk2.data.token, 'Upload-Length': '5000', 'Upload-Metadata': meta2 } })
+  ok(big.status === 413, 'TUS: acima do teto do projeto da 413', `(${big.status})`)
+  await fetch(`${BASE}/__harness`, { method: 'POST', body: JSON.stringify({ maxBytes: 0 }) })
+  await files.remove([alvo])
+}
+
 console.log(falhas === 0 ? '\nTUDO OK' : `\n${falhas} FALHA(S)`)
 process.exit(falhas === 0 ? 0 : 1)

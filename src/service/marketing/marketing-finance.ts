@@ -56,7 +56,11 @@ export interface ExpenseTotals {
 export interface ExpenseList {
   month: string
   items: MarketingExpense[]
+  /** Totais do banco: contam todos os lançamentos, mesmo acima do teto da lista */
   totals: ExpenseTotals
+  /** A lista veio cortada no teto (`limit`); os totais continuam completos */
+  truncated?: boolean
+  limit?: number
 }
 
 export interface ExpenseFilter {

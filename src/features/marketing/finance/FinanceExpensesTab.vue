@@ -17,11 +17,10 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import { usePhoneViewport } from '@/composables/usePhoneViewport'
 import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
-import { uploadMarketingFile, type MarketingBrand } from '@/service/marketing/marketing-core'
+import type { MarketingBrand } from '@/service/marketing/marketing-core'
 import {
   createExpense,
   EXPENSE_STATUS_LABEL,
-  invoiceTicket,
   type ExpenseFilter,
   type ExpenseStatus,
   type FinanceOptions,
@@ -29,6 +28,9 @@ import {
 } from '@/service/marketing/marketing-finance'
 import { safeStorage } from '@/utils/safe-storage'
 import { brandTone, formatCents, toneStyle } from '../marketing-labels'
+import { entriesFromDrop, filesFromInput, hasFiles as dragHasFiles } from '../uploads/file-sources'
+import { isUploadPending, useUploadQueue } from '../uploads/upload-queue'
+import { expenseInvoiceTarget } from '../uploads/upload-targets'
 import FinanceExpenseDialog from './FinanceExpenseDialog.vue'
 import MoneyInput from './MoneyInput.vue'
 import { dayBr, defaultDateFor, monthLabel, weekdayShort } from './finance-format'
@@ -225,16 +227,30 @@ function openNew() {
 // busca de fora do filtro já está desligada (depende de `dialogOpen`).
 
 // ── Nota na linha (soltar ou escolher) ──
+// Sobe pela fila global da ala (bandeja "Envios"); a linha mostra o progresso.
 const dropTarget = ref<string | null>(null)
-const uploading = reactive(new Map<string, number>())
+const queue = useUploadQueue()
 const rowFile = ref<HTMLInputElement | null>(null)
 let pickFor: string | null = null
 
-function hasFiles(event: DragEvent) {
-  return [...(event.dataTransfer?.types ?? [])].includes('Files')
-}
+/** Progresso (0 a 100) das notas subindo por lançamento; quem não está subindo não aparece. */
+const uploading = computed(() => {
+  const acc = new Map<string, { size: number; sent: number }>()
+  for (const i of queue.items.value) {
+    if (i.groupId !== props.groupId || !i.target.key.startsWith('expense:') || !isUploadPending(i)) continue
+    const id = i.target.key.slice('expense:'.length)
+    const cur = acc.get(id) ?? { size: 0, sent: 0 }
+    cur.size += i.size
+    cur.sent += i.sent
+    acc.set(id, cur)
+  }
+  const out = new Map<string, number>()
+  for (const [id, v] of acc) out.set(id, v.size ? Math.min(99, Math.floor((v.sent / v.size) * 100)) : 0)
+  return out
+})
+
 function onDragOver(event: DragEvent, id: string) {
-  if (!props.canEdit || !hasFiles(event)) return
+  if (!props.canEdit || !dragHasFiles(event.dataTransfer)) return
   event.preventDefault()
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
   dropTarget.value = id
@@ -244,43 +260,31 @@ function onDragLeave(event: DragEvent, id: string) {
   if (to && (event.currentTarget as HTMLElement).contains(to)) return
   if (dropTarget.value === id) dropTarget.value = null
 }
-async function onDrop(event: DragEvent, expense: MarketingExpense) {
-  if (!props.canEdit || !hasFiles(event)) return
+function onDrop(event: DragEvent, expense: MarketingExpense) {
+  if (!props.canEdit || !dragHasFiles(event.dataTransfer)) return
   event.preventDefault()
   dropTarget.value = null
-  await attach(expense, [...(event.dataTransfer?.files ?? [])])
+  void entriesFromDrop(event.dataTransfer!).then((entries) => attach(expense, entries.map((e) => e.file)))
 }
 function pickInvoice(expense: MarketingExpense) {
   pickFor = expense.id
   rowFile.value?.click()
 }
-async function onRowPick(event: Event) {
-  const input = event.target as HTMLInputElement
-  const files = [...(input.files ?? [])]
-  input.value = ''
+function onRowPick(event: Event) {
+  const files = filesFromInput(event).map((e) => e.file)
   const expense = items.value.find((i) => i.id === pickFor)
   pickFor = null
-  if (expense && files.length) await attach(expense, files)
+  if (expense && files.length) attach(expense, files)
 }
 
-async function attach(expense: MarketingExpense, files: File[]) {
-  let ok = 0
-  for (const file of files) {
-    uploading.set(expense.id, 0)
-    try {
-      await uploadMarketingFile(props.groupId, file, invoiceTicket(props.groupId, expense.id), (p) =>
-        uploading.set(expense.id, p),
-      )
-      ok++
-    } catch (e) {
-      toast.error(getApiErrorMessage(e, `Não foi possível anexar ${file.name}.`))
-    }
-  }
-  uploading.delete(expense.id)
-  if (ok) {
-    toast.success(ok === 1 ? `Nota anexada em ${expense.description}.` : `${ok} notas anexadas em ${expense.description}.`)
-    await invalidate()
-  }
+function attach(expense: MarketingExpense, files: File[]) {
+  if (!files.length) return
+  const batch = queue.enqueue(
+    props.groupId,
+    files.map((file) => ({ file })),
+    expenseInvoiceTarget(expense.id, expense.description),
+  )
+  if (batch.rejected.length) toast.error('Nota fiscal: envie PDF, XML ou imagem.')
 }
 
 function linksOf(e: MarketingExpense): string {
@@ -415,6 +419,10 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
       </button>
     </div>
     <p v-if="quickError" class="mk-error" role="alert">{{ quickError }}</p>
+    <p v-if="list.data.value?.truncated" class="mk-hint fe-truncated" role="status" data-testid="expenses-truncated">
+      Mostrando {{ items.length.toLocaleString('pt-BR') }} de {{ (totals?.count ?? 0).toLocaleString('pt-BR') }} lançamentos.
+      Os totais contam todos; filtre por marca, categoria ou busca para ver o resto.
+    </p>
 
     <!-- Lista -->
     <div v-if="list.isLoading.value" class="fe-loading">
