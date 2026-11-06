@@ -134,4 +134,5 @@ Estimativa grosseira: a M1 leva de 1 a 2 semanas de trabalho focado, a M2 e a M3
 | Data | Versão | Mudança | Autor |
 |---|---|---|---|
 | 2026-11-05 | 0.1 | Épico em alto nível a partir do PDF da Leticia: reuso, decisões, fases M1 a M5, riscos, respostas e perguntas | Nicolas (via spec-driven, modo 1) |
+| 2026-11-06 | 0.3 | M1 a M3 em produção. Rodada R1 aberta a partir do uso real: Acervo, motor de envio, tarefa do Nevo ligada ao card, convite "Do Nevo", UTM e QR, gaps da auditoria ([r1-acervo-tarefas-convite](../2026/q4/q4-2/ala-marketing/r1-acervo-tarefas-convite.md)) | Nicolas e orquestrador |
 | 2026-11-06 | 0.2 | Decisões do Nicolas (Visualizador vê o financeiro; freelancer só com papel na ala; arquivo no máximo do storage; ala de um GRUPO de empresas com o cargo Dono). Fundação + M1 a M3 implementadas por 6 agentes em paralelo, juntadas e auditadas | Orquestrador |

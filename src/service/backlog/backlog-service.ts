@@ -14,6 +14,11 @@ export interface BacklogEntry {
   changedAt: string
   changedById?: string
   changedBy?: { id: string; name: string } | null
+  /**
+   * De onde veio a troca: `'marketing'` quando a ala Marketing moveu a tarefa
+   * ligada a um card (R1). Ausente na API antiga e `null` no board.
+   */
+  via?: 'marketing' | null
 }
 
 class backlogService {

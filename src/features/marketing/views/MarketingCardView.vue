@@ -73,6 +73,7 @@ import MarketingUploadVersionDialog from '../approvals/components/MarketingUploa
 import MarketingVersionCompare from '../approvals/components/MarketingVersionCompare.vue'
 import MarketingVersionViewer, { type DraftAnchor } from '../approvals/components/MarketingVersionViewer.vue'
 import { cardKeys } from '../approvals/approvals-meta'
+import MarketingCardTasks from '../tasks/MarketingCardTasks.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -596,6 +597,11 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
           />
         </div>
 
+        <!-- R1 (P3): tarefa do Nevo que segue o card (some sem a migration da R1). -->
+        <div class="mkcv__tasks">
+          <MarketingCardTasks :group-id="groupId" :card-id="card.id" :card-status="card.status" />
+        </div>
+
         <div class="mkcv__checklist">
           <MarketingChecklist
             :items="card.checklist"
@@ -837,14 +843,26 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
 .mkcv__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-rows: auto auto auto auto 1fr;
+  grid-template-areas:
+    'viewer fields'
+    'viewer tasks'
+    'viewer checklist'
+    'viewer comments'
+    'viewer history';
+  gap: 12px 16px;
+  align-items: start;
+}
+
+/* Sem a seção de tarefa (antes da migration da R1) a linha dela sai da grade,
+   senão sobra o vão do gap. */
+.mkcv__grid:has(> .mkcv__tasks:empty) {
   grid-template-rows: auto auto auto 1fr;
   grid-template-areas:
     'viewer fields'
     'viewer checklist'
     'viewer comments'
     'viewer history';
-  gap: 12px 16px;
-  align-items: start;
 }
 
 .mkcv__viewer {
@@ -863,6 +881,16 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+}
+
+.mkcv__tasks {
+  grid-area: tasks;
+  min-width: 0;
+}
+
+/* Sem a migration da R1 a seção some (v-if) e sobraria um vão na grade. */
+.mkcv__tasks:empty {
+  display: none;
 }
 
 .mkcv__checklist {
@@ -965,6 +993,15 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
   .mkcv__grid {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: none;
+    grid-template-areas:
+      'viewer'
+      'comments'
+      'fields'
+      'tasks'
+      'checklist'
+      'history';
+  }
+  .mkcv__grid:has(> .mkcv__tasks:empty) {
     grid-template-areas:
       'viewer'
       'comments'

@@ -103,6 +103,7 @@ import InheritedDocs from './InheritedDocs.vue'
 import TagInput from '@/components/ui/TagInput.vue'
 import TestSignalDot from '@/components/tasks/TestSignalDot.vue'
 import TestPlatformChecks from '@/components/tasks/TestPlatformChecks.vue'
+import TaskMarketingCards from '@/features/marketing/tasks/TaskMarketingCards.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -1440,6 +1441,9 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
+            <!-- Cards da ala Marketing ligados (carga à parte; some sem card) -->
+            <TaskMarketingCards :activity-id="taskId" :company-id="companyIdRef" class="block" />
+
             <!-- Histórico: as trocas de status (ActivityLog) -->
             <section class="block">
               <div class="block-head">
@@ -1455,6 +1459,7 @@ onBeforeUnmount(() => {
                       {{ statusSpec(entry.newStatus).label }}
                     </template>
                     <template v-else>criou em {{ statusSpec(entry.newStatus).label }}</template>
+                    <span v-if="entry.via === 'marketing'" class="feed__via"> pela ala Marketing</span>
                   </span>
                   <time class="feed__when" :datetime="entry.changedAt">{{ formatWhen(entry.changedAt) }}</time>
                 </li>

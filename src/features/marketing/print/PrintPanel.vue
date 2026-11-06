@@ -10,6 +10,7 @@ import type { PrintCard, PrintFile } from '@/service/marketing/marketing-print'
 import { CARD_STATUS_TONE, cardStatusLabel, formatBytes, toneStyle } from '../marketing-labels'
 import PrintTrail from './PrintTrail.vue'
 import QuotesPanel from '../quotes/QuotesPanel.vue'
+import MarketingCardTasks from '../tasks/MarketingCardTasks.vue'
 import { printActions, usePrintMutations } from './usePrint'
 
 /**
@@ -246,6 +247,9 @@ function fmtDate(iso: string | null) {
         Abrir aprovação<ExternalLink :size="12" aria-hidden="true" />
       </RouterLink>
     </div>
+
+    <!-- R1 (P3): a trilha da gráfica leva a tarefa ligada para Concluído. -->
+    <MarketingCardTasks :group-id="groupId" :card-id="card.id" :card-status="card.status" compact />
 
     <section class="pp-sec">
       <h3>Arquivo para a gráfica</h3>

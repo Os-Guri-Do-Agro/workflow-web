@@ -1828,6 +1828,7 @@ const skeletonLanes = [
                     class="backlog-status-badge"
                     :style="{ color: statusColor(entry.newStatus) }"
                   >{{ statusLabel(entry.newStatus) }}</span>
+                  <template v-if="entry.via === 'marketing'"> · pela ala Marketing</template>
                 </span>
               </div>
               <span class="backlog-time">{{ entry.when }}</span>

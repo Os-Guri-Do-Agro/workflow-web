@@ -48,6 +48,7 @@ import AppDialog from '@/components/ui/AppDialog.vue'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import TagInput from '@/components/ui/TagInput.vue'
 import TaskAttachments from '@/features/tasks/components/TaskAttachments.vue'
+import TaskMarketingCards from '@/features/marketing/tasks/TaskMarketingCards.vue'
 import TaskDocs from '@/features/tasks/components/TaskDocs.vue'
 import InheritedDocs from '@/features/tasks/components/InheritedDocs.vue'
 import { isMarkdownFilename } from '@/utils/file-kind'
@@ -1075,6 +1076,9 @@ const onSubtaskFilePick = (e: Event) => {
             />
           </div>
         </section>
+
+        <!-- Cards da ala Marketing ligados (carga à parte; sem card, nem o cartão aparece) -->
+        <TaskMarketingCards v-if="taskId" class="panel" :activity-id="taskId" :company-id="companyId" variant="page" />
 
       </aside>
 
