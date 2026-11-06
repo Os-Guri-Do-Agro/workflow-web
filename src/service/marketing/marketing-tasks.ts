@@ -45,6 +45,8 @@ export interface CardTaskItem {
   /** Só quem é da empresa da tarefa abre no board (o freelancer vê só o título). */
   canOpen: boolean
   canUnlink: boolean
+  /** Só com falha pendente e pela regra do desligar */
+  canRetry?: boolean
   lastSyncStatus: TaskStatus | null
   lastSyncAt: string | null
   /** Frase pronta da última falha ao mover (null = ok). */

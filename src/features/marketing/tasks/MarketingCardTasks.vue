@@ -219,7 +219,7 @@ const MAX_FACES = 3
             <AlertTriangle :size="13" aria-hidden="true" />
             <span class="mct__fail-text">{{ item.lastSyncError }}</span>
             <button
-              v-if="data?.canRetry"
+              v-if="item.canRetry ?? data?.canRetry"
               type="button"
               class="mk-btn mct__retry"
               :disabled="retrying === item.id"
