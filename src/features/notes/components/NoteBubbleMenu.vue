@@ -3,12 +3,23 @@
  * Menu flutuante que aparece na seleção de texto. Substitui a toolbar fixa de
  * 28 botões que ficava presa no topo da página: a formatação vem até onde o
  * cursor está, e some quando não há seleção.
+ *
+ * No toque ele não abre (spec v2-celular-roadmap-notas, D3): selecionar com o
+ * dedo já abre o menu nativo do sistema (copiar, colar, selecionar tudo) e os
+ * dois disputavam o mesmo lugar em cima da seleção. Lá a formatação mora na
+ * barra acima do teclado. A decisão é pelo ponteiro que fez a seleção, não
+ * pela largura: um tablet com o dedo também briga; um mouse no tablet, não.
  */
 import { nextTick, ref } from 'vue'
+import { useEventListener } from '@vueuse/core'
 import { BubbleMenu } from '@tiptap/vue-3/menus'
-import type { Editor } from '@tiptap/vue-3'
+import { isTextSelection, type Editor } from '@tiptap/vue-3'
+import type { Editor as CoreEditor } from '@tiptap/core'
+import type { EditorState } from '@tiptap/pm/state'
+import type { EditorView } from '@tiptap/pm/view'
 import { Check, X } from 'lucide-vue-next'
 import TipTapToolbar from '@/components/ui/TipTapToolbar.vue'
+import { usePhoneViewport } from '@/composables/usePhoneViewport'
 
 const props = defineProps<{ editor: Editor | undefined }>()
 
@@ -38,10 +49,45 @@ function closeLink() {
   linkMode.value = false
   linkUrl.value = ''
 }
+
+// ── Só com mouse, caneta ou teclado ──
+const phone = usePhoneViewport()
+let lastPointer = 'mouse'
+useEventListener(
+  document,
+  'pointerdown',
+  (e: PointerEvent) => {
+    lastPointer = e.pointerType || 'mouse'
+  },
+  { capture: true, passive: true },
+)
+
+/** A regra padrão do TipTap, mais a do toque. */
+function shouldShow({
+  editor,
+  element,
+  view,
+  state,
+  from,
+  to,
+}: {
+  editor: CoreEditor
+  element: HTMLElement
+  view: EditorView
+  state: EditorState
+  from: number
+  to: number
+}): boolean {
+  if (phone.value || lastPointer === 'touch') return false
+  const { doc, selection } = state
+  const isEmptyTextBlock = !doc.textBetween(from, to).length && isTextSelection(selection)
+  const hasEditorFocus = view.hasFocus() || element.contains(document.activeElement)
+  return hasEditorFocus && !selection.empty && !isEmptyTextBlock && editor.isEditable
+}
 </script>
 
 <template>
-  <BubbleMenu v-if="editor" :editor="editor" class="note-bubble">
+  <BubbleMenu v-if="editor" :editor="editor" :should-show="shouldShow" class="note-bubble">
     <div v-if="linkMode" class="note-bubble__link">
       <input
         ref="linkInput"

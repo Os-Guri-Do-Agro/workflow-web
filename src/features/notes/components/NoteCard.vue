@@ -278,6 +278,50 @@ function onDragStart(event: DragEvent) {
   color: var(--accent);
 }
 
+/* Celular (spec v2-celular-roadmap-notas, C2): mais notas por tela. Duas
+   linhas de prévia em vez de três e menos respiro; o card não "sobe" no toque. */
+@media (max-width: 640px) {
+  .card {
+    gap: 6px;
+    padding: 12px;
+    border-radius: var(--radius);
+  }
+
+  .card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .card__preview {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .card__cover {
+    width: calc(100% + 24px);
+    height: 80px;
+    margin: -12px -12px 2px;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+}
+
+/* Toque não tem hover: o fixar ficava invisível e mesmo assim tocável. À vista
+   (apagado quando não fixada) e com alvo de 44px sem engordar o card. */
+@media (hover: none) {
+  .card__pin {
+    position: relative;
+    opacity: 1;
+  }
+
+  .card__pin::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card {
     transition-duration: 1ms;

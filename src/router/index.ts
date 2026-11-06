@@ -4,6 +4,7 @@ import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
 import { clearSession } from '@/service/api'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { syncSession } from '@/composables/useSession'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
 
@@ -342,6 +343,9 @@ router.beforeEach((to, from) => {
 
 router.afterEach(() => {
   NProgress.done()
+  // Login grava o token e navega; logout e o guard (token vencido) apagam e
+  // navegam: a sessão reativa (`hasSession`) acompanha aqui.
+  syncSession()
 })
 
 export default router

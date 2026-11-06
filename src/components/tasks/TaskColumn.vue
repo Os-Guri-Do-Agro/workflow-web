@@ -53,6 +53,8 @@ const props = withDefaults(
     sorted?: boolean
     /** Oferece "Mover todas para Concluído" (só "Revisados", com cards e permissão). */
     releasable?: boolean
+    /** Celular: uma coluna por vez, na largura inteira da fita (spec v2-celular, D1). */
+    paged?: boolean
   }>(),
   {
     canCreate: false,
@@ -62,6 +64,7 @@ const props = withDefaults(
     sortable: false,
     sorted: false,
     releasable: false,
+    paged: false,
   },
 )
 
@@ -79,7 +82,7 @@ const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa'
 <template>
   <section
     class="lane"
-    :class="{ 'lane--collapsed': collapsed, 'lane--over': over }"
+    :class="{ 'lane--collapsed': collapsed, 'lane--over': over, 'lane--paged': paged }"
     :aria-label="`${spec.label}, ${countLabel}`"
   >
     <button
@@ -331,6 +334,18 @@ const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa'
     width: min(84cqw, 320px);
     scroll-snap-align: start;
   }
+}
+
+/* Uma coluna por vez (spec v2-celular-roadmap-notas, D1): a coluna é a fita
+   inteira e as abas acima dizem que tem mais. `scroll-snap-stop` faz um
+   deslize rápido parar na vizinha em vez de pular duas, para a aba acompanhar. */
+.lane.lane--paged {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 @media (prefers-reduced-motion: reduce) {

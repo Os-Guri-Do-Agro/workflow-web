@@ -75,8 +75,10 @@ function findFolder(nodes: NoteFolderNode[], id: string): NoteFolderNode | null 
   }
   return null
 }
+// O botão divide a linha com a busca: "Pastas" cabe inteiro; "Todas as notas"
+// virava "Todas as n...".
 const currentFolderLabel = computed(() =>
-  selectedFolder.value ? (findFolder(tree.value, selectedFolder.value)?.name ?? 'Pasta') : 'Todas as notas',
+  selectedFolder.value ? (findFolder(tree.value, selectedFolder.value)?.name ?? 'Pasta') : 'Pastas',
 )
 
 function toggleFolder(id: string) {
@@ -647,20 +649,49 @@ function clearFilters() {
     white-space: nowrap;
   }
 
+  /* Busca e pasta dividem a linha (spec v2-celular-roadmap-notas, C2): eram
+     dois blocos de 44px empilhados antes da primeira nota. A árvore de pastas,
+     quando aberta, ocupa a linha de baixo inteira. */
   .notes__side {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     padding: 0;
     background: transparent;
     border: 0;
   }
 
+  .notes__search {
+    min-height: 44px;
+    margin-bottom: 0;
+  }
+
+  /* 16px: abaixo disso o iOS dá zoom na página inteira ao focar a busca. */
+  .notes__search input {
+    font-size: 16px;
+  }
+
+  .notes__folders {
+    grid-column: 1 / -1;
+  }
+
+  .notes__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .notes__section {
+    margin: 2px 0 8px;
+  }
+
   .notes__folders-toggle {
     display: flex;
     align-items: center;
     gap: 8px;
+    max-width: 150px;
     min-height: 44px;
-    padding: 0 12px;
+    padding: 0 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background: var(--surface);

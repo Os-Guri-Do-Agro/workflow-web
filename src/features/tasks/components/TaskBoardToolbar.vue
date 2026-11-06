@@ -583,6 +583,21 @@ defineExpose({
     transition: none;
   }
 }
+
+/* Celular (spec v2-celular-roadmap-notas, C1): o "/" é atalho de teclado
+   físico e no toque só ocupava espaço como dica. E 16px no campo: abaixo
+   disso o iOS dá zoom na página inteira ao focar a busca. */
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
+  .kbd {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .find__input {
+    font-size: 16px;
+  }
+}
 </style>
 
 <!-- Global: o menu é portalado para o <body>. O skin vem de styles/menus.css;

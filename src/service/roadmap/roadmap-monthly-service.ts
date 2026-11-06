@@ -1,7 +1,8 @@
 import api from '../api'
-import type { ActivityStatus } from '@/features/tasks/activity-types'
+import type { ActivityStatus, TestCheckView } from '@/features/tasks/activity-types'
 
-export type RoadmapCategory = 'milestone' | 'meeting' | 'delivery' | 'recording' | 'note' | 'risk'
+/** `test` precisa da migration 20261105220000_roadmap_teste (sem ela, gravar responde 503). */
+export type RoadmapCategory = 'milestone' | 'meeting' | 'delivery' | 'recording' | 'test' | 'note' | 'risk'
 
 export interface RoadmapFocus {
   id: string
@@ -46,7 +47,12 @@ export interface RoadmapDelivery {
   priorityNumber: number
   overdue: boolean
   responsibles: { id: string; name: string }[]
+  /** Web, iOS e Android testados. `null`/ausente = recurso indisponível. */
+  testChecks?: TestCheckView[] | null
 }
+
+/** Tarefa em "Em teste" agora (com ou sem prazo): o painel "Em teste agora". */
+export type RoadmapInTesting = Omit<RoadmapDelivery, 'date'> & { date: string | null }
 
 export interface RoadmapMonth {
   id: string | null
@@ -67,6 +73,8 @@ export interface RoadmapMonth {
 export interface RoadmapYearResponse {
   year: number
   months: RoadmapMonth[]
+  /** Ausente no link público e em API anterior a nov/2026. */
+  inTesting?: RoadmapInTesting[]
 }
 
 export interface CreateRoadmapMonthInput {

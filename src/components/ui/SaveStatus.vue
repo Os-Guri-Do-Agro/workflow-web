@@ -3,6 +3,10 @@
  * Indicador honesto de autosave: "Salvando…", "Salvo às HH:MM" e "Erro ao
  * salvar" com botão de tentar de novo. Nunca diz "salvo" antes do servidor
  * confirmar: é o que separa autosave confiável de autosave que mente.
+ *
+ * `short` (celular, spec v2-celular-roadmap-notas D3): "Salvando", "Salvo" e
+ * "Erro" com o botão de tentar de novo só no ícone. A hora continua no `title`
+ * e no texto para leitor de tela; na tela, uma palavra que nunca quebra linha.
  */
 import { computed } from 'vue'
 import { AlertCircle, Check, Loader2, RotateCw } from 'lucide-vue-next'
@@ -16,46 +20,57 @@ const props = withDefaults(
     /** Mensagem do erro, usada como `title` do indicador. */
     message?: string
     compact?: boolean
+    short?: boolean
   }>(),
-  { savedAt: null, message: '', compact: false },
+  { savedAt: null, message: '', compact: false, short: false },
 )
 
 defineEmits<{ retry: [] }>()
 
-const savedLabel = computed(() => {
-  if (!props.savedAt) return 'Salvo'
+/** " às 22:35" (vazio sem hora): no curto, só o leitor de tela ouve. */
+const savedTime = computed(() => {
+  if (!props.savedAt) return ''
   const time = new Date(props.savedAt).toLocaleTimeString('pt-BR', {
     hour: '2-digit',
     minute: '2-digit',
   })
-  return `Salvo às ${time}`
+  return ` às ${time}`
 })
+const savedLabel = computed(() => `Salvo${savedTime.value}`)
 </script>
 
 <template>
   <div
     class="save-status"
-    :class="[`save-status--${state}`, { 'save-status--compact': compact }]"
+    :class="[`save-status--${state}`, { 'save-status--compact': compact, 'save-status--short': short }]"
     role="status"
     aria-live="polite"
-    :title="state === 'error' ? message : undefined"
+    :title="state === 'error' ? message : state === 'saved' && short ? savedLabel : undefined"
   >
     <template v-if="state === 'saving'">
       <Loader2 :size="13" class="spin" />
-      <span class="save-status__label">Salvando…</span>
+      <span class="save-status__label">{{ short ? 'Salvando' : 'Salvando…' }}</span>
     </template>
 
     <template v-else-if="state === 'saved'">
       <Check :size="13" />
-      <span class="save-status__label">{{ savedLabel }}</span>
+      <span v-if="short" class="save-status__label">
+        Salvo<span class="save-status__sr">{{ savedTime }}</span>
+      </span>
+      <span v-else class="save-status__label">{{ savedLabel }}</span>
     </template>
 
     <template v-else-if="state === 'error'">
       <AlertCircle :size="13" />
-      <span class="save-status__label">Erro ao salvar</span>
-      <button type="button" class="save-status__retry" @click="$emit('retry')">
+      <span class="save-status__label">{{ short ? 'Erro' : 'Erro ao salvar' }}</span>
+      <button
+        type="button"
+        class="save-status__retry"
+        :aria-label="short ? 'Tentar salvar de novo' : undefined"
+        @click="$emit('retry')"
+      >
         <RotateCw :size="12" />
-        Tentar de novo
+        <template v-if="!short">Tentar de novo</template>
       </button>
     </template>
   </div>
@@ -83,6 +98,32 @@ const savedLabel = computed(() => {
 
 .save-status--compact .save-status__label {
   display: none;
+}
+
+/* Curto: uma linha sempre, e o "tentar de novo" vira um alvo de 44px. */
+.save-status--short {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.save-status--short .save-status__retry {
+  position: relative;
+  padding: 4px 6px;
+}
+
+.save-status--short .save-status__retry::after {
+  content: '';
+  position: absolute;
+  inset: -10px -8px;
+}
+
+.save-status__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .save-status__retry {

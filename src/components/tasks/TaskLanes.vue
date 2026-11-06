@@ -18,13 +18,22 @@
  *   desligado na v1: reatribuir uma tarefa com vários responsáveis pede uma
  *   decisão de produto.
  * - Durante o arraste a prop nova é ignorada, como no `KanbanBoard`.
+ *
+ * Celular (spec v2-celular-roadmap-notas, D1): abaixo de 640px a matriz de
+ * cinco colunas não cabe (cada célula tinha 220px e a linha rolava de lado
+ * dentro da tela). Lá fica UMA coluna por vez para todas as linhas: as abas no
+ * topo escolhem qual, e deslizar o dedo de lado troca para a vizinha. Segurar
+ * um card e soltar abre a folha "Mover para", com o mesmo `onMenuMove` do "…".
  */
 import { computed, ref, watch } from 'vue'
+import { useEventListener } from '@vueuse/core'
 import { VueDraggable } from 'vue-draggable-plus'
 import { usePreferredReducedMotion } from '@vueuse/core'
 import { ChevronDown, Plus, UserRound } from 'lucide-vue-next'
 import TaskCard from './TaskCard.vue'
 import TaskQuickCreate from './TaskQuickCreate.vue'
+import BoardColumnTabs from './BoardColumnTabs.vue'
+import TaskMoveSheet from './TaskMoveSheet.vue'
 import type { KanbanMovePayload, KanbanTask } from './KanbanBoard.vue'
 import { ACTIVITY_STATUSES } from '@/features/tasks/task-meta'
 import { taskKey } from '@/features/tasks/task-key'
@@ -32,6 +41,12 @@ import { isPendingTaskId } from '@/features/tasks/pending-task'
 import type { BoardLane } from '@/features/tasks/board-lanes'
 import type { ActivityStatus, TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
+import { usePhoneViewport } from '@/composables/usePhoneViewport'
+import {
+  HOLD_DELAY_MS,
+  HOLD_TOLERANCE_PX,
+  useCardLongPress,
+} from '@/features/tasks/composables/useCardLongPress'
 
 const props = defineProps<{
   lanes: BoardLane<KanbanTask>[]
@@ -142,6 +157,7 @@ const showComposer = (laneKey: string, status: ActivityStatus) =>
 
 const onStart = () => {
   isDragging.value = true
+  longPress.dragStarted()
 }
 const onEnd = () => {
   isDragging.value = false
@@ -151,17 +167,109 @@ const onEnd = () => {
   // refetch. Soltura aceita já mudou `lanes`, então o resultado é o mesmo.
   syncCells()
 }
+
+// ── Celular: uma coluna por vez para todas as linhas ──
+const paged = usePhoneViewport()
+const activeCol = ref(0)
+const visibleColumns = computed(() =>
+  paged.value ? columns.filter((_, i) => i === activeCol.value) : columns,
+)
+
+const tabs = computed(() =>
+  columns.map((c) => ({ value: c.value, label: c.label, icon: c.icon, count: totals.value[c.value] })),
+)
+
+const touchStartThreshold = Math.round(
+  HOLD_TOLERANCE_PX * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1),
+)
+
+const root = ref<HTMLElement | null>(null)
+
+/**
+ * Deslizar de lado troca de coluna. Aqui não há fita com `scroll-snap` (cada
+ * linha mostra só a célula da coluna ativa), então o gesto é medido: mais de
+ * 56px na horizontal, bem mais de lado do que de pé, em menos de 700ms.
+ */
+let swipe: { x: number; y: number; t: number } | null = null
+useEventListener(
+  root,
+  'touchstart',
+  (e: TouchEvent) => {
+    const t = e.touches[0]
+    swipe = paged.value && e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY, t: Date.now() } : null
+  },
+  { passive: true },
+)
+useEventListener(
+  root,
+  'touchend',
+  (e: TouchEvent) => {
+    const start = swipe
+    swipe = null
+    const t = e.changedTouches[0]
+    // Card pego (segurou): o gesto é do Sortable ou da folha, não troca coluna.
+    if (!start || !t || isDragging.value || root.value?.querySelector('.card--held')) return
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    if (Date.now() - start.t > 700 || Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.6) return
+    const next = activeCol.value + (dx < 0 ? 1 : -1)
+    if (next >= 0 && next < columns.length) activeCol.value = next
+  },
+  { passive: true },
+)
+
+// ── Segurar e soltar: folha "Mover para" ──
+const sheetOpen = ref(false)
+const sheet = ref<{ task: KanbanTask; status: ActivityStatus; card: HTMLElement } | null>(null)
+
+function findTask(id: string): { task: KanbanTask; status: ActivityStatus } | null {
+  for (const lane of Object.values(cells.value)) {
+    for (const col of columns) {
+      const task = lane[col.value]?.find((t) => t.id === id)
+      if (task) return { task, status: col.value }
+    }
+  }
+  return null
+}
+
+const longPress = useCardLongPress({
+  root,
+  enabled: () => !props.readonly,
+  canHold: (id) => !isPendingTaskId(id),
+  onHold: (id, card) => {
+    const found = findTask(id)
+    if (!found) return
+    sheet.value = { ...found, card }
+    sheetOpen.value = true
+  },
+})
+
+function onSheetSelect(status: ActivityStatus) {
+  const current = sheet.value
+  if (!current || status === current.status) return
+  onMenuMove(current.task, status)
+}
 </script>
 
 <template>
   <div
+    ref="root"
     class="swim"
-    :class="{ 'swim--dragging': isDragging }"
-    :style="{ '--lane-cols': columns.length }"
+    :class="{ 'swim--dragging': isDragging, 'swim--paged': paged }"
+    :style="{ '--lane-cols': visibleColumns.length }"
   >
     <div class="swim__inner">
+      <!-- Celular: as abas no lugar dos cabeçalhos (presas no topo também). -->
+      <div v-if="paged" class="swim__tabs">
+        <BoardColumnTabs
+          :columns="tabs"
+          :active="activeCol"
+          label="Coluna mostrada em todas as linhas"
+          @select="activeCol = $event"
+        />
+      </div>
       <!-- Cabeçalhos das colunas, presos no topo enquanto as linhas rolam. -->
-      <div class="swim__heads">
+      <div v-else class="swim__heads">
         <div class="swim__grid">
           <div v-for="column in columns" :key="column.value" class="swim__head">
             <component :is="column.icon" :size="14" />
@@ -204,7 +312,7 @@ const onEnd = () => {
             </span>
             <span class="swim__counts" aria-hidden="true">
               <span
-                v-for="column in columns"
+                v-for="column in visibleColumns"
                 :key="column.value"
                 class="swim__count"
                 :title="`${column.label}: ${lane.counts[column.value]}`"
@@ -235,7 +343,7 @@ const onEnd = () => {
         >
           <div class="swim__grid">
             <div
-              v-for="column in columns"
+              v-for="column in visibleColumns"
               :key="column.value"
               class="swim__cell"
               :aria-label="`${laneName(lane)}, ${column.label}`"
@@ -252,6 +360,10 @@ const onEnd = () => {
                 :disabled="readonly"
                 filter=".no-drag"
                 :prevent-on-filter="false"
+                :delay="HOLD_DELAY_MS"
+                :delay-on-touch-only="true"
+                :touch-start-threshold="touchStartThreshold"
+                :fallback-tolerance="HOLD_TOLERANCE_PX"
                 ghost-class="drag-ghost"
                 chosen-class="drag-chosen"
                 drag-class="drag-moving"
@@ -290,6 +402,15 @@ const onEnd = () => {
         </div>
       </section>
     </div>
+
+    <TaskMoveSheet
+      v-model:open="sheetOpen"
+      :task="sheet?.task ?? null"
+      :status="sheet?.status ?? null"
+      :task-key="sheet ? keyOf(sheet.task) : null"
+      :return-focus="sheet?.card ?? null"
+      @select="onSheetSelect"
+    />
   </div>
 </template>
 
@@ -324,6 +445,31 @@ const onEnd = () => {
   .swim__grid {
     grid-template-columns: repeat(var(--lane-cols, 5), 220px);
   }
+}
+
+/* Celular: a célula da coluna ativa ocupa a linha inteira e nada rola de lado. */
+.swim--paged {
+  overflow-x: hidden;
+}
+
+.swim--paged .swim__inner {
+  width: auto;
+}
+
+.swim--paged .swim__grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* O alvo de 44px do "+" (::after de 6px) não pode passar da borda da tela. */
+.swim--paged .swim__lane-head {
+  padding-right: 6px;
+}
+
+.swim__tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg);
 }
 
 /* ── Cabeçalhos das colunas (presos) ── */

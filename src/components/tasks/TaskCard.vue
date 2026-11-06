@@ -913,9 +913,28 @@ function cancelFromKey() {
 /* ── Arraste (classes do Sortable no board do mês; `dragging` no /board) ──
    O card escolhido ganha só a sombra de overlay: nada de girar ou crescer.
    O lugar de soltar é um slot vazio na altura do card, tracejado. */
-.card.drag-chosen {
+.card.drag-chosen,
+.card.card--held {
   box-shadow: var(--shadow-overlay);
   cursor: grabbing;
+}
+
+/* Toque (spec v2-celular-roadmap-notas, D1): segurar o card é do board (pega o
+   card e abre "Mover para"), não do navegador. Sem isto o iOS selecionava o
+   título e abria a lupa, e o Android abria o menu de texto no meio do gesto.
+   O campo de renomear continua editável (o iOS não digita em campo dentro de
+   `user-select: none` herdado). */
+@media (hover: none) and (pointer: coarse) {
+  .card {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .card__title-input {
+    -webkit-user-select: text;
+    user-select: text;
+  }
 }
 
 .card.drag-ghost {

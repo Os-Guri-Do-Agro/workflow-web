@@ -20,6 +20,9 @@ import NoteMetaMenu from './components/NoteMetaMenu.vue'
 import NoteBubbleMenu from './components/NoteBubbleMenu.vue'
 import NoteSlashMenu from './components/NoteSlashMenu.vue'
 import NoteShareDialog from './components/NoteShareDialog.vue'
+import NoteKeyboardBar from './components/NoteKeyboardBar.vue'
+import { usePhoneViewport } from '@/composables/usePhoneViewport'
+import { useShellChrome } from '@/composables/useShellChrome'
 import { useNote } from './composables/useNote'
 import { noteKeys, useNoteFolders, useNoteMutations } from './composables/useNotes'
 import { useNoteEditor } from './composables/useNoteEditor'
@@ -183,6 +186,95 @@ const { editor, slash } = useNoteEditor({
   },
 })
 
+// ── Celular (spec v2-celular-roadmap-notas, D3) ─────────────────────────────
+// Com o editor em foco no celular: a toolbar do topo não existe (nem sem foco:
+// sem o cursor no texto ela não tem onde agir), a formatação mora na barra
+// acima do teclado e a tab bar do MobileShell sai, devolvendo a altura. Ao
+// sair do editor tudo volta. O blur espera um instante: tocar num botão da
+// barra, o `prompt` do link e o "/" podem tirar e devolver o foco.
+const phone = usePhoneViewport()
+const editorFocused = ref(false)
+let blurTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  editor,
+  (ed, _old, onCleanup) => {
+    if (!ed) return
+    const onFocus = () => {
+      if (blurTimer) clearTimeout(blurTimer)
+      blurTimer = null
+      editorFocused.value = true
+    }
+    const onBlur = () => {
+      if (blurTimer) clearTimeout(blurTimer)
+      blurTimer = setTimeout(() => {
+        blurTimer = null
+        editorFocused.value = false
+      }, 150)
+    }
+    ed.on('focus', onFocus)
+    ed.on('blur', onBlur)
+    onCleanup(() => {
+      ed.off('focus', onFocus)
+      ed.off('blur', onBlur)
+    })
+  },
+  { immediate: true },
+)
+
+const keyboardBarActive = computed(() => phone.value && editorFocused.value && canEdit.value)
+
+/** 52px da barra mais a área segura: é o que ocupa o rodapé no lugar da tab bar. */
+const KEYBOARD_BAR_INSET = 'calc(52px + env(safe-area-inset-bottom, 0px))'
+const KEYBOARD_BAR_HEIGHT = 52
+const { hideTabbar, showTabbar } = useShellChrome()
+watch(keyboardBarActive, (on) => {
+  if (on) hideTabbar('note-editor', KEYBOARD_BAR_INSET)
+  else showTabbar('note-editor')
+})
+
+/**
+ * O navegador traz o cursor para a área visível, mas não sabe da barra: a
+ * linha que se digita podia ficar atrás dela. Depois de cada passo do cursor
+ * (e quando o teclado termina de abrir), se o cursor está embaixo da barra, o
+ * papel rola o que falta.
+ */
+const scrollEl = ref<HTMLElement | null>(null)
+function keepCaretAboveBar() {
+  const ed = editor.value
+  const box = scrollEl.value
+  if (!keyboardBarActive.value || !ed || !box) return
+  let bottom: number
+  try {
+    bottom = ed.view.coordsAtPos(ed.state.selection.head).bottom
+  } catch {
+    return
+  }
+  const vv = window.visualViewport
+  const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight
+  const limit = visibleBottom - KEYBOARD_BAR_HEIGHT - 12
+  if (bottom > limit) box.scrollTop += bottom - limit
+}
+watch(
+  editor,
+  (ed, _old, onCleanup) => {
+    if (!ed) return
+    const run = () => requestAnimationFrame(keepCaretAboveBar)
+    ed.on('selectionUpdate', run)
+    ed.on('update', run)
+    onCleanup(() => {
+      ed.off('selectionUpdate', run)
+      ed.off('update', run)
+    })
+  },
+  { immediate: true },
+)
+if (typeof window !== 'undefined' && window.visualViewport) {
+  const vv = window.visualViewport
+  const onResize = () => requestAnimationFrame(keepCaretAboveBar)
+  vv.addEventListener('resize', onResize)
+  onBeforeUnmount(() => vv.removeEventListener('resize', onResize))
+}
+
 const wordCount = computed(() => editor.value?.storage.characterCount?.words() ?? 0)
 const charCount = computed(() => editor.value?.storage.characterCount?.characters() ?? 0)
 
@@ -204,7 +296,11 @@ function hydrate(data: Note) {
   baseUpdatedAt.value = data.updatedAt ?? null
   syncOriginal()
   editor.value?.commands.setContent(data.content ?? '', { emitUpdate: false })
-  editor.value?.setEditable(canEdit.value)
+  // `false`: no TipTap 3 o setEditable emite `update` por padrão, e o update
+  // marca a nota como suja. Só abrir a nota gravava um PATCH igual ao que veio,
+  // mudava o `updatedAt` (a data e a ordem da lista) e, em nota compartilhada,
+  // dava 409 a quem abrisse depois.
+  editor.value?.setEditable(canEdit.value, false)
   void nextTick(resizeTitle)
 }
 
@@ -355,7 +451,12 @@ onMounted(() => {
   void claimInviteIfAny()
 })
 
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  if (blurTimer) clearTimeout(blurTimer)
+  // Saiu da nota com o teclado aberto: a tab bar não pode ficar presa fora.
+  showTabbar('note-editor')
+})
 </script>
 
 <template>
@@ -403,8 +504,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </template>
       </NoteHeader>
 
-      <!-- Toolbar só quando pode editar; o slash menu continua funcionando. -->
-      <div v-if="editor && !isLoading && !isError && canEdit" class="note-toolbar-row">
+      <!-- Toolbar só quando pode editar; o slash menu continua funcionando. No
+           celular ela mora acima do teclado (NoteKeyboardBar). -->
+      <div v-if="editor && !isLoading && !isError && canEdit && !phone" class="note-toolbar-row">
         <TipTapToolbar
           :editor="editor"
           :groups="['format', 'heading', 'list', 'block', 'align', 'insert']"
@@ -417,7 +519,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       </div>
     </div>
 
-    <div class="note-scroll">
+    <div ref="scrollEl" class="note-scroll">
       <div v-if="isLoading" class="note-paper">
         <Skeleton type="text" :lines="2" />
         <Skeleton type="block" height="360px" />
@@ -505,9 +607,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <template v-if="canEdit">
       <NoteBubbleMenu :editor="editor" />
       <NoteSlashMenu :state="slash" @hover="slash.index = $event" />
-      <DragHandle v-if="editor" :editor="editor" class="note-drag">
+      <!-- A alça aparece no hover e arrasta com o mouse; no toque ela só
+           atrapalhava o cursor (aparecia ao tocar e não arrastava). -->
+      <DragHandle v-if="editor && !phone" :editor="editor" class="note-drag">
         <GripVertical :size="15" />
       </DragHandle>
+      <NoteKeyboardBar
+        v-if="phone && editor && !isLoading && !isError"
+        :editor="editor"
+        :active="keyboardBarActive"
+        @link="toolbarLink"
+      />
     </template>
 
     <ConfirmDialog
@@ -782,6 +892,79 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   }
   .note-title {
     font-size: 26px;
+  }
+}
+
+/* Celular: título e metadados mais enxutos, o texto começa mais alto. A pasta
+   divide a linha com as tags em vez de ocupar 200px fixos, e os campos têm
+   16px (abaixo disso o iOS dá zoom na página ao focar). */
+@media (max-width: 640px) {
+  .note-scroll {
+    padding: 16px 14px 25vh;
+  }
+
+  .note-title-row {
+    gap: 8px;
+  }
+
+  .note-title-emoji {
+    font-size: 26px;
+  }
+
+  .note-title {
+    font-size: 23px;
+    letter-spacing: -0.02em;
+  }
+
+  .note-props {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 10px 0 16px;
+    padding-bottom: 12px;
+  }
+
+  .note-props__folder {
+    flex: 0 1 50%;
+    width: auto;
+    min-width: 0;
+    max-width: 50%;
+  }
+
+  .note-tags {
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .note-tags::-webkit-scrollbar {
+    display: none;
+  }
+
+  .note-tag {
+    flex: none;
+  }
+
+  .note-tag button {
+    position: relative;
+  }
+
+  /* 44px de alvo no "x" da tag sem engordar o chip. */
+  .note-tag button::after {
+    content: '';
+    position: absolute;
+    inset: -14px -10px;
+  }
+
+  .note-tag-add {
+    flex: none;
+  }
+
+  .note-tag-add input {
+    width: 110px;
+    height: 36px;
+    font-size: 16px;
   }
 }
 </style>

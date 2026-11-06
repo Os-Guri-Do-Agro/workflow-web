@@ -32,6 +32,7 @@ import { useTimeTracking } from '@/composables/useTimeTracking'
 import { formatTimer } from '@/utils/duration'
 import { currentMonthId } from './shared/current-month'
 import { useUiPreferences } from '@/composables/useUiPreferences'
+import { useShellChrome } from '@/composables/useShellChrome'
 
 defineEmits<{
   'open-command-palette': []
@@ -71,6 +72,26 @@ const timerLabel = computed(() => (isRunning.value ? formatTimer(elapsedSec.valu
 const TABBAR_INSET = 'calc(58px + env(safe-area-inset-bottom, 0px))'
 
 /**
+ * A tab bar sai quando alguém pede a altura toda (o editor de nota com o
+ * teclado aberto, `useShellChrome`). O `--shell-bottom-inset` acompanha: sem a
+ * barra, o rodapé é só a área segura, ou o que ficou no lugar dela (a barra de
+ * formatação da nota). A classe no `<html>` é para quem só tem CSS (e para o
+ * harness conferir).
+ */
+const { tabbarHidden, bottomInsetOverride } = useShellChrome()
+const bottomInset = computed(() =>
+  tabbarHidden.value ? (bottomInsetOverride.value ?? 'env(safe-area-inset-bottom, 0px)') : TABBAR_INSET,
+)
+watch(
+  [bottomInset, tabbarHidden],
+  ([inset, hidden]) => {
+    document.documentElement.style.setProperty('--shell-bottom-inset', inset)
+    document.documentElement.classList.toggle('shell-tabbar-hidden', hidden)
+  },
+  { immediate: true },
+)
+
+/**
  * Barra do sistema (status bar do celular, barra do app instalado) na mesma cor
  * do topo: com o app aberto pela tela inicial, a diferença de cor entre as duas
  * era a primeira coisa que denunciava "site dentro de app".
@@ -87,10 +108,12 @@ function syncThemeColor() {
 watch([theme, accent], () => requestAnimationFrame(syncThemeColor))
 
 onMounted(() => {
-  document.documentElement.style.setProperty('--shell-bottom-inset', TABBAR_INSET)
   requestAnimationFrame(syncThemeColor)
 })
-onBeforeUnmount(() => document.documentElement.style.removeProperty('--shell-bottom-inset'))
+onBeforeUnmount(() => {
+  document.documentElement.style.removeProperty('--shell-bottom-inset')
+  document.documentElement.classList.remove('shell-tabbar-hidden')
+})
 </script>
 
 <template>
@@ -112,7 +135,7 @@ onBeforeUnmount(() => document.documentElement.style.removeProperty('--shell-bot
       <slot />
     </main>
 
-    <nav class="m-tabs" aria-label="Navegação principal">
+    <nav v-show="!tabbarHidden" class="m-tabs" aria-label="Navegação principal">
       <RouterLink to="/" class="m-tab" :class="{ 'is-active': activeTab === 'home' }" :aria-current="activeTab === 'home' ? 'page' : undefined">
         <span class="m-tab-icon"><House :size="20" aria-hidden="true" /></span>
         <span class="m-tab-label">Início</span>

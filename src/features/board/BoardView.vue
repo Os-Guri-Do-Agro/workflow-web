@@ -11,12 +11,16 @@ import type { ActivityMovedPayload } from '@/service/realtime/realtime-service'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import TaskCard, { type TaskCardTask } from '@/components/tasks/TaskCard.vue'
 import TaskColumn from '@/components/tasks/TaskColumn.vue'
+import BoardColumnTabs from '@/components/tasks/BoardColumnTabs.vue'
+import TaskMoveSheet from '@/components/tasks/TaskMoveSheet.vue'
 import TaskDetailPanel from '@/features/tasks/components/TaskDetailPanel.vue'
 import { ACTIVITY_STATUSES, PRIORITY_OPTIONS, priorityLevel } from '@/features/tasks/task-meta'
 import type { ActivityDetail, ActivityStatus } from '@/features/tasks/activity-types'
 import { checksAfterMove, reviewBlockReason } from '@/features/tasks/test-platforms'
 import { taskKey } from '@/features/tasks/task-key'
 import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
+import { useBoardPager } from '@/features/tasks/composables/useBoardPager'
+import { useCardLongPress } from '@/features/tasks/composables/useCardLongPress'
 
 const { error: showError, success: showSuccess } = useToast()
 
@@ -509,6 +513,54 @@ function handleDrop(columnId: ColumnStatus) {
   handleDragEnd()
 }
 
+// ── Celular (spec v2-celular-roadmap-notas, D1 e D2) ─────────────────────────
+// O mesmo modelo do board do mês: uma coluna por vez com abas, deslizar troca
+// de coluna, e segurar o card abre "Mover para". Aqui não existe ordem manual,
+// então no celular não há arraste nenhum (o HTML5 nativo nem funciona com o
+// dedo): a folha é o único jeito de mover, e ela chama o MESMO
+// `updateTaskStatus` do "Mover para" do menu "…" (permissão e Revisados juntos).
+const kanbanRef = ref<HTMLElement | null>(null)
+const { paged, active: activeColumn, goTo: goToColumn } = useBoardPager(kanbanRef)
+
+const columnTabs = computed(() =>
+  columns.map((c) => ({
+    value: c.value,
+    label: c.label,
+    icon: c.icon,
+    count: columnTasks.value[c.value].length,
+  })),
+)
+
+const sheetOpen = ref(false)
+const sheet = ref<{ task: ActivityItem; card: HTMLElement } | null>(null)
+
+function activityById(id: string): ActivityItem | null {
+  return workspace.workspaceData?.activities.find((a) => a.id === id) ?? null
+}
+
+useCardLongPress({
+  root: kanbanRef,
+  enabled: () => true,
+  canHold: (id) => {
+    const task = activityById(id)
+    return !!task && canEditTask(task)
+  },
+  onHold: (id, card) => {
+    const task = activityById(id)
+    if (!task) return
+    sheet.value = { task, card }
+    sheetOpen.value = true
+  },
+})
+
+/** O item do workspace traz o status como string; a folha quer a coluna. */
+const sheetStatus = computed(() => (sheet.value?.task.status ?? null) as ColumnStatus | null)
+
+function onSheetSelect(status: ColumnStatus) {
+  const current = sheet.value
+  if (current) void updateTaskStatus(current.task, status)
+}
+
 </script>
 
 <template>
@@ -596,15 +648,29 @@ function handleDrop(columnId: ColumnStatus) {
       </div>
     </div>
 
+    <!-- Celular: uma coluna por vez, as abas dizem qual -->
+    <BoardColumnTabs
+      v-if="paged"
+      class="kanban-tabs"
+      :columns="columnTabs"
+      :active="activeColumn"
+      panel-prefix="board-col"
+      @select="goToColumn"
+    />
+
     <!-- Kanban: as mesmas colunas e o mesmo card do board do mês -->
-    <div class="kanban">
+    <div ref="kanbanRef" class="kanban" :class="{ 'kanban--paged': paged }">
       <TaskColumn
         v-for="column in columns"
+        :id="paged ? `board-col-${column.value}` : undefined"
         :key="column.value"
+        :data-col="column.value"
+        :role="paged ? 'tabpanel' : undefined"
         :status="column.value"
         :count="columnTasks[column.value].length"
-        :collapsible="canCollapse(column.value)"
-        :collapsed="isCollapsed(column.value)"
+        :collapsible="!paged && canCollapse(column.value)"
+        :collapsed="!paged && isCollapsed(column.value)"
+        :paged="paged"
         :over="!!draggedTask && overColumn === column.value && draggedTask.status !== column.value"
         @toggle-collapse="toggleCollapsed(column.value)"
         @dragenter="overColumn = column.value"
@@ -632,7 +698,7 @@ function handleDrop(columnId: ColumnStatus) {
               :readonly="!canEditTask(task)"
               :active-tags="filterTags"
               :dragging="draggedTask?.id === task.id"
-              :draggable="canEditTask(task) ? 'true' : 'false'"
+              :draggable="canEditTask(task) && !paged ? 'true' : 'false'"
               @dragstart="handleDragStart(task)"
               @dragend="handleDragEnd"
               @open="openTask(task)"
@@ -654,6 +720,15 @@ function handleDrop(columnId: ColumnStatus) {
       :company-name="openTaskCompanyName"
       :apply-patch="applyBoardPatch"
       @close="closeTask"
+    />
+
+    <TaskMoveSheet
+      v-model:open="sheetOpen"
+      :task="sheet ? toCard(sheet.task) : null"
+      :status="sheetStatus"
+      :task-key="sheet ? taskKey(sheet.task, sheet.task.companyName) : null"
+      :return-focus="sheet?.card ?? null"
+      @select="onSheetSelect"
     />
   </div>
 </template>
@@ -893,8 +968,38 @@ function handleDrop(columnId: ColumnStatus) {
 }
 
 @media (max-width: 640px) {
+  /* Dentro da moldura de celular: a página ocupa o `<main>` (o 100vh passava
+     da tab bar e a página inteira rolava por baixo das colunas). */
+  .board-page {
+    height: 100%;
+    padding: 12px 12px 0;
+    gap: 10px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
   .kanban {
     scroll-snap-type: x mandatory;
+  }
+
+  .kanban--paged {
+    scrollbar-width: none;
+    padding-bottom: 12px;
+  }
+
+  .kanban--paged::-webkit-scrollbar {
+    display: none;
+  }
+
+  .kanban-tabs {
+    margin-bottom: -8px;
+  }
+
+  /* 16px: abaixo disso o iOS dá zoom na página ao focar o campo. */
+  .search-input {
+    font-size: 16px;
   }
 
   /* Celular: os filtros viram UMA fileira que rola de lado, como no Jira

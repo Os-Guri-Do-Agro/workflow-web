@@ -41,6 +41,7 @@ import IdleAlert from '@/components/onboarding/IdleAlert.vue'
 import IdleProtectionDialog from '@/components/onboarding/IdleProtectionDialog.vue'
 import AbandonedTimerDialog from '@/components/onboarding/AbandonedTimerDialog.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { hasSession } from '@/composables/useSession'
 
 /**
  * Comemoração da sequência ("Dia garantido!", marcos). Assíncrona para o
@@ -108,9 +109,10 @@ useServerCutAlert()
 // expirada e zera falhas de uma que voltou a viver.
 const { ensureSubscribed } = usePushSubscription()
 watch(
-  notificationPermission,
-  (permissao) => {
-    if (permissao === 'granted') void ensureSubscribed()
+  [notificationPermission, hasSession],
+  ([permissao, logado]) => {
+    // Sem sessão (login, redefinir senha) a assinatura levava 401.
+    if (permissao === 'granted' && logado) void ensureSubscribed()
   },
   { immediate: true },
 )
@@ -160,18 +162,38 @@ function onAssistantHotkey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onAssistantHotkey, true))
 onUnmounted(() => window.removeEventListener('keydown', onAssistantHotkey, true))
 
-const bare = computed(
-  () =>
-    route.name === 'login' ||
-    route.name === 'reset-password' ||
-    route.name === 'download' ||
-    route.name === 'public-file' ||
-    route.name === 'bug-report' ||
-    route.name === 'report-status' ||
-    route.name === 'public-board' ||
-    route.name === 'public-roadmap' ||
-    route.name === 'public-note',
-)
+const BARE_ROUTES = new Set([
+  'login',
+  'reset-password',
+  'download',
+  'public-file',
+  'bug-report',
+  'report-status',
+  'public-board',
+  'public-roadmap',
+  'public-note',
+])
+
+/**
+ * Antes da 1ª navegação resolver, o `route` ainda é o START_LOCATION (sem
+ * nome): o `bare` dava falso e a moldura logada montava por um instante no
+ * /login e no /redefinir-senha. Era nesse instante que sino, sequência,
+ * cronômetro largado e paleta disparavam as chamadas autenticadas que levavam
+ * 401 (spec v2-celular-roadmap-notas, N1). Até o router ficar pronto, quem
+ * decide é o endereço da barra; e sem sessão nunca há moldura logada, porque o
+ * guard vai mandar para o login de qualquer jeito.
+ */
+const routerReady = ref(false)
+void router.isReady().then(() => {
+  routerReady.value = true
+})
+
+const bare = computed(() => {
+  if (routerReady.value) return BARE_ROUTES.has(route.name as string)
+  if (!hasSession.value) return true
+  const initial = router.resolve(window.location.pathname + window.location.search)
+  return BARE_ROUTES.has(initial.name as string)
+})
 
 // Tela pequena ganha a moldura de celular em qualquer variante: a variante é
 // preferência de desktop e nenhuma das três cabe abaixo de 900px.

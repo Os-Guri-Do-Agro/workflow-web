@@ -19,6 +19,13 @@
  * prioridade" reordena só a tela desta coluna e desliga a reordenação dentro
  * dela (soltar ali só troca a coluna), porque a ordem vista deixa de ser a
  * gravada. Colunas e cards levam `data-nav-col` para o teclado (J/K e setas).
+ *
+ * Celular (spec v2-celular-roadmap-notas, D1 e D2): abaixo de 640px é uma
+ * coluna por vez, com abas (`BoardColumnTabs` + `useBoardPager`). Deslizar é a
+ * rolagem do navegador; o Sortable só pega o card depois de segurar 300ms
+ * (`delay` + `delayOnTouchOnly`, então o mouse não muda nada), e no celular só
+ * reordena DENTRO da coluna (grupo por coluna). Segurar e soltar sem mexer abre
+ * a folha "Mover para", que chama o MESMO `onMenuMove` do menu "…".
  */
 import { computed, ref, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -27,10 +34,18 @@ import { Plus } from 'lucide-vue-next'
 import TaskCard, { type TaskCardTask } from './TaskCard.vue'
 import TaskColumn from './TaskColumn.vue'
 import TaskQuickCreate from './TaskQuickCreate.vue'
+import BoardColumnTabs from './BoardColumnTabs.vue'
+import TaskMoveSheet from './TaskMoveSheet.vue'
 import { ACTIVITY_STATUSES, priorityLevel, statusSpec } from '@/features/tasks/task-meta'
 import { taskKey } from '@/features/tasks/task-key'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
+import { useBoardPager } from '@/features/tasks/composables/useBoardPager'
+import {
+  HOLD_DELAY_MS,
+  HOLD_TOLERANCE_PX,
+  useCardLongPress,
+} from '@/features/tasks/composables/useCardLongPress'
 import type { ActivityStatus, TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
 
 export type KanbanTask = TaskCardTask
@@ -173,6 +188,7 @@ const onRename = (task: KanbanTask, title: string) => {
 
 const onStart = () => {
   isDragging.value = true
+  longPress.dragStarted()
 }
 const onEnd = () => {
   isDragging.value = false
@@ -188,19 +204,93 @@ const onEnd = () => {
 const onEnterColumn = (status: ActivityStatus) => {
   if (isDragging.value) dragOverColumn.value = status
 }
+
+// ── Celular: uma coluna por vez ──
+const scroller = ref<HTMLElement | null>(null)
+const { paged, active, goTo } = useBoardPager(scroller)
+
+const tabs = computed(() =>
+  columns.map((c) => ({
+    value: c.value,
+    label: c.label,
+    icon: c.icon,
+    count: columnActivities.value[c.value]?.length ?? 0,
+  })),
+)
+
+/**
+ * Opções do Sortable para o toque. O `touchStartThreshold` do Sortable é
+ * dividido pelo devicePixelRatio lá dentro, então a conta devolve os mesmos
+ * 8px de CSS do `useCardLongPress` em qualquer tela. A `fallbackTolerance`
+ * evita que o dedo parado (que sempre treme um pouco) vire um arraste de zero
+ * px depois de pegar: aí soltar é "segurar e soltar", e a folha abre.
+ */
+const touchStartThreshold = Math.round(
+  HOLD_TOLERANCE_PX * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1),
+)
+
+/** No celular o arraste só reordena: trocar de coluna é pela folha (D1). */
+const groupFor = (status: ActivityStatus) => (paged.value ? `col:${status}` : 'activities')
+
+// ── Segurar e soltar: folha "Mover para" ──
+const sheetOpen = ref(false)
+const sheet = ref<{ task: KanbanTask; status: ActivityStatus; card: HTMLElement } | null>(null)
+
+function findTask(id: string): { task: KanbanTask; status: ActivityStatus } | null {
+  for (const col of columns) {
+    const task = columnActivities.value[col.value]?.find((t) => t.id === id)
+    if (task) return { task, status: col.value }
+  }
+  return null
+}
+
+const longPress = useCardLongPress({
+  root: scroller,
+  enabled: () => !props.readonly,
+  canHold: (id) => !isPendingTaskId(id),
+  onHold: (id, card) => {
+    const found = findTask(id)
+    if (!found) return
+    sheet.value = { ...found, card }
+    sheetOpen.value = true
+  },
+})
+
+function onSheetSelect(status: ActivityStatus) {
+  const current = sheet.value
+  if (!current || status === current.status) return
+  onMenuMove(current.task, status)
+}
 </script>
 
 <template>
-  <div class="board" :class="{ 'board--dragging': isDragging }">
+  <div class="kb">
+    <BoardColumnTabs
+      v-if="paged"
+      class="kb__tabs"
+      :columns="tabs"
+      :active="active"
+      panel-prefix="kb-col"
+      @select="goTo"
+    />
+  <div
+    ref="scroller"
+    class="board"
+    :class="{ 'board--dragging': isDragging, 'board--paged': paged }"
+  >
     <TaskColumn
       v-for="column in columns"
+      :id="paged ? `kb-col-${column.value}` : undefined"
       :key="column.value"
+      :data-col="column.value"
+      :role="paged ? 'tabpanel' : undefined"
       :status="column.value"
       :count="columnActivities[column.value]?.length || 0"
       :can-create="canCreate"
-      :collapsible="canCollapse(column.value)"
-      :collapsed="isCollapsed(column.value)"
+      :collapsible="!paged && canCollapse(column.value)"
+      :collapsed="!paged && isCollapsed(column.value)"
       :over="isDragging && dragOverColumn === column.value"
+      :paged="paged"
       sortable
       :sorted="isSorted(column.value)"
       :releasable="
@@ -219,13 +309,17 @@ const onEnterColumn = (status: ActivityStatus) => {
           v-model="columnActivities[column.value]"
           class="lane__list"
           :data-nav-col="column.value"
-          group="activities"
+          :group="groupFor(column.value)"
           :animation="sortAnimation"
           easing="cubic-bezier(0.2, 0.9, 0.3, 1.08)"
           :disabled="props.readonly"
           :sort="!isSorted(column.value)"
           filter=".no-drag"
           :prevent-on-filter="false"
+          :delay="HOLD_DELAY_MS"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="touchStartThreshold"
+          :fallback-tolerance="HOLD_TOLERANCE_PX"
           ghost-class="drag-ghost"
           chosen-class="drag-chosen"
           drag-class="drag-moving"
@@ -289,9 +383,28 @@ const onEnterColumn = (status: ActivityStatus) => {
       </div>
     </TaskColumn>
   </div>
+
+    <TaskMoveSheet
+      v-model:open="sheetOpen"
+      :task="sheet?.task ?? null"
+      :status="sheet?.status ?? null"
+      :task-key="sheet ? keyOf(sheet.task) : null"
+      :return-focus="sheet?.card ?? null"
+      @select="onSheetSelect"
+    />
+  </div>
 </template>
 
 <style scoped>
+/* Casca: as abas (só no celular) em cima e a fita de colunas embaixo. No
+   computador ela só repassa a altura, e a fita fica como sempre foi. */
+.kb {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /*
  * Board estilo Jira: quatro poços neutros de 280px lado a lado, cada um com
  * scroll próprio. Sem painel colorido por coluna, sem régua, sem fade.
@@ -314,6 +427,22 @@ const onEnterColumn = (status: ActivityStatus) => {
   .board {
     scroll-snap-type: x mandatory;
   }
+}
+
+/* Uma coluna por vez: a barra de rolagem de lado sai (as abas dizem onde se
+   está). Arrastando, a fita não rola de lado: o arraste só reordena dentro da
+   coluna, e o auto-scroll do Sortable perto da borda trocaria de coluna. */
+.board--paged {
+  flex: 1 1 auto;
+  scrollbar-width: none;
+}
+
+.board--paged::-webkit-scrollbar {
+  display: none;
+}
+
+.board--paged.board--dragging {
+  overflow-x: hidden;
 }
 
 .lane__scroll {

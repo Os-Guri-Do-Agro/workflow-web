@@ -94,8 +94,12 @@ Trocar a variante é feito em `/settings` e é aplicada em runtime (sem reload).
 - No celular saem: o botão flutuante do assistente (vai para a folha "Mais"), o recado de permissão de ociosidade e o chrome do Modo XP.
 - O `theme-color` da barra do sistema segue a cor do topo (sincronizado pelo `MobileShell` ao trocar tema/acento). O app é instalável (`public/manifest.webmanifest`).
 - Tela nova: teste em 375px no harness (`scripts/harness`) antes de fechar. Zero rolagem horizontal da página; alvo de toque de 44px.
+- Quem precisa da altura toda pede para a tab bar sair por `composables/useShellChrome.ts` (`hideTabbar(dono, inset)` / `showTabbar(dono)`; cada pedido tem dono e a barra só volta quando o último devolve). O `--shell-bottom-inset` passa a ser o `inset` informado (ou só a área segura) e o `<html>` ganha `shell-tabbar-hidden`. Hoje só o editor de nota usa (spec `docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md`, D3). Quem pediu devolve no `onBeforeUnmount`, senão a barra fica presa fora.
+- "Celular em retrato" é `composables/usePhoneViewport.ts` (`max-width: 640px`, um `matchMedia` só): é a régua do board de uma coluna por vez e da barra de formatação da nota. Não confundir com o `useCompactViewport` (899px, a troca da moldura).
 
-**Para rotas sem shell** (`login`, `reset-password` (`/redefinir-senha`), `download`, `public-file` e as públicas de board/roadmap/bug-report): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas. Rota nova sem shell precisa entrar em DOIS lugares: no `bare` do `AppShell` e no `PUBLIC_ROUTES` do router (senão o guard manda pro login).
+**Para rotas sem shell** (`login`, `reset-password` (`/redefinir-senha`), `download`, `public-file` e as públicas de board/roadmap/bug-report): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas. Rota nova sem shell precisa entrar em DOIS lugares: no `BARE_ROUTES` do `AppShell` e no `PUBLIC_ROUTES` do router (senão o guard manda pro login).
+
+**Nada autenticado sai sem sessão (nov/2026).** Antes da 1ª navegação resolver, o `route` é o START_LOCATION (sem nome): o `AppShell` decide o `bare` pelo endereço da barra e, sem sessão, nunca monta a moldura logada (era nesse instante que sino, sequência, cronômetro largado e paleta levavam 401 no `/login`). O que mora no setup do `AppShell` e roda em toda rota (cronômetro do topo, push) olha `hasSession` (`composables/useSession.ts`, token presente e válido, relido no `afterEach` do router e no evento `storage`). Query nova que nasça fora da área logada precisa de `enabled: hasSession`. O harness confere: `ONLY=sessao node celular-e2e.cjs`.
 
 **Componentes shared dos shells** em [`core/components/shells/shared/`](./core/components/shells/shared/):
 
@@ -206,7 +210,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Canvas          | [`features/boards/BoardsListView.vue`](./features/boards/BoardsListView.vue)                   | `/boards`          | **Desabilitado (feature flag)** — `CANVAS_ENABLED` (`config/feature-flags.ts`); reativar com `VITE_CANVAS_ENABLED=true`. Ver [docs/CANVAS_DEACTIVATION.md](../docs/CANVAS_DEACTIVATION.md). Arquivos preservados, nada deletado |
 | Público         | [`features/public/PublicBoardView.vue`](./features/public/PublicBoardView.vue)                 | `/public/board/:token` | Board read-only por token                                         |
 | Público         | [`features/public/PublicRoadmapView.vue`](./features/public/PublicRoadmapView.vue)             | `/public/roadmap/:token` | Roadmap read-only por token                                   |
-| Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais, **100% API real** (a nota antiga de "mockados" está obsoleta desde o contrato `GET /company/:id/roadmap`) |
+| Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Visões **Mês** e **Ano** (nov/2026), 100% API real. Ver a seção **Roadmap** abaixo. Spec: [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md) |
 | Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês. Abas **Board · Agenda · Backlog**. Tags, arquivos e documentos `.md` na tarefa (ver abaixo). Filtro por tag em `?tags=slug1,slug2`. **Repetição** é um campo da tarefa (estado local em `localStorage` por empresa, sem chamada de API): o board mostra UMA linha por regra (a corrente + as abertas), com contadores "+N no mês" e "N atrasadas" que levam à Agenda; o botão "Recorrentes" do header abre a gestão das regras — ver a seção abaixo |
 | Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         | Rota registrada na navegação                                           |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
@@ -222,6 +226,38 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Sequência (Nevo) | [`features/dashboard/components/StreakHero.vue`](./features/dashboard/components/StreakHero.vue) | `/#sequencia` (home) + chip nos 3 shells | Sequência diária, missões, níveis, marcos, ranking de pontos da equipe e vitrine 3D. Ver a seção **Nevo (sequência diária)**. Spec: [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md) |
 
 ★ = redesign completo entregue pelo design-system-evolution spec.
+
+### Roadmap (nov/2026)
+
+Spec: [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md) (R1 a R3).
+
+```
+features/roadmap/
+  RoadmapView.vue              orquestra: Mês/Ano, navegação (← → T N), menus, dialogs, PDF
+  roadmap-meta.ts              FONTE ÚNICA: tipos de item (rótulo, ícone, cor), datas 'YYYY-MM-DD'
+                               em UTC, grade do mês, janela de teste, empilhamento da linha do tempo
+  roadmap-items.ts             item da agenda, entrega e marco numa forma só (calendário, ano, PDF)
+  composables/useRoadmap.ts    as duas cargas (`/roadmap/monthly` + `/company/:id/roadmap`) e todas
+                               as gravações; erro de carga nunca apaga a tela
+  components/RoadmapMonthView  calendário com o título no dia (até 3 + "+N"), faixas de teste por
+                               cima, painel (dia, próximos 14 dias, Em teste agora, foco, imagens,
+                               comentários); no celular vira calendário de pontos
+  components/RoadmapYearView   linha do tempo (objetivos, marcos e testes, entregas), zoom Q1 a Q4
+                               (abre no trimestre atual); no celular vira lista por mês
+  components/RoadmapItemDialog criar/editar item (tipos, Teste incluso) e marco (com janela de teste)
+  components/RoadmapAgendaList lista por dia, reusada no painel e no celular
+  components/RoadmapPrint      relatório de impressão (Teleport no body; esconde o resto da página)
+```
+
+Cinco regras que não são óbvias:
+
+1. **Três origens, nunca fundidas** (`roadmap-items.ts`): item da agenda (`RoadmapEntry`, abre o editor), entrega (tarefa com prazo, abre o painel do board em `/tasks/:mes?task=`) e marco (`RoadmapMilestone`, abre o marco). "Marco" como tipo de item é legado: o filtro junta os dois em "Marcos" e item novo não oferece esse tipo.
+2. **Janela de teste = `testStart` até a véspera do marco** (`testWindow`). Mudar só a data do marco também é validado contra a janela (400). Sem a coluna no banco, a API lê com `testStart: null`, grava o resto e responde 503 a quem pede janela; ela tenta a coluna de novo a cada minuto.
+3. **A categoria `test` precisa da migration `20261105220000_roadmap_teste`**. Sem ela, criar item de Teste dá 503 em PT-BR; as outras categorias seguem gravando.
+4. **Mudar a data de um item para outro mês move o item de mês no servidor** (`PATCH .../entries/:id` cria o mês de destino se precisar). O front só acompanha a lista local.
+5. **"Em teste agora" (`inTesting`) e o checklist das entregas vêm do `GET /roadmap/monthly`**, com o mesmo `withTestChecks` do board. O link público não leva nenhum dos dois.
+
+Prova: `scripts/harness/roadmap-e2e.cjs` (31 checagens, banco conferido, inclusive a API sem a coluna nova).
 
 ### Seleção de tarefa e som do Meu tempo
 
@@ -425,12 +461,15 @@ features/notes/
   types.ts                Note, NoteListItem, NoteFolder, NoteFolderNode
   note-palette.ts         cores e emojis (hex aqui é dado persistido, não tema)
   components/             NoteHeader, NoteMetaMenu, NoteBubbleMenu, NoteSlashMenu,
-                          NoteCard, NoteFolderTree (recursivo), NoteFolderDialog
+                          NoteCard, NoteFolderTree (recursivo), NoteFolderDialog,
+                          NoteKeyboardBar (celular: formatação acima do teclado)
   composables/            useNotes (Vue Query + buildFolderTree), useNote,
                           useNoteEditor, useNoteAutosave, useNoteImmersive
   extensions/             slash-command.ts (menu "/" via @tiptap/suggestion)
   styles/note-content.css tipografia e blocos do conteúdo, reusável na leitura
 ```
+
+**Celular (spec [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md), D3):** abaixo de 640px a toolbar do topo não existe; com o editor em foco aparece `components/NoteKeyboardBar.vue`, presa à borda de baixo do `visualViewport` (`offsetTop + height`: o teclado encolhe só o viewport visual, e um `fixed; bottom: 0` ficaria atrás dele), rolável de lado, com botões que não roubam o foco (`mousedown.prevent`) e "Fechar teclado". Enquanto ela está de pé a tab bar sai (`useShellChrome`, dono `note-editor`, inset de 52px). O bubble menu não abre quando a seleção veio do toque (`shouldShow` olha o último `pointerType`; no celular nunca abre): o menu nativo de seleção já ocupa aquele lugar. O topo é uma linha só em qualquer estado (`SaveStatus short`: "Salvo", "Salvando", "Erro" e o tentar de novo em ícone; "Só leitura"; Compartilhar em ícone). O harness simula o teclado trocando o `window.visualViewport` por um que encolhe (shim no `celular-e2e.cjs`); posição real no iOS e no Android só o aparelho prova.
 
 **Header fixo:** `NoteEditorView` é o container de scroll (`.note-page` height 100% + `.note-scroll` overflow interno); a região do topo (`.note-topbar` = NoteHeader + TipTapToolbar) fica fora do scroll. Não depende do scroll do shell. As opções de formatação existem em DOIS lugares: a toolbar fixa do header E o slash menu (`/`).
 
@@ -483,6 +522,11 @@ components/tasks/
   TaskLanes.vue       o "Agrupar: Pessoa" (S6): linhas recolhíveis, cabeçalhos presos,
                       arraste só dentro da linha
   TaskQuickCreate.vue o campo da criação inline (Enter cria e continua aberto, Esc cancela)
+  BoardColumnTabs.vue as abas do celular (nome e contagem por coluna, a ativa com o acento)
+  TaskMoveSheet.vue   a folha "Mover para" do celular (Teleport, alvos de 48px, Esc e fundo fecham)
+features/tasks/composables/
+  useBoardPager.ts    a fita de colunas com snap ligada às abas (rolagem acende a aba, aba rola)
+  useCardLongPress.ts segurar 300ms e soltar sem mexer = `onHold`; mexer antes = rolagem
 ```
 
 **URL do board do mês:** `?q=&pessoa=u2,u3&prioridade=3,4&tags=app&minhas=1&atrasadas=1&recentes=1&sem-responsavel=1&agrupar=pessoa`
@@ -496,6 +540,8 @@ Enter). Tudo ignorado em campo de texto, com menu ou diálogo aberto e com modif
 `?vista=lista` (ou `agenda`, `historico`; o Board não aparece), por `replace`, e o `‹ ›` leva junto.
 Na Lista, o teclado é dela (J/K, ↓/↑, Enter/O, X, Shift+X, Esc), e com o painel aberto sobre ela
 J/K trocam a tarefa na ordem da LISTA.
+
+**Celular, abaixo de 640px (spec [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md), D1 e D2):** o board do mês, o agrupado por pessoa e o `/board` mostram UMA coluna por vez, com `BoardColumnTabs` no topo. Deslizar é a rolagem do navegador (`scroll-snap-stop: always`, a aba acompanha pelo `useBoardPager`); o Sortable só pega o card depois de segurar (`delay` 300 + `delayOnTouchOnly`, então o mouse não muda) e no celular só reordena DENTRO da coluna (grupo por coluna; no agrupado, a célula da coluna ativa). Segurar e soltar sem mexer abre a `TaskMoveSheet`, que NÃO tem caminho próprio de gravação: emite o status e o board chama o mesmo `onMenuMove` (mês e agrupado) ou `updateTaskStatus` (`/board`) do "Mover para" do menu "…"; a regra de Revisados (`reviewBlockReason`) vale ali e a folha só adianta a frase embaixo da opção. O `/board` no celular não arrasta nada (HTML5 não funciona com o dedo; `draggable` sai). O engolir do clique fantasma depois do segurar vale só para o mesmo card e por 400ms: mais largo que isso engolia o toque seguinte (o "…" do reka abre no `click`). Roteiro: `scripts/harness/celular-e2e.cjs` (toque de verdade pelo CDP).
 
 Quatro regras que não são óbvias:
 

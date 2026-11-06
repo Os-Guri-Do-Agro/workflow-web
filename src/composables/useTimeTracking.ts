@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { hasSession } from '@/composables/useSession'
 import { computed, onMounted, onUnmounted, ref, unref, watch, type MaybeRef } from 'vue'
 import timeService, {
   type EntriesFilters,
@@ -73,6 +74,9 @@ export function useTimeTracking() {
     queryKey: timeKeys.current,
     queryFn: () => timeService.current(),
     staleTime: 1000 * 10,
+    // O cronômetro do topo é montado pelo AppShell também no /login e no
+    // /redefinir-senha: sem sessão não há timer, e a chamada só levava 401.
+    enabled: hasSession,
   })
 
   // Só consideramos "rodando" quando veio de fato um entry com startedAt. Uma

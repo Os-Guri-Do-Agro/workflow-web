@@ -9,6 +9,8 @@ export interface RoadmapMilestoneDto {
   date: string
   type: RoadmapMilestoneType
   quarterId: string | null
+  /** Início da janela de teste (YYYY-MM-DD, até `date`). Ausente em API antiga. */
+  testStart?: string | null
 }
 
 export interface CreateRoadmapMilestoneInput {
@@ -19,6 +21,8 @@ export interface CreateRoadmapMilestoneInput {
   description?: string
   /** Ancora o marco a um trimestre. String vazia desancora no update. */
   quarterId?: string
+  /** Janela de teste antes do marco. `null` remove. */
+  testStart?: string | null
 }
 
 export type UpdateRoadmapMilestoneInput = Partial<CreateRoadmapMilestoneInput>
