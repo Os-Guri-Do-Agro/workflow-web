@@ -125,7 +125,7 @@ async function call(who, method, route, body, opts = {}) {
 
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex')
 
-/** Mesmo caminho do front (uploadMarketingFile): ticket, PUT direto, confirm. */
+/** Mesmo caminho da fila de envio do front (upload-queue): ticket, PUT direto, confirm. */
 async function uploadInvoice(who, expenseId, name, buf, mimeType) {
   const t = await call(who, 'POST', `/expenses/${expenseId}/invoices`, {
     name,

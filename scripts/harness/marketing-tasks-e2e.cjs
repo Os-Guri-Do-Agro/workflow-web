@@ -456,11 +456,13 @@ const itemText = (page) => section(page).locator('.mct__item').allInnerTexts().c
     check('freelancer', fApi.status === 200 && !('activityId' in fItem) && !('monthId' in fItem) && !('companyId' in fItem) && fItem.canOpen === false,
       'API: sem id navegável para quem não é da empresa', JSON.stringify(Object.keys(fItem)))
     await section(fPage).screenshot({ path: path.join(OUT, 'freelancer-secao-d1440.png') })
-    await fPage.click('[data-action="link-task"]')
-    const fEmpty = fPage.locator('[data-testid="task-picker-empty"]')
-    await fEmpty.waitFor({ timeout: 10000 }).catch(() => {})
-    check('freelancer', /Só aparecem tarefas Em andamento das empresas do grupo em que você está\./.test(await fEmpty.innerText().catch(() => '')), 'o seletor vazio explica a regra')
-    await shot(fPage, 'freelancer-seletor-vazio-d1440.png')
+    // Regra D8 (API aa9e03c): sem UserCompany em nenhuma empresa do grupo, a API
+    // devolve canLink: false e o botão "Ligar tarefa" nem aparece. O título da
+    // tarefa já ligada continua à vista, sem link (conferido acima).
+    check('freelancer', fApi.data?.canLink === false, 'API: canLink false para quem não é de nenhuma empresa do grupo', String(fApi.data?.canLink))
+    check('freelancer', (await section(fPage).locator('[data-action="link-task"]').count()) === 0, 'o botão "Ligar tarefa" não aparece para o freelancer')
+    check('freelancer', (await section(fPage).locator('[data-action="retry-task"]').count()) === 0, 'nem o "Tentar de novo" (não ligou, não é Admin nem da empresa)')
+    await shot(fPage, 'freelancer-sem-ligar-d1440.png')
     await fCtx.close()
 
     // ════════════════════════════════════════════════════════════════════

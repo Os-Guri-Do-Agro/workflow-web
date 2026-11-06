@@ -425,7 +425,7 @@ async function dropFiles(page, selector, files) {
         pasted = await waitFor(async () => (await page.locator('.mkup__list li').count()) === before + 1, 3000)
       }
       const pastedName = await page.locator('.mkup__list .mkup__name').last().innerText().catch(() => '')
-      check('U3', !!pasted && /^colado-\d{4}-\d{2}-\d{2}-\d{6}\.png$/.test(pastedName), `Ctrl+V de imagem entra na versão com nome legível (via ${pasteMode})`, pastedName)
+      check('U3', !!pasted && /^Colado \d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.\d{2}\.png$/.test(pastedName), `Ctrl+V de imagem entra na versão com nome legível (via ${pasteMode})`, pastedName)
       const pastedReady = await waitFor(async () => (await page.locator('[data-entry="ready"]').count()) === 3, 10000)
       check('U3', !!pastedReady, 'a imagem colada sobe e fica pronta')
       // Pela área de transferência de verdade o navegador RECODIFICA o PNG (os bytes

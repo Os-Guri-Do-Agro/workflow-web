@@ -208,3 +208,4 @@ Todas as rotas ficam em `/marketing/groups/:groupId/...`, atrás do `MarketingAc
 | Data | Versão | O quê |
 |---|---|---|
 | 2026-11-06 | 0.1 | Spec da rodada a partir do uso real do Nicolas em produção; schema e migration congelados antes dos agentes |
+| 2026-11-06 | 0.2 | Auditoria do front (30 achados): repetido vira pergunta da fila (não trava ao sair da tela), cancelar e tentar de novo sem duplicar, falha do item do Acervo vira erro com retomada só do passo, subpasta base fixa, logout limpa a fila, zip por download nativo (`POST library/zip/ticket` + `GET library/zip/:token`), "Mandar para o acervo" só para a marca do arquivo ou a Geral, `GET utm/:id`. Roteiro `marketing-r1-audit-e2e.cjs` |

@@ -365,8 +365,10 @@ async function uiPart() {
     await page.goto(`${WEB}/marketing/configuracoes`, { waitUntil: 'networkidle' })
     await page.getByRole('button', { name: 'Convidar' }).click()
     await page.getByRole('tab', { name: 'Por e-mail' }).click()
-    await page.getByLabel('E-mail').fill('freela3@nevo.test')
-    await page.getByLabel('Nome').fill('Duda Freela')
+    // exact: a aba "Por e-mail" agora é um tabpanel com nome (a11y), e o rótulo
+    // "E-mail" casava com ele também.
+    await page.getByLabel('E-mail', { exact: true }).fill('freela3@nevo.test')
+    await page.getByLabel('Nome', { exact: true }).fill('Duda Freela')
     await page.locator('[role=dialog] button', { hasText: 'Convidar' }).click()
     await page.waitForTimeout(800)
     // O link fica num campo só leitura (innerText não pega valor de input).

@@ -177,6 +177,9 @@ export function enqueueLibraryUploads(
     onBatchSettled: (b) => {
       const s = summarize(b)
       opts.onSettled?.(s)
+      // Só cancelado ou pulado: foi a própria pessoa, e a bandeja já mostra (o
+      // aviso cobriria o "Tentar de novo" dela).
+      if (!s.done && !s.failed) return
       const text = summaryText(s, label)
       if (!text) return
       if (s.failed) toast.warning(text)

@@ -87,7 +87,7 @@ Tela: `views/MarketingSettingsView.vue` (+ `settings/`): Configurações do Dono
 - `marketing-errors.ts`: `rethrowMarketingSchema` (503 em PT-BR sem a migration).
 
 **Front (`work-flow/src/`):**
-- `service/marketing/marketing-core.ts`: tipos, `mkt(groupId, '/rota')`, `uploadMarketingFile(groupId, file, requestTicket, onProgress)` (sha256 e duração no navegador, PUT direto, confirm).
+- `service/marketing/marketing-core.ts`: tipos, `mkt(groupId, '/rota')`, ticket, confirm e abort do upload. Desde a R1 o envio em si é da fila global `features/marketing/uploads/upload-queue.ts` (o `uploadMarketingFile` antigo saiu).
 - `features/marketing/composables/useMarketing.ts`: `useMarketing()` (grupo ativo, papel, `can()`, marcas, `brandFilter` em `?marca=`, `permissions`, `settings`), `useMarketingMembers`, `marketingKeys`. Chave de query SEMPRE `['marketing', groupId, '<área>', ...]`: o socket invalida o grupo inteiro.
 - `features/marketing/marketing-labels.ts`: rótulos de tipo, rede e status, `cardStatusLabel`, `CARD_STATUS_TONE`, `statusesFor`, `brandTone`, `toneStyle`, `formatCents`, `parseMoneyToCents`, `formatBytes`.
 - `features/marketing/marketing.css`: utilitários `mk-` (botão, campo, chip com `data-tone`, painel, tabela densa), importado pelo layout.
