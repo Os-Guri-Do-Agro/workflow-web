@@ -435,7 +435,7 @@ function ddmm(ymd: string) {
               class="ap__tile-x ap__tile-x--lib"
               :aria-label="`Mandar ${p.name} para o acervo`"
               title="Mandar para o acervo"
-              data-action="send-to-library"
+              data-action="open-send-to-library"
               @click="sendPhoto = { id: p.id, name: p.name }"
             >
               <FolderInput :size="13" aria-hidden="true" />

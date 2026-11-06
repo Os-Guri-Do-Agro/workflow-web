@@ -318,7 +318,7 @@ const dims = computed(() => {
           v-if="canSendToLibrary"
           type="button"
           class="mk-btn mk-btn--ghost"
-          data-action="send-to-library"
+          data-action="open-send-to-library"
           @click="sendOpen = true"
         >
           <FolderInput :size="14" aria-hidden="true" /> Mandar para o acervo
