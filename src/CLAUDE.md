@@ -225,7 +225,41 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | Configurações   | [`features/settings/SettingsView.vue`](./features/settings/SettingsView.vue)                   | `/settings`        | Seu perfil (foto, `#perfil`), tema, acento, densidade, shell variant, cronômetro, notificações, integrações, atalhos |
 | Sequência (Nevo) | [`features/dashboard/components/StreakHero.vue`](./features/dashboard/components/StreakHero.vue) | `/#sequencia` (home) + chip nos 3 shells | Sequência diária, missões, níveis, marcos, ranking de pontos da equipe e vitrine 3D. Ver a seção **Nevo (sequência diária)**. Spec: [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md) |
 
+| **Marketing** | [`features/marketing/MarketingLayout.vue`](./features/marketing/MarketingLayout.vue) | `/marketing/*` | Ala de um GRUPO de empresas (cada empresa ligada é uma marca). Acesso pelo papel no grupo, não pela empresa ativa. Ver a seção **Ala Marketing** abaixo. Épico: [ala-marketing.md](../docs/specs/epicos/ala-marketing.md) |
+
 ★ = redesign completo entregue pelo design-system-evolution spec.
+
+### Ala Marketing (nov/2026)
+
+Specs: [00-fundacao.md](../docs/specs/2026/q4/q4-2/ala-marketing/00-fundacao.md) (leia as "Regras para quem implementa uma fase"), [m1](../docs/specs/2026/q4/q4-2/ala-marketing/m1-aprovacao-calendario.md), [m2](../docs/specs/2026/q4/q4-2/ala-marketing/m2-rastreio-estrategia.md), [m3](../docs/specs/2026/q4/q4-2/ala-marketing/m3-dinheiro-eventos.md).
+
+```
+features/marketing/
+  MarketingLayout.vue        moldura: grupo, filtro de marca (?marca=), abas das seções; tempo real
+  marketing-nav.ts           FONTE ÚNICA das seções (abas, breadcrumb); financeiro some sem permissions.seeFinance
+  routes.ts                  rotas filhas (não renomeie: avisos do sino apontam para elas)
+  marketing-labels.ts        tipo, rede e status do card, cor da marca, dinheiro em centavos
+  marketing-calendar.ts      contrato das fontes do calendário (card, campanha, ativação)
+  marketing.css              utilitários mk- (botão, campo, chip com data-tone, painel, tabela densa)
+  composables/useMarketing.ts  grupo ativo, papel, can(), marcas, permissões, membros, socket
+  approvals/ calendar/ links/ home/            M1 (aprovação com versões e pinos, calendário, cofre, painel)
+  utm/ print/ ideas/ campaigns/                M2 (UTM sobre o encurtador, QR, gráfica, ideias, campanhas)
+  finance/ activations/ partners/ quotes/ events/  M3 (financeiro, ativações, parceiros, orçamentos)
+  settings/                  Configurações (Dono e Admin) e "Criar grupo"
+service/marketing/           um cliente por área; mkt(groupId, '/rota') monta /marketing/g/<g>/...
+core/components/shells/MarketingOnlyShell.vue  moldura de quem só tem a ala (sem empresa)
+```
+
+Regras que não são óbvias:
+
+1. **O papel é do grupo** (`OWNER` Dono > `ADMIN` > `EDITOR` > `VIEWER`), lido de `GET /marketing/me`; a ala NÃO usa `x-company-id`. Conta sem empresa e com grupo (freelancer, diretoria) cai na `MarketingOnlyShell`, e o `AppShell` manda qualquer rota fora de `/marketing` e `/settings` para `/marketing` (só depois de a rota resolver: `route.matched`, senão engole o link do aviso).
+2. **Chave do Vue Query sempre `['marketing', groupId, '<área>', ...]`.** O socket `marketing:changed` invalida o grupo inteiro; chave fora disso não atualiza em tempo real nem na troca de grupo. `['marketing', 'me']` é a exceção.
+3. **Arquivo sobe direto para o storage** com `uploadMarketingFile` (sha256 e duração no navegador, PUT na URL assinada, confirm da fundação). Arte CMYK ganha prévia RGB à parte (`previewUrl`); o original nunca muda.
+4. **Dinheiro só para quem vê o financeiro**: a API devolve `null` (custo de ativação, gasto de campanha, valor de orçamento); a tela trata `null` como "sem valor", não como zero.
+5. **Calendário:** fontes em `calendar/calendar-sources.ts`; item com `end` vira faixa (fim inclusivo), `draggable: false` não arrasta, dias em Brasília.
+6. **Avisos do sino** (`notify.link` na API) hoje saem de card (`/marketing/cards/<id>`, inclusive os da Gráfica e o aviso diário de prazo) e de campanha (`/marketing/campanhas?campanha=<id>`). Ativação e parceiro abrem o painel por `?ativacao=<id>` e `?parceiro=<id>`, mas não mandam aviso. Todo link de aviso da ala leva `?grupo=<groupId>` (a API acrescenta em `MarketingLogService.notify`); o `MarketingLayout` seleciona o grupo e tira o parâmetro. Clicar num aviso `MARKETING_*` no sino NÃO troca a empresa ativa (a marca do aviso pode ser uma empresa da qual a pessoa não é membro).
+
+Provas no harness (`scripts/harness/`): `marketing-shot.cjs`, `marketing-settings-e2e.cjs`, `marketing-approvals-e2e.cjs`, `marketing-calendar-e2e.cjs`, `marketing-utm-e2e.cjs`, `marketing-print-e2e.cjs`, `marketing-strategy-e2e.cjs`, `marketing-finance-e2e.cjs`, `marketing-events-e2e.cjs`. Banco por roteiro: `bash marketing-db.sh <banco>`; API: `bash api-run.sh ../../../workflow-api <porta> <banco>`; storage falso: `node fake-storage.mjs`.
 
 ### Roadmap (nov/2026)
 

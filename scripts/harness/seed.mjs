@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto'
 const require = createRequire(new URL('../../../workflow-api/package.json', import.meta.url))
 const bcrypt = require('bcrypt')
 
-const db = new pg.Client({ connectionString: 'postgresql://postgres:postgres@127.0.0.1:55432/wf' })
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${process.env.HARNESS_DB ?? 'wf'}` })
 await db.connect()
 const id = () => 'c' + randomUUID().replace(/-/g, '').slice(0, 24)
 const q = (sql, params) => db.query(sql, params)

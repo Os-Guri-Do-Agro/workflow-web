@@ -6,8 +6,9 @@ import { readFileSync } from 'node:fs'
 
 const require = createRequire(new URL('../../../workflow-api/package.json', import.meta.url))
 const bcrypt = require('bcrypt')
-const seed = JSON.parse(readFileSync(new URL('./seed-out.json', import.meta.url)))
-const db = new pg.Client({ connectionString: 'postgresql://postgres:postgres@127.0.0.1:55432/wf' })
+// SEED_OUT aponta o seed-out do banco certo (marketing-db.sh passa o dele).
+const seed = JSON.parse(readFileSync(process.env.SEED_OUT ?? new URL('./seed-out.json', import.meta.url)))
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${process.env.HARNESS_DB ?? 'wf'}` })
 await db.connect()
 const id = () => 'c' + randomUUID().replace(/-/g, '').slice(0, 24)
 const pass = await bcrypt.hash('nevo1234', 10)

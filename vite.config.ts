@@ -7,6 +7,10 @@ import vuetify from 'vite-plugin-vuetify'
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
+  // Harness: dois `vite` no mesmo projeto (agentes em paralelo) não podem
+  // dividir o cache de dependências pré-empacotadas, senão um apaga o do outro
+  // no meio da otimização. Sem a env, é o padrão do Vite.
+  ...(process.env.VITE_CACHE_DIR ? { cacheDir: process.env.VITE_CACHE_DIR } : {}),
   plugins: [
     vue(),
     // Só em `vite dev`. No build de produção o plugin não faz sentido e ainda

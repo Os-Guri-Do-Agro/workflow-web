@@ -51,6 +51,8 @@ Senha de todo mundo: `nevo1234`. Nicolas é ADMIN nas quatro empresas; os outros
 - `shell-hysteresis.cjs`: a moldura de celular só troca na navegação, nunca no meio da página.
 - `qr-csp-check.cjs`: QR com logo desenha com a CSP aplicada (rode com o `csp-server.mjs` no ar).
 - `celular-e2e.cjs`: board e notas no celular de ponta a ponta com toque de verdade (CDP `Input.dispatchTouchEvent`): abas, deslizar troca de coluna sem mover card, segurar abre "Mover para" e grava, Revisados recusado com a frase do menu, reordenar arrastando, `/board` e agrupado; barra de formatação acima do teclado (shim do `visualViewport`), tab bar saindo com o foco, topo da nota numa linha em todo estado; zero rolagem lateral em 320/375/414; nenhuma resposta 401 sem sessão. Devolve status, posição e `updatedAt` das tarefas do mês e apaga a nota que cria. `ONLY=board|desktop|notas|overflow|sessao` roda uma parte; `SHOTS=<pasta>` guarda capturas.
+- `fake-storage.mjs [porta]` (padrão 54329): Supabase Storage falso em Node puro (buckets, upload direto por URL assinada, URL assinada de leitura com Range, download autenticado, remoção, URL pública, CORS aberto). O `api.sh` já aponta `SUPABASE_BUCKET_URL` para ele (troque com `HARNESS_STORAGE_URL`), então suba o fake antes da API para uploads e anexos funcionarem. Os arquivos ficam em `fake-storage-data/` (ignorada pelo git); o bucket público `workflow-attachments` nasce junto, os demais a API cria.
+- `fake-storage-check.mjs [porta] [tamanhoKB]`: com o fake no ar, exercita-o com o `@supabase/supabase-js` real da API (use `5120` para ~5 MB).
 - `prints/` (ignorada pelo git): capturas de antes e depois da rodada de nov/2026.
 
 ## Pegadinhas

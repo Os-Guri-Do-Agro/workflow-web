@@ -34,8 +34,24 @@ const INBOX_LABEL: Record<string, string> = {
   MEETING: 'Reunião',
   BUG_REPORT_READY: 'Bug report',
   BOARD_SHARED: 'Board compartilhado',
+  // Ala Marketing: `MARKETING_<kind>` (kinds do `notify` em workflow-api/src/marketing).
+  MARKETING_APPROVAL_REQUESTED: 'Pedido de aprovação',
+  MARKETING_APPROVED: 'Card aprovado',
+  MARKETING_CHANGES_REQUESTED: 'Ajuste pedido',
+  MARKETING_NEW_VERSION: 'Nova versão',
+  MARKETING_MENTIONED: 'Menção',
+  MARKETING_CARD_ASSIGNED: 'Card para você',
+  MARKETING_DEADLINE_TOMORROW: 'Prazo amanhã',
+  MARKETING_PUBLISH_TOMORROW: 'Publicação amanhã',
+  MARKETING_CAMPAIGN_APPROVAL_REQUESTED: 'Campanha para aprovar',
+  MARKETING_CAMPAIGN_APPROVED: 'Campanha aprovada',
+  MARKETING_CAMPAIGN_REOPENED: 'Campanha reaberta',
+  MARKETING_MEMBER_ADDED: 'Ala Marketing',
+  MARKETING_PROOF_RECEIVED: 'Prova da gráfica',
 }
 
 export function inboxTypeLabel(type: string | null | undefined): string {
-  return INBOX_LABEL[(type ?? '').toUpperCase()] ?? 'Aviso'
+  const key = (type ?? '').toUpperCase()
+  // Tipo novo da ala que ainda não tem rótulo: ao menos diz de onde veio.
+  return INBOX_LABEL[key] ?? (key.startsWith('MARKETING_') ? 'Marketing' : 'Aviso')
 }

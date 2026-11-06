@@ -18,6 +18,7 @@ import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
 import StreakChip from './shared/StreakChip.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { marketingSectionTitle } from '@/features/marketing/marketing-nav'
 
 defineEmits<{
   'open-command-palette': []
@@ -105,6 +106,11 @@ function plainCrumbs(path: string): string[] {
   if (path.startsWith('/notes/')) return ['Notas', 'Editor']
   if (path.startsWith('/bug-reports/')) return ['Bug reports', 'Detalhes']
   if (path.startsWith('/repos/')) return ['Repositórios', 'Detalhes']
+  // Ala Marketing: o rótulo da área vem da lista de seções da própria ala.
+  if (path === '/marketing' || path.startsWith('/marketing/')) {
+    const area = marketingSectionTitle(path)
+    return area ? ['Marketing', area] : ['Marketing']
+  }
   // Nome do produto (o mesmo do título da aba e do BrandMark), para rota sem
   // rótulo próprio, como a página de "não encontrado".
   return ['Nevo']

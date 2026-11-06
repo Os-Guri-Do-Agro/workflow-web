@@ -23,6 +23,8 @@ import XpWindowChrome from './shared/XpWindowChrome.vue'
 import XpDesktop from './shared/XpDesktop.vue'
 import CompanyCreateOverlay from '@/features/companies/components/CompanyCreateOverlay.vue'
 import NoCompanyState from '@/features/companies/components/NoCompanyState.vue'
+import MarketingOnlyShell from './MarketingOnlyShell.vue'
+import { useMarketingMe } from '@/features/marketing/composables/useMarketing'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useXpSounds } from '@/composables/useXpSounds'
@@ -252,6 +254,32 @@ const hasNoCompany = computed(
   () => !bare.value && companiesLoadOk.value && workspace.companies.length === 0,
 )
 
+// Ala Marketing (spec ala-marketing/00-fundacao.md): conta SEM empresa mas com
+// papel num grupo (freelancer, diretoria) entra só na ala, com moldura própria.
+// Enquanto o /marketing/me carrega, não desenha nem o "crie sua empresa" (seria
+// um piscar errado para o freelancer).
+const marketingMe = useMarketingMe()
+const marketingPending = computed(() => hasNoCompany.value && marketingMe.isLoading.value)
+const marketingOnly = computed(
+  () =>
+    hasNoCompany.value &&
+    !!marketingMe.data.value?.available &&
+    (marketingMe.data.value?.groups.length ?? 0) > 0,
+)
+const MARKETING_ONLY_PATHS = ['/marketing', '/settings']
+// `route.matched` vazio = ainda é o START_LOCATION (path '/'), antes da 1ª
+// navegação resolver. Redirecionar nesse instante jogava fora o link profundo
+// (/marketing/cards/<id> aberto por aviso ou colado) de quem só tem a ala.
+watch(
+  [marketingOnly, () => route.path, () => route.matched.length],
+  ([only, path, matched]) => {
+    if (only && matched > 0 && !MARKETING_ONLY_PATHS.some((p) => path === p || path.startsWith(`${p}/`))) {
+      void router.replace('/marketing')
+    }
+  },
+  { immediate: true },
+)
+
 // Onboarding abre sozinho UMA vez, quando o usuário entra numa rota logada
 // (sai do login/bare). maybeAutoOpen é idempotente (guarda em localStorage).
 watch(
@@ -270,6 +298,10 @@ const openPalette = () => paletteRef.value?.open()
   <div v-if="bare" class="app-shell-bare">
     <slot />
   </div>
+  <div v-else-if="marketingPending" class="app-shell-bare" aria-busy="true" />
+  <MarketingOnlyShell v-else-if="marketingOnly">
+    <slot />
+  </MarketingOnlyShell>
   <template v-else-if="hasNoCompany">
     <NoCompanyState />
     <CompanyCreateOverlay />

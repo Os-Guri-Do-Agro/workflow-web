@@ -21,12 +21,25 @@ const check = (name, ok, extra = '') => results.push(`${ok ? 'OK   ' : 'FALHA'} 
 const pad = (n) => String(n).padStart(2, '0')
 const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
+// Token do cache só vale se a API ainda conhece a pessoa: o banco do harness é
+// recriado com ids novos e o token antigo (ainda no prazo) não é de ninguém.
+async function stillValid(token, email) {
+  try {
+    const r = await fetch(API + '/user/me', { headers: { authorization: 'Bearer ' + token } })
+    if (!r.ok) return false
+    const me = await r.json()
+    return me?.email === email
+  } catch {
+    return false
+  }
+}
+
 // Login com cache: o limite é 10/min por IP e o harness roda vários roteiros.
 async function tokenFor(email) {
   const file = path.join(os.tmpdir(), 'nevo-harness-roadmap-tokens.json')
   const cache = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {}
   const hit = cache[email]
-  if (hit && hit.exp > Date.now() && hit.token) return hit.token
+  if (hit && hit.exp > Date.now() && hit.token && (await stillValid(hit.token, email))) return hit.token
   const r = await (await fetch(API + '/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password: 'nevo1234' }) })).json()
   if (!r.accessToken) throw new Error('login falhou: ' + JSON.stringify(r))
   cache[email] = { token: r.accessToken, exp: Date.now() + 6 * 3600e3 }

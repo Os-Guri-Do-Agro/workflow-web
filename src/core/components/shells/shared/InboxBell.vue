@@ -43,7 +43,10 @@ async function handleOpenNotification(notification: AppNotification) {
   close()
   if (!notification.link) return
   // Notificação de outra empresa: ativa a empresa certa antes de navegar.
-  if (notification.companyId && notification.companyId !== workspaceStore.activeCompanyId) {
+  // Aviso da ala Marketing não: a ala é do GRUPO (o grupo vem no `?grupo=` do
+  // link) e trocar a empresa ativa do topo aqui só atrapalharia quem volta.
+  const isMarketing = notification.type?.startsWith('MARKETING_') ?? false
+  if (!isMarketing && notification.companyId && notification.companyId !== workspaceStore.activeCompanyId) {
     workspaceStore.setActiveCompany(notification.companyId)
   }
   try {

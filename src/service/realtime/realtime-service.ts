@@ -120,8 +120,22 @@ export interface AssistantErrorPayload {
   message: string
 }
 
+/**
+ * Algo mudou na ala Marketing (card, link, campanha...). A API manda para a sala
+ * `user:<id>` de cada membro do grupo; quem escuta invalida as queries
+ * `['marketing', groupId, ...]` (useMarketingRealtime).
+ */
+export interface MarketingChangedPayload {
+  groupId: string
+  entityType: string
+  entityId: string
+  verb: string
+  actorId: string
+}
+
 export interface RealtimeHandlers {
   notificationNew?: (notification: AppNotification) => void
+  marketingChanged?: (payload: MarketingChangedPayload) => void
   /** `notification:read` e `notification:cleared` (outras abas do mesmo usuário). */
   notificationSync?: (payload: NotificationSyncPayload) => void
   feedNew?: (event: FeedEventPayload) => void
@@ -191,6 +205,7 @@ function bindEvents(target: Socket) {
   fanout<AssistantToolPayload>(target, 'assistant:tool', (h) => h.assistantTool)
   fanout<AssistantDonePayload>(target, 'assistant:done', (h) => h.assistantDone)
   fanout<AssistantErrorPayload>(target, 'assistant:error', (h) => h.assistantError)
+  fanout<MarketingChangedPayload>(target, 'marketing:changed', (h) => h.marketingChanged)
 
   target.on('connect', () => {
     const isReconnect = hasConnectedOnce

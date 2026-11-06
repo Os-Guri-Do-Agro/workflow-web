@@ -1,0 +1,304 @@
+/*
+ * Utilitários da ala Marketing (prefixo `mk-`), importados UMA vez pelo
+ * MarketingLayout. Toda tela da ala usa estes em vez de redeclarar botão e
+ * campo (no resto do app cada view declara os seus; aqui são 6 pessoas
+ * construindo ao mesmo tempo e a ala tem que parecer uma coisa só).
+ *
+ * Regras do design system que valem aqui: só tokens (nunca hex), denso estilo
+ * Jira/Azure, sem rótulo em caixa alta espaçada, alvo de toque de 44px no
+ * celular (<= 640px), foco visível.
+ */
+
+.mk-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.mk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mk-toolbar__spacer {
+  flex: 1;
+}
+
+.mk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.mk-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.mk-btn:focus-visible,
+.mk-icon-btn:focus-visible,
+.mk-chip:focus-visible,
+.mk-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mk-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mk-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.mk-btn--primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  filter: brightness(0.95);
+}
+
+.mk-btn--danger {
+  color: var(--err);
+}
+
+.mk-btn--success {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--accent-fg);
+}
+
+.mk-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.mk-btn--ghost:hover {
+  background: var(--surface-2);
+  border-color: transparent;
+}
+
+.mk-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.mk-icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.mk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mk-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.mk-input,
+.mk-textarea,
+.mk-select {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.mk-textarea {
+  min-height: 80px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.mk-input:focus,
+.mk-textarea:focus,
+.mk-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.mk-hint {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.mk-error {
+  font-size: 12px;
+  color: var(--err);
+}
+
+/*
+ * Falha ao carregar uma lista (rede, 500): frase + "Tentar de novo". Nunca
+ * mostrar "nenhum" quando a lista nem chegou.
+ * <div class="mk-load-error" role="alert"><p>...</p><button class="mk-btn">Tentar de novo</button></div>
+ */
+.mk-load-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--err) 30%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--err) 6%, var(--surface));
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.mk-load-error p {
+  flex: 1 1 180px;
+  margin: 0;
+}
+
+/* Chip de status/marca: fundo suave da cor da tag, texto na cor da tag. */
+.mk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mk-chip[data-tone] {
+  color: var(--mk-tone);
+  background: color-mix(in srgb, var(--mk-tone) 14%, transparent);
+}
+
+.mk-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mk-tone, var(--text-3));
+}
+
+/* Painel/caixa de conteúdo */
+.mk-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.mk-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mk-panel__body {
+  padding: 12px 14px;
+}
+
+/* Tabela densa (lista com filtros) */
+.mk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mk-table th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mk-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.mk-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.mk-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mk-late {
+  color: var(--due-late);
+  font-weight: 600;
+}
+
+.mk-soon {
+  color: var(--due-soon);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .mk-btn,
+  .mk-input,
+  .mk-select {
+    min-height: 44px;
+  }
+
+  .mk-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+}

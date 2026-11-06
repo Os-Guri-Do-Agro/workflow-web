@@ -32,11 +32,24 @@ function check(name, ok, extra = '') {
   console.log(line)
 }
 
+// Token do cache só vale se a API ainda conhece a pessoa: o banco do harness é
+// recriado com ids novos e o token antigo (ainda no prazo) não é de ninguém.
+async function stillValid(token, email) {
+  try {
+    const r = await fetch(API + '/user/me', { headers: { authorization: 'Bearer ' + token } })
+    if (!r.ok) return false
+    const me = await r.json()
+    return me?.email === email
+  } catch {
+    return false
+  }
+}
+
 // ── Login com cache (o harness limita 10 logins por minuto por IP) ──────────
 const CACHE = path.join(os.tmpdir(), 'nevo-harness-tokens.json')
 async function login(email) {
   const cache = fs.existsSync(CACHE) ? JSON.parse(fs.readFileSync(CACHE, 'utf8')) : {}
-  if (cache[email] && cache[email].exp > Date.now()) return cache[email].accessToken
+  if (cache[email] && cache[email].exp > Date.now() && (await stillValid(cache[email].accessToken, email))) return cache[email].accessToken
   const r = await fetch(API + '/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

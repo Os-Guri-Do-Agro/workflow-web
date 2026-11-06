@@ -21,6 +21,7 @@ import {
   BookOpen,
   QrCode,
   ScanText,
+  Megaphone,
   type LucideIcon,
   Plug,
 } from 'lucide-vue-next'
@@ -30,6 +31,7 @@ import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 import { isNavHidden } from '@/config/nav-visibility'
+import { useMarketingMe } from '@/features/marketing/composables/useMarketing'
 
 const { density } = useUiPreferences()
 // v-list aceita 'compact' | 'comfortable' | 'default'. Mapeamos direto.
@@ -51,6 +53,12 @@ type NavSection = { name: NavSectionName; items: NavItem[] }
 const { quarters } = useNavQuarters()
 const workspace = useWorkspaceStore()
 const isAdminAnywhere = useIsAdminAnywhere()
+// Ala Marketing: o item só existe para quem é membro de algum grupo (papel do
+// GRUPO, não da empresa ativa). Sem a ala na API, `available` vem false.
+const marketingMe = useMarketingMe()
+const hasMarketing = computed(
+  () => !!marketingMe.data.value?.available && (marketingMe.data.value?.groups.length ?? 0) > 0,
+)
 
 const ROLE_RANK: Record<string, number> = {
   WORKER: 0,
@@ -77,6 +85,9 @@ const mainItems = computed<NavItem[]>(() => (<NavItem[]>[
     ? [{ title: 'Canvas', icon: Paintbrush, to: '/boards', section: 'Trabalho' } as NavItem]
     : []),
   { title: 'Roadmap', icon: Milestone, to: '/roadmap', section: 'Trabalho' },
+  ...(hasMarketing.value
+    ? [{ title: 'Marketing', icon: Megaphone, to: '/marketing', section: 'Trabalho' } as NavItem]
+    : []),
 ]).filter((i) => !isNavHidden(i.to)))
 
 /**

@@ -5,6 +5,7 @@ import 'nprogress/nprogress.css'
 import { clearSession } from '@/service/api'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 import { syncSession } from '@/composables/useSession'
+import { marketingRoutes } from '@/features/marketing/routes'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
 
@@ -221,6 +222,9 @@ const router = createRouter({
     { path: '/activity/:id', name: 'activity-resolver', component: () => import('@/features/tasks/ActivityResolverView.vue') },
     { path: '/bugs/:id', redirect: (to) => `/bug-reports/${to.params.id}` },
     // Rota inexistente (ex.: /tickets removido) → 404 amigável.
+    // Ala Marketing (o acesso é pelo papel no GRUPO; o MarketingLayout mostra
+    // "sem acesso" para quem não é da ala).
+    ...marketingRoutes,
     { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/features/errors/NotFoundView.vue') },
   ],
 })

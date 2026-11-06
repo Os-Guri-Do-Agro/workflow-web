@@ -1,0 +1,15 @@
+{
+ "users": {
+  "nicolas": "c7cdf4f0497f24fcda17c4046",
+  "leticia": "cdabe3786a2db40ee9b9830be",
+  "marcel": "c70030e2c74a54e2f83bacb39",
+  "luis": "c77c2453449004bfc90c021c0",
+  "ana": "c4f90cd65dfcf4c6087032226"
+ },
+ "companies": {
+  "pet": "c140ceec8bd3e4680a7ddb19a",
+  "sentia": "c41915a3f60fb44f2b4b9e72d",
+  "emmitec": "c4149629742794e7680946182",
+  "nevo": "c20a0182b6942410096d95e20"
+ }
+}
