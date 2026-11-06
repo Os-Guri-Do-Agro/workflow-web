@@ -290,6 +290,78 @@
   font-weight: 600;
 }
 
+/*
+ * Menu "Mover para" do card do board (MarketingMoveMenu). Vai para o body
+ * (Portal), então mora aqui e não no scoped. Base: .dd-menu/.dd-item
+ * (styles/menus.css). Opção desabilitada mostra o motivo embaixo do nome.
+ */
+.mk-move-menu {
+  min-width: 248px;
+  max-width: 300px;
+}
+
+.mk-move-menu__label {
+  padding: 4px 10px 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mk-move-menu__item {
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 10px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.mk-move-menu__item > .mk-dot {
+  margin-top: 5px;
+}
+
+.mk-move-menu__item > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.mk-move-menu__text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mk-move-menu__name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.mk-move-menu__why {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.mk-move-menu__item[data-disabled] {
+  cursor: default;
+}
+
+.mk-move-menu__item[data-disabled] .mk-move-menu__name {
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.mk-move-menu__item.is-current .mk-move-menu__name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mk-move-menu__check {
+  color: var(--accent-ink);
+}
+
 @media (max-width: 640px) {
   .mk-btn,
   .mk-input,

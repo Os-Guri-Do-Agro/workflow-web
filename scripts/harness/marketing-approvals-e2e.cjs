@@ -521,10 +521,11 @@ const headStatus = (page) => page.locator('[data-testid="head-status"]').innerTe
     await goto(mPage, '/marketing/aprovacoes')
     const src = mPage.locator(`[data-col="AWAITING_APPROVAL"] .mkc[data-id="${mainCardId}"]`)
     await src.waitFor({ timeout: 10000 })
-    // As 7 colunas não cabem em 1440: traz a de destino para a vista antes (quem
-    // arrasta com o mouse rola o board do mesmo jeito).
+    // Aprovado está vazio, então é uma faixa recolhida de 44px (sem `.mkb__cards`):
+    // o alvo de soltura é a coluna inteira (o board cabe na tela desde nov/2026,
+    // ver marketing-board-fit-e2e.cjs).
     await mPage.locator('[data-col="APPROVED"]').scrollIntoViewIfNeeded()
-    await src.dragTo(mPage.locator('[data-col="APPROVED"] .mkb__cards'))
+    await src.dragTo(mPage.locator('[data-col="APPROVED"]'))
     const refused = await waitFor(async () => (await toasts(mPage)).find((t) => t.includes('botão Aprovar')), 6000)
     await sleep(600)
     const stillAwaiting = await mPage.locator(`[data-col="AWAITING_APPROVAL"] .mkc[data-id="${mainCardId}"]`).count()

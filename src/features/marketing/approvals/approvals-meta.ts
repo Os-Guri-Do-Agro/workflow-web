@@ -223,10 +223,13 @@ function moveReason(rule: MoveRule, card: MoveCardInfo, to: CardStatus, role: Ma
       const back = order.indexOf(to) < at
       if (back && (to === 'IDEA' || to === 'IN_PRODUCTION')) return 'Só Admin reabre o card.'
       if (back && to === 'AWAITING_APPROVAL') return 'Volta para aprovação ao subir uma versão nova.'
+      if (back) return 'Esse passo não existe no fluxo do card.'
       // O próximo passo do fluxo (mesmo que ele próprio ainda peça algo, como a data).
       const steps = STEPS[card.kind === 'PRINT' ? 'print' : 'digital'][card.status] ?? []
       const next = order.find((s) => order.indexOf(s) > at && steps.includes(s))
-      if (!back && next) return `Um passo por vez: antes vem ${cardStatusLabel(next, card.kind)}.`
+      if (next) return `Antes passa por ${cardStatusLabel(next, card.kind)}.`
+      if (card.status === 'CHANGES_REQUESTED') return 'Antes volta para Aguardando aprovação.'
+      if (card.status === 'AWAITING_APPROVAL') return 'Antes precisa ser aprovado.'
       return 'Esse passo não existe no fluxo do card.'
     }
   }

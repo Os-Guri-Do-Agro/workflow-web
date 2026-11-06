@@ -1681,6 +1681,7 @@ const skeletonLanes = [
             type="button"
             class="views__btn hit"
             :aria-pressed="!groupedByPerson"
+            title="Sem agrupar"
             @click="filters.setGroupBy('none')"
           >
             Nenhum
@@ -1689,6 +1690,7 @@ const skeletonLanes = [
             type="button"
             class="views__btn hit"
             :aria-pressed="groupedByPerson"
+            title="Agrupar por pessoa"
             @click="filters.setGroupBy('person')"
           >
             Pessoa
@@ -1713,7 +1715,7 @@ const skeletonLanes = [
             class="views__btn hit"
             data-order="due"
             :aria-pressed="dueOrder"
-            title="Atrasadas e prazos mais próximos no topo, sem data no fim"
+            title="Ordem de entrega: atrasadas e prazos mais próximos no topo, sem data no fim"
             @click="filters.setOrder('due')"
           >
             Entrega
@@ -1723,7 +1725,7 @@ const skeletonLanes = [
             class="views__btn hit"
             data-order="manual"
             :aria-pressed="!dueOrder"
-            title="A ordem arrumada arrastando os cards"
+            title="Ordem manual: a que o time arrumou arrastando os cards"
             @click="filters.setOrder('manual')"
           >
             Manual
@@ -2117,6 +2119,10 @@ const skeletonLanes = [
 
 /* ─── Cabeçalho ─── */
 .board-head {
+  /* Container: o "Agrupar" e a "Ordem" se compactam pela largura da PRÓPRIA
+     faixa (a sidebar muda: 248px no Command, 296px no Focus), não da tela.
+     Só os filhos mudam (container query não estiliza o próprio container). */
+  container: board-head / inline-size;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2225,6 +2231,39 @@ const skeletonLanes = [
   font-size: 13px;
   color: var(--text-3);
   white-space: nowrap;
+}
+
+/* Faixa mais estreita que o cabeçalho inteiro (~1043px com os dois rótulos):
+   os rótulos "Agrupar" e "Ordem" saem e os segmentados apertam 2px por lado,
+   para o cabeçalho continuar numa linha (o 1º card nos mesmos 124px) em 1280
+   com qualquer sidebar. O grupo segue com o nome no `aria-label` e cada botão
+   diz o que faz no `title`. Abaixo disso o cabeçalho quebra como já quebrava. */
+@container board-head (max-width: 1060px) {
+  .group-by__label {
+    display: none;
+  }
+
+  .group-by .views__btn {
+    padding: 0 8px;
+  }
+}
+
+/* Mais estreita ainda (a faixa em que o cabeçalho sem a "Ordem" ainda cabia):
+   o ícone dos atalhos sai (a tecla ? continua abrindo a ajuda, e no celular
+   ele já não aparece) e os segmentados apertam mais um pouco. Sem isto, só o
+   "Nova tarefa" descia para uma segunda linha. */
+@container board-head (max-width: 950px) {
+  .kbd-btn {
+    display: none;
+  }
+
+  .group-by .views__btn {
+    padding: 0 6px;
+  }
+
+  .board-head > .views .views__btn {
+    padding: 0 8px;
+  }
 }
 
 .sr-only {
