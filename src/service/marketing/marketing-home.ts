@@ -33,6 +33,14 @@ export interface MarketingHome {
   dueSoon: CalendarCard[]
   week: CalendarCard[]
   countsByStatus: Partial<Record<CardStatus, number>>
+  /**
+   * A mesma contagem separada por trilha: `print` = peça impressa (Gráfica),
+   * `digital` = o resto. Ausente em API antiga (aí o painel conta tudo junto).
+   */
+  countsByTrack?: {
+    digital: Partial<Record<CardStatus, number>>
+    print: Partial<Record<CardStatus, number>>
+  }
   recent: HomeActivity[]
 }
 

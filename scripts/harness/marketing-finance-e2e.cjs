@@ -12,6 +12,11 @@
 // Conferências independentes do código da API: o .xlsx é aberto pelo openpyxl
 // (Python) e o zip das notas pelo System.IO.Compression do .NET, além do leitor
 // de zip deste arquivo (CRC pelo zlib.crc32 do Node).
+//
+// R1 (D12), teto: 5.001 lançamentos num mês (inseridos direto no banco) dão
+// 400 com a frase no Excel e no PDF do mês e no Excel do ano; com 5.000 o
+// arquivo sai (e o openpyxl conta as linhas). O resumo, o ano e os totais da
+// lista somam no banco e batem com o que foi inserido. ONLY=teto roda só isso.
 const { chromium } = require('playwright-core')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -623,6 +628,116 @@ async function apiPart() {
   check(r.status === 200, 'religada a chave, a Diretoria volta a ver')
 }
 
+// ── R1 (D12): teto do export e resumo somado no banco ───────────────────────
+const TETO_MONTH = '2028-07'
+const TETO_CATS = ['Tráfego pago', 'Gráfica', 'Brindes']
+async function tetoPart() {
+  section('R1: teto de 5.000 lançamentos por arquivo e resumo somado no banco')
+  await db.query(`DELETE FROM "MarketingExpense" WHERE "groupId"=$1 AND date LIKE '2028-%'`, [G])
+  // 5.001 lançamentos: o i-ésimo vale (i % 7 + 1) reais, categoria e situação alternadas.
+  await db.query(
+    `INSERT INTO "MarketingExpense"(id,"groupId","companyId",date,description,"amountCents",category,status,"noInvoiceNeeded","updatedAt")
+     SELECT 'cteto' || lpad(i::text, 20, '0'), $1, $2, '2028-07-' || lpad(((i % 28) + 1)::text, 2, '0'),
+            'E2E teto ' || i, ((i % 7) + 1) * 100,
+            (ARRAY['Tráfego pago','Gráfica','Brindes'])[(i % 3) + 1],
+            CASE WHEN i % 4 = 0 THEN 'PLANNED' ELSE 'PAID' END, true, now()
+     FROM generate_series(1, 5001) AS i`,
+    [G, C.pet],
+  )
+  const expect = { paid: 0, planned: 0, byCat: {} }
+  for (let i = 1; i <= 5001; i++) {
+    const cents = ((i % 7) + 1) * 100
+    if (i % 4 === 0) expect.planned += cents
+    else expect.paid += cents
+    const cat = TETO_CATS[i % 3]
+    expect.byCat[cat] = (expect.byCat[cat] ?? 0) + 1
+  }
+  try {
+    let r = await call('leticia', 'GET', `/export.xlsx?month=${TETO_MONTH}`)
+    check(
+      r.status === 400 && r.data?.message === 'Julho de 2028 tem 5.001 lançamentos e passa do limite de 5.000 por arquivo. Escolha uma marca no filtro e exporte uma marca por vez.',
+      'Excel do mês acima do teto: 400 com a frase (sugere uma marca por vez)',
+      `${r.status} ${r.data?.message}`,
+    )
+    r = await call('leticia', 'GET', `/export.pdf?month=${TETO_MONTH}`)
+    check(r.status === 400 && /passa do limite de 5\.000/.test(r.data?.message ?? ''), 'PDF do mês acima do teto: 400 com a mesma frase', `${r.status}`)
+    r = await call('leticia', 'GET', `/export.xlsx?month=${TETO_MONTH}&companyId=${C.pet}`)
+    check(r.status === 400 && /aba Lançamentos/.test(r.data?.message ?? ''), 'Excel do mês de UMA marca acima do teto: 400 dizendo onde conferir', `${r.status} ${r.data?.message}`)
+    r = await call('leticia', 'GET', '/export.xlsx?year=2028')
+    check(
+      r.status === 400 && r.data?.message === 'O ano de 2028 tem 5.001 lançamentos e passa do limite de 5.000 por arquivo. Exporte mês a mês: na aba Lançamentos, escolha o mês e clique em Excel.',
+      'Excel do ano acima do teto: 400 sugerindo exportar mês a mês',
+      `${r.status} ${r.data?.message}`,
+    )
+    r = await call('leticia', 'GET', `/export.xlsx?month=${TETO_MONTH}&companyId=${C.emmitec}`, undefined, { raw: true })
+    check(r.status === 200, 'o teto é por recorte: a Emmitec no mesmo mês exporta', `${r.status}`)
+
+    // Resumo, ano e lista somados no banco
+    let t0 = Date.now()
+    r = await call('leticia', 'GET', `/summary?month=${TETO_MONTH}`)
+    const sumMs = Date.now() - t0
+    check(r.status === 200 && r.data.total.count === 5001 && r.data.total.paidCents === expect.paid && r.data.total.plannedCents === expect.planned, 'resumo do mês: 5.001 lançamentos, pago e previsto exatos', `${JSON.stringify({ n: r.data?.total?.count, p: r.data?.total?.paidCents, e: expect.paid })} em ${sumMs} ms`)
+    check(TETO_CATS.every((c) => r.data.categories.find((l) => l.category === c)?.count === expect.byCat[c]), 'resumo do mês: contagem por categoria exata', JSON.stringify(r.data.categories.map((l) => [l.category, l.count])))
+    t0 = Date.now()
+    r = await call('leticia', 'GET', '/year?year=2028')
+    const yearMs = Date.now() - t0
+    check(r.status === 200 && r.data.totals[6].paidCents === expect.paid && r.data.totals[6].plannedCents === expect.planned && r.data.total.paidCents === expect.paid, 'visão do ano (somada no banco por mês): julho de 2028 exato', `em ${yearMs} ms`)
+    r = await call('leticia', 'GET', `/expenses?month=${TETO_MONTH}`)
+    check(r.status === 200 && r.data.items.length === 2000 && r.data.truncated === true && r.data.totals.count === 5001 && r.data.totals.paidCents === expect.paid, 'lista do mês corta em 2.000, mas os totais são do mês inteiro e dizem que cortou', `${r.data?.items?.length} ${r.data?.truncated} ${r.data?.totals?.count}`)
+
+    // No teto exato o arquivo sai
+    await db.query(`DELETE FROM "MarketingExpense" WHERE id=$1`, ['cteto' + '5001'.padStart(20, '0')])
+    t0 = Date.now()
+    r = await call('leticia', 'GET', `/export.xlsx?month=${TETO_MONTH}`, undefined, { raw: true })
+    const xlsxMs = Date.now() - t0
+    check(r.status === 200 && r.data.subarray(0, 2).toString() === 'PK', `Excel do mês com 5.000 lançamentos sai (${xlsxMs} ms)`, `${r.status}`)
+    if (r.status === 200) {
+      const file = path.join(FILES, `teto-${TETO_MONTH}.xlsx`)
+      fs.writeFileSync(file, r.data)
+      try {
+        const wb = JSON.parse(python(OPENPYXL, file))
+        const sheet = wb.sheets.find((n) => /Lançamentos/.test(n))
+        // A data vem como data do Excel; o leitor devolve em ISO.
+        const rows = (wb.data[sheet] ?? []).filter((row) => typeof row[0] === 'string' && row[0].startsWith('2028-07-'))
+        check(rows.length === 5000, 'o openpyxl conta 5.000 lançamentos no arquivo', `${rows.length} na aba ${sheet}`)
+      } catch (e) {
+        check(false, 'openpyxl abre o .xlsx do teto', String(e.message).slice(0, 200))
+      }
+    }
+    t0 = Date.now()
+    r = await call('leticia', 'GET', `/export.pdf?month=${TETO_MONTH}`, undefined, { raw: true })
+    const pdfMs = Date.now() - t0
+    check(r.status === 200 && r.data.subarray(0, 5).toString() === '%PDF-', `PDF do mês com 5.000 lançamentos sai (${pdfMs} ms, ${Math.round((r.data?.length ?? 0) / 1024)} KB)`, `${r.status}`)
+    check(pdfMs < 30000 && xlsxMs < 30000, 'no teto o arquivo sai em menos de 30 s', `xlsx ${xlsxMs} ms, pdf ${pdfMs} ms`)
+    r = await call('leticia', 'GET', '/export.xlsx?year=2028', undefined, { raw: true })
+    check(r.status === 200, 'Excel do ano com 5.000 lançamentos sai', `${r.status}`)
+
+    // Tela: a frase aparece no aviso quando a pessoa clica em Excel
+    await db.query(
+      `INSERT INTO "MarketingExpense"(id,"groupId","companyId",date,description,"amountCents",category,status,"noInvoiceNeeded","updatedAt")
+       VALUES ($1,$2,$3,'2028-07-15','E2E teto extra',100,'Gráfica','PAID',true,now())`,
+      ['cteto' + '5001'.padStart(20, '0'), G, C.pet],
+    )
+    const browser = await chromium.launch({ channel: 'msedge', headless: true })
+    try {
+      const { ctx, page, bad } = await open(browser, 'leticia', fin({ mes: TETO_MONTH }), desk, C.pet)
+      await page.waitForSelector('.fe-table', { timeout: 20000 })
+      await page.locator('.fin-files').getByRole('button', { name: 'Excel' }).click()
+      const toast = page.locator('[data-sonner-toast]', { hasText: 'passa do limite de 5.000' }).first()
+      const shown = await toast.waitFor({ timeout: 10000 }).then(() => true).catch(() => false)
+      const toastText = shown ? await toast.innerText() : ''
+      check(shown && /Escolha uma marca no filtro/.test(toastText), 'tela: clicar em Excel mostra a frase do teto no aviso', toastText.slice(0, 140))
+      await shot(page, 'teto-excel-d1440')
+      check(bad.length === 0, 'tela do teto: nenhuma 401/5xx', bad.join(', '))
+      await ctx.close()
+    } finally {
+      await browser.close()
+    }
+  } finally {
+    await db.query(`DELETE FROM "MarketingExpense" WHERE "groupId"=$1 AND date LIKE '2028-%'`, [G])
+  }
+}
+
 // ── Tela ────────────────────────────────────────────────────────────────────
 async function open(browser, who, route, vp, activeCompany) {
   const ctx = await browser.newContext({
@@ -971,7 +1086,9 @@ async function uiPart() {
   await db.connect()
   for (const k of ['nicolas', 'leticia', 'marcel', 'freela', 'diretoria', 'luis']) await login(k)
   try {
-    if (ONLY !== 'ui') {
+    if (ONLY === 'teto') {
+      // só o teto: não mexe no resto dos dados
+    } else if (ONLY !== 'ui') {
       await resetData()
       await apiPart()
     } else {
@@ -979,7 +1096,8 @@ async function uiPart() {
       const ids = await db.query(`SELECT id, title FROM "MarketingActivation" WHERE "groupId"=$1 AND title LIKE 'E2E %'`, [G])
       X.atvPet = ids.rows[0]?.id
     }
-    if (ONLY !== 'api') await uiPart()
+    if (ONLY !== 'api' && ONLY !== 'teto') await uiPart()
+    if (ONLY !== 'api' && ONLY !== 'ui') await tetoPart()
   } catch (e) {
     check(false, 'roteiro rodou até o fim', e.stack)
   } finally {

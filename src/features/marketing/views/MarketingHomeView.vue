@@ -7,15 +7,11 @@
  */
 import { computed } from 'vue'
 import { RouterLink, type RouteLocationRaw } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
 import { RefreshCw } from 'lucide-vue-next'
 import Skeleton from '@/components/ui/Skeleton.vue'
-import { hasSession } from '@/composables/useSession'
-import { listCards } from '@/service/marketing/marketing-cards'
 import type { CalendarCard } from '@/service/marketing/marketing-calendar-api'
 import { useMarketing } from '../composables/useMarketing'
 import { CARD_STATUS_TONE, brandTone, cardStatusLabel, statusesFor, toneStyle, type CardStatus } from '../marketing-labels'
-import { cardKeys } from '../approvals/approvals-meta'
 import { useMarketingHome } from '../home/composables/useMarketingHome'
 import HomeActivity from '../home/components/HomeActivity.vue'
 import HomeCardList from '../home/components/HomeCardList.vue'
@@ -41,20 +37,13 @@ const approvalsList = (extra: Record<string, string>) => ({
 })
 
 /**
- * O `/home` conta por status sem separar a trilha, e a lista de Aprovações é
- * sempre de UMA trilha (a Digital esconde peça impressa). Para cada contagem
- * levar aonde os cards estão, as peças impressas vêm da lista da trilha Gráfica
- * (mesma chave da aba Gráfica de Aprovações, então o cache é um só) e saem da
- * contagem digital. Sem essa lista (carregando ou erro) conta tudo como antes.
+ * A lista de Aprovações é sempre de UMA trilha (a Digital esconde peça
+ * impressa), então cada contagem precisa saber a trilha para levar aonde os
+ * cards estão. O `/home` já devolve a contagem separada (`countsByTrack`).
+ * Antes o painel pedia a lista inteira da Gráfica só para contar (a
+ * requisição a mais da auditoria do front de 06/11), e ainda contava errado
+ * quando a lista cortava. API antiga, sem o campo: conta tudo como digital.
  */
-const printFilters = computed(() => ({ track: 'print' as const, companyId: mk.brandFilter.value ?? undefined }))
-const printCards = useQuery({
-  queryKey: computed(() => cardKeys.list(mk.groupId.value ?? '-', printFilters.value)),
-  queryFn: () => listCards(mk.groupId.value!, printFilters.value),
-  enabled: computed(() => hasSession.value && !!mk.groupId.value),
-  staleTime: 15_000,
-})
-
 interface CountChip {
   status: CardStatus
   count: number
@@ -66,9 +55,7 @@ const PRINT_ONLY = new Set<CardStatus>(['SENT_TO_PRINTER', 'PROOF_RECEIVED', 'DE
 const ORDER: CardStatus[] = [...statusesFor('POST'), 'SENT_TO_PRINTER', 'PROOF_RECEIVED', 'DELIVERED']
 const counts = computed(() => {
   const by = data.value?.countsByStatus ?? {}
-  const printList = printCards.data.value
-  const printBy: Partial<Record<CardStatus, number>> = {}
-  for (const c of printList ?? []) printBy[c.status] = (printBy[c.status] ?? 0) + 1
+  const printBy: Partial<Record<CardStatus, number>> = data.value?.countsByTrack?.print ?? {}
 
   const digital: CountChip[] = []
   const print: CountChip[] = []

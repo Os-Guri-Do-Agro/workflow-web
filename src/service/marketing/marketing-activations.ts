@@ -121,6 +121,29 @@ export async function listActivations(groupId: string, filters: ActivationFilter
   return data
 }
 
+export type ActivationWhen = 'proximas' | 'passadas'
+
+/** Uma página da lista (R1, D12): a aba, o cursor da próxima e a contagem das duas abas. */
+export interface ActivationPage {
+  items: ActivationListItem[]
+  nextCursor: string | null
+  counts: { upcoming: number; past: number }
+}
+
+export const ACTIVATION_PAGE_SIZE = 50
+
+export async function listActivationsPage(
+  groupId: string,
+  filters: ActivationFilters,
+  when: ActivationWhen,
+  cursor?: string | null,
+) {
+  const { data } = await api.get<ActivationPage>(mkt(groupId, '/activations'), {
+    params: clean({ ...filters, quando: when, cursor, limit: ACTIVATION_PAGE_SIZE }),
+  })
+  return data
+}
+
 export async function getActivation(groupId: string, id: string) {
   const { data } = await api.get<ActivationDetail>(mkt(groupId, `/activations/${encodeURIComponent(id)}`))
   return data

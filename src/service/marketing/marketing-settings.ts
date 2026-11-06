@@ -93,6 +93,43 @@ export async function addMember(
   return data
 }
 
+/** Quem já trabalha nas empresas do grupo e pode entrar sem digitar e-mail (D9). */
+export interface MemberCandidate {
+  userId: string
+  name: string
+  email: string
+  avatarUrl: string | null
+  /** Só as empresas do grupo que quem convida enxerga */
+  companies: { companyId: string; name: string }[]
+}
+
+/** Teto da lista de candidatos (a busca estreita). */
+export const CANDIDATES_LIMIT = 50
+/** Teto do lote por requisição. */
+export const MEMBERS_BATCH_MAX = 20
+
+export async function getMemberCandidates(groupId: string, q?: string) {
+  const { data } = await api.get<MemberCandidate[]>(mkt(groupId, '/members/candidates'), {
+    params: q?.trim() ? { q: q.trim() } : {},
+  })
+  return data
+}
+
+export interface AddMembersResult {
+  members: { userId: string; name: string; email: string; role: MarketingRole; brandIds: string[] }[]
+  created: false
+  accessLink: null
+}
+
+/** Lote "Do Nevo": todos com o mesmo papel, marcas e rótulo. */
+export async function addMembersFromNevo(
+  groupId: string,
+  body: { userIds: string[]; role: MarketingRole; brandIds?: string[]; title?: string },
+) {
+  const { data } = await api.post<AddMembersResult>(mkt(groupId, '/members'), body)
+  return data
+}
+
 export async function updateMember(
   groupId: string,
   userId: string,

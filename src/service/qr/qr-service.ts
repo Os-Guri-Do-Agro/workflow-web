@@ -48,6 +48,11 @@ export interface QrCode {
   companyName: string | null
   /** Personalização visual persistida (null = sem estilo customizado). */
   style: QrStyle | null
+  /**
+   * QR de uma UTM da ala Marketing: só muda pela ala (a API recusa editar por
+   * aqui). `null` = QR comum. Ausente em API antiga.
+   */
+  marketing?: { groupId: string; utmId: string } | null
 }
 
 export interface QrScanRecent {

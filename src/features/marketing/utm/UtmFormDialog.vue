@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { AlertTriangle, Link2, Loader2, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { getApiErrorMessage } from '@/service/api'
 import {
   duplicateUtmId,
@@ -14,8 +15,12 @@ import { buildFinalPreview, normalizeUtmValue, splitPastedUtm } from './utm-norm
 
 /**
  * Gerador de UTM (criar e editar). A prévia mostra, ao vivo, o valor que cada
- * campo vira (minúsculo, sem acento, hífen no lugar de espaço) e a URL final,
- * porque é isso que vai para o relatório e para a placa.
+ * campo vira (minúsculo, sem acento, hífen no lugar de espaço) e a URL com
+ * UTM, porque é isso que vai para o relatório.
+ *
+ * "Gerar QR Code" vem marcado ao criar (spec R1, D10): a API cria a UTM e o QR
+ * na mesma transação. Antes o QR só nascia num botão no fim do painel e
+ * ninguém achava.
  */
 const props = defineProps<{
   modelValue: boolean
@@ -48,6 +53,8 @@ const placement = ref('')
 const cardId = ref('')
 const partnerId = ref('')
 const activationId = ref('')
+/** Só na criação; padrão marcado (D10). */
+const withQr = ref(true)
 
 const error = ref('')
 const duplicateId = ref<string | null>(null)
@@ -73,6 +80,7 @@ function reset() {
     return
   }
   companyId.value = props.defaultBrandId ?? props.brands[0]?.companyId ?? ''
+  withQr.value = true
   target.value = ''
   source.value = ''
   medium.value = ''
@@ -149,10 +157,30 @@ watch(companyId, () => {
   if (!activationItems.value.some((a) => a.id === activationId.value)) activationId.value = ''
 })
 
-function pickCampaign() {
-  const found = campaignItems.value.find((c) => c.id === campaignId.value)
+function pickCampaign(id: string) {
+  campaignId.value = id
+  const found = campaignItems.value.find((c) => c.id === id)
   if (found) campaign.value = normalizeUtmValue(found.name)
 }
+
+// Itens dos AppSelect (o Nevo não usa <select> nativo, D11).
+const brandSelect = computed(() => props.brands.map((b) => ({ label: b.name, value: b.companyId })))
+const sourceSelect = computed(() => sourceItems.value.map((v) => ({ label: v, value: v })))
+const mediumSelect = computed(() => mediumItems.value.map((v) => ({ label: v, value: v })))
+const campaignSelect = computed(() => [
+  { label: 'Nenhuma', value: '' },
+  ...campaignItems.value.map((c) => ({ label: c.name, value: c.id })),
+])
+const cardSelect = computed(() => [{ label: 'Nenhum', value: '' }, ...cardItems.value.map((c) => ({ label: c.title, value: c.id }))])
+const partnerSelect = computed(() => [
+  { label: 'Nenhum', value: '' },
+  ...partnerItems.value.map((p) => ({ label: p.name, value: p.id })),
+])
+const activationSelect = computed(() => [
+  { label: 'Nenhuma', value: '' },
+  ...activationItems.value.map((a) => ({ label: a.title, value: a.id })),
+])
+const asText = (v: unknown) => (typeof v === 'string' ? v : '')
 
 /** Link colado já com utm_*: separa a base e preenche os campos que estavam vazios. */
 function splitTarget() {
@@ -222,7 +250,7 @@ async function submit(force = false) {
   try {
     const saved = props.utm
       ? await mut.update.mutateAsync({ id: props.utm.id, patch: common })
-      : await mut.create.mutateAsync({ companyId: companyId.value, ...common })
+      : await mut.create.mutateAsync({ companyId: companyId.value, ...common, withQr: withQr.value })
     emit('saved', saved)
     emit('update:modelValue', false)
   } catch (e) {
@@ -252,12 +280,15 @@ async function submit(force = false) {
 
       <form class="uf-body" @submit.prevent="submit(false)">
         <div class="uf-grid">
-          <label v-if="!editing && brands.length > 1" class="mk-field uf-wide">
+          <p v-if="!editing" class="mk-hint uf-wide uf-intro">
+            O Nevo cria um <strong>link curto</strong>, que conta cada clique, e o <strong>QR Code</strong>, que conta cada
+            leitura. Os dois levam ao destino com as UTMs, que dizem ao Google Analytics de onde veio a visita.
+          </p>
+
+          <div v-if="!editing && brands.length > 1" class="mk-field uf-wide" data-testid="utm-brand">
             <span class="mk-label">Marca</span>
-            <select v-model="companyId" class="mk-select" data-testid="utm-brand">
-              <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-            </select>
-          </label>
+            <AppSelect :model-value="companyId" :items="brandSelect" label="Marca" density="compact" @update:model-value="companyId = asText($event)" />
+          </div>
 
           <label class="mk-field uf-wide">
             <span class="mk-label">URL de destino</span>
@@ -274,28 +305,39 @@ async function submit(force = false) {
             <span class="mk-hint">Se você colar um link que já tem utm_, os campos abaixo são preenchidos sozinhos.</span>
           </label>
 
-          <label class="mk-field">
+          <div class="mk-field" data-testid="utm-source">
             <span class="mk-label">Origem (utm_source)</span>
-            <select v-model="source" class="mk-select" data-testid="utm-source">
-              <option value="" disabled>Escolha</option>
-              <option v-for="s in sourceItems" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </label>
-          <label class="mk-field">
+            <AppSelect
+              :model-value="source"
+              :items="sourceSelect"
+              label="Origem (utm_source)"
+              placeholder="Escolha"
+              density="compact"
+              @update:model-value="source = asText($event)"
+            />
+          </div>
+          <div class="mk-field" data-testid="utm-medium">
             <span class="mk-label">Mídia (utm_medium)</span>
-            <select v-model="medium" class="mk-select" data-testid="utm-medium">
-              <option value="" disabled>Escolha</option>
-              <option v-for="m in mediumItems" :key="m" :value="m">{{ m }}</option>
-            </select>
-          </label>
+            <AppSelect
+              :model-value="medium"
+              :items="mediumSelect"
+              label="Mídia (utm_medium)"
+              placeholder="Escolha"
+              density="compact"
+              @update:model-value="medium = asText($event)"
+            />
+          </div>
 
-          <label v-if="campaignItems.length" class="mk-field uf-wide">
+          <div v-if="campaignItems.length" class="mk-field uf-wide" data-testid="utm-campaign-select">
             <span class="mk-label">Campanha cadastrada (opcional)</span>
-            <select v-model="campaignId" class="mk-select" data-testid="utm-campaign-select" @change="pickCampaign">
-              <option value="">Nenhuma</option>
-              <option v-for="c in campaignItems" :key="c.id" :value="c.id">{{ c.name }}</option>
-            </select>
-          </label>
+            <AppSelect
+              :model-value="campaignId"
+              :items="campaignSelect"
+              label="Campanha cadastrada"
+              density="compact"
+              @update:model-value="pickCampaign(asText($event))"
+            />
+          </div>
 
           <label class="mk-field uf-wide">
             <span class="mk-label">Campanha (utm_campaign)</span>
@@ -336,32 +378,41 @@ async function submit(force = false) {
             />
           </label>
 
-          <label v-if="cardItems.length" class="mk-field">
+          <div v-if="cardItems.length" class="mk-field" data-testid="utm-card">
             <span class="mk-label">Post ou peça (opcional)</span>
-            <select v-model="cardId" class="mk-select" data-testid="utm-card">
-              <option value="">Nenhum</option>
-              <option v-for="c in cardItems" :key="c.id" :value="c.id">{{ c.title }}</option>
-            </select>
-          </label>
-          <label v-if="partnerItems.length" class="mk-field">
+            <AppSelect :model-value="cardId" :items="cardSelect" label="Post ou peça" density="compact" @update:model-value="cardId = asText($event)" />
+          </div>
+          <div v-if="partnerItems.length" class="mk-field" data-testid="utm-partner">
             <span class="mk-label">Parceiro (opcional)</span>
-            <select v-model="partnerId" class="mk-select" data-testid="utm-partner">
-              <option value="">Nenhum</option>
-              <option v-for="p in partnerItems" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
-          </label>
-          <label v-if="activationItems.length" class="mk-field">
+            <AppSelect :model-value="partnerId" :items="partnerSelect" label="Parceiro" density="compact" @update:model-value="partnerId = asText($event)" />
+          </div>
+          <div v-if="activationItems.length" class="mk-field" data-testid="utm-activation">
             <span class="mk-label">Ativação (opcional)</span>
-            <select v-model="activationId" class="mk-select" data-testid="utm-activation">
-              <option value="">Nenhuma</option>
-              <option v-for="a in activationItems" :key="a.id" :value="a.id">{{ a.title }}</option>
-            </select>
+            <AppSelect
+              :model-value="activationId"
+              :items="activationSelect"
+              label="Ativação"
+              density="compact"
+              @update:model-value="activationId = asText($event)"
+            />
+          </div>
+
+          <label v-if="!editing" class="uf-qr uf-wide">
+            <input v-model="withQr" type="checkbox" data-testid="utm-with-qr" />
+            <span class="uf-qr__text">
+              <strong>Gerar QR Code</strong>
+              <small>Para placa, folder e embalagem. Cada leitura é contada, e o QR continua valendo se você trocar o destino depois.</small>
+            </span>
           </label>
         </div>
 
         <div class="uf-preview">
-          <span class="mk-label">URL final (prévia)</span>
-          <code class="uf-url" data-testid="utm-final-preview">{{ finalUrl ?? 'Informe o destino para ver a URL final.' }}</code>
+          <span class="mk-label">URL com UTM (prévia)</span>
+          <code class="uf-url" data-testid="utm-final-preview">{{ finalUrl ?? 'Informe o destino para ver a URL com UTM.' }}</code>
+          <span class="mk-hint">
+            É o destino com as UTMs coladas. Ela não passa pelo Nevo, então não conta clique: para divulgar, use o link curto
+            ou o QR.
+          </span>
           <span v-if="editing" class="mk-hint">
             Mudar o destino ou as UTMs não troca o link curto nem o QR: o que já foi impresso continua valendo.
           </span>
@@ -447,6 +498,38 @@ async function submit(force = false) {
   grid-column: 1 / -1;
 }
 
+.uf-intro {
+  margin: 0;
+}
+
+.uf-qr {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.uf-qr input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.uf-qr__text {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.uf-qr__text small {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
 .uf-preview {
   display: flex;
   flex-direction: column;
@@ -530,6 +613,13 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .uf-spin {
     animation: none;
+  }
+}
+
+/* AppSelect compacto tem 36px; no celular o toque pede 44px. */
+@media (max-width: 640px) {
+  .uf-grid :deep(.app-select__trigger) {
+    min-height: 44px;
   }
 }
 </style>

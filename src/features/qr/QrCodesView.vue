@@ -35,6 +35,7 @@ import { useQrList, useQrMutations } from '@/composables/useQrCodes'
 import { useQrFolders, useQrFolderMutations } from '@/composables/useQrFolders'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
+import { useMarketingMe } from '@/features/marketing/composables/useMarketing'
 import { apiBaseUrl } from '@/service/api'
 import type { QrCode, QrFolder, QrStyle } from '@/service/qr/qr-service'
 
@@ -48,6 +49,22 @@ const integratorDocsUrl = `${apiBaseUrl()}/qr-docs`
 const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspaceStore()
+
+/**
+ * QR de UTM da ala Marketing (spec R1, D10): o card mostra o selo e fica só
+ * leitura; "Abrir na ala" só para quem é da ala E enxerga a marca do QR (para
+ * os outros a UTM nem existe na ala, e o link cairia em "não encontrada").
+ * A chave `['marketing', 'me']` é a mesma do menu: não custa requisição a mais.
+ */
+const marketingMe = useMarketingMe()
+function alaLinkFor(qr: QrCode) {
+  const m = qr.marketing
+  if (!m) return null
+  const group = marketingMe.data.value?.groups.find((g) => g.id === m.groupId)
+  if (!group || !group.marketingEnabled) return null
+  if (qr.companyId && !group.brands.some((b) => b.companyId === qr.companyId)) return null
+  return { name: 'marketing-utm', query: { utm: m.utmId, grupo: m.groupId } }
+}
 
 // ─── Estado dos filtros ────────────────────────────────────────────────────────
 const PAGE_SIZE = 24
@@ -412,6 +429,7 @@ function limparBusca() {
             :key="qr.id"
             :qr="qr"
             :folders="foldersForQr(qr)"
+            :ala-link="alaLinkFor(qr)"
             @edit="openEdit(qr)"
             @metrics="metricsFor = qr"
             @cancel="cancelTarget = qr"

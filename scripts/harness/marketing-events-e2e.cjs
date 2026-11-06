@@ -6,6 +6,11 @@
 // por papel (Visualizador não escreve, Editor não escolhe orçamento, freelancer
 // não vê outra marca, quem é de fora leva 403), zero 401/5xx e capturas em
 // prints/marketing-events/. Reexecutável: apaga o que ele mesmo criou ("E2E ").
+//
+// R1 (D12): a lista de ativações pagina por cursor. O roteiro põe 560 próximas
+// e 60 passadas direto no banco ("E2E pag ..."), percorre as páginas pela API
+// (sem repetir nem pular, inclusive com uma inserção no meio) e confere a tela
+// com "Carregar mais" e o número de cada aba vindo do servidor.
 const { chromium } = require('playwright-core')
 const pg = require('pg')
 const zlib = require('node:zlib')
@@ -224,6 +229,137 @@ async function touchTargets(page, rootSel, label) {
     return list
   }, rootSel)
   check(small.length === 0, `${label}: alvos de toque com 44px`, small.slice(0, 6).join('; '))
+}
+
+// ── R1 (D12): paginação da lista de ativações ──────────────────────────────
+async function pagination(browser) {
+  section('R1: lista de ativações paginada (acima de 500)')
+  const DAY = 86400000
+  await db.query(`DELETE FROM "MarketingActivation" WHERE "groupId"=$1 AND title LIKE 'E2E pag %'`, [G])
+  // 560 próximas (uma por dia a partir de amanhã) e 60 passadas (uma por dia para trás).
+  await db.query(
+    `INSERT INTO "MarketingActivation"(id,"groupId","companyId",kind,title,"startAt",status,"updatedAt")
+     SELECT 'cpag' || lpad(i::text, 21, '0'), $1, $2, 'EVENT', 'E2E pag próxima ' || lpad(i::text, 3, '0'),
+            now() + (i || ' days')::interval, CASE WHEN i % 5 = 0 THEN 'CONFIRMED' ELSE 'PLANNED' END, now()
+     FROM generate_series(1, 560) AS i`,
+    [G, PET],
+  )
+  await db.query(
+    `INSERT INTO "MarketingActivation"(id,"groupId","companyId",kind,title,"startAt",status,"updatedAt")
+     SELECT 'cpas' || lpad(i::text, 21, '0'), $1, $2, 'FAIR', 'E2E pag passada ' || lpad(i::text, 3, '0'),
+            now() - ((i + 1) || ' days')::interval, 'DONE', now()
+     FROM generate_series(1, 60) AS i`,
+    [G, PET],
+  )
+  try {
+    const legacy = await get('marcel', '/activations')
+    check(Array.isArray(legacy.body) && legacy.body.length === 500, 'sem página a lista de antes para em 500 (era o corte calado)', String(legacy.body?.length))
+
+    // Próximas: percorre tudo pelo cursor
+    const seen = []
+    let cursor = null
+    let pages = 0
+    let counts = null
+    let inserted = false
+    do {
+      const r = await get('marcel', `/activations?quando=proximas&limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)
+      if (r.status !== 200) {
+        check(false, 'página de próximas responde 200', `${r.status} ${JSON.stringify(r.body?.message)}`)
+        break
+      }
+      if (pages === 0) {
+        counts = r.body.counts
+        check(r.body.items.length === 50 && !!r.body.nextCursor, 'primeira página: 50 itens e um cursor')
+      }
+      seen.push(...r.body.items)
+      cursor = r.body.nextCursor
+      pages++
+      if (pages === 2 && !inserted) {
+        // Alguém cria uma ativação que cairia ANTES do cursor: nada repete nem pula.
+        await db.query(
+          `INSERT INTO "MarketingActivation"(id,"groupId","companyId",kind,title,"startAt",status,"updatedAt")
+           VALUES ('cpagmeio000000000000000', $1, $2, 'EVENT', 'E2E pag no meio', now() + interval '2 hours', 'PLANNED', now())`,
+          [G, PET],
+        )
+        inserted = true
+      }
+    } while (cursor && pages < 40)
+    const ids = seen.map((a) => a.id)
+    const mine = seen.filter((a) => a.title.startsWith('E2E pag próxima'))
+    check(new Set(ids).size === ids.length, 'percorrendo as páginas nenhuma ativação repete', `${ids.length} itens, ${new Set(ids).size} únicos`)
+    check(mine.length === 560, 'as 560 próximas aparecem, nenhuma some', String(mine.length))
+    check(ids.length === counts.upcoming, 'o total percorrido bate com o número da aba Próximas', `${ids.length} x ${counts.upcoming}`)
+    check(pages === Math.ceil(counts.upcoming / 50), `páginas de 50 (${pages})`)
+    const sorted = seen.every((a, i) => i === 0 || new Date(seen[i - 1].startAt) <= new Date(a.startAt))
+    check(sorted, 'próximas em ordem de início, da mais perto para a mais longe')
+    check(counts.past >= 60, 'a contagem das passadas vem junto', String(counts.past))
+    check(!ids.includes('cpagmeio000000000000000'), 'a criada no meio da rolagem (antes do cursor) não entra repetindo as já vistas')
+
+    const past = await get('marcel', '/activations?quando=passadas&limit=50')
+    const p0 = past.body.items
+    check(past.status === 200 && p0.length === 50 && p0.every((a, i) => i === 0 || new Date(p0[i - 1].startAt) >= new Date(a.startAt)), 'passadas da mais recente para trás')
+    const p0mine = p0.filter((a) => a.title.startsWith('E2E pag passada'))
+    check(p0mine[0]?.title === 'E2E pag passada 001' && p0mine[1]?.title === 'E2E pag passada 002', 'das passadas, a mais recente vem primeiro', p0mine.slice(0, 2).map((a) => a.title).join(', '))
+    const p1 = await get('marcel', `/activations?quando=passadas&limit=50&cursor=${encodeURIComponent(past.body.nextCursor)}`)
+    check(p1.status === 200 && !p1.body.items.some((a) => p0.some((b) => b.id === a.id)), 'a segunda página das passadas continua sem repetir')
+
+    const conf = await get('marcel', '/activations?quando=proximas&limit=100&status=CONFIRMED')
+    check(conf.status === 200 && conf.body.items.every((a) => a.status === 'CONFIRMED') && conf.body.counts.upcoming >= 112, 'filtro de situação vale na página e na contagem', `${conf.body?.items?.length} ${conf.body?.counts?.upcoming}`)
+    check((await get('marcel', '/activations?quando=proximas&limit=500')).body.items.length === 100, 'limit acima de 100 vira 100')
+    check((await get('marcel', '/activations?quando=proximas&cursor=lixo')).status === 400, 'cursor estragado é 400')
+    check((await get('marcel', '/activations?quando=amanha')).status === 400, '"quando" fora da lista é 400')
+    const freela = await get('freela', '/activations?quando=proximas&limit=50')
+    const petOnly = await get('marcel', `/activations?quando=proximas&limit=1&companyId=${PET}`)
+    check(
+      freela.status === 200 && freela.body.counts.upcoming === petOnly.body.counts.upcoming && freela.body.items.every((a) => a.companyId === PET),
+      'freelancer pagina e conta só a PetJourney',
+      `${freela.body?.counts?.upcoming} x ${petOnly.body?.counts?.upcoming}`,
+    )
+    check((await get('luis', '/activations?quando=proximas')).status === 403, 'quem é de fora leva 403 na página')
+    check((await get('marcel', `/activations?quando=proximas&companyId=${encodeURIComponent('outra-marca')}`)).status === 403, 'marca fora do acesso na página: 403')
+
+    // Tela
+    const counted = (await get('marcel', '/activations?quando=proximas&limit=1')).body.counts
+    for (const vp of [desk, phone]) {
+      const badNet = []
+      const tag = vp.mobile ? 'm375' : 'd1440'
+      const { ctx, page } = await open(browser, 'marcel', '/marketing/ativacoes', vp, badNet)
+      await page.locator('.av__row').first().waitFor()
+      check(await page.locator('.av__row').count() === 50, `${tag} a aba abre com 50 linhas`)
+      const nUp = Number((await page.locator('[data-testid="av-count-upcoming"]').innerText()).replace(/\D/g, ''))
+      const nPast = Number((await page.locator('[data-testid="av-count-past"]').innerText()).replace(/\D/g, ''))
+      check(nUp === counted.upcoming && nPast === counted.past, `${tag} o número das abas vem do servidor (${nUp} e ${nPast})`, `${counted.upcoming}/${counted.past}`)
+      const more = page.locator('[data-testid="av-more"]')
+      check(new RegExp(`Mostrando 50 de ${counted.upcoming.toLocaleString('pt-BR').replace('.', '\\.')}`).test(await more.innerText()), `${tag} rodapé diz quantas de quantas`, await more.innerText())
+      await more.getByRole('button', { name: 'Carregar mais' }).click()
+      await page.waitForFunction(() => document.querySelectorAll('.av__row').length === 100, null, { timeout: 10000 }).catch(() => null)
+      check(await page.locator('.av__row').count() === 100, `${tag} "Carregar mais" traz mais 50`)
+      if (vp.mobile) {
+        const h = await more.getByRole('button', { name: 'Carregar mais' }).evaluate((el) => el.getBoundingClientRect().height)
+        check(h >= 43.5, `${tag} "Carregar mais" com alvo de toque de 44px`, `${Math.round(h)}px`)
+        const fh = await page.locator('[data-testid="av-filter-status"] button[role=combobox]').evaluate((el) => el.getBoundingClientRect().height)
+        check(fh >= 43.5, `${tag} filtro (AppSelect) com 44px`, `${Math.round(fh)}px`)
+      }
+      await page.screenshot({ path: path.join(out, `ativacoes-paginadas-${tag}.png`), fullPage: !vp.mobile })
+      await noSideScroll(page, `${tag} lista paginada`)
+      await page.locator('.av__tab', { hasText: 'Passadas' }).click()
+      await page.locator('.av__row', { hasText: 'E2E pag passada 001' }).first().waitFor({ timeout: 8000 })
+      const pastRows = await page.locator('.av__row').allInnerTexts()
+      const i1 = pastRows.findIndex((t) => t.includes('E2E pag passada 001'))
+      const i2 = pastRows.findIndex((t) => t.includes('E2E pag passada 002'))
+      check(i1 >= 0 && i2 > i1, `${tag} Passadas começa pela mais recente`, `${i1} ${i2}`)
+      check(await page.locator('select').count() === 0, `${tag} filtros sem <select> nativo`)
+      // Filtro de situação pelo AppSelect
+      await page.locator('[data-testid="av-filter-status"] button[role=combobox]').click()
+      await page.getByRole('option', { name: 'Realizada', exact: true }).click()
+      await page.waitForTimeout(600)
+      check(page.url().includes('situacao=DONE'), `${tag} filtro de situação vai para a URL`)
+      check(badNet.length === 0, `${tag} lista paginada: nenhuma 401/5xx`, badNet.join(', '))
+      await ctx.close()
+    }
+  } finally {
+    await db.query(`DELETE FROM "MarketingActivation" WHERE "groupId"=$1 AND title LIKE 'E2E pag %'`, [G])
+  }
 }
 
 ;(async () => {
@@ -852,6 +988,8 @@ async function touchTargets(page, rootSel, label) {
       // o 404 é esperado aqui; só 401/5xx contam
       check(badNet.length === 0, 'freelancer: nenhuma 401/5xx', badNet.join(', '))
     }
+
+    await pagination(browser)
 
     check(apiBad.length === 0, 'chamadas diretas à API: nenhuma 5xx', apiBad.join(', '))
   } catch (error) {

@@ -88,9 +88,11 @@ export interface UtmInput {
   partnerId?: string | null
   activationId?: string | null
   force?: boolean
+  /** Só na criação: cria o QR junto, na mesma transação (R1, D10) */
+  withQr?: boolean
 }
 
-export type UtmPatch = Partial<Omit<UtmInput, 'companyId'>>
+export type UtmPatch = Partial<Omit<UtmInput, 'companyId' | 'withQr'>>
 
 export async function listUtms(groupId: string, filters: UtmFilters = {}) {
   const { data } = await api.get<MarketingUtm[]>(mkt(groupId, '/utm'), { params: filters })

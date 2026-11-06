@@ -2,8 +2,9 @@
 import { refDebounced } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
-import { Link2, Plus, Search } from 'lucide-vue-next'
+import { Link2, Plus, QrCode, Search } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import type { MarketingUtm } from '@/service/marketing/marketing-utm'
@@ -15,7 +16,8 @@ import { useUtmList, useUtmOptions, useWideViewport } from '../utm/useUtm'
 
 /**
  * UTMs e QR (M2-A): lista densa com filtros na URL e painel do item (`?utm=`).
- * A UTM é um link do encurtador; o QR aponta para o link curto.
+ * A UTM é um link do encurtador; o QR aponta para o link curto. A lista mostra
+ * a miniatura do QR (R1, D10): é o jeito de ver de relance qual tem QR.
  */
 const route = useRoute()
 const router = useRouter()
@@ -70,6 +72,18 @@ watch([selectedId, rows, () => list.isFetching.value], () => {
 function select(id: string) {
   setQuery({ utm: id }, false)
 }
+
+/**
+ * "Abrir a existente" (duplicata, 409). A duplicata é conferida no grupo
+ * inteiro, então a existente pode ser de outra marca ou estar fora dos
+ * filtros da lista: sem limpar os filtros, o painel não achava a linha e
+ * fechava sozinho, e parecia que o botão não fazia nada (achado do passe de
+ * comportamento da R1).
+ */
+function openExisting(id: string) {
+  search.value = ''
+  setQuery({ utm: id, origem: null, midia: null, campanha: null, q: null, marca: null }, false)
+}
 function closePanel() {
   setQuery({ utm: null })
 }
@@ -92,6 +106,24 @@ const campaignOptions = computed(() => {
   const all = options.data.value?.campaigns ?? []
   return mk.brandFilter.value ? all.filter((c) => c.companyId === mk.brandFilter.value) : all
 })
+const sourceFilterItems = computed(() => [
+  { label: 'Todas as origens', value: '' },
+  ...(options.data.value?.sources ?? []).map((v) => ({ label: v, value: v })),
+])
+const mediumFilterItems = computed(() => [
+  { label: 'Todas as mídias', value: '' },
+  ...(options.data.value?.mediums ?? []).map((v) => ({ label: v, value: v })),
+])
+const campaignFilterItems = computed(() => [
+  { label: 'Todas as campanhas', value: '' },
+  ...campaignOptions.value.map((c) => ({ label: c.name, value: c.id })),
+])
+const asText = (v: unknown) => (typeof v === 'string' && v ? v : null)
+
+/** Miniatura servida pela API (SVG pequeno, com o visual do QR). */
+function qrThumb(imageUrl: string) {
+  return `${imageUrl}?format=svg&size=96`
+}
 
 const panelOpenNarrow = computed({
   get: () => !wide.value && !!selected.value,
@@ -119,34 +151,33 @@ function brandOf(id: string) {
             aria-label="Buscar UTM"
           />
         </div>
-        <select
-          class="mk-select mk-utm__filter"
-          :value="source"
-          aria-label="Filtrar por origem"
-          @change="setQuery({ origem: ($event.target as HTMLSelectElement).value || null })"
-        >
-          <option value="">Todas as origens</option>
-          <option v-for="s in options.data.value?.sources ?? []" :key="s" :value="s">{{ s }}</option>
-        </select>
-        <select
-          class="mk-select mk-utm__filter"
-          :value="medium"
-          aria-label="Filtrar por mídia"
-          @change="setQuery({ midia: ($event.target as HTMLSelectElement).value || null })"
-        >
-          <option value="">Todas as mídias</option>
-          <option v-for="m in options.data.value?.mediums ?? []" :key="m" :value="m">{{ m }}</option>
-        </select>
-        <select
-          v-if="campaignOptions.length"
-          class="mk-select mk-utm__filter"
-          :value="campaignId"
-          aria-label="Filtrar por campanha"
-          @change="setQuery({ campanha: ($event.target as HTMLSelectElement).value || null })"
-        >
-          <option value="">Todas as campanhas</option>
-          <option v-for="c in campaignOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
+        <div class="mk-utm__filter" data-testid="utm-filter-source">
+          <AppSelect
+            :model-value="source"
+            :items="sourceFilterItems"
+            label="Filtrar por origem"
+            density="compact"
+            @update:model-value="setQuery({ origem: asText($event) })"
+          />
+        </div>
+        <div class="mk-utm__filter" data-testid="utm-filter-medium">
+          <AppSelect
+            :model-value="medium"
+            :items="mediumFilterItems"
+            label="Filtrar por mídia"
+            density="compact"
+            @update:model-value="setQuery({ midia: asText($event) })"
+          />
+        </div>
+        <div v-if="campaignOptions.length" class="mk-utm__filter" data-testid="utm-filter-campaign">
+          <AppSelect
+            :model-value="campaignId"
+            :items="campaignFilterItems"
+            label="Filtrar por campanha"
+            density="compact"
+            @update:model-value="setQuery({ campanha: asText($event) })"
+          />
+        </div>
         <span class="mk-toolbar__spacer" />
         <button v-if="canEdit" type="button" class="mk-btn mk-btn--primary" @click="openCreate">
           <Plus :size="14" />Nova UTM
@@ -175,6 +206,7 @@ function brandOf(id: string) {
         <table class="mk-table">
           <thead>
             <tr>
+              <th class="mk-utm__qrcol"><span class="sr-only">QR</span></th>
               <th>Onde será usado</th>
               <th class="hide-md">Origem e mídia</th>
               <th class="hide-md">Campanha</th>
@@ -194,6 +226,21 @@ function brandOf(id: string) {
               @click="select(r.id)"
               @keydown.enter.prevent="select(r.id)"
             >
+              <td class="mk-utm__qrcol">
+                <img
+                  v-if="r.qr"
+                  class="mk-utm__thumb"
+                  :class="{ 'is-off': !r.qr.active }"
+                  :src="qrThumb(r.qr.imageUrl)"
+                  width="32"
+                  height="32"
+                  loading="lazy"
+                  decoding="async"
+                  alt="QR"
+                  data-testid="utm-thumb"
+                />
+                <span v-else class="mk-utm__nothumb" title="Sem QR" aria-label="Sem QR"><QrCode :size="14" /></span>
+              </td>
               <td class="mk-utm__place">
                 <span class="mk-utm__name">{{ r.placement }}</span>
                 <span class="mk-utm__sub">
@@ -201,7 +248,6 @@ function brandOf(id: string) {
                     <span class="mk-dot" :style="toneStyle(brandTone(brandOf(r.companyId)))" aria-hidden="true" />{{ brandOf(r.companyId)?.name }}
                   </span>
                   <code>/l/{{ r.shortLink.code }}</code>
-                  <span v-if="r.qr" class="mk-utm__qrtag">com QR</span>
                 </span>
               </td>
               <td class="hide-md">{{ r.shortLink.utmSource }} <span class="mk-utm__sep">/</span> {{ r.shortLink.utmMedium }}</td>
@@ -217,7 +263,7 @@ function brandOf(id: string) {
                   data-tone
                   :style="{ '--mk-tone': r.shortLink.active ? 'var(--success)' : 'var(--text-3)' }"
                 >
-                  {{ r.shortLink.active ? 'Ativa' : 'Pausada' }}
+                  {{ r.shortLink.active ? 'Ativa' : 'Desativada' }}
                 </span>
               </td>
             </tr>
@@ -266,7 +312,7 @@ function brandOf(id: string) {
       :options="options.data.value"
       :utm="editing"
       @saved="onSaved"
-      @open-existing="select"
+      @open-existing="openExisting"
     />
   </section>
 </template>
@@ -292,7 +338,7 @@ function brandOf(id: string) {
 
 .mk-utm__search {
   position: relative;
-  flex: 1 1 260px;
+  flex: 1 1 220px;
   max-width: 420px;
   min-width: 180px;
 }
@@ -311,8 +357,47 @@ function brandOf(id: string) {
 }
 
 .mk-utm__filter {
-  width: auto;
+  width: 150px;
   max-width: 190px;
+}
+
+.mk-utm__qrcol {
+  width: 1%;
+  padding-right: 0 !important;
+}
+
+.mk-utm__thumb {
+  display: block;
+  width: 32px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  /* QR precisa de fundo claro para ler e para a miniatura não sumir no tema escuro. */
+  background: var(--surface);
+  object-fit: contain;
+}
+
+.mk-utm__thumb.is-off {
+  opacity: 0.45;
+}
+
+.mk-utm__nothumb {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-4);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .mk-utm__loading {
@@ -367,15 +452,6 @@ function brandOf(id: string) {
   gap: 5px;
 }
 
-.mk-utm__qrtag {
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
 .mk-utm__sep {
   color: var(--text-4);
 }
@@ -421,6 +497,13 @@ function brandOf(id: string) {
   .mk-utm-row td {
     padding-top: 12px;
     padding-bottom: 12px;
+  }
+}
+
+/* AppSelect compacto tem 36px; no celular o toque pede 44px. */
+@media (max-width: 640px) {
+  .mk-utm__filter :deep(.app-select__trigger) {
+    min-height: 44px;
   }
 }
 </style>

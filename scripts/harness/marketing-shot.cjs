@@ -62,6 +62,36 @@ async function open(browser, email, route, vp, activeCompany) {
   const desk = { width: 1440, height: 900, mobile: false }
   const phone = { width: 375, height: 812, mobile: true }
 
+  // Painel inicial (R1, D12): uma chamada só. Antes o painel pedia também a
+  // lista inteira da Gráfica (`/cards?track=print`) só para separar a contagem.
+  {
+    const t = await token('nicolas@nevo.test')
+    const ctx = await browser.newContext({ viewport: { width: desk.width, height: desk.height }, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', reducedMotion: 'reduce' })
+    await ctx.addInitScript(([tk, c]) => {
+      localStorage.setItem('token', tk)
+      localStorage.setItem('activeCompany', c)
+      localStorage.setItem('onboarding.autoShown', '1')
+      localStorage.setItem('onboarding.completed', '1')
+      localStorage.setItem('ui.idlePermissionPrompt', 'done')
+    }, [t, seed.companies.pet])
+    const page = await ctx.newPage()
+    const calls = []
+    page.on('request', (req) => {
+      const u = req.url()
+      if (u.startsWith(API) && u.includes(`/marketing/g/${seed.groupId}/`)) calls.push(u.replace(API, '').split('?')[0])
+    })
+    await page.goto(WEB + '/marketing', { waitUntil: 'networkidle' })
+    await page.waitForSelector('[data-section="contagem"]', { timeout: 10000 })
+    await page.waitForTimeout(600)
+    const home = calls.filter((c) => c.endsWith('/home')).length
+    const cards = calls.filter((c) => c.endsWith('/cards')).length
+    check(home === 1 && cards === 0, 'painel: uma chamada ao /home e nenhuma à lista de cards', calls.join(', '))
+    const grafica = await page.locator('[data-section="contagem"] [data-track="grafica"]').count()
+    check(grafica >= 1, 'painel: a contagem da Gráfica sai do próprio /home (chip da trilha)', `${grafica} chip(s)`)
+    await page.screenshot({ path: path.join(out, 'painel-uma-chamada-d1440.png') })
+    await ctx.close()
+  }
+
   // Dono, desktop
   {
     const { ctx, page, bad } = await open(browser, 'nicolas@nevo.test', '/marketing', desk, seed.companies.pet)

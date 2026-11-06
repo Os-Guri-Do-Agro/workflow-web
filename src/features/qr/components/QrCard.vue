@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
 import {
   BarChart3,
   Ban,
@@ -11,6 +12,7 @@ import {
   Eye,
   Folder,
   FolderOpen,
+  Megaphone,
   Pencil,
   Trash2,
   User,
@@ -24,7 +26,20 @@ const props = defineProps<{
   qr: QrCode
   /** Pastas disponíveis no MESMO escopo deste QR (para o menu "mover"). */
   folders?: QrFolder[]
+  /**
+   * QR de UTM da ala Marketing: rota para abrir a UTM na ala, quando quem vê é
+   * da ala e enxerga a marca. `null` com `qr.marketing` = só o selo.
+   */
+  alaLink?: RouteLocationRaw | null
 }>()
+
+/**
+ * QR da ala Marketing (spec R1, D10): selo, só leitura aqui. Editar, mover,
+ * cancelar e excluir só pela ala (a API recusa pelo `own()`), então os botões
+ * nem aparecem, mesmo para quem criou.
+ */
+const isAla = computed(() => !!props.qr.marketing)
+const canMutate = computed(() => props.qr.isMine && !isAla.value)
 const emit = defineEmits<{
   edit: []
   metrics: []
@@ -110,6 +125,15 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
             {{ qr.active ? 'Ativo' : 'Cancelado' }}
           </span>
         </div>
+        <span
+          v-if="isAla"
+          class="qc-ala"
+          data-testid="qr-ala-badge"
+          title="QR de uma UTM da ala Marketing: muda só pela ala"
+        >
+          <Megaphone :size="12" aria-hidden="true" />
+          Ala Marketing
+        </span>
 
         <!-- Escopo: pessoal x empresa (+ autor quando é QR de empresa de outra pessoa) -->
         <div class="qc-scope">
@@ -157,11 +181,20 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 
     <!-- Ações -->
     <div class="qc-actions">
-      <!-- Editar destino: só o criador -->
-      <button v-if="qr.isMine" class="qc-act qc-act--primary" type="button" @click="emit('edit')">
+      <!-- Editar destino: só o criador (QR da ala muda só pela ala) -->
+      <button v-if="canMutate" class="qc-act qc-act--primary" type="button" @click="emit('edit')">
         <Pencil :size="14" />
         <span>Editar destino</span>
       </button>
+      <RouterLink
+        v-if="isAla && alaLink"
+        :to="alaLink"
+        class="qc-act qc-act--primary"
+        data-testid="qr-ala-open"
+      >
+        <ExternalLink :size="14" />
+        <span>Abrir na ala</span>
+      </RouterLink>
 
       <!-- Exportar: qualquer um pode -->
       <div ref="exportRef" class="qc-export">
@@ -183,7 +216,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
       </div>
 
       <!-- Mover para pasta: só o criador -->
-      <div v-if="qr.isMine" ref="moveRef" class="qc-export">
+      <div v-if="canMutate" ref="moveRef" class="qc-export">
         <button
           class="qc-act"
           type="button"
@@ -234,7 +267,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 
       <!-- Cancelar / excluir: só o criador -->
       <button
-        v-if="qr.isMine && qr.active"
+        v-if="canMutate && qr.active"
         class="qc-act"
         type="button"
         @click="emit('cancel')"
@@ -244,7 +277,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
       </button>
 
       <button
-        v-if="qr.isMine"
+        v-if="canMutate"
         class="qc-act qc-act--danger"
         type="button"
         aria-label="Excluir QR"
@@ -323,6 +356,24 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 .qc-badge--off {
   background: var(--surface-2);
   color: var(--text-3);
+}
+
+.qc-ala {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.qc-act {
+  text-decoration: none;
 }
 
 .qc-scope {

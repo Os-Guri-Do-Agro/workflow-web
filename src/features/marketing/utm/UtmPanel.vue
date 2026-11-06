@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { Copy, Download, ExternalLink, Pencil, Power, QrCode, Trash2, X } from 'lucide-vue-next'
+import { AlertTriangle, Copy, Download, ExternalLink, Info, Pencil, Power, QrCode, Trash2, X } from 'lucide-vue-next'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import QrPreview from '@/features/qr/components/QrPreview.vue'
@@ -17,8 +17,13 @@ import { fileSlug } from './utm-normalize'
 import { useUtmMetrics, useUtmMutations } from './useUtm'
 
 /**
- * Painel de uma UTM: links, destino, métricas, QR e vínculos. O QR guarda o
- * link curto, então trocar o destino aqui nunca invalida o que já foi impresso.
+ * Painel de uma UTM: o que divulgar (link curto e QR, lado a lado no topo),
+ * a URL com UTM, destino, métricas e vínculos. O QR guarda o link curto, então
+ * trocar o destino aqui nunca invalida o que já foi impresso.
+ *
+ * Spec R1, D10: o QR saiu do fim do painel (ninguém achava) e a "URL final"
+ * virou "URL com UTM", com o aviso de que ela não passa pelo Nevo e por isso
+ * não conta clique (era o "link grande que não deu certo" em produção).
  */
 const props = defineProps<{
   utm: MarketingUtm
@@ -51,6 +56,7 @@ watch(
 const targetDirty = computed(() => target.value.trim() !== props.utm.shortLink.targetUrl)
 
 const confirmDelete = ref(false)
+const qrStyle = computed(() => (props.utm.qr?.style ?? null) as QrStyle | null)
 const active = computed(() => props.utm.shortLink.active)
 
 async function copy(text: string, what: string) {
@@ -155,22 +161,84 @@ function fmtDate(iso: string) {
       </button>
     </div>
 
-    <section class="up-sec">
-      <h3>Links</h3>
-      <div class="up-link">
-        <span class="up-link__label">Link curto</span>
-        <code class="up-link__url">{{ utm.shortLink.shortUrl }}</code>
-        <button type="button" class="mk-icon-btn" aria-label="Copiar link curto" @click="copy(utm.shortLink.shortUrl, 'Link curto')">
-          <Copy :size="15" />
-        </button>
+    <section class="up-sec up-share" data-testid="utm-share">
+      <h3>Para divulgar</h3>
+      <p class="mk-hint up-share__lead">
+        Use o link curto em post, bio e mensagem, e o QR em placa, folder e embalagem. Os dois passam pelo Nevo: cada
+        clique e cada leitura entram nos resultados abaixo.
+      </p>
+      <p v-if="!active" class="up-off" role="status">
+        <AlertTriangle :size="14" aria-hidden="true" />
+        Desativada: o link curto e o QR mostram "link inativo" até você reativar.
+      </p>
+      <div class="up-share__grid">
+        <div class="up-short" data-testid="utm-short">
+          <span class="up-share__label">Link curto</span>
+          <code class="up-short__url">{{ utm.shortLink.shortUrl }}</code>
+          <div class="up-share__btns">
+            <a
+              class="mk-btn"
+              :href="utm.shortLink.shortUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abre o link curto numa aba nova. Conta como um clique, igual ao do público."
+              data-testid="utm-open-short"
+            >
+              <ExternalLink :size="14" aria-hidden="true" />Abrir
+            </a>
+            <button type="button" class="mk-btn" aria-label="Copiar link curto" @click="copy(utm.shortLink.shortUrl, 'Link curto')">
+              <Copy :size="14" aria-hidden="true" />Copiar
+            </button>
+          </div>
+          <span class="mk-hint">Conta cada clique.</span>
+        </div>
+
+        <div v-if="utm.qr" class="up-qr" data-testid="utm-qr">
+          <QrPreview :text="utm.qr.redirectUrl" :style="qrStyle" :size="112" />
+          <div class="up-qr__side">
+            <span class="up-share__label">QR Code</span>
+            <div class="up-share__btns">
+              <button type="button" class="mk-btn" @click="download('png')"><Download :size="14" aria-hidden="true" />PNG</button>
+              <button type="button" class="mk-btn" @click="download('svg')"><Download :size="14" aria-hidden="true" />SVG</button>
+            </div>
+            <span class="mk-hint">Conta cada leitura. Para gráfica, use o SVG (vetor).</span>
+          </div>
+        </div>
+        <div v-else class="up-qr up-qr--empty" data-testid="utm-qr-empty">
+          <span class="up-qr__ph" aria-hidden="true"><QrCode :size="28" /></span>
+          <div class="up-qr__side">
+            <span class="up-share__label">QR Code</span>
+            <span class="mk-hint">Esta UTM ainda não tem QR.</span>
+            <button
+              v-if="canEdit"
+              type="button"
+              class="mk-btn mk-btn--primary"
+              :disabled="mut.createQr.isPending.value"
+              @click="makeQr"
+            >
+              <QrCode :size="14" aria-hidden="true" />Criar QR Code
+            </button>
+          </div>
+        </div>
       </div>
+    </section>
+
+    <section class="up-sec" data-testid="utm-long">
+      <h3>URL com UTM</h3>
       <div class="up-link">
-        <span class="up-link__label">URL final</span>
         <code class="up-link__url">{{ utm.shortLink.finalUrl }}</code>
-        <button type="button" class="mk-icon-btn" aria-label="Copiar URL final" @click="copy(utm.shortLink.finalUrl, 'URL final')">
+        <button type="button" class="mk-icon-btn" aria-label="Copiar URL com UTM" @click="copy(utm.shortLink.finalUrl, 'URL com UTM')">
           <Copy :size="15" />
         </button>
       </div>
+      <p class="up-warn" data-testid="utm-long-warning">
+        <Info :size="14" aria-hidden="true" />
+        <span>Não passa pelo Nevo, então não conta clique. Para divulgar, use o link curto ou o QR.</span>
+      </p>
+      <p class="mk-hint">
+        Serve para conferir as UTMs ou para quem precisa do endereço completo (um anúncio que já mede por conta própria,
+        por exemplo).
+      </p>
       <dl class="up-utm">
         <div><dt>Origem</dt><dd>{{ utm.shortLink.utmSource }}</dd></div>
         <div><dt>Mídia</dt><dd>{{ utm.shortLink.utmMedium }}</dd></div>
@@ -234,27 +302,6 @@ function fmtDate(iso: string) {
       </ul>
     </section>
 
-    <section class="up-sec">
-      <h3>QR Code</h3>
-      <div v-if="utm.qr" class="up-qr" data-testid="utm-qr">
-        <QrPreview :text="utm.qr.redirectUrl" :style="utm.qr.style as QrStyle | null" :size="132" />
-        <div class="up-qr__side">
-          <p class="mk-hint">Lê para <code>{{ utm.qr.redirectUrl }}</code>, que leva ao link curto.</p>
-          <div class="up-qr__btns">
-            <button type="button" class="mk-btn" @click="download('png')"><Download :size="14" />Baixar PNG</button>
-            <button type="button" class="mk-btn" @click="download('svg')"><Download :size="14" />Baixar SVG</button>
-          </div>
-          <p class="mk-hint">Para impressão em gráfica use o SVG (vetor).</p>
-        </div>
-      </div>
-      <div v-else class="up-qr-empty">
-        <p class="mk-hint">Esta UTM ainda não tem QR. Crie um para placas, folders e embalagens.</p>
-        <button v-if="canEdit" type="button" class="mk-btn mk-btn--primary" :disabled="mut.createQr.isPending.value" @click="makeQr">
-          <QrCode :size="14" />Criar QR Code
-        </button>
-      </div>
-    </section>
-
     <section v-if="linked.length" class="up-sec">
       <h3>Ligada a</h3>
       <ul class="up-linked">
@@ -284,6 +331,7 @@ function fmtDate(iso: string) {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .up-head {
@@ -338,15 +386,87 @@ function fmtDate(iso: string) {
 
 .up-link {
   display: grid;
-  grid-template-columns: 70px 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
 
-.up-link__label {
+.up-share__lead {
+  margin: 0;
+}
+
+.up-share__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.up-short,
+.up-qr {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.up-share__label {
   font-size: 12px;
-  color: var(--text-3);
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.up-short__url {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  word-break: break-all;
+  color: var(--text);
+}
+
+.up-share__btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.up-share__btns .mk-btn {
+  text-decoration: none;
+}
+
+.up-off {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  font-size: 12.5px;
+}
+
+.up-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.up-warn svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warn);
 }
 
 .up-link__url {
@@ -447,31 +567,28 @@ function fmtDate(iso: string) {
 }
 
 .up-qr {
-  display: flex;
-  gap: 14px;
+  flex-direction: row;
   align-items: flex-start;
-  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .up-qr__side {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  flex: 1;
-  min-width: 180px;
-}
-
-.up-qr__btns {
-  display: flex;
   gap: 6px;
-  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
 }
 
-.up-qr-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+.up-qr__ph {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
 }
 
 .up-linked {
@@ -515,13 +632,23 @@ code {
   overflow-wrap: anywhere;
 }
 
+/* No painel lateral (440px) o QR desce para baixo do link curto: lado a lado
+   ele ficava espremido e o texto quebrava palavra por palavra. */
+@container (max-width: 480px) {
+  .up-share__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 640px) {
-  .up-link {
-    grid-template-columns: 1fr auto;
+  .up-share__grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .up-link__label {
-    grid-column: 1 / -1;
+  .up-share__btns .mk-btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 44px;
   }
 
   .up-stat strong {

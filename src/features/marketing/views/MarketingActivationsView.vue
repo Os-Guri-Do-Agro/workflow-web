@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Camera, PartyPopper, Plus } from 'lucide-vue-next'
+import { Camera, Loader2, PartyPopper, Plus } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import type {
@@ -18,9 +19,8 @@ import {
   ACTIVATION_STATUS_TONE,
   ACTIVATION_STATUSES,
   formatWhen,
-  isUpcoming,
 } from '../activations/activation-meta'
-import { useActivationsList } from '../activations/useActivations'
+import { useActivationsPages } from '../activations/useActivations'
 import { useMarketing } from '../composables/useMarketing'
 import { brandTone, formatCents, toneStyle } from '../marketing-labels'
 
@@ -28,6 +28,10 @@ import { brandTone, formatCents, toneStyle } from '../marketing-labels'
  * Ativações (feiras, palestras, ações com parceiro). Lista Próximas e Passadas
  * e painel pela URL `?ativacao=<id>`. Filtros na URL: `?quando=passadas`,
  * `?situacao=`, `?tipo=`; a marca vem do `?marca=` do layout.
+ *
+ * A lista é paginada na API (R1, D12): a aba aberta vem de 50 em 50 com
+ * "Carregar mais", e o número de cada aba vem do servidor. Antes vinham até
+ * 500 de uma vez e o resto sumia calado.
  */
 const mk = useMarketing()
 const route = useRoute()
@@ -54,15 +58,32 @@ function setQuery(patch: Record<string, string | null>) {
   void router.replace({ query })
 }
 
-const listQuery = useActivationsList(
+const listQuery = useActivationsPages(
   () => mk.groupId.value,
   () => ({ companyId: mk.brandFilter.value, status: status.value, kind: kind.value }),
+  when,
 )
 
-const all = computed(() => listQuery.data.value ?? [])
-const upcoming = computed(() => all.value.filter((a) => isUpcoming(a)))
-const past = computed(() => all.value.filter((a) => !isUpcoming(a)).reverse())
-const rows = computed(() => (when.value === 'passadas' ? past.value : upcoming.value))
+const pages = computed(() => listQuery.data.value?.pages ?? [])
+const rows = computed<ActivationListItem[]>(() => pages.value.flatMap((p) => p.items))
+/** Contagem da página mais nova (todas trazem; a última é a mais fresca). */
+const counts = computed(() => pages.value[pages.value.length - 1]?.counts ?? null)
+const upcomingCount = computed(() => counts.value?.upcoming ?? (when.value === 'proximas' ? rows.value.length : 0))
+const pastCount = computed(() => counts.value?.past ?? (when.value === 'passadas' ? rows.value.length : 0))
+const shownTotal = computed(() => (when.value === 'passadas' ? pastCount.value : upcomingCount.value))
+const loadingMore = computed(() => listQuery.isFetchingNextPage.value)
+function loadMore() {
+  if (listQuery.hasNextPage.value && !loadingMore.value) void listQuery.fetchNextPage()
+}
+
+const statusItems = computed(() => [
+  { label: 'Todas as situações', value: '' },
+  ...ACTIVATION_STATUSES.map((s) => ({ label: ACTIVATION_STATUS_LABEL[s], value: s })),
+])
+const kindItems = computed(() => [
+  { label: 'Todos os tipos', value: '' },
+  ...ACTIVATION_KINDS.map((k) => ({ label: ACTIVATION_KIND_LABEL[k], value: k })),
+])
 const seesFinance = computed(() => mk.permissions.value?.seeFinance ?? false)
 const multiBrand = computed(() => mk.brands.value.length > 1)
 
@@ -96,7 +117,7 @@ function checklistLabel(a: ActivationListItem) {
             :aria-selected="when === 'proximas'"
             @click="setQuery({ quando: null })"
           >
-            Próximas <span class="av__n">{{ upcoming.length }}</span>
+            Próximas <span class="av__n" data-testid="av-count-upcoming">{{ upcomingCount }}</span>
           </button>
           <button
             type="button"
@@ -106,27 +127,27 @@ function checklistLabel(a: ActivationListItem) {
             :aria-selected="when === 'passadas'"
             @click="setQuery({ quando: 'passadas' })"
           >
-            Passadas <span class="av__n">{{ past.length }}</span>
+            Passadas <span class="av__n" data-testid="av-count-past">{{ pastCount }}</span>
           </button>
         </div>
-        <select
-          class="mk-select av__filter"
-          :value="status"
-          aria-label="Filtrar por situação"
-          @change="setQuery({ situacao: ($event.target as HTMLSelectElement).value || null })"
-        >
-          <option value="">Todas as situações</option>
-          <option v-for="s in ACTIVATION_STATUSES" :key="s" :value="s">{{ ACTIVATION_STATUS_LABEL[s] }}</option>
-        </select>
-        <select
-          class="mk-select av__filter"
-          :value="kind"
-          aria-label="Filtrar por tipo"
-          @change="setQuery({ tipo: ($event.target as HTMLSelectElement).value || null })"
-        >
-          <option value="">Todos os tipos</option>
-          <option v-for="k in ACTIVATION_KINDS" :key="k" :value="k">{{ ACTIVATION_KIND_LABEL[k] }}</option>
-        </select>
+        <div class="av__filter" data-testid="av-filter-status">
+          <AppSelect
+            :model-value="status"
+            :items="statusItems"
+            label="Filtrar por situação"
+            density="compact"
+            @update:model-value="setQuery({ situacao: (($event as string) || null) })"
+          />
+        </div>
+        <div class="av__filter" data-testid="av-filter-kind">
+          <AppSelect
+            :model-value="kind"
+            :items="kindItems"
+            label="Filtrar por tipo"
+            density="compact"
+            @update:model-value="setQuery({ tipo: (($event as string) || null) })"
+          />
+        </div>
         <span class="mk-toolbar__spacer" />
         <button v-if="mk.can('EDITOR')" type="button" class="mk-btn mk-btn--primary" @click="formOpen = true">
           <Plus :size="14" aria-hidden="true" />
@@ -135,7 +156,7 @@ function checklistLabel(a: ActivationListItem) {
       </div>
 
       <div v-if="listQuery.isLoading.value" class="av__loading"><Skeleton type="block" height="160px" /></div>
-      <p v-else-if="listQuery.isError.value" class="mk-error" role="alert">Não foi possível carregar as ativações.</p>
+      <p v-else-if="listQuery.isError.value && !rows.length" class="mk-error" role="alert">Não foi possível carregar as ativações.</p>
 
       <EmptyState
         v-else-if="!rows.length"
@@ -212,7 +233,23 @@ function checklistLabel(a: ActivationListItem) {
             </tr>
           </tbody>
         </table>
+        <div class="av__more" data-testid="av-more">
+          <span class="mk-hint">Mostrando {{ rows.length.toLocaleString('pt-BR') }} de {{ shownTotal.toLocaleString('pt-BR') }}</span>
+          <button
+            v-if="listQuery.hasNextPage.value"
+            type="button"
+            class="mk-btn"
+            :disabled="loadingMore"
+            @click="loadMore"
+          >
+            <Loader2 v-if="loadingMore" :size="14" class="av__spin" aria-hidden="true" />
+            {{ loadingMore ? 'Carregando...' : 'Carregar mais' }}
+          </button>
+        </div>
       </div>
+      <p v-if="listQuery.isFetchNextPageError.value" class="mk-error" role="alert">
+        Não foi possível carregar mais ativações. Tente de novo.
+      </p>
     </div>
 
     <ActivationPanel
@@ -294,7 +331,34 @@ function checklistLabel(a: ActivationListItem) {
 }
 
 .av__filter {
-  width: auto;
+  width: 190px;
+  max-width: 100%;
+}
+
+.av__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.av__spin {
+  animation: av-spin 0.9s linear infinite;
+}
+
+@keyframes av-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .av__spin {
+    animation: none;
+  }
 }
 
 .av__table-wrap {
@@ -457,6 +521,13 @@ function checklistLabel(a: ActivationListItem) {
 
   .av__list .mk-btn--primary {
     flex: 1 1 100%;
+  }
+}
+
+/* AppSelect compacto tem 36px; no celular o toque pede 44px. */
+@media (max-width: 640px) {
+  .av__filter :deep(.app-select__trigger) {
+    min-height: 44px;
   }
 }
 </style>

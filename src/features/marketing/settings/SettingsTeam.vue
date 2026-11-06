@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { KeyRound, Pencil, Trash2, UserPlus } from 'lucide-vue-next'
 import AccessLinkBox from '@/components/AccessLinkBox.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { getApiErrorMessage } from '@/service/api'
@@ -13,7 +14,6 @@ import {
   type MarketingRole,
 } from '@/service/marketing/marketing-core'
 import {
-  addMember,
   memberAccessLink,
   removeMember,
   updateMember,
@@ -21,12 +21,14 @@ import {
 } from '@/service/marketing/marketing-settings'
 import { useToast } from '@/composables/useToast'
 import { brandTone, toneStyle } from '../marketing-labels'
+import InviteMembersDialog from './InviteMembersDialog.vue'
 import SettingsDialog from './SettingsDialog.vue'
 
 /**
  * Equipe da ala. Admin convida e mexe em Editor e Visualizador; Dono mexe em
- * todos. Quem entra só pela ala (freelancer) recebe o link de primeiro acesso
- * na hora do convite.
+ * todos. O convite tem duas abas (spec R1, D9): "Do Nevo" (quem já trabalha
+ * nas empresas do grupo, em lote) e "Por e-mail" (quem entra só pela ala, o
+ * freelancer, recebe o link de primeiro acesso na hora).
  */
 const props = defineProps<{
   groupId: string
@@ -67,40 +69,14 @@ async function refresh() {
 
 // ── Convidar ────────────────────────────────────────────────────────────────
 const inviteOpen = ref(false)
-const invite = reactive({ email: '', name: '', role: 'EDITOR' as MarketingRole, brandIds: [] as string[], title: '' })
-const inviteError = ref('')
-const inviteResult = ref<{ name: string; email: string; link: AccessLinkResult | null; created: boolean } | null>(null)
-
 function openInvite() {
-  Object.assign(invite, { email: '', name: '', role: 'EDITOR', brandIds: [], title: '' })
-  inviteError.value = ''
-  inviteResult.value = null
   inviteOpen.value = true
-}
-
-async function submitInvite() {
-  inviteError.value = ''
-  busy.value = true
-  try {
-    const res = await addMember(props.groupId, {
-      email: invite.email.trim(),
-      name: invite.name.trim() || undefined,
-      role: invite.role,
-      brandIds: invite.brandIds,
-      title: invite.title.trim() || undefined,
-    })
-    inviteResult.value = { name: res.member.name, email: res.member.email, link: res.accessLink, created: res.created }
-    await refresh()
-  } catch (error) {
-    inviteError.value = getApiErrorMessage(error, 'Não deu para convidar.')
-  } finally {
-    busy.value = false
-  }
 }
 
 // ── Editar ──────────────────────────────────────────────────────────────────
 const editing = ref<MarketingMember | null>(null)
 const edit = reactive({ role: 'EDITOR' as MarketingRole, brandIds: [] as string[], title: '' })
+const roleItems = computed(() => grantable.value.map((r) => ({ label: MARKETING_ROLE_LABEL[r], value: r })))
 function openEdit(m: MarketingMember) {
   editing.value = m
   Object.assign(edit, { role: m.role, brandIds: [...m.brandIds], title: m.title ?? '' })
@@ -224,72 +200,21 @@ function toggleBrand(list: string[], id: string) {
       </table>
     </div>
 
-    <!-- Convidar -->
-    <SettingsDialog v-model="inviteOpen" title="Convidar para a ala" :loading="busy">
-      <template v-if="!inviteResult">
-        <p class="mk-hint">
-          Quem ainda não tem conta ganha uma, sem acesso ao resto do Nevo. Quem já tem conta só ganha o papel na ala.
-        </p>
-        <div class="mk-field">
-          <label class="mk-label" for="inv-email">E-mail</label>
-          <input id="inv-email" v-model="invite.email" class="mk-input" type="email" autocomplete="off" />
-        </div>
-        <div class="mk-field">
-          <label class="mk-label" for="inv-name">Nome</label>
-          <input id="inv-name" v-model="invite.name" class="mk-input" type="text" autocomplete="off" />
-          <span class="mk-hint">Obrigatório só para conta nova.</span>
-        </div>
-        <div class="mk-field">
-          <label class="mk-label" for="inv-role">Papel</label>
-          <select id="inv-role" v-model="invite.role" class="mk-select">
-            <option v-for="r in grantable" :key="r" :value="r">{{ MARKETING_ROLE_LABEL[r] }}: {{ ROLE_HINT[r] }}</option>
-          </select>
-        </div>
-        <fieldset v-if="brands.length > 1" class="st__brands">
-          <legend class="mk-label">Marcas (nenhuma marcada = todas)</legend>
-          <label v-for="b in brands" :key="b.companyId" class="st__brand">
-            <input type="checkbox" :checked="invite.brandIds.includes(b.companyId)" @change="toggleBrand(invite.brandIds, b.companyId)" />
-            <span class="mk-dot" :style="toneStyle(brandTone(b))" aria-hidden="true" />
-            {{ b.name }}
-          </label>
-        </fieldset>
-        <div class="mk-field">
-          <label class="mk-label" for="inv-title">Rótulo na equipe</label>
-          <input id="inv-title" v-model="invite.title" class="mk-input" type="text" placeholder="Freelancer, Diretoria..." />
-        </div>
-        <p v-if="inviteError" class="mk-error" role="alert">{{ inviteError }}</p>
-      </template>
-      <template v-else>
-        <p class="st__done">
-          {{ inviteResult.name }} {{ inviteResult.created ? 'ganhou uma conta e' : '' }} entrou na ala.
-        </p>
-        <AccessLinkBox
-          v-if="inviteResult.link"
-          :link="inviteResult.link.link"
-          :expires-at="inviteResult.link.expiresAt"
-          :emailed="inviteResult.link.emailed"
-          :email="inviteResult.email"
-        />
-        <p v-else class="mk-hint">A pessoa já tem conta no Nevo: entra com o login de sempre e encontra a ala no menu.</p>
-      </template>
-      <template #footer>
-        <template v-if="!inviteResult">
-          <button type="button" class="mk-btn mk-btn--ghost" :disabled="busy" @click="inviteOpen = false">Cancelar</button>
-          <button type="button" class="mk-btn mk-btn--primary" :disabled="busy || !invite.email.trim()" @click="submitInvite">
-            Convidar
-          </button>
-        </template>
-        <button v-else type="button" class="mk-btn mk-btn--primary" @click="inviteOpen = false">Pronto</button>
-      </template>
-    </SettingsDialog>
+    <!-- Convidar: abas Do Nevo e Por e-mail -->
+    <InviteMembersDialog
+      v-model="inviteOpen"
+      :group-id="groupId"
+      :brands="brands"
+      :grantable="grantable"
+      :role-hint="ROLE_HINT"
+    />
 
     <!-- Editar -->
     <SettingsDialog :model-value="!!editing" :title="`Editar ${editing?.name ?? ''}`" :loading="busy" @update:model-value="(v) => { if (!v) editing = null }">
       <div class="mk-field">
-        <label class="mk-label" for="ed-role">Papel</label>
-        <select id="ed-role" v-model="edit.role" class="mk-select">
-          <option v-for="r in grantable" :key="r" :value="r">{{ MARKETING_ROLE_LABEL[r] }}: {{ ROLE_HINT[r] }}</option>
-        </select>
+        <span class="mk-label">Papel</span>
+        <AppSelect v-model="edit.role" :items="roleItems" label="Papel" density="compact" />
+        <span class="mk-hint">{{ ROLE_HINT[edit.role] }}</span>
       </div>
       <fieldset v-if="brands.length > 1" class="st__brands">
         <legend class="mk-label">Marcas (nenhuma marcada = todas)</legend>
@@ -389,11 +314,6 @@ function toggleBrand(list: string[], id: string) {
   font-size: 13px;
 }
 
-.st__done {
-  margin: 0;
-  font-weight: 600;
-}
-
 .sr-only {
   position: absolute;
   width: 1px;
@@ -405,6 +325,13 @@ function toggleBrand(list: string[], id: string) {
 @media (max-width: 640px) {
   .st__hide-sm {
     display: none;
+  }
+}
+
+/* AppSelect compacto tem 36px; no celular o toque pede 44px. */
+@media (max-width: 640px) {
+  .mk-field :deep(.app-select__trigger) {
+    min-height: 44px;
   }
 }
 </style>
