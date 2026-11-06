@@ -1,6 +1,6 @@
 # Spec: v2, parte 3 (board e notas no celular, roadmap novo com teste)
 
-**Status:** Implementado no harness (sem commit; aguarda o dono para subir e aplicar a migration 20261105220000_roadmap_teste)
+**Status:** Implementado no harness (sem commit). Migration 20261105220000_roadmap_teste APLICADA em produção em 05/11/2026 (enum `test` e coluna `testStart` conferidos); falta o `prisma migrate resolve --applied`, que o dono roda
 **Autor:** Nicolas (via spec-driven, Agentes 1 e 2)
 **Criado em:** 2026-11-05
 **Versão:** 0.3
