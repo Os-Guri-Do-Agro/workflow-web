@@ -21,6 +21,7 @@ import {
 } from '@/service/marketing/marketing-settings'
 import { useToast } from '@/composables/useToast'
 import { brandTone, toneStyle } from '../marketing-labels'
+import LibraryCheck from '../library/LibraryCheck.vue'
 import InviteMembersDialog from './InviteMembersDialog.vue'
 import SettingsDialog from './SettingsDialog.vue'
 
@@ -218,8 +219,12 @@ function toggleBrand(list: string[], id: string) {
       </div>
       <fieldset v-if="brands.length > 1" class="st__brands">
         <legend class="mk-label">Marcas (nenhuma marcada = todas)</legend>
-        <label v-for="b in brands" :key="b.companyId" class="st__brand">
-          <input type="checkbox" :checked="edit.brandIds.includes(b.companyId)" @change="toggleBrand(edit.brandIds, b.companyId)" />
+        <label v-for="b in brands" :key="b.companyId" class="st__brand" :data-brand="b.companyId">
+          <LibraryCheck
+            :checked="edit.brandIds.includes(b.companyId)"
+            :label="`Marca ${b.name}`"
+            @toggle="toggleBrand(edit.brandIds, b.companyId)"
+          />
           <span class="mk-dot" :style="toneStyle(brandTone(b))" aria-hidden="true" />
           {{ b.name }}
         </label>
@@ -310,8 +315,9 @@ function toggleBrand(list: string[], id: string) {
 .st__brand {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-size: 13px;
+  cursor: pointer;
 }
 
 .sr-only {

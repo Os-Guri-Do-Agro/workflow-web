@@ -705,7 +705,12 @@ async function dropFiles(page, selector, files) {
       check('U7', (await dlg.locator('.fx-file.is-queued').count()) === 1, 'lançamento novo: nota solta na janela fica na fila até salvar')
       await dlg.getByRole('button', { name: 'Lançar' }).click()
       await page.waitForSelector('tr.fe-row:has-text("E2E Envios Camisetas")', { timeout: 15000 })
-      const list = await api('marcel', 'GET', `/finance/expenses?month=${month}&companyId=${C.pet}&q=Camisetas`)
+      // A linha aparece pelo tempo real ao criar o lançamento; a nota sobe logo depois (espera até 15 s).
+      let list = null
+      await waitFor(async () => {
+        list = await api('marcel', 'GET', `/finance/expenses?month=${month}&companyId=${C.pet}&q=Camisetas`)
+        return list.data?.items?.[0]?.invoices?.length === 1
+      }, 15000)
       check('U7', list.data?.items?.[0]?.invoices?.length === 1, 'lançamento novo: a nota sobe depois de salvar e liga ao lançamento')
       await shot(page, 'u7-financeiro-d1440.png')
       await ctx.close()

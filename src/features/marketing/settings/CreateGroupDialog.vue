@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getApiErrorMessage } from '@/service/api'
 import { createGroup, getAvailableCompanies } from '@/service/marketing/marketing-settings'
 import { useToast } from '@/composables/useToast'
+import LibraryCheck from '../library/LibraryCheck.vue'
 import SettingsDialog from './SettingsDialog.vue'
 
 /**
@@ -23,6 +24,9 @@ const available = useQuery({
 
 const name = ref('')
 const picked = ref<string[]>([])
+function togglePick(id: string) {
+  picked.value = picked.value.includes(id) ? picked.value.filter((x) => x !== id) : [...picked.value, id]
+}
 const busy = ref(false)
 const error = ref('')
 
@@ -69,8 +73,8 @@ async function submit() {
       <p v-else-if="!available.data.value?.length" class="mk-hint">
         Nenhuma empresa livre: você precisa ser Admin de uma empresa que ainda não esteja em outro grupo.
       </p>
-      <label v-for="c in available.data.value ?? []" :key="c.id" class="cg__company">
-        <input v-model="picked" type="checkbox" :value="c.id" />
+      <label v-for="c in available.data.value ?? []" :key="c.id" class="cg__company" :data-company="c.id">
+        <LibraryCheck :checked="picked.includes(c.id)" :label="`Escolher ${c.name}`" @toggle="togglePick(c.id)" />
         {{ c.name }}
       </label>
     </fieldset>
@@ -106,7 +110,8 @@ async function submit() {
 .cg__company {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   font-size: 13px;
+  cursor: pointer;
 }
 </style>

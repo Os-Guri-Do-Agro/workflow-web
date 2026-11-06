@@ -160,6 +160,15 @@
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/*
+ * AppSelect dentro de .mk-field: o campo do Nevo tem 36px (compact); no celular
+ * o toque pede 44px. Campo inválido ganha a borda de erro (o AppSelect não
+ * recebe aria-invalid; a frase do erro vem em role="alert" ao lado).
+ */
+.mk-field.mk-select-invalid .app-select__trigger {
+  border-color: var(--err);
+}
+
 .mk-hint {
   font-size: 12px;
   color: var(--text-3);
@@ -366,6 +375,13 @@
   .mk-btn,
   .mk-input,
   .mk-select {
+    min-height: 44px;
+  }
+
+  .mk-page .app-select__trigger,
+  .mk-toolbar .app-select__trigger,
+  .mk-panel .app-select__trigger,
+  .mk-field .app-select__trigger {
     min-height: 44px;
   }
 

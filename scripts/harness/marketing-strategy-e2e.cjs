@@ -13,6 +13,7 @@ const { chromium } = require('playwright-core')
 const pg = require('pg')
 const fs = require('node:fs')
 const path = require('node:path')
+const { pickOption } = require('./app-select.cjs')
 
 const API = process.env.API ?? 'http://127.0.0.1:3622'
 const WEB = process.env.WEB ?? 'http://localhost:5184'
@@ -436,7 +437,7 @@ async function smallTargets(page, scope) {
     await shot(page, 'ideias-admin-d1440.png')
 
     await page.locator('input[aria-label="Nova ideia"]').fill('Trend: tutor dançando com o pet')
-    await page.locator('.iv-quick select').selectOption('TREND')
+    await pickOption(page, page.locator('.iv-quick__kind'), 'Trend')
     await page.locator('.iv-quick button[type=submit]').click()
     await page.locator('.it', { hasText: 'Trend: tutor dançando com o pet' }).waitFor()
     check('Ideias 1440: criar rápido põe a trend no mural', true)
@@ -453,7 +454,7 @@ async function smallTargets(page, scope) {
     const screenIdeaId = (await q(`SELECT id FROM "MarketingIdea" WHERE title=$1`, ['Sorteio de um mês de ração (tela)'])).rows[0].id
     const target = page.locator('.it', { hasText: 'Sorteio de um mês de ração (tela)' })
     await target.locator('.it__cta', { hasText: 'Transformar em post' }).click()
-    await page.locator('[role=dialog] select').nth(1).selectOption(C.pet)
+    await pickOption(page, page.locator('[data-field="convert-brand"]'), 'PetJourney')
     await shot(page, 'ideias-converter-d1440.png')
     await page.getByRole('button', { name: 'Criar post' }).click()
     await page.waitForURL(/\/marketing\/cards\//, { timeout: 8000 })
@@ -603,7 +604,7 @@ async function smallTargets(page, scope) {
     await page.getByRole('button', { name: 'Criar campanha' }).click()
     check('Campanhas 1440: criar sem nome mostra o erro', (await page.locator('[role=dialog] .mk-error').count()) >= 1)
     await page.locator('[role=dialog] input[placeholder^="Ex.:"]').fill('Black Friday dos Pets')
-    await page.locator('[role=dialog] select').first().selectOption(C.pet)
+    await pickOption(page, page.locator('[role=dialog] [data-field="brand"]'), 'PetJourney')
     const dates = page.locator('[role=dialog] input[type=date]')
     await dates.nth(0).fill(addDays(20))
     await dates.nth(1).fill(addDays(30))
@@ -616,7 +617,7 @@ async function smallTargets(page, scope) {
     check('Campanhas 1440: criar pela tela grava em centavos, datas e canais', bf?.status === 'DRAFT' && bf.budgetCents === 150_000 && bf.startDate === addDays(20) && bf.endDate === addDays(30) && bf.channels.includes('Instagram'), JSON.stringify(bf))
     await page.locator('.cp [aria-label="Editar campanha"]').click()
     await page.locator('[role=dialog]').waitFor()
-    check('Campanhas 1440: ao editar, a marca fica travada', await page.locator('[role=dialog] select').first().isDisabled())
+    check('Campanhas 1440: ao editar, a marca fica travada', await page.locator('[role=dialog] [data-field="brand"] button[role="combobox"]').isDisabled())
     await page.keyboard.press('Escape')
     await ctx.close()
   }

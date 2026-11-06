@@ -8,6 +8,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { CalendarClock, Info, Send } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { hasMarketingRole, type MarketingBrand, type MarketingMember } from '@/service/marketing/marketing-core'
 import type { MarketingCardDetail, UpdateCardInput } from '@/service/marketing/marketing-cards'
@@ -22,6 +23,7 @@ import {
   type CardNetwork,
 } from '../../marketing-labels'
 import { formatDayTime, formatFull } from '../approvals-meta'
+import { labelItems, useSavedSelect } from '../../select-items'
 import { spLocalInput, spLocalInputToIso } from '../../calendar/calendar-time'
 
 const props = defineProps<{
@@ -31,7 +33,8 @@ const props = defineProps<{
   canEdit: boolean
 }>()
 
-const emit = defineEmits<{ patch: [input: UpdateCardInput] }>()
+/** `onFail` roda quando a API recusa: o campo que salva sozinho volta ao valor gravado. */
+const emit = defineEmits<{ patch: [input: UpdateCardInput, onFail?: () => void] }>()
 
 const KINDS = Object.keys(CARD_KIND_LABEL) as CardKind[]
 const NETWORKS = Object.keys(CARD_NETWORK_LABEL) as CardNetwork[]
@@ -142,6 +145,27 @@ const assignees = computed(() =>
   ),
 )
 
+// Tipo e responsável salvam ao escolher; se a API recusa, voltam ao que estava gravado.
+const kindItems = labelItems(KINDS, CARD_KIND_LABEL)
+const kindField = useSavedSelect(() => props.card.kind)
+function pickKind(value: unknown) {
+  if (typeof value !== 'string' || !kindField.pick(value)) return
+  emit('patch', { kind: value as CardKind }, () => kindField.revert())
+}
+
+const assigneeField = useSavedSelect(() => props.card.assignee?.id ?? '')
+const assigneeItems = computed(() => {
+  const items = [{ label: 'Sem responsável', value: '' }, ...assignees.value.map((m) => ({ label: m.name, value: m.userId }))]
+  const current = props.card.assignee
+  // Quem já é o responsável continua na lista mesmo sem ser mais Editor da marca.
+  if (current && !items.some((i) => i.value === current.id)) items.push({ label: current.name, value: current.id })
+  return items
+})
+function pickAssignee(value: unknown) {
+  if (typeof value !== 'string' || !assigneeField.pick(value)) return
+  emit('patch', { assigneeId: value || null }, () => assigneeField.revert())
+}
+
 function toggleNetwork(n: CardNetwork) {
   const list = props.card.networks.includes(n) ? props.card.networks.filter((x) => x !== n) : [...props.card.networks, n]
   emit('patch', { networks: list })
@@ -199,17 +223,17 @@ const captionNetworks = computed(() => props.card.networks)
         {{ brand?.name ?? 'Marca' }}
       </dd>
 
-      <dt><label for="mkf-kind">Tipo</label></dt>
+      <dt>Tipo</dt>
       <dd>
-        <select
-          v-if="canEdit && !kindLocked"
-          id="mkf-kind"
-          class="mk-select mkf__sel"
-          :value="card.kind"
-          @change="emit('patch', { kind: ($event.target as HTMLSelectElement).value as CardKind })"
-        >
-          <option v-for="k in KINDS" :key="k" :value="k">{{ CARD_KIND_LABEL[k] }}</option>
-        </select>
+        <div v-if="canEdit && !kindLocked" class="mkf__sel" data-testid="card-kind">
+          <AppSelect
+            :model-value="kindField.shown.value"
+            :items="kindItems"
+            label="Tipo"
+            density="compact"
+            @update:model-value="pickKind"
+          />
+        </div>
         <span v-else :title="kindLocked ? 'O tipo só muda antes da aprovação' : undefined">{{ CARD_KIND_LABEL[card.kind] }}</span>
       </dd>
 
@@ -263,21 +287,17 @@ const captionNetworks = computed(() => props.card.networks)
         <span v-else class="mkf__none">Sem data</span>
       </dd>
 
-      <dt><label for="mkf-who">Responsável</label></dt>
+      <dt>Responsável</dt>
       <dd>
-        <select
-          v-if="canEdit"
-          id="mkf-who"
-          class="mk-select mkf__sel"
-          :value="card.assignee?.id ?? ''"
-          @change="emit('patch', { assigneeId: ($event.target as HTMLSelectElement).value || null })"
-        >
-          <option value="">Sem responsável</option>
-          <option v-for="m in assignees" :key="m.userId" :value="m.userId">{{ m.name }}</option>
-          <option v-if="card.assignee && !assignees.some((m) => m.userId === card.assignee!.id)" :value="card.assignee.id">
-            {{ card.assignee.name }}
-          </option>
-        </select>
+        <div v-if="canEdit" class="mkf__sel" data-testid="card-assignee">
+          <AppSelect
+            :model-value="assigneeField.shown.value"
+            :items="assigneeItems"
+            label="Responsável"
+            density="compact"
+            @update:model-value="pickAssignee"
+          />
+        </div>
         <span v-else-if="card.assignee" class="mkf__inline">
           <PersonAvatar :id="card.assignee.id" :name="card.assignee.name" :size="20" decorative />
           {{ card.assignee.name }}
@@ -425,7 +445,14 @@ const captionNetworks = computed(() => props.card.networks)
   font-size: 12.5px;
 }
 
-.mkf__sel,
+.mkf__sel {
+  width: 100%;
+}
+
+.mkf__sel :deep(.app-select__trigger) {
+  min-height: 30px;
+}
+
 .mkf__date {
   width: 100%;
   min-height: 30px;
@@ -508,7 +535,7 @@ const captionNetworks = computed(() => props.card.networks)
 }
 
 @media (max-width: 640px) {
-  .mkf__sel,
+  .mkf__sel :deep(.app-select__trigger),
   .mkf__date {
     min-height: 44px;
   }

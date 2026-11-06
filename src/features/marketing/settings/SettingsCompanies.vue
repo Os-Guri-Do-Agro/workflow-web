@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Plus, Trash2 } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { TAG_COLOR_KEYS } from '@/components/ui/tag-palette'
 import { getApiErrorMessage } from '@/service/api'
@@ -14,6 +15,7 @@ import {
 } from '@/service/marketing/marketing-settings'
 import { useToast } from '@/composables/useToast'
 import { brandTone, toneStyle } from '../marketing-labels'
+import { asText, selectItems } from '../select-items'
 
 /**
  * Empresas do grupo (marcas da ala). Só o Dono liga, desliga, troca a cor e
@@ -66,8 +68,46 @@ function toggle(companyId: string, marketingEnabled: boolean) {
   )
 }
 
-function setColor(companyId: string, color: string) {
-  void run(() => updateLinkedCompany(props.groupId, companyId, { color: color || null }), 'Cor salva')
+const COLOR_LABEL: Record<string, string> = {
+  slate: 'Cinza',
+  blue: 'Azul',
+  cyan: 'Ciano',
+  teal: 'Verde-água',
+  green: 'Verde',
+  lime: 'Lima',
+  amber: 'Âmbar',
+  orange: 'Laranja',
+  red: 'Vermelho',
+  pink: 'Rosa',
+  purple: 'Roxo',
+  indigo: 'Índigo',
+}
+const colorItems = [
+  { label: 'Cor automática', value: '' },
+  ...TAG_COLOR_KEYS.map((k) => ({ label: COLOR_LABEL[k] ?? k, value: k })),
+]
+const addItems = computed(() => [
+  {
+    label: available.data.value?.length ? 'Escolha uma empresa que você administra' : 'Nenhuma empresa livre que você administra',
+    value: '',
+  },
+  ...selectItems(available.data.value ?? [], (c) => c.id, (c) => c.name),
+])
+
+/**
+ * Cor salva ao escolher. Enquanto grava, o campo mostra a escolha; quando
+ * termina, volta a mostrar o que está gravado (se a API recusou, é o valor
+ * anterior, e o toast mostra a frase).
+ */
+const pendingColor = reactive<Record<string, string>>({})
+async function setColor(companyId: string, color: string, current: string | null) {
+  if (color === (current ?? '')) return
+  pendingColor[companyId] = color
+  try {
+    await run(() => updateLinkedCompany(props.groupId, companyId, { color: color || null }), 'Cor salva')
+  } finally {
+    delete pendingColor[companyId]
+  }
 }
 
 function confirmRemove() {
@@ -93,16 +133,16 @@ function confirmRemove() {
           <span v-if="!c.marketingEnabled" class="mk-chip">Desligada</span>
           <span class="mk-toolbar__spacer" />
           <template v-if="isOwner">
-            <select
-              class="mk-select sc__color"
-              :value="c.color ?? ''"
-              :aria-label="`Cor de ${c.name}`"
-              :disabled="busy"
-              @change="setColor(c.companyId, ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">Cor automática</option>
-              <option v-for="k in TAG_COLOR_KEYS" :key="k" :value="k">{{ k }}</option>
-            </select>
+            <div class="sc__color" :data-color-for="c.companyId">
+              <AppSelect
+                :model-value="pendingColor[c.companyId] ?? c.color ?? ''"
+                :items="colorItems"
+                :label="`Cor de ${c.name}`"
+                density="compact"
+                :disabled="busy"
+                @update:model-value="setColor(c.companyId, asText($event), c.color)"
+              />
+            </div>
             <label class="sc__switch">
               <input
                 type="checkbox"
@@ -126,12 +166,16 @@ function confirmRemove() {
       </ul>
 
       <div v-if="isOwner" class="sc__add">
-        <select v-model="toAdd" class="mk-select" aria-label="Empresa para ligar ao grupo" :disabled="busy">
-          <option value="">
-            {{ available.data.value?.length ? 'Escolha uma empresa que você administra' : 'Nenhuma empresa livre que você administra' }}
-          </option>
-          <option v-for="c in available.data.value ?? []" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
+        <div class="sc__pick" data-testid="company-to-add">
+          <AppSelect
+            :model-value="toAdd"
+            :items="addItems"
+            label="Empresa para ligar ao grupo"
+            density="compact"
+            :disabled="busy"
+            @update:model-value="toAdd = asText($event)"
+          />
+        </div>
         <button type="button" class="mk-btn" :disabled="!toAdd || busy" @click="add">
           <Plus :size="15" /> Ligar ao grupo
         </button>
@@ -185,8 +229,7 @@ function confirmRemove() {
 }
 
 .sc__color {
-  width: auto;
-  min-width: 140px;
+  width: 150px;
 }
 
 .sc__switch {
@@ -203,7 +246,7 @@ function confirmRemove() {
   flex-wrap: wrap;
 }
 
-.sc__add .mk-select {
+.sc__pick {
   flex: 1;
   min-width: 200px;
 }

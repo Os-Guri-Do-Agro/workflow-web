@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import { ArrowLeft, Camera, Film, FolderInput, ListChecks, MapPin, Pencil, Plus, RotateCw, Trash2, Upload, X } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import FileViewer, { type ViewerFile } from '@/components/ui/FileViewer.vue'
 import { useToast } from '@/composables/useToast'
@@ -27,6 +28,7 @@ import { isUploadPending, useUploadQueue, type UploadEntry } from '../uploads/up
 import { activationPhotoTarget } from '../uploads/upload-targets'
 import { itemPercent } from '../uploads/upload-format'
 import { brandTone, formatCents, toneStyle } from '../marketing-labels'
+import { labelItems, useSavedSelect } from '../select-items'
 import QuotesPanel from '../quotes/QuotesPanel.vue'
 import ActivationFormDialog from './ActivationFormDialog.vue'
 import SendToLibraryDialog from '../library/SendToLibraryDialog.vue'
@@ -89,18 +91,16 @@ const statusMutation = useMutation({
 const editOpen = ref(false)
 
 /*
- * Select e checkbox são `:value`/`:checked` (sem v-model): se a API recusa, o
- * valor do servidor não mudou e o Vue não redesenha, então o controle ficava
- * mostrando o que foi recusado. Na recusa ele volta ao que está gravado (o
- * toast do `fail` mostra a frase da API).
+ * Situação: o campo mostra a escolha na hora (`shown`) e, se a API recusa, volta
+ * ao que está gravado (o toast do `fail` mostra a frase da API). O checkbox do
+ * checklist segue `:checked` sem v-model pelo mesmo motivo.
  */
-function changeStatus(event: Event) {
-  const select = event.target as HTMLSelectElement
-  statusMutation.mutate(select.value as ActivationStatus, {
-    onError: () => {
-      if (a.value) select.value = a.value.status
-    },
-  })
+const statusItems = labelItems(ACTIVATION_STATUSES, ACTIVATION_STATUS_LABEL)
+const statusField = useSavedSelect(() => a.value?.status ?? 'PLANNED')
+const statusTone = computed(() => ACTIVATION_STATUS_TONE[statusField.shown.value as ActivationStatus] ?? ACTIVATION_STATUS_TONE[a.value?.status ?? 'PLANNED'])
+function changeStatus(value: unknown) {
+  if (typeof value !== 'string' || !statusField.pick(value)) return
+  statusMutation.mutate(value as ActivationStatus, { onError: () => statusField.revert() })
 }
 
 // ── Checklist ──────────────────────────────────────────────────────────────
@@ -331,17 +331,20 @@ function ddmm(ymd: string) {
           </div>
           <div class="ap__fact">
             <span class="ap__k">Situação</span>
-            <select
+            <span
               v-if="canEdit"
-              class="mk-select ap__status"
-              :value="a.status"
-              :style="toneStyle(ACTIVATION_STATUS_TONE[a.status])"
-              aria-label="Situação da ativação"
-              :disabled="statusMutation.isPending.value"
-              @change="changeStatus"
+              class="ap__status"
+              :style="toneStyle(statusTone)"
             >
-              <option v-for="s in ACTIVATION_STATUSES" :key="s" :value="s">{{ ACTIVATION_STATUS_LABEL[s] }}</option>
-            </select>
+              <AppSelect
+                :model-value="statusField.shown.value"
+                :items="statusItems"
+                label="Situação da ativação"
+                density="compact"
+                :disabled="statusMutation.isPending.value"
+                @update:model-value="changeStatus"
+              />
+            </span>
             <span
               v-else
               class="mk-chip"
@@ -734,9 +737,13 @@ function ddmm(ymd: string) {
 }
 
 .ap__status {
-  width: auto;
+  display: block;
+  min-width: 150px;
+}
+
+/* A cor da situação vem do tom (--mk-tone), como no chip. */
+.ap__status :deep(.app-select__trigger) {
   min-height: 28px;
-  padding: 2px 8px;
   color: var(--mk-tone);
   font-weight: 600;
   border-color: color-mix(in srgb, var(--mk-tone) 40%, var(--border));
@@ -1044,7 +1051,7 @@ function ddmm(ymd: string) {
     min-height: 44px;
   }
 
-  .ap__status {
+  .ap__status :deep(.app-select__trigger) {
     min-height: 44px;
   }
 

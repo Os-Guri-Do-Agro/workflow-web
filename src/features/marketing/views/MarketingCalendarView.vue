@@ -12,11 +12,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Plus, RefreshCw } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { usePhoneViewport } from '@/composables/usePhoneViewport'
 import { useMarketing } from '../composables/useMarketing'
 import type { MarketingCalendarRange } from '../marketing-calendar'
 import { CARD_NETWORK_LABEL, CARD_STATUS_LABEL, CARD_STATUS_TONE, brandTone, toneStyle, type CardNetwork, type CardStatus } from '../marketing-labels'
+import { asText, labelItems } from '../select-items'
 import { placeItems, type CalendarItemView } from '../calendar/calendar-layout'
 import {
   addDays,
@@ -44,6 +46,7 @@ const VIEWS: { key: View; label: string; hint: string }[] = [
   { key: 'lista', label: 'Lista', hint: 'L' },
 ]
 const NETWORKS = Object.keys(CARD_NETWORK_LABEL) as CardNetwork[]
+const networkItems = labelItems(NETWORKS, CARD_NETWORK_LABEL, 'Todas as redes')
 
 const route = useRoute()
 const router = useRouter()
@@ -170,7 +173,8 @@ function modalOpen() {
 function onKeydown(event: KeyboardEvent) {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
   const target = event.target as HTMLElement | null
-  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  // Também o AppSelect (botão combobox e a lista aberta): setas e letras são dele.
+  if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"]')) return
   if (createOpen.value || modalOpen()) return
   const key = event.key.toLowerCase()
   if (event.key === 'ArrowLeft') step(-1)
@@ -215,15 +219,15 @@ const approvalsLink = computed(() => ({
 
       <span class="mk-toolbar__spacer" />
 
-      <select
-        class="mk-select mkcal__net"
-        :value="network ?? ''"
-        aria-label="Filtrar por rede"
-        @change="setNetwork(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">Todas as redes</option>
-        <option v-for="n in NETWORKS" :key="n" :value="n">{{ CARD_NETWORK_LABEL[n] }}</option>
-      </select>
+      <div class="mkcal__net" data-testid="calendar-network">
+        <AppSelect
+          :model-value="network ?? ''"
+          :items="networkItems"
+          label="Filtrar por rede"
+          density="compact"
+          @update:model-value="setNetwork(asText($event))"
+        />
+      </div>
 
       <div class="mkcal__views" role="tablist" aria-label="Visão do calendário">
         <button
@@ -397,8 +401,7 @@ const approvalsLink = computed(() => ({
 }
 
 .mkcal__net {
-  width: auto;
-  min-width: 150px;
+  min-width: 160px;
 }
 
 .mkcal__views {

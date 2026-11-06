@@ -20,6 +20,7 @@ const pg = require('pg')
 const fs = require('node:fs')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
+const { pickOption } = require('./app-select.cjs')
 
 const API = process.env.API ?? 'http://127.0.0.1:3612'
 const WEB = process.env.WEB ?? 'http://localhost:5182'
@@ -461,7 +462,7 @@ function runDeadlineCron() {
       check(cardChips > 0, 'cards continuam aparecendo junto das outras fontes', `${cardChips}`)
       await shot(page, 'cal-faixa-d1440.png')
       // Filtro por rede: some o card sem a rede, a faixa fica (é contexto)
-      await page.selectOption('.mkcal__net', 'TIKTOK')
+      await pickOption(page, '.mkcal__net', 'TikTok')
       await page.waitForTimeout(500)
       const reelSeed = seed.cards.find((c) => c.title.startsWith('Reel'))
       const carrossel = seed.cards.find((c) => c.title.startsWith('Carrossel'))
@@ -470,7 +471,7 @@ function runDeadlineCron() {
       const reelDay = sp((await cardRow(reelSeed.id)).publishAt).day
       if (inGrid(reelDay)) check((await page.locator(`.mkc-chip[data-item="card:${reelSeed.id}"]`).count()) === 1, 'rede TikTok mantém o reel (Instagram e TikTok)')
       check((await page.locator('.mkc-band[data-item="campaign:e2e-camp"]').count()) === 2, 'faixa da campanha continua com o filtro de rede')
-      await page.selectOption('.mkcal__net', '')
+      await pickOption(page, '.mkcal__net', 'Todas as redes')
       await page.waitForTimeout(300)
       // Clicar na faixa vai para o `to`
       await page.locator('.mkc-band[data-item="campaign:e2e-camp"]').first().click()
@@ -599,8 +600,8 @@ function runDeadlineCron() {
     check((await dialog.locator('[data-field="day"]').inputValue()) === day && (await dialog.locator('[data-field="time"]').inputValue()) === '10:00', 'diálogo já vem com o dia e 10:00', day)
     const title = `E2E criado no dia ${STAMP}`
     await dialog.locator('[data-field="title"]').fill(title)
-    await dialog.locator('[data-field="brand"]').selectOption(C.nevo)
-    await dialog.locator('[data-field="kind"]').selectOption('CAROUSEL')
+    await pickOption(page, dialog.locator('[data-field="brand"]'), 'Nevo Studio')
+    await pickOption(page, dialog.locator('[data-field="kind"]'), 'Carrossel')
     await shot(page, 'cal-criar-d1440.png')
     await dialog.locator('[data-action="create"]').click()
     const row = await waitFor(async () => (await q('SELECT * FROM "MarketingCard" WHERE title=$1', [title]))[0])
@@ -790,8 +791,8 @@ function runDeadlineCron() {
       await dlg.locator('[data-field="title"]').fill(title)
       await dlg.locator('[data-field="url"]').fill('canva.com/petjourney')
       await dlg.locator('[data-field="username"]').click() // sai do campo: vira https://
-      await dlg.locator('[data-field="category"]').selectOption('Ferramentas')
-      await dlg.locator('[data-field="brand"]').selectOption(C.pet)
+      await pickOption(page, dlg.locator('[data-field="category"]'), 'Ferramentas')
+      await pickOption(page, dlg.locator('[data-field="brand"]'), 'PetJourney')
       await dlg.locator('[data-field="username"]').fill('marcel@pet')
       await dlg.locator('[data-field="secret"]').fill(`canva-${STAMP}`)
       await shot(page, 'links-criar-d1440.png')

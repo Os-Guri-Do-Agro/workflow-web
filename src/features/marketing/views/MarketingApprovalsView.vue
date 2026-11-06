@@ -13,6 +13,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useDebounceFn } from '@vueuse/core'
 import { Archive, ClipboardCheck, Filter, LayoutGrid, List, Plus, Search, TriangleAlert, X } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { useToast } from '@/composables/useToast'
@@ -33,6 +34,7 @@ import MarketingBoard from '../approvals/components/MarketingBoard.vue'
 import MarketingCardList, { type ListSort } from '../approvals/components/MarketingCardList.vue'
 import MarketingCardCreateDialog from '../approvals/components/MarketingCardCreateDialog.vue'
 import { cardKeys, trackStatuses, type Track } from '../approvals/approvals-meta'
+import { asText, labelItems, selectItems } from '../select-items'
 
 const route = useRoute()
 const router = useRouter()
@@ -181,6 +183,17 @@ function onSort(key: ListSort) {
 /** Responsável no filtro: quem pode ser responsável (Editor+). */
 const assigneeOptions = computed(() => (members.data.value ?? []).filter((m) => hasMarketingRole(m.role, 'EDITOR')))
 
+const statusItems = computed(() =>
+  selectItems(statuses.value, (s) => s, (s) => cardStatusLabel(s, track.value === 'print' ? 'PRINT' : 'POST'), 'Todos os status'),
+)
+const kindItems = computed(() => labelItems(kindsOfTrack.value, CARD_KIND_LABEL, 'Todos os tipos'))
+const networkItems = labelItems(NETWORKS, CARD_NETWORK_LABEL, 'Todas as redes')
+const assigneeItems = computed(() => [
+  { label: 'Qualquer responsável', value: '' },
+  { label: 'Sem responsável', value: 'none' },
+  ...selectItems(assigneeOptions.value, (m) => m.userId, (m) => m.name),
+])
+
 const createOpen = ref(false)
 function onCreated(card: { id: string }) {
   openCard(card.id)
@@ -259,46 +272,42 @@ function onCreated(card: { id: string }) {
     </div>
 
     <div v-show="!phone || filtersOpen" id="mka-filters" class="mka__filters">
-      <select
-        v-if="view === 'lista' || !phone"
-        class="mk-select mka__sel"
-        aria-label="Status"
-        :value="statusFilter"
-        @change="setQuery({ status: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Todos os status</option>
-        <option v-for="s in statuses" :key="s" :value="s">{{ cardStatusLabel(s, track === 'print' ? 'PRINT' : 'POST') }}</option>
-      </select>
-      <select
-        v-if="kindsOfTrack.length > 1"
-        class="mk-select mka__sel"
-        aria-label="Tipo"
-        :value="kindFilter"
-        @change="setQuery({ tipo: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Todos os tipos</option>
-        <option v-for="k in kindsOfTrack" :key="k" :value="k">{{ CARD_KIND_LABEL[k] }}</option>
-      </select>
-      <select
-        v-if="track === 'digital'"
-        class="mk-select mka__sel"
-        aria-label="Rede"
-        :value="networkFilter"
-        @change="setQuery({ rede: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Todas as redes</option>
-        <option v-for="n in NETWORKS" :key="n" :value="n">{{ CARD_NETWORK_LABEL[n] }}</option>
-      </select>
-      <select
-        class="mk-select mka__sel"
-        aria-label="Responsável"
-        :value="assigneeFilter"
-        @change="setQuery({ resp: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Qualquer responsável</option>
-        <option value="none">Sem responsável</option>
-        <option v-for="m in assigneeOptions" :key="m.userId" :value="m.userId">{{ m.name }}</option>
-      </select>
+      <div v-if="view === 'lista' || !phone" class="mka__sel" data-sel="status">
+        <AppSelect
+          :model-value="statusFilter"
+          :items="statusItems"
+          label="Status"
+          density="compact"
+          @update:model-value="setQuery({ status: asText($event) || null })"
+        />
+      </div>
+      <div v-if="kindsOfTrack.length > 1" class="mka__sel" data-sel="tipo">
+        <AppSelect
+          :model-value="kindFilter"
+          :items="kindItems"
+          label="Tipo"
+          density="compact"
+          @update:model-value="setQuery({ tipo: asText($event) || null })"
+        />
+      </div>
+      <div v-if="track === 'digital'" class="mka__sel" data-sel="rede">
+        <AppSelect
+          :model-value="networkFilter"
+          :items="networkItems"
+          label="Rede"
+          density="compact"
+          @update:model-value="setQuery({ rede: asText($event) || null })"
+        />
+      </div>
+      <div class="mka__sel" data-sel="resp">
+        <AppSelect
+          :model-value="assigneeFilter"
+          :items="assigneeItems"
+          label="Responsável"
+          density="compact"
+          @update:model-value="setQuery({ resp: asText($event) || null })"
+        />
+      </div>
       <button
         type="button"
         class="mk-btn mka__late"
@@ -456,9 +465,12 @@ function onCreated(card: { id: string }) {
 }
 
 .mka__sel {
-  width: auto;
+  min-width: 150px;
+  max-width: 230px;
+}
+
+.mka__sel :deep(.app-select__trigger) {
   min-height: 32px;
-  padding: 4px 8px;
 }
 
 .mka__late.is-on {
@@ -511,7 +523,11 @@ function onCreated(card: { id: string }) {
   }
 
   .mka__sel {
-    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .mka__sel :deep(.app-select__trigger) {
     min-height: 44px;
   }
 }

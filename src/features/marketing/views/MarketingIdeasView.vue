@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Lightbulb, Loader2, Plus, Search, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -11,6 +12,7 @@ import { getApiErrorMessage } from '@/service/api'
 import type { IdeaInput, IdeaKind, MarketingIdea } from '@/service/marketing/marketing-ideas'
 import { useMarketing } from '../composables/useMarketing'
 import { CARD_KIND_LABEL } from '../marketing-labels'
+import { asText, selectItems } from '../select-items'
 import IdeaDialog from '../ideas/IdeaDialog.vue'
 import IdeaTile from '../ideas/IdeaTile.vue'
 import { IDEA_KIND_LABEL, IDEA_KIND_PLURAL, referenceDomain } from '../ideas/idea-labels'
@@ -141,6 +143,13 @@ const convertOpen = computed({
 const convertTitle = ref('')
 const convertKind = ref('POST')
 const convertBrand = ref('')
+const ideaKindItems = Object.entries(IDEA_KIND_LABEL).map(([value, label]) => ({ label, value }))
+const sortItems = [
+  { label: 'Mais curtidas', value: 'likes' },
+  { label: 'Mais recentes', value: 'recent' },
+]
+const convertKindItems = Object.entries(CARD_KIND_LABEL).map(([value, label]) => ({ label, value }))
+const convertBrandItems = computed(() => selectItems(mk.brands.value, (b) => b.companyId, (b) => b.name))
 const convertError = ref('')
 
 function openConvert(idea: MarketingIdea) {
@@ -227,9 +236,9 @@ const emptyText = computed(() => {
 <template>
   <div class="mk-page iv">
     <form v-if="canWrite" class="iv-quick" @submit.prevent="quickAdd">
-      <select v-model="quickKind" class="mk-select iv-quick__kind" aria-label="Tipo">
-        <option v-for="(label, value) in IDEA_KIND_LABEL" :key="value" :value="value">{{ label }}</option>
-      </select>
+      <div class="iv-quick__kind" data-testid="idea-quick-kind">
+        <AppSelect :model-value="quickKind" :items="ideaKindItems" label="Tipo" density="compact" @update:model-value="quickKind = $event as IdeaKind" />
+      </div>
       <input
         v-model="quickText"
         class="mk-input iv-quick__text"
@@ -278,15 +287,15 @@ const emptyText = computed(() => {
         </button>
       </div>
 
-      <select
-        class="mk-select iv-sort"
-        :value="filters.sort.value"
-        aria-label="Ordenar"
-        @change="filters.setSort(($event.target as HTMLSelectElement).value as 'likes' | 'recent')"
-      >
-        <option value="likes">Mais curtidas</option>
-        <option value="recent">Mais recentes</option>
-      </select>
+      <div class="iv-sort" data-testid="idea-sort">
+        <AppSelect
+          :model-value="filters.sort.value"
+          :items="sortItems"
+          label="Ordenar"
+          density="compact"
+          @update:model-value="filters.setSort($event as 'likes' | 'recent')"
+        />
+      </div>
 
       <span class="iv-count" aria-live="polite">{{ countLabel }}</span>
     </div>
@@ -373,19 +382,14 @@ const emptyText = computed(() => {
             <input v-model="convertTitle" class="mk-input" maxlength="200" autocomplete="off" autofocus />
           </label>
           <div class="iv-conv__row">
-            <label class="mk-field">
+            <div class="mk-field" data-field="convert-kind">
               <span class="mk-label">Tipo</span>
-              <select v-model="convertKind" class="mk-select">
-                <option v-for="(label, value) in CARD_KIND_LABEL" :key="value" :value="value">{{ label }}</option>
-              </select>
-            </label>
-            <label class="mk-field">
+              <AppSelect :model-value="convertKind" :items="convertKindItems" label="Tipo" density="compact" @update:model-value="convertKind = asText($event)" />
+            </div>
+            <div class="mk-field" data-field="convert-brand">
               <span class="mk-label">Marca</span>
-              <select v-model="convertBrand" class="mk-select">
-                <option value="" disabled>Escolha</option>
-                <option v-for="b in mk.brands.value" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-              </select>
-            </label>
+              <AppSelect :model-value="convertBrand" :items="convertBrandItems" label="Marca" placeholder="Escolha" density="compact" @update:model-value="convertBrand = asText($event)" />
+            </div>
           </div>
           <p class="mk-hint">O post nasce como Ideia no quadro de aprovação, com o link e a descrição no briefing.</p>
           <p v-if="convertError" class="mk-error" role="alert">{{ convertError }}</p>
@@ -498,7 +502,7 @@ const emptyText = computed(() => {
 }
 
 .iv-sort {
-  width: auto;
+  min-width: 160px;
 }
 
 .iv-count {
@@ -642,6 +646,7 @@ const emptyText = computed(() => {
 
   .iv-sort {
     flex: 1;
+    min-width: 0;
   }
 
   .iv-tags {

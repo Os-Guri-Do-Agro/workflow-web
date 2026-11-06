@@ -7,6 +7,7 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { AtSign, Check, Clock, MapPin, MessageSquare, Pencil, RotateCcw, Trash2, X } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import type { MarketingMember } from '@/service/marketing/marketing-core'
 import type { CreateCommentInput, MarketingCardComment } from '@/service/marketing/marketing-cards'
@@ -66,7 +67,11 @@ const openCount = computed(() => props.comments.filter((c) => c.kind === 'COMMEN
 const body = ref('')
 const mentionIds = ref<string[]>([])
 const textarea = ref<HTMLTextAreaElement | null>(null)
-const mentionPick = ref('')
+// Menu de ação: o campo fica em "Mencionar"; quem já foi mencionado sai da lista.
+const mentionItems = computed(() => [
+  { label: 'Mencionar', value: '' },
+  ...props.mentionable.filter((m) => !mentionIds.value.includes(m.userId)).map((m) => ({ label: m.name, value: m.userId })),
+])
 
 watch(
   () => props.draft,
@@ -75,8 +80,8 @@ watch(
   },
 )
 
-function addMention(userId: string) {
-  mentionPick.value = ''
+function addMention(userId: unknown) {
+  if (typeof userId !== 'string' || !userId) return
   const m = props.mentionable.find((x) => x.userId === userId)
   if (!m || mentionIds.value.includes(userId)) return
   mentionIds.value = [...mentionIds.value, userId]
@@ -286,20 +291,12 @@ function kindLabel(c: MarketingCardComment) {
         @keydown="onKey"
       />
       <div class="mkcm__bar">
-        <label class="mkcm__mention">
+        <div class="mkcm__mention">
           <AtSign :size="14" aria-hidden="true" />
-          <select
-            v-model="mentionPick"
-            class="mkcm__mention-sel"
-            aria-label="Mencionar alguém"
-            @change="addMention(mentionPick)"
-          >
-            <option value="">Mencionar</option>
-            <option v-for="m in mentionable" :key="m.userId" :value="m.userId" :disabled="mentionIds.includes(m.userId)">
-              {{ m.name }}
-            </option>
-          </select>
-        </label>
+          <div class="mkcm__mention-sel">
+            <AppSelect model-value="" :items="mentionItems" label="Mencionar alguém" density="compact" @update:model-value="addMention" />
+          </div>
+        </div>
         <span class="mk-toolbar__spacer" />
         <button type="submit" class="mk-btn mk-btn--primary" :disabled="!body.trim() || busy" data-action="send-comment">Comentar</button>
       </div>
@@ -562,14 +559,12 @@ function kindLabel(c: MarketingCardComment) {
 }
 
 .mkcm__mention-sel {
+  min-width: 150px;
+}
+
+.mkcm__mention-sel :deep(.app-select__trigger) {
   min-height: 30px;
-  padding: 2px 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
   color: var(--text-2);
-  font: inherit;
-  font-size: 12.5px;
 }
 
 @media (max-width: 640px) {
@@ -579,7 +574,7 @@ function kindLabel(c: MarketingCardComment) {
     min-height: 44px;
   }
 
-  .mkcm__mention-sel {
+  .mkcm__mention-sel :deep(.app-select__trigger) {
     min-height: 44px;
   }
 

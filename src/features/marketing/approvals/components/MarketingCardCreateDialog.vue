@@ -9,6 +9,7 @@ import { computed, ref, watch } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { Loader2, Plus, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { getApiErrorMessage } from '@/service/api'
 import { hasMarketingRole } from '@/service/marketing/marketing-core'
 import { createCard, type MarketingCardDetail } from '@/service/marketing/marketing-cards'
@@ -22,6 +23,7 @@ import {
   type CardNetwork,
 } from '../../marketing-labels'
 import { cardKeys } from '../approvals-meta'
+import { asText, labelItems, selectItems } from '../../select-items'
 // Campos de data e hora em Brasília (o calendário e a API também).
 import { spLocalInput, spLocalInputToIso } from '../../calendar/calendar-time'
 
@@ -67,6 +69,14 @@ const assignees = computed(() =>
       (m.brandIds.length === 0 || m.brandIds.includes(companyId.value)),
   ),
 )
+
+const brandItems = computed(() => selectItems(brands.value, (b) => b.companyId, (b) => b.name))
+const kindItems = labelItems(KINDS, CARD_KIND_LABEL)
+const assigneeItems = computed(() => selectItems(assignees.value, (m) => m.userId, (m) => m.name, 'Sem responsável'))
+const startItems = [
+  { label: 'Em produção', value: 'IN_PRODUCTION' },
+  { label: 'Ideia', value: 'IDEA' },
+]
 
 watch(
   () => props.modelValue,
@@ -162,12 +172,10 @@ async function submit() {
         </label>
 
         <div class="mkcd__row">
-          <label v-if="brands.length > 1" class="mk-field">
+          <div v-if="brands.length > 1" class="mk-field" data-field="companyId">
             <span class="mk-label">Marca</span>
-            <select v-model="companyId" class="mk-select" name="companyId">
-              <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-            </select>
-          </label>
+            <AppSelect :model-value="companyId" :items="brandItems" label="Marca" density="compact" @update:model-value="companyId = asText($event)" />
+          </div>
           <div v-else-if="brands[0]" class="mk-field">
             <span class="mk-label">Marca</span>
             <span class="mkcd__brand">
@@ -175,12 +183,10 @@ async function submit() {
               {{ brands[0].name }}
             </span>
           </div>
-          <label class="mk-field">
+          <div class="mk-field" data-field="kind">
             <span class="mk-label">Tipo</span>
-            <select v-model="kind" class="mk-select" name="kind">
-              <option v-for="k in KINDS" :key="k" :value="k">{{ CARD_KIND_LABEL[k] }}</option>
-            </select>
-          </label>
+            <AppSelect :model-value="kind" :items="kindItems" label="Tipo" density="compact" @update:model-value="kind = $event as CardKind" />
+          </div>
         </div>
 
         <fieldset v-if="kind !== 'PRINT'" class="mk-field mkcd__fieldset">
@@ -212,20 +218,14 @@ async function submit() {
         </div>
 
         <div class="mkcd__row">
-          <label class="mk-field">
+          <div class="mk-field" data-field="assigneeId">
             <span class="mk-label">Responsável</span>
-            <select v-model="assigneeId" class="mk-select" name="assigneeId">
-              <option value="">Sem responsável</option>
-              <option v-for="m in assignees" :key="m.userId" :value="m.userId">{{ m.name }}</option>
-            </select>
-          </label>
-          <label class="mk-field">
+            <AppSelect :model-value="assigneeId" :items="assigneeItems" label="Responsável" density="compact" @update:model-value="assigneeId = asText($event)" />
+          </div>
+          <div class="mk-field" data-field="status">
             <span class="mk-label">Começa em</span>
-            <select v-model="startStatus" class="mk-select" name="status">
-              <option value="IN_PRODUCTION">Em produção</option>
-              <option value="IDEA">Ideia</option>
-            </select>
-          </label>
+            <AppSelect :model-value="startStatus" :items="startItems" label="Começa em" density="compact" @update:model-value="startStatus = $event as 'IDEA' | 'IN_PRODUCTION'" />
+          </div>
         </div>
 
         <p v-if="error" class="mk-error" role="alert">{{ error }}</p>

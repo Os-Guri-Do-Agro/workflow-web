@@ -11,6 +11,7 @@ const { chromium } = require('playwright-core')
 const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
+const { pickOption } = require('./app-select.cjs')
 const pg = require('pg')
 
 const API = process.env.API ?? 'http://127.0.0.1:3611'
@@ -273,8 +274,9 @@ const headStatus = (page) => page.locator('[data-testid="head-status"]').innerTe
     await mPage.click('[data-action="new-card"]')
     await mPage.waitForSelector('input[name="title"]')
     await mPage.fill('input[name="title"]', 'E2E Post do Dia dos Pets')
-    await mPage.selectOption('select[name="companyId"]', C.pet)
-    await mPage.selectOption('select[name="kind"]', 'CAROUSEL')
+    // AppSelect: abre o gatilho do campo e clica na opção pelo texto.
+    await pickOption(mPage, '[data-field="companyId"]', 'PetJourney')
+    await pickOption(mPage, '[data-field="kind"]', 'Carrossel')
     await shot(mPage, 'novo-card-d1440.png')
     await mPage.getByRole('button', { name: 'Criar card' }).click()
     await mPage.waitForURL(/\/marketing\/cards\//, { timeout: 10000 })
@@ -376,7 +378,7 @@ const headStatus = (page) => page.locator('[data-testid="head-status"]').innerTe
       const r = await mPage.evaluate(() =>
         [...document.querySelectorAll('[data-testid="compare"] [data-side]')].map((s) => ({
           side: s.getAttribute('data-side'),
-          version: s.querySelector('select')?.selectedOptions[0]?.textContent?.trim(),
+          version: s.querySelector('button[role="combobox"]')?.textContent?.trim(),
           img: (() => {
             const i = s.querySelector('img[data-testid="version-image"]')
             return i && i.complete ? i.naturalWidth : 0
@@ -405,7 +407,8 @@ const headStatus = (page) => page.locator('[data-testid="head-status"]').innerTe
     await lPage.mouse.click(ib.x + ib.width * 0.3, ib.y + ib.height * 0.4)
     await lPage.waitForSelector('[data-testid="comment-draft"]')
     await lPage.fill('textarea[name="comment"]', 'Aumentar o contraste aqui')
-    await lPage.selectOption('.mkcm__mention-sel', U.marcel)
+    const marcelName = (await q(`SELECT name FROM "User" WHERE id=$1`, [U.marcel]))[0].name
+    await pickOption(lPage, '.mkcm__mention-sel', marcelName)
     await lPage.click('[data-action="send-comment"]')
     await lPage.waitForSelector('[data-pin]', { timeout: 8000 })
     const comments = (await api(tok.leticia, 'GET', `/cards/${mainCardId}/comments`)).data

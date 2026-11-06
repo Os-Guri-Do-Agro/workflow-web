@@ -2,12 +2,14 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Megaphone } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { MARKETING_ROLE_LABEL } from '@/service/marketing/marketing-core'
 import { useMarketing, useMarketingRealtime } from './composables/useMarketing'
 import { visibleSections, type MarketingSection } from './marketing-nav'
 import { brandTone, toneStyle } from './marketing-labels'
+import { asText, selectItems } from './select-items'
 import CreateGroupDialog from './settings/CreateGroupDialog.vue'
 import UploadTray from './uploads/UploadTray.vue'
 import { swallowStrayDrop } from './uploads/file-sources'
@@ -48,6 +50,8 @@ watch(
  * e abririam vazio ou errado no novo. O card aberto em página própria é do
  * grupo anterior: volta para a lista de Aprovação.
  */
+const groupItems = computed(() => selectItems(mk.groups.value, (g) => g.id, (g) => g.name))
+
 function switchGroup(id: string) {
   if (!id || id === mk.groupId.value) return
   mk.selectGroup(id)
@@ -154,15 +158,15 @@ function onCreated(groupId: string) {
       <header class="mk-layout__head">
         <div class="mk-layout__title">
           <h1>Marketing</h1>
-          <select
-            v-if="mk.groups.value.length > 1"
-            class="mk-select mk-layout__group"
-            :value="mk.groupId.value ?? ''"
-            aria-label="Grupo de empresas"
-            @change="switchGroup(($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="g in mk.groups.value" :key="g.id" :value="g.id">{{ g.name }}</option>
-          </select>
+          <div v-if="mk.groups.value.length > 1" class="mk-layout__group" data-testid="group-switch">
+            <AppSelect
+              :model-value="mk.groupId.value ?? ''"
+              :items="groupItems"
+              label="Grupo de empresas"
+              density="compact"
+              @update:model-value="switchGroup(asText($event))"
+            />
+          </div>
           <span v-else class="mk-layout__group-name">{{ mk.group.value?.name }}</span>
           <span class="mk-chip" :title="mk.group.value?.title ?? undefined">
             {{ mk.role.value ? MARKETING_ROLE_LABEL[mk.role.value] : '' }}
@@ -278,9 +282,12 @@ function onCreated(groupId: string) {
 }
 
 .mk-layout__group {
-  width: auto;
+  min-width: 150px;
+  max-width: 260px;
+}
+
+.mk-layout__group :deep(.app-select__trigger) {
   min-height: 30px;
-  padding: 3px 8px;
 }
 
 .mk-layout__group-name {
@@ -396,6 +403,10 @@ function onCreated(groupId: string) {
   }
 
   .mk-tab {
+    min-height: 44px;
+  }
+
+  .mk-layout__group :deep(.app-select__trigger) {
     min-height: 44px;
   }
 }

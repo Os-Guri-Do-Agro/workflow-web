@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Plus, Search, Target } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { useToast } from '@/composables/useToast'
@@ -8,6 +9,7 @@ import { getApiErrorMessage } from '@/service/api'
 import type { CampaignInput, CampaignListItem, CampaignStatus } from '@/service/marketing/marketing-campaigns'
 import { useMarketing } from '../composables/useMarketing'
 import { brandTone, formatCents, toneStyle } from '../marketing-labels'
+import { asText, labelItems } from '../select-items'
 import CampaignDialog from '../campaigns/CampaignDialog.vue'
 import CampaignPanel from '../campaigns/CampaignPanel.vue'
 import {
@@ -124,6 +126,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => narrowQuery?.removeEventListener('change', onNarrow))
 
+const statusItems = labelItems(CAMPAIGN_STATUS_ORDER, CAMPAIGN_STATUS_LABEL, 'Todos os status')
+
 function onKeyOpen(event: KeyboardEvent, id: string) {
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
@@ -140,15 +144,15 @@ function onKeyOpen(event: KeyboardEvent, id: string) {
           <Search :size="14" aria-hidden="true" />
           <input v-model="searchText" type="search" placeholder="Buscar campanha" aria-label="Buscar campanha" />
         </label>
-        <select
-          class="mk-select cv__status"
-          :value="filters.status.value ?? ''"
-          aria-label="Filtrar por status"
-          @change="filters.setStatus((($event.target as HTMLSelectElement).value || null) as CampaignStatus | null)"
-        >
-          <option value="">Todos os status</option>
-          <option v-for="s in CAMPAIGN_STATUS_ORDER" :key="s" :value="s">{{ CAMPAIGN_STATUS_LABEL[s] }}</option>
-        </select>
+        <div class="cv__status" data-testid="campaign-status-filter">
+          <AppSelect
+            :model-value="filters.status.value ?? ''"
+            :items="statusItems"
+            label="Filtrar por status"
+            density="compact"
+            @update:model-value="filters.setStatus((asText($event) || null) as CampaignStatus | null)"
+          />
+        </div>
         <span class="mk-toolbar__spacer" />
         <button v-if="canWrite" type="button" class="mk-btn mk-btn--primary" data-action="new-campaign" @click="openNew">
           <Plus :size="14" aria-hidden="true" />Nova campanha
@@ -316,7 +320,7 @@ function onKeyOpen(event: KeyboardEvent, id: string) {
 }
 
 .cv__status {
-  width: auto;
+  min-width: 170px;
 }
 
 .cv__loading {
@@ -490,6 +494,7 @@ function onKeyOpen(event: KeyboardEvent, id: string) {
 
   .cv__status {
     flex: 1;
+    min-width: 0;
   }
 
   .cv__opt,

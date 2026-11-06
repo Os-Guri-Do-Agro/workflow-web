@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import axios from 'axios'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
 import {
@@ -14,6 +15,7 @@ import {
 } from '@/service/marketing/marketing-partners'
 import { useMarketing } from '../composables/useMarketing'
 import FormDialog from '../events/FormDialog.vue'
+import { asText, labelItems, selectItems } from '../select-items'
 import {
   formatPhone,
   PARTNER_KIND_LABEL,
@@ -56,6 +58,9 @@ const form = reactive({
   notes: '',
 })
 const error = ref('')
+const kindItems = labelItems(PARTNER_KINDS, PARTNER_KIND_LABEL)
+const statusItems = labelItems(PARTNER_STATUSES, PARTNER_STATUS_LABEL)
+const brandItems = computed(() => selectItems(mk.brands.value, (b) => b.companyId, (b) => b.name, 'Todas as marcas'))
 
 watch(
   () => props.modelValue,
@@ -150,26 +155,20 @@ const mutation = useMutation({
 
     <div class="pf__row">
       <div class="mk-field">
-        <label class="mk-label" for="pf-kind">Tipo</label>
-        <select id="pf-kind" v-model="form.kind" class="mk-select">
-          <option v-for="k in PARTNER_KINDS" :key="k" :value="k">{{ PARTNER_KIND_LABEL[k] }}</option>
-        </select>
+        <span class="mk-label">Tipo</span>
+        <AppSelect :model-value="form.kind" :items="kindItems" label="Tipo" density="compact" @update:model-value="form.kind = $event as PartnerKind" />
       </div>
       <div class="mk-field">
-        <label class="mk-label" for="pf-status">Situação</label>
-        <select id="pf-status" v-model="form.status" class="mk-select">
-          <option v-for="s in PARTNER_STATUSES" :key="s" :value="s">{{ PARTNER_STATUS_LABEL[s] }}</option>
-        </select>
+        <span class="mk-label">Situação</span>
+        <AppSelect :model-value="form.status" :items="statusItems" label="Situação" density="compact" @update:model-value="form.status = $event as PartnerStatus" />
       </div>
     </div>
 
     <div v-if="mk.brands.value.length > 1 || editing" class="mk-field">
-      <label class="mk-label" for="pf-brand">Marca</label>
+      <label v-if="editing" class="mk-label" for="pf-brand">Marca</label>
+      <span v-else class="mk-label">Marca</span>
       <input v-if="editing" id="pf-brand" class="mk-input" :value="brandLabel" disabled />
-      <select v-else id="pf-brand" v-model="form.companyId" class="mk-select">
-        <option value="">Todas as marcas</option>
-        <option v-for="b in mk.brands.value" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-      </select>
+      <AppSelect v-else :model-value="form.companyId" :items="brandItems" label="Marca" density="compact" @update:model-value="form.companyId = asText($event)" />
     </div>
 
     <div class="pf__row">

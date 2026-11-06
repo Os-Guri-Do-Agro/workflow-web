@@ -2,11 +2,13 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { AlarmClock, MessageCircle, Plus, Search, Users } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import type { PartnerKind, PartnerStatus } from '@/service/marketing/marketing-partners'
 import { useMarketing } from '../composables/useMarketing'
 import { brandTone, toneStyle } from '../marketing-labels'
+import { asText, labelItems } from '../select-items'
 import PartnerFormDialog from '../partners/PartnerFormDialog.vue'
 import PartnerPanel from '../partners/PartnerPanel.vue'
 import {
@@ -79,6 +81,9 @@ function close() {
   setQuery({ parceiro: null })
 }
 
+const statusItems = labelItems(PARTNER_STATUSES, PARTNER_STATUS_LABEL, 'Todas as situações')
+const kindItems = labelItems(PARTNER_KINDS, PARTNER_KIND_LABEL, 'Todos os tipos')
+
 const formOpen = ref(false)
 function onSaved(saved: { id: string }) {
   open(saved.id)
@@ -101,24 +106,24 @@ function onSaved(saved: { id: string }) {
             @input="onSearch"
           />
         </div>
-        <select
-          class="mk-select pv__filter"
-          :value="status"
-          aria-label="Filtrar por situação"
-          @change="setQuery({ situacao: ($event.target as HTMLSelectElement).value || null })"
-        >
-          <option value="">Todas as situações</option>
-          <option v-for="s in PARTNER_STATUSES" :key="s" :value="s">{{ PARTNER_STATUS_LABEL[s] }}</option>
-        </select>
-        <select
-          class="mk-select pv__filter"
-          :value="kind"
-          aria-label="Filtrar por tipo"
-          @change="setQuery({ tipo: ($event.target as HTMLSelectElement).value || null })"
-        >
-          <option value="">Todos os tipos</option>
-          <option v-for="k in PARTNER_KINDS" :key="k" :value="k">{{ PARTNER_KIND_LABEL[k] }}</option>
-        </select>
+        <div class="pv__filter" data-filter="situacao">
+          <AppSelect
+            :model-value="status"
+            :items="statusItems"
+            label="Filtrar por situação"
+            density="compact"
+            @update:model-value="setQuery({ situacao: asText($event) || null })"
+          />
+        </div>
+        <div class="pv__filter" data-filter="tipo">
+          <AppSelect
+            :model-value="kind"
+            :items="kindItems"
+            label="Filtrar por tipo"
+            density="compact"
+            @update:model-value="setQuery({ tipo: asText($event) || null })"
+          />
+        </div>
         <button
           type="button"
           class="mk-btn pv__due"
@@ -285,7 +290,7 @@ function onSaved(saved: { id: string }) {
 }
 
 .pv__filter {
-  width: auto;
+  min-width: 170px;
 }
 
 .pv__due.is-on {

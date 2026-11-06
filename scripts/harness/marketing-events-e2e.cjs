@@ -16,6 +16,7 @@ const pg = require('pg')
 const zlib = require('node:zlib')
 const fs = require('node:fs')
 const path = require('node:path')
+const { pickOption } = require('./app-select.cjs')
 
 const API = process.env.API ?? 'http://127.0.0.1:3632'
 const WEB = process.env.WEB ?? 'http://localhost:5186'
@@ -720,7 +721,7 @@ async function pagination(browser) {
       // Criar pela tela e usar o checklist padrão
       await page.getByRole('button', { name: 'Nova ativação' }).first().click()
       await page.fill('#af-title', 'E2E Palestra pela tela')
-      await page.selectOption('#af-kind', 'TALK')
+      await pickOption(page, page.getByRole('dialog').getByRole('combobox', { name: 'Tipo', exact: true }), 'Palestra')
       await page.fill('#af-sd', ymdOffset(14))
       await page.fill('#af-st', '19:30')
       await page.fill('#af-loc', 'Auditório da clínica')
@@ -838,7 +839,7 @@ async function pagination(browser) {
       check(/há 12 dias/.test(await lastFact()), 'último contato mostra "há 12 dias"', (await lastFact()).replace(/\n/g, ' '))
       await page.getByRole('button', { name: 'Registrar contato' }).click()
       await page.fill('#pp-c-note', 'E2E ligamos para fechar o espaço')
-      await page.selectOption('#pp-c-channel', 'CALL')
+      await pickOption(page, page.getByRole('dialog').getByRole('combobox', { name: 'Como foi', exact: true }), 'Ligação')
       await page.getByRole('dialog').getByRole('button', { name: 'Registrar' }).click()
       await page.waitForFunction(() => document.querySelectorAll('.pp__contact').length === 2, null, { timeout: 8000 }).catch(() => {})
       check(await page.locator('.pp__contact').count() === 2, 'P2: registrar contato pela tela entra no histórico')

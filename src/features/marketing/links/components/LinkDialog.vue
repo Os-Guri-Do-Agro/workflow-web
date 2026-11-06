@@ -7,9 +7,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Eye, EyeOff, KeyRound, Loader2, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import type { MarketingBrand } from '@/service/marketing/marketing-core'
 import type { LinkInput, MarketingLink } from '@/service/marketing/marketing-links'
 import { apiErrorMessage } from '../../calendar/api-error'
+import { asText, selectItems } from '../../select-items'
 
 const props = defineProps<{
   modelValue: boolean
@@ -45,6 +47,8 @@ const categoryOptions = computed(() => {
   if (props.link && !list.includes(props.link.category)) list.push(props.link.category)
   return list
 })
+const categoryItems = computed(() => selectItems(categoryOptions.value, (c) => c, (c) => c))
+const brandItems = computed(() => selectItems(props.brands, (b) => b.companyId, (b) => b.name, 'Todas as marcas (grupo)'))
 
 watch(
   () => props.modelValue,
@@ -142,19 +146,14 @@ async function onSubmit() {
           />
         </label>
         <div class="ld__row">
-          <label class="mk-field">
+          <div class="mk-field" data-field="category">
             <span class="mk-label">Categoria</span>
-            <select v-model="form.category" class="mk-select" data-field="category">
-              <option v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</option>
-            </select>
-          </label>
-          <label v-if="brands.length > 1 || editing" class="mk-field">
+            <AppSelect :model-value="form.category" :items="categoryItems" label="Categoria" density="compact" @update:model-value="form.category = asText($event)" />
+          </div>
+          <div v-if="brands.length > 1 || editing" class="mk-field" data-field="brand">
             <span class="mk-label">Marca</span>
-            <select v-model="form.companyId" class="mk-select" data-field="brand">
-              <option value="">Todas as marcas (grupo)</option>
-              <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-            </select>
-          </label>
+            <AppSelect :model-value="form.companyId" :items="brandItems" label="Marca" density="compact" @update:model-value="form.companyId = asText($event)" />
+          </div>
         </div>
         <div class="ld__row">
           <label class="mk-field">

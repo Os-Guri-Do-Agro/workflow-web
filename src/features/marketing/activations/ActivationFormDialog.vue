@@ -13,7 +13,9 @@ import {
 } from '@/service/marketing/marketing-activations'
 import { useToast } from '@/composables/useToast'
 import { useMarketing } from '../composables/useMarketing'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import FormDialog from '../events/FormDialog.vue'
+import { asText, labelItems, selectItems } from '../select-items'
 import { usePartnersList } from '../partners/usePartners'
 import {
   ACTIVATION_KIND_LABEL,
@@ -67,6 +69,11 @@ const partnersQuery = usePartnersList(
   () => ({ companyId: form.companyId || null }),
 )
 const partnerOptions = computed(() => partnersQuery.data.value ?? [])
+
+const kindItems = labelItems(ACTIVATION_KINDS, ACTIVATION_KIND_LABEL)
+const statusItems = labelItems(ACTIVATION_STATUSES, ACTIVATION_STATUS_LABEL)
+const brandItems = computed(() => selectItems(mk.brands.value, (b) => b.companyId, (b) => b.name))
+const partnerItems = computed(() => selectItems(partnerOptions.value, (p) => p.id, (p) => p.name, 'Nenhum'))
 
 watch(
   () => props.modelValue,
@@ -167,25 +174,39 @@ const mutation = useMutation({
 
     <div class="af__row">
       <div class="mk-field">
-        <label class="mk-label" for="af-kind">Tipo</label>
-        <select id="af-kind" v-model="form.kind" class="mk-select">
-          <option v-for="k in ACTIVATION_KINDS" :key="k" :value="k">{{ ACTIVATION_KIND_LABEL[k] }}</option>
-        </select>
+        <span class="mk-label">Tipo</span>
+        <AppSelect
+          :model-value="form.kind"
+          :items="kindItems"
+          label="Tipo"
+          density="compact"
+          @update:model-value="form.kind = $event as ActivationKind"
+        />
       </div>
       <div class="mk-field">
-        <label class="mk-label" for="af-status">Situação</label>
-        <select id="af-status" v-model="form.status" class="mk-select">
-          <option v-for="s in ACTIVATION_STATUSES" :key="s" :value="s">{{ ACTIVATION_STATUS_LABEL[s] }}</option>
-        </select>
+        <span class="mk-label">Situação</span>
+        <AppSelect
+          :model-value="form.status"
+          :items="statusItems"
+          label="Situação"
+          density="compact"
+          @update:model-value="form.status = $event as ActivationStatus"
+        />
       </div>
     </div>
 
     <div v-if="mk.brands.value.length > 1 || editing" class="mk-field">
-      <label class="mk-label" for="af-brand">Marca</label>
+      <label v-if="editing" class="mk-label" for="af-brand">Marca</label>
+      <span v-else class="mk-label">Marca</span>
       <input v-if="editing" id="af-brand" class="mk-input" :value="brandName" disabled />
-      <select v-else id="af-brand" v-model="form.companyId" class="mk-select">
-        <option v-for="b in mk.brands.value" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-      </select>
+      <AppSelect
+        v-else
+        :model-value="form.companyId"
+        :items="brandItems"
+        label="Marca"
+        density="compact"
+        @update:model-value="form.companyId = asText($event)"
+      />
     </div>
 
     <div class="af__row">
@@ -215,11 +236,14 @@ const mutation = useMutation({
         <input id="af-loc" v-model="form.location" class="mk-input" maxlength="300" placeholder="Cidade, espaço ou endereço" autocomplete="off" />
       </div>
       <div class="mk-field">
-        <label class="mk-label" for="af-partner">Parceiro</label>
-        <select id="af-partner" v-model="form.partnerId" class="mk-select">
-          <option value="">Nenhum</option>
-          <option v-for="p in partnerOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </select>
+        <span class="mk-label">Parceiro</span>
+        <AppSelect
+          :model-value="form.partnerId"
+          :items="partnerItems"
+          label="Parceiro"
+          density="compact"
+          @update:model-value="form.partnerId = asText($event)"
+        />
       </div>
     </div>
 

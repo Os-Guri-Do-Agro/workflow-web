@@ -4,7 +4,9 @@
  * com a anterior à esquerda e a atual à direita; cada lado troca de versão.
  */
 import { computed, ref, watch } from 'vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import type { MarketingCardVersion } from '@/service/marketing/marketing-cards'
+import { asText } from '../../select-items'
 import { formatDayTime } from '../approvals-meta'
 import MarketingVersionViewer from './MarketingVersionViewer.vue'
 
@@ -39,6 +41,8 @@ const sides = computed(() => [
   { key: 'right' as const, label: 'Versão da direita', id: rightId.value, version: right.value },
 ])
 
+const versionItems = computed(() => props.versions.map((v) => ({ label: tag(v), value: v.id })))
+
 function pick(side: 'left' | 'right', id: string) {
   if (side === 'left') leftId.value = id
   else rightId.value = id
@@ -56,14 +60,15 @@ function tag(v: MarketingCardVersion) {
   <div class="mkcmp" data-testid="compare">
     <section v-for="side in sides" :key="side.key" class="mkcmp__side" :data-side="side.key">
       <header class="mkcmp__head">
-        <select
-          class="mk-select mkcmp__sel"
-          :aria-label="side.label"
-          :value="side.id"
-          @change="pick(side.key, ($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="v in versions" :key="v.id" :value="v.id">{{ tag(v) }}</option>
-        </select>
+        <div class="mkcmp__sel">
+          <AppSelect
+            :model-value="side.id"
+            :items="versionItems"
+            :label="side.label"
+            density="compact"
+            @update:model-value="pick(side.key, asText($event))"
+          />
+        </div>
         <span v-if="side.version" class="mkcmp__when">{{ formatDayTime(side.version.createdAt) }}</span>
       </header>
       <MarketingVersionViewer
@@ -104,7 +109,11 @@ function tag(v: MarketingCardVersion) {
 }
 
 .mkcmp__sel {
-  width: auto;
+  min-width: 0;
+  flex: 0 1 190px;
+}
+
+.mkcmp__sel :deep(.app-select__trigger) {
   min-height: 32px;
 }
 
@@ -124,6 +133,10 @@ function tag(v: MarketingCardVersion) {
 @media (max-width: 640px) {
   .mkcmp {
     grid-template-columns: 1fr;
+  }
+
+  .mkcmp__sel :deep(.app-select__trigger) {
+    min-height: 44px;
   }
 }
 </style>

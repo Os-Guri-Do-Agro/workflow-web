@@ -10,12 +10,14 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { KeyRound, Plus, RefreshCw, Search, Star } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { useToast } from '@/composables/useToast'
 import type { LinkInput, MarketingLink } from '@/service/marketing/marketing-links'
 import { useMarketing } from '../composables/useMarketing'
 import { brandTone } from '../marketing-labels'
+import { asText } from '../select-items'
 import { apiErrorMessage } from '../calendar/api-error'
 import { useMarketingLinks } from '../links/composables/useMarketingLinks'
 import LinkDialog from '../links/components/LinkDialog.vue'
@@ -82,6 +84,10 @@ const countByCategory = computed(() => {
   for (const l of all.value) map.set(l.category, (map.get(l.category) ?? 0) + 1)
   return map
 })
+const categoryFilterItems = computed(() => [
+  { label: 'Todas as categorias', value: '' },
+  ...categories.value.map((c) => ({ label: `${c} (${countByCategory.value.get(c) ?? 0})`, value: c })),
+])
 
 const multiBrand = computed(() => mk.brands.value.length > 1)
 function brandName(companyId: string | null): string {
@@ -144,7 +150,8 @@ const searchInput = ref<HTMLInputElement | null>(null)
 function onKeydown(event: KeyboardEvent) {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
   const target = event.target as HTMLElement | null
-  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  // Também o AppSelect (botão combobox e a lista aberta): setas e letras são dele.
+  if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"]')) return
   if (dialogOpen.value || toDelete.value || document.querySelector('[role="dialog"][aria-modal="true"]')) return
   if (event.key === '/') {
     event.preventDefault()
@@ -178,16 +185,15 @@ onBeforeUnmount(() => {
           @input="onSearch(($event.target as HTMLInputElement).value)"
         />
       </label>
-      <select
-        class="mk-select mkl__cat"
-        :value="category"
-        aria-label="Filtrar por categoria"
-        data-field="category-filter"
-        @change="setCategory(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="">Todas as categorias</option>
-        <option v-for="c in categories" :key="c" :value="c">{{ c }} ({{ countByCategory.get(c) ?? 0 }})</option>
-      </select>
+      <div class="mkl__cat" data-field="category-filter">
+        <AppSelect
+          :model-value="category"
+          :items="categoryFilterItems"
+          label="Filtrar por categoria"
+          density="compact"
+          @update:model-value="setCategory(asText($event))"
+        />
+      </div>
       <span class="mk-toolbar__spacer" />
       <button
         v-if="canEdit"
@@ -325,8 +331,7 @@ onBeforeUnmount(() => {
 }
 
 .mkl__cat {
-  width: auto;
-  min-width: 190px;
+  min-width: 200px;
 }
 
 .mkl__note {

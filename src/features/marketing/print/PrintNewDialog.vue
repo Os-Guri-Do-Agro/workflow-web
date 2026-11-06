@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Loader2, Printer, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { getApiErrorMessage } from '@/service/api'
 import type { MarketingBrand } from '@/service/marketing/marketing-core'
 import type { PrintCard } from '@/service/marketing/marketing-print'
+import { asText, selectItems } from '../select-items'
 import { usePrintMutations } from './usePrint'
 
 /** Nova peça impressa: marca e título; o resto (arquivo, especificação) é feito depois, no painel. */
@@ -23,6 +25,7 @@ const mut = usePrintMutations(() => props.groupId)
 const companyId = ref('')
 const title = ref('')
 const error = ref('')
+const brandItems = computed(() => selectItems(props.brands, (b) => b.companyId, (b) => b.name))
 
 watch(
   () => props.modelValue,
@@ -65,12 +68,10 @@ async function submit() {
         <h2>Nova peça impressa</h2>
         <button type="button" class="mk-icon-btn" aria-label="Fechar" @click="emit('update:modelValue', false)"><X :size="16" /></button>
       </header>
-      <label v-if="brands.length > 1" class="mk-field">
+      <div v-if="brands.length > 1" class="mk-field" data-testid="print-brand">
         <span class="mk-label">Marca</span>
-        <select v-model="companyId" class="mk-select" data-testid="print-brand">
-          <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-        </select>
-      </label>
+        <AppSelect :model-value="companyId" :items="brandItems" label="Marca" density="compact" @update:model-value="companyId = asText($event)" />
+      </div>
       <label class="mk-field">
         <span class="mk-label">Nome da peça</span>
         <input v-model="title" class="mk-input" maxlength="200" autocomplete="off" placeholder="Placa de balcão" data-testid="print-title" />

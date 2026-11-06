@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   Upload,
 } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { usePhoneViewport } from '@/composables/usePhoneViewport'
@@ -28,6 +29,7 @@ import {
 } from '@/service/marketing/marketing-finance'
 import { safeStorage } from '@/utils/safe-storage'
 import { brandTone, formatCents, toneStyle } from '../marketing-labels'
+import { asText, selectItems } from '../select-items'
 import { entriesFromDrop, filesFromInput, hasFiles as dragHasFiles } from '../uploads/file-sources'
 import { isUploadPending, useUploadQueue } from '../uploads/upload-queue'
 import { expenseInvoiceTarget } from '../uploads/upload-targets'
@@ -117,7 +119,34 @@ const activationsInScope = computed(() =>
   (props.options?.activations ?? []).filter((a) => !props.brandFilter || a.companyId === props.brandFilter),
 )
 
+const categoryFilterItems = computed(() =>
+  selectItems(props.options?.categories ?? [], (c) => c, (c) => c, 'Todas as categorias'),
+)
+const statusFilterItems = [
+  { label: 'Pago e previsto', value: '' },
+  { label: 'Só pago', value: 'PAID' },
+  { label: 'Só previsto', value: 'PLANNED' },
+]
+const campaignFilterItems = computed(() =>
+  selectItems(campaignsInScope.value, (c) => c.id, (c) => c.name, 'Todas as campanhas'),
+)
+const activationFilterItems = computed(() =>
+  selectItems(activationsInScope.value, (a) => a.id, (a) => a.title, 'Todas as ativações'),
+)
+
 // ── Lançamento rápido ──
+const categoryItems = computed(() => selectItems(props.options?.categories ?? [], (c) => c, (c) => c))
+const brandItems = computed(() => selectItems(props.brands, (b) => b.companyId, (b) => b.name))
+const statusItems = [
+  { label: 'Pago', value: 'PAID' },
+  { label: 'Previsto', value: 'PLANNED' },
+]
+/** Enter lança, menos em cima de um select (ali Enter abre a lista). */
+function onQuickEnter(event: KeyboardEvent) {
+  if ((event.target as HTMLElement).closest('[role="combobox"]')) return
+  event.preventDefault()
+  void quickAdd()
+}
 const LAST_BRAND = 'marketing.finance.lastBrand'
 const quick = reactive({
   date: defaultDateFor(props.month),
@@ -313,45 +342,42 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
         Filtros<template v-if="selectFilterCount"> ({{ selectFilterCount }})</template>
       </button>
       <template v-if="!isPhone || filtersOpen">
-      <select
-        class="mk-select fe-filter"
-        aria-label="Categoria"
-        :value="filter.category ?? ''"
-        @change="setQuery({ categoria: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Todas as categorias</option>
-        <option v-for="c in options?.categories ?? []" :key="c" :value="c">{{ c }}</option>
-      </select>
-      <select
-        class="mk-select fe-filter"
-        aria-label="Situação"
-        :value="filter.status ?? ''"
-        @change="setQuery({ situacao: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Pago e previsto</option>
-        <option value="PAID">Só pago</option>
-        <option value="PLANNED">Só previsto</option>
-      </select>
-      <select
-        v-if="campaignsInScope.length"
-        class="mk-select fe-filter"
-        aria-label="Campanha"
-        :value="filter.campaignId ?? ''"
-        @change="setQuery({ campanha: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Todas as campanhas</option>
-        <option v-for="c in campaignsInScope" :key="c.id" :value="c.id">{{ c.name }}</option>
-      </select>
-      <select
-        v-if="activationsInScope.length"
-        class="mk-select fe-filter"
-        aria-label="Ativação"
-        :value="filter.activationId ?? ''"
-        @change="setQuery({ ativacao: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Todas as ativações</option>
-        <option v-for="a in activationsInScope" :key="a.id" :value="a.id">{{ a.title }}</option>
-      </select>
+      <div class="fe-filter" data-filter="categoria">
+        <AppSelect
+          :model-value="filter.category ?? ''"
+          :items="categoryFilterItems"
+          label="Categoria"
+          density="compact"
+          @update:model-value="setQuery({ categoria: asText($event) || null })"
+        />
+      </div>
+      <div class="fe-filter" data-filter="situacao">
+        <AppSelect
+          :model-value="filter.status ?? ''"
+          :items="statusFilterItems"
+          label="Situação"
+          density="compact"
+          @update:model-value="setQuery({ situacao: asText($event) || null })"
+        />
+      </div>
+      <div v-if="campaignsInScope.length" class="fe-filter" data-filter="campanha">
+        <AppSelect
+          :model-value="filter.campaignId ?? ''"
+          :items="campaignFilterItems"
+          label="Campanha"
+          density="compact"
+          @update:model-value="setQuery({ campanha: asText($event) || null })"
+        />
+      </div>
+      <div v-if="activationsInScope.length" class="fe-filter" data-filter="ativacao">
+        <AppSelect
+          :model-value="filter.activationId ?? ''"
+          :items="activationFilterItems"
+          label="Ativação"
+          density="compact"
+          @update:model-value="setQuery({ ativacao: asText($event) || null })"
+        />
+      </div>
       </template>
       <button
         type="button"
@@ -383,7 +409,7 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
       v-else-if="canEdit"
       class="fe-quick"
       :class="{ 'fe-quick--brand': brands.length > 1 && !brandFilter }"
-      @keydown.enter.prevent="quickAdd"
+      @keydown.enter="onQuickEnter"
     >
       <input v-model="quick.date" type="date" class="mk-input" aria-label="Data do lançamento" />
       <input
@@ -394,16 +420,33 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
         placeholder="Novo lançamento: descrição"
         aria-label="Descrição do lançamento"
       />
-      <select v-model="quick.category" class="mk-select" aria-label="Categoria do lançamento">
-        <option v-for="c in options?.categories ?? []" :key="c" :value="c">{{ c }}</option>
-      </select>
-      <select v-if="brands.length > 1 && !brandFilter" v-model="quick.companyId" class="mk-select" aria-label="Marca do lançamento">
-        <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-      </select>
-      <select v-model="quick.status" class="mk-select" aria-label="Situação do lançamento">
-        <option value="PAID">Pago</option>
-        <option value="PLANNED">Previsto</option>
-      </select>
+      <div class="fe-quick__sel" data-quick="category">
+        <AppSelect
+          :model-value="quick.category"
+          :items="categoryItems"
+          label="Categoria do lançamento"
+          density="compact"
+          @update:model-value="quick.category = asText($event)"
+        />
+      </div>
+      <div v-if="brands.length > 1 && !brandFilter" class="fe-quick__sel" data-quick="brand">
+        <AppSelect
+          :model-value="quick.companyId"
+          :items="brandItems"
+          label="Marca do lançamento"
+          density="compact"
+          @update:model-value="quick.companyId = asText($event)"
+        />
+      </div>
+      <div class="fe-quick__sel" data-quick="status">
+        <AppSelect
+          :model-value="quick.status"
+          :items="statusItems"
+          label="Situação do lançamento"
+          density="compact"
+          @update:model-value="quick.status = $event as ExpenseStatus"
+        />
+      </div>
       <MoneyInput v-model="quick.amountCents" label="Valor do lançamento" />
       <button type="button" class="mk-btn mk-btn--primary" :disabled="quickBusy" @click="quickAdd">
         <Plus :size="15" aria-hidden="true" /> {{ quickBusy ? 'Lançando...' : 'Lançar' }}
@@ -645,7 +688,17 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
 
 .fe-filter {
   width: auto;
-  max-width: 200px;
+  min-width: 150px;
+  max-width: 220px;
+}
+
+.fe-filter :deep(.app-select__trigger),
+.fe-quick__sel :deep(.app-select__trigger) {
+  min-height: 34px;
+}
+
+.fe-quick__sel {
+  min-width: 0;
 }
 
 .fe-missing.is-on {
@@ -953,6 +1006,10 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
   .fe-filter {
     flex: 1 1 100%;
     max-width: none;
+  }
+
+  .fe-filter :deep(.app-select__trigger) {
+    min-height: 44px;
   }
 
   .fe-missing {

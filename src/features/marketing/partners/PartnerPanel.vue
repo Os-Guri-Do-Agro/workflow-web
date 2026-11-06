@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ArrowLeft, Instagram, Mail, MapPin, MessageCircle, Pencil, Phone, Plus, Trash2, X } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -24,6 +25,7 @@ import { todaySp } from '../calendar/calendar-time'
 import { useMarketing } from '../composables/useMarketing'
 import FormDialog from '../events/FormDialog.vue'
 import { brandTone, toneStyle } from '../marketing-labels'
+import { labelItems, useSavedSelect } from '../select-items'
 import QuotesPanel from '../quotes/QuotesPanel.vue'
 import PartnerFormDialog from './PartnerFormDialog.vue'
 import {
@@ -82,18 +84,18 @@ const statusMutation = useMutation({
 })
 
 /**
- * O select é `:value` (sem v-model): se a API recusa, o valor do servidor não
- * mudou e o Vue não redesenha, então o select ficava mostrando a escolha
- * recusada. Na recusa ele volta ao que está gravado (o toast mostra a frase).
+ * Situação: o campo mostra a escolha na hora e, se a API recusa, volta ao que
+ * está gravado (o toast mostra a frase). Não grava ao montar nem ao reabrir.
  */
-function changeStatus(event: Event) {
-  const select = event.target as HTMLSelectElement
-  statusMutation.mutate(select.value as PartnerStatus, {
-    onError: () => {
-      if (p.value) select.value = p.value.status
-    },
-  })
+const statusItems = labelItems(PARTNER_STATUSES, PARTNER_STATUS_LABEL)
+const statusField = useSavedSelect(() => p.value?.status ?? 'PROSPECT')
+const statusTone = computed(() => PARTNER_STATUS_TONE[statusField.shown.value as PartnerStatus] ?? PARTNER_STATUS_TONE[p.value?.status ?? 'PROSPECT'])
+function changeStatus(value: unknown) {
+  if (typeof value !== 'string' || !statusField.pick(value)) return
+  statusMutation.mutate(value as PartnerStatus, { onError: () => statusField.revert() })
 }
+
+const channelItems = labelItems(CONTACT_CHANNELS, CONTACT_CHANNEL_LABEL)
 
 // ── Próximo passo ──────────────────────────────────────────────────────────
 
@@ -244,17 +246,16 @@ const deleteMutation = useMutation({
         <div class="pp__facts">
           <div class="pp__fact">
             <span class="pp__k">Situação</span>
-            <select
-              v-if="canEdit"
-              class="mk-select pp__status"
-              :value="p.status"
-              :style="toneStyle(PARTNER_STATUS_TONE[p.status])"
-              aria-label="Situação do parceiro"
-              :disabled="statusMutation.isPending.value"
-              @change="changeStatus"
-            >
-              <option v-for="s in PARTNER_STATUSES" :key="s" :value="s">{{ PARTNER_STATUS_LABEL[s] }}</option>
-            </select>
+            <span v-if="canEdit" class="pp__status" :style="toneStyle(statusTone)">
+              <AppSelect
+                :model-value="statusField.shown.value"
+                :items="statusItems"
+                label="Situação do parceiro"
+                density="compact"
+                :disabled="statusMutation.isPending.value"
+                @update:model-value="changeStatus"
+              />
+            </span>
             <span v-else class="mk-chip" data-tone :style="toneStyle(PARTNER_STATUS_TONE[p.status])">
               {{ PARTNER_STATUS_LABEL[p.status] }}
             </span>
@@ -428,10 +429,8 @@ const deleteMutation = useMutation({
     >
       <div class="pp__form-row">
         <div class="mk-field">
-          <label class="mk-label" for="pp-c-channel">Como foi</label>
-          <select id="pp-c-channel" v-model="contact.channel" class="mk-select">
-            <option v-for="c in CONTACT_CHANNELS" :key="c" :value="c">{{ CONTACT_CHANNEL_LABEL[c] }}</option>
-          </select>
+          <span class="mk-label">Como foi</span>
+          <AppSelect :model-value="contact.channel" :items="channelItems" label="Como foi" density="compact" @update:model-value="contact.channel = $event as ContactChannel" />
         </div>
         <div class="mk-field">
           <label class="mk-label" for="pp-c-date">Dia</label>
@@ -589,9 +588,13 @@ const deleteMutation = useMutation({
 }
 
 .pp__status {
-  width: auto;
+  display: block;
+  min-width: 150px;
+}
+
+/* A cor da situação vem do tom (--mk-tone), como no chip. */
+.pp__status :deep(.app-select__trigger) {
   min-height: 28px;
-  padding: 2px 8px;
   color: var(--mk-tone);
   font-weight: 600;
   border-color: color-mix(in srgb, var(--mk-tone) 40%, var(--border));
@@ -764,7 +767,7 @@ const deleteMutation = useMutation({
     grid-template-columns: 1fr;
   }
 
-  .pp__status {
+  .pp__status :deep(.app-select__trigger) {
     min-height: 44px;
   }
 

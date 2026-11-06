@@ -169,8 +169,8 @@ Todas as rotas ficam em `/marketing/groups/:groupId/...`, atrás do `MarketingAc
 - [ ] O QR da ala aparece na tela QR Codes com o selo, só leitura.
 
 **Campos**
-- [ ] Nenhum `<select>` nativo na ala sem comentário de motivo.
-- [ ] Quando a API recusa, o campo volta ao valor anterior.
+- [x] Nenhum `<select>` nativo na ala sem comentário de motivo.
+- [x] Quando a API recusa, o campo volta ao valor anterior.
 
 **Gaps**
 - [ ] Export e resumo do financeiro acima do teto dão uma mensagem clara.
@@ -209,3 +209,4 @@ Todas as rotas ficam em `/marketing/groups/:groupId/...`, atrás do `MarketingAc
 |---|---|---|
 | 2026-11-06 | 0.1 | Spec da rodada a partir do uso real do Nicolas em produção; schema e migration congelados antes dos agentes |
 | 2026-11-06 | 0.2 | Auditoria do front (30 achados): repetido vira pergunta da fila (não trava ao sair da tela), cancelar e tentar de novo sem duplicar, falha do item do Acervo vira erro com retomada só do passo, subpasta base fixa, logout limpa a fila, zip por download nativo (`POST library/zip/ticket` + `GET library/zip/:token`), "Mandar para o acervo" só para a marca do arquivo ou a Geral, `GET utm/:id`. Roteiro `marketing-r1-audit-e2e.cjs` |
+| 2026-11-06 | 0.3 | P5 (R1-E): os 62 `<select>` da ala viraram `AppSelect` (`select-items.ts`, `useSavedSelect`); Tipo e Responsável do card, Situação da ativação e do parceiro e Cor da empresa voltam ao valor gravado quando a API recusa. Nativo só o `<datalist>` de forma de pagamento, com motivo. Roteiro `marketing-selects-e2e.cjs` e helper `app-select.cjs` nos roteiros antigos |

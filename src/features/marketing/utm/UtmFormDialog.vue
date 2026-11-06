@@ -166,7 +166,7 @@ function pickCampaign(id: string) {
   if (found) campaign.value = normalizeUtmValue(found.name)
 }
 
-// Itens dos AppSelect (o Nevo não usa <select> nativo, D11).
+// Itens dos AppSelect (o Nevo não usa select nativo, D11).
 const brandSelect = computed(() => props.brands.map((b) => ({ label: b.name, value: b.companyId })))
 const sourceSelect = computed(() => sourceItems.value.map((v) => ({ label: v, value: v })))
 const mediumSelect = computed(() => mediumItems.value.map((v) => ({ label: v, value: v })))

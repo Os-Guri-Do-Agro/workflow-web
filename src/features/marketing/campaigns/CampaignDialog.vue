@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { Loader2, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import type { MarketingBrand } from '@/service/marketing/marketing-core'
 import type { CampaignInput, MarketingCampaign } from '@/service/marketing/marketing-campaigns'
 import { parseMoneyToCents } from '../marketing-labels'
+import { asText, selectItems } from '../select-items'
 import { CHANNEL_SUGGESTIONS, centsToInput } from './campaign-labels'
 
 /**
@@ -34,6 +36,8 @@ const audience = ref('')
 const channels = ref<string[]>([])
 const channelDraft = ref('')
 const submitted = ref(false)
+
+const brandItems = computed(() => selectItems(props.brands, (b) => b.companyId, (b) => b.name))
 
 watch(
   () => props.modelValue,
@@ -142,15 +146,20 @@ const heading = computed(() => (props.campaign ? 'Editar campanha' : 'Nova campa
             />
             <span v-if="errors.name" class="mk-error" role="alert">{{ errors.name }}</span>
           </label>
-          <label class="mk-field">
+          <div class="mk-field" :class="{ 'mk-select-invalid': !!errors.companyId }" data-field="brand">
             <span class="mk-label">Marca</span>
-            <select v-model="companyId" class="mk-select" :disabled="!!campaign" :aria-invalid="!!errors.companyId">
-              <option value="" disabled>Escolha</option>
-              <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-            </select>
+            <AppSelect
+              :model-value="companyId"
+              :items="brandItems"
+              label="Marca"
+              placeholder="Escolha"
+              density="compact"
+              :disabled="!!campaign"
+              @update:model-value="companyId = asText($event)"
+            />
             <span v-if="errors.companyId" class="mk-error" role="alert">{{ errors.companyId }}</span>
             <span v-else-if="campaign" class="mk-hint">A marca não muda depois de criada.</span>
-          </label>
+          </div>
         </div>
 
         <label class="mk-field">

@@ -28,6 +28,7 @@ import {
   Undo2,
   Upload,
 } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -236,11 +237,13 @@ function applyDetail(detail: MarketingCardDetail) {
   void queryClient.invalidateQueries({ queryKey: cardKeys.history(groupId.value, detail.id) })
 }
 
-async function onPatch(input: UpdateCardInput) {
+/** `onFail`: o campo que salva sozinho (select) volta ao valor gravado quando a API recusa. */
+async function onPatch(input: UpdateCardInput, onFail?: () => void) {
   try {
     applyDetail(await updateCard(groupId.value, cardId.value, input))
   } catch (err) {
     toastError(getApiErrorMessage(err, 'Não deu para salvar.'))
+    onFail?.()
     void detailQuery.refetch()
   }
 }
@@ -261,6 +264,14 @@ function saveTitle() {
     return
   }
   if (t !== card.value.title) void onPatch({ title: t })
+}
+
+const moveItems = computed(() => [
+  { label: 'Mudar status', value: '' },
+  ...otherMoves.value.map((s) => ({ label: moveLabel(s), value: s })),
+])
+function pickMove(value: unknown) {
+  if (typeof value === 'string' && value) void onMove(value as CardStatus)
 }
 
 const moving = ref(false)
@@ -457,18 +468,17 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
         </div>
 
         <div class="mkcv__tools">
-          <select
-            v-if="canEdit && otherMoves.length"
-            class="mk-select mkcv__status"
-            aria-label="Mudar status"
-            :disabled="moving"
-            value=""
-            data-testid="status-select"
-            @change="onMove(($event.target as HTMLSelectElement).value as CardStatus); ($event.target as HTMLSelectElement).value = ''"
-          >
-            <option value="" disabled>Mudar status</option>
-            <option v-for="s in otherMoves" :key="s" :value="s">{{ moveLabel(s) }}</option>
-          </select>
+          <div v-if="canEdit && otherMoves.length" class="mkcv__status" data-testid="status-select">
+            <!-- Menu de ação: o campo fica sempre em "Mudar status" e a escolha dispara a mudança. -->
+            <AppSelect
+              model-value=""
+              :items="moveItems"
+              label="Mudar status"
+              density="compact"
+              :disabled="moving"
+              @update:model-value="pickMove"
+            />
+          </div>
           <button
             v-if="canEdit"
             type="button"
@@ -805,7 +815,10 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
 }
 
 .mkcv__status {
-  width: auto;
+  min-width: 150px;
+}
+
+.mkcv__status :deep(.app-select__trigger) {
   min-height: 32px;
 }
 
@@ -1034,7 +1047,7 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
     min-height: 44px;
   }
 
-  .mkcv__status {
+  .mkcv__status :deep(.app-select__trigger) {
     min-height: 44px;
   }
 

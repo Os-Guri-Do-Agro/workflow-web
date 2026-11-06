@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import axios from 'axios'
 import { Check, FileText, Paperclip, Pencil, Plus, Trash2, X } from 'lucide-vue-next'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import FileViewer, { type ViewerFile } from '@/components/ui/FileViewer.vue'
 import { useToast } from '@/composables/useToast'
@@ -28,6 +29,7 @@ import { itemPercent } from '../uploads/upload-format'
 import { formatBytes, formatCents, parseMoneyToCents } from '../marketing-labels'
 import { todaySp } from '../calendar/calendar-time'
 import FormDialog from '../events/FormDialog.vue'
+import { asText, selectItems } from '../select-items'
 import { usePartnersList } from '../partners/usePartners'
 
 /**
@@ -105,6 +107,9 @@ const partnersQuery = usePartnersList(
   () => ({ companyId: formBrand.value }),
 )
 const partnerOptions = computed(() => partnersQuery.data.value ?? [])
+const brandItems = computed(() => selectItems(mk.brands.value, (b) => b.companyId, (b) => b.name))
+const supplierItems = computed(() => selectItems(partnerOptions.value, (p) => p.id, (p) => p.name, 'Sem cadastro (digitar o nome)'))
+const categoryItems = computed(() => selectItems(mk.settings.value?.expenseCategories ?? [], (c) => c, (c) => c))
 
 function openNew() {
   Object.assign(form, {
@@ -519,18 +524,13 @@ function linkOf(q: Quote) {
         </div>
       </div>
       <div v-if="needsBrand && !form.id" class="mk-field">
-        <label class="mk-label" for="qp-brand">Marca</label>
-        <select id="qp-brand" v-model="form.companyId" class="mk-select">
-          <option v-for="b in mk.brands.value" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-        </select>
+        <span class="mk-label">Marca</span>
+        <AppSelect :model-value="form.companyId" :items="brandItems" label="Marca" density="compact" @update:model-value="form.companyId = asText($event)" />
       </div>
       <template v-if="!partnerId">
         <div class="mk-field">
-          <label class="mk-label" for="qp-partner">Fornecedor</label>
-          <select id="qp-partner" v-model="form.partnerId" class="mk-select">
-            <option value="">Sem cadastro (digitar o nome)</option>
-            <option v-for="p in partnerOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
+          <span class="mk-label">Fornecedor</span>
+          <AppSelect :model-value="form.partnerId" :items="supplierItems" label="Fornecedor" density="compact" @update:model-value="form.partnerId = asText($event)" />
         </div>
         <div v-if="!form.partnerId" class="mk-field">
           <label class="mk-label" for="qp-supplier">Nome do fornecedor</label>
@@ -568,10 +568,8 @@ function linkOf(q: Quote) {
           <input id="qp-exp-date" v-model="choose.date" type="date" class="mk-input" />
         </div>
         <div class="mk-field">
-          <label class="mk-label" for="qp-exp-cat">Categoria</label>
-          <select id="qp-exp-cat" v-model="choose.category" class="mk-select">
-            <option v-for="c in mk.settings.value?.expenseCategories ?? []" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <span class="mk-label">Categoria</span>
+          <AppSelect :model-value="choose.category" :items="categoryItems" label="Categoria" density="compact" @update:model-value="choose.category = asText($event)" />
         </div>
       </div>
       <p v-if="chooseError" class="mk-error" role="alert">{{ chooseError }}</p>

@@ -20,6 +20,7 @@
 const { chromium } = require('playwright-core')
 const fs = require('node:fs')
 const path = require('node:path')
+const { pickOption } = require('./app-select.cjs')
 const crypto = require('node:crypto')
 const zlib = require('node:zlib')
 const { execFileSync } = require('node:child_process')
@@ -875,7 +876,7 @@ async function uiPart() {
     const { ctx, page, bad } = await open(browser, 'marcel', fin({ mes: MONTH, marca: C.pet }), desk, C.pet)
     await page.waitForSelector('.fe-quick')
     await page.locator('.fe-quick input[aria-label="Descrição do lançamento"]').fill('E2E Impulsionar reels da semana')
-    await page.locator('.fe-quick select[aria-label="Categoria do lançamento"]').selectOption('Tráfego pago')
+    await pickOption(page, page.locator('.fe-quick [data-quick="category"]'), 'Tráfego pago')
     await page.locator('.fe-quick input[aria-label="Valor do lançamento"]').fill('250,90')
     await page.locator('.fe-quick input[aria-label="Valor do lançamento"]').press('Enter')
     await page.waitForSelector('tr.fe-row:has-text("E2E Impulsionar reels")')
@@ -920,17 +921,23 @@ async function uiPart() {
     const dlg = page.locator('[role=dialog]')
     await dlg.locator('input[placeholder^="Ex.: Folders"]').fill('E2E Banner para o estande')
     await dlg.locator('#fx-amount').fill('189,00')
-    await dlg.locator('select').filter({ has: page.locator('option', { hasText: 'Eventos e ativações' }) }).first().selectOption('Eventos e ativações')
-    await dlg.locator('select').filter({ has: page.locator('option', { hasText: 'E2E Feira Pet Campo Grande' }) }).selectOption({ label: 'E2E Feira Pet Campo Grande' })
+    await pickOption(page, dlg.getByRole('combobox', { name: 'Categoria', exact: true }), 'Eventos e ativações')
+    await pickOption(page, dlg.getByRole('combobox', { name: 'Ativação', exact: true }), 'E2E Feira Pet Campo Grande')
     const [ch2] = await Promise.all([page.waitForEvent('filechooser'), dlg.getByRole('button', { name: 'Anexar nota' }).click()])
     await ch2.setFiles({ name: 'banner.pdf', mimeType: 'application/pdf', buffer: pdfBuf })
     check(await dlg.locator('.fx-file.is-queued').count() === 1, 'novo lançamento: nota na fila até salvar')
     await shot(page, 'editor-novo-lancamento-d1440')
     await dlg.getByRole('button', { name: 'Lançar' }).click()
     await page.waitForSelector('tr.fe-row:has-text("E2E Banner para o estande")', { timeout: 15000 })
-    list = await call('marcel', 'GET', `/expenses?month=${MONTH}&companyId=${C.pet}&q=Banner`)
+    // A linha aparece pelo tempo real assim que o lançamento é criado; a nota da
+    // fila sobe logo depois. Espera a nota (até 15 s) em vez de ler no mesmo instante.
+    for (let i = 0; i < 100; i++) {
+      list = await call('marcel', 'GET', `/expenses?month=${MONTH}&companyId=${C.pet}&q=Banner`)
+      if (list.data.items[0]?.invoices.length === 1) break
+      await new Promise((r) => setTimeout(r, 150))
+    }
     const banner = list.data.items[0]
-    check(banner?.activationId === X.atvPet && banner?.invoices.length === 1 && banner.amountCents === 18900, 'diálogo grava ativação, valor e sobe a nota da fila')
+    check(banner?.activationId === X.atvPet && banner?.invoices.length === 1 && banner.amountCents === 18900, 'diálogo grava ativação, valor e sobe a nota da fila', JSON.stringify({ act: banner?.activationId, esperado: X.atvPet, notas: banner?.invoices.length, valor: banner?.amountCents, cat: banner?.category }))
     // Validação aparece no diálogo (e nada é gravado)
     await page.locator('tr.fe-row', { hasText: 'E2E Banner para o estande' }).click()
     await page.waitForSelector('[role=dialog]')
@@ -960,9 +967,9 @@ async function uiPart() {
     check(attach && attach.width >= 44 && attach.height >= 44, 'botão de anexar com 44px', `${attach?.width}x${attach?.height}`)
     const newBtn = await page.locator('.fe-new-phone').boundingBox()
     check(newBtn && newBtn.height >= 44 && (await page.locator('.fe-quick').count()) === 0, 'celular: "Novo lançamento" com 44px no lugar da linha de planilha', `${newBtn?.height}`)
-    check(await page.locator('select.fe-filter').count() === 0, 'celular: filtros recolhidos atrás de "Filtros"')
+    check(await page.locator('.fe-filter').count() === 0, 'celular: filtros recolhidos atrás de "Filtros"')
     await page.getByRole('button', { name: /^Filtros/ }).click()
-    check(await page.locator('select.fe-filter').count() >= 2, 'tocar em Filtros abre os selects')
+    check(await page.locator('.fe-filter button[role="combobox"]').count() >= 2, 'tocar em Filtros abre os selects (AppSelect)')
     await page.getByRole('button', { name: /^Filtros/ }).click()
     // Lançar pelo formulário no celular
     await page.locator('.fe-new-phone').click()

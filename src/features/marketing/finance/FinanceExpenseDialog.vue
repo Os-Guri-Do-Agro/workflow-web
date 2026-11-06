@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Download, FileText, Paperclip, RotateCw, Repeat, Trash2, Upload, Wallet, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import FileViewer, { type ViewerFile } from '@/components/ui/FileViewer.vue'
 import { useToast } from '@/composables/useToast'
@@ -18,6 +19,7 @@ import {
   type MarketingExpense,
 } from '@/service/marketing/marketing-finance'
 import { formatBytes } from '../marketing-labels'
+import { asText, selectItems } from '../select-items'
 import { filesFromInput, useFileDrop, usePasteFiles } from '../uploads/file-sources'
 import UploadSourceButtons from '../uploads/UploadSourceButtons.vue'
 import { isUploadPending, useUploadQueue, type UploadEntry } from '../uploads/upload-queue'
@@ -144,6 +146,17 @@ const campaigns = computed(() => sameBrand(props.options?.campaigns))
 const activations = computed(() => sameBrand(props.options?.activations))
 const cards = computed(() => sameBrand(props.options?.cards))
 const partners = computed(() => sameBrand(props.options?.partners, true))
+
+const brandItems = computed(() => selectItems(props.brands, (b) => b.companyId, (b) => b.name))
+const statusItems = [
+  { label: 'Pago', value: 'PAID' },
+  { label: 'Previsto', value: 'PLANNED' },
+]
+const categoryItems = computed(() => selectItems(categories.value, (c) => c, (c) => c))
+const partnerItems = computed(() => selectItems(partners.value, (p) => p.id, (p) => p.name, 'Nenhum'))
+const campaignItems = computed(() => selectItems(campaigns.value, (c) => c.id, (c) => c.name, 'Nenhuma'))
+const activationItems = computed(() => selectItems(activations.value, (a) => a.id, (a) => a.title, 'Nenhuma'))
+const cardItems = computed(() => selectItems(cards.value, (c) => c.id, (c) => c.title, 'Nenhum'))
 
 // Trocar a marca solta os vínculos que eram da outra. Na marca de quando abriu
 // não mexe: o card arquivado (fora das opções) continua ligado ao lançamento.
@@ -357,12 +370,17 @@ async function doDelete() {
 
     <form class="fx-body" :class="{ 'is-over': drop.isOver.value }" novalidate @submit.prevent="save" v-on="drop.on">
       <div class="fx-grid">
-        <label v-if="brands.length > 1" class="mk-field">
+        <div v-if="brands.length > 1" class="mk-field">
           <span class="mk-label">Marca</span>
-          <select v-model="form.companyId" class="mk-select" :disabled="readOnly">
-            <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-          </select>
-        </label>
+          <AppSelect
+            :model-value="form.companyId"
+            :items="brandItems"
+            label="Marca"
+            density="compact"
+            :disabled="readOnly"
+            @update:model-value="form.companyId = asText($event)"
+          />
+        </div>
         <label class="mk-field">
           <span class="mk-label">Data</span>
           <input v-model="form.date" type="date" class="mk-input" :disabled="readOnly" required />
@@ -382,19 +400,28 @@ async function doDelete() {
           <label class="mk-label" for="fx-amount">Valor</label>
           <MoneyInput id="fx-amount" v-model="form.amountCents" :disabled="readOnly" />
         </div>
-        <label class="mk-field">
+        <div class="mk-field">
           <span class="mk-label">Situação</span>
-          <select v-model="form.status" class="mk-select" :disabled="readOnly">
-            <option value="PAID">Pago</option>
-            <option value="PLANNED">Previsto</option>
-          </select>
-        </label>
-        <label class="mk-field">
+          <AppSelect
+            :model-value="form.status"
+            :items="statusItems"
+            label="Situação"
+            density="compact"
+            :disabled="readOnly"
+            @update:model-value="form.status = $event as ExpenseStatus"
+          />
+        </div>
+        <div class="mk-field">
           <span class="mk-label">Categoria</span>
-          <select v-model="form.category" class="mk-select" :disabled="readOnly">
-            <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-          </select>
-        </label>
+          <AppSelect
+            :model-value="form.category"
+            :items="categoryItems"
+            label="Categoria"
+            density="compact"
+            :disabled="readOnly"
+            @update:model-value="form.category = asText($event)"
+          />
+        </div>
         <label class="mk-field">
           <span class="mk-label">Forma de pagamento</span>
           <input
@@ -405,6 +432,7 @@ async function doDelete() {
             placeholder="Pix, cartão..."
             :disabled="readOnly"
           />
+          <!-- Nativo de propósito: texto livre com sugestões (Pix, cartão...); o AppSelect só escolhe entre opções fixas. -->
           <datalist id="fx-payment">
             <option v-for="p in PAYMENT_METHODS" :key="p" :value="p" />
           </datalist>
@@ -413,34 +441,50 @@ async function doDelete() {
           <span class="mk-label">Fornecedor</span>
           <input v-model="form.supplier" class="mk-input" maxlength="120" :disabled="readOnly" />
         </label>
-        <label class="mk-field">
+        <div class="mk-field">
           <span class="mk-label">Parceiro</span>
-          <select v-model="form.partnerId" class="mk-select" :disabled="readOnly">
-            <option value="">Nenhum</option>
-            <option v-for="p in partners" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
-        </label>
-        <label class="mk-field">
+          <AppSelect
+            :model-value="form.partnerId"
+            :items="partnerItems"
+            label="Parceiro"
+            density="compact"
+            :disabled="readOnly"
+            @update:model-value="form.partnerId = asText($event)"
+          />
+        </div>
+        <div class="mk-field">
           <span class="mk-label">Campanha</span>
-          <select v-model="form.campaignId" class="mk-select" :disabled="readOnly">
-            <option value="">Nenhuma</option>
-            <option v-for="c in campaigns" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-        </label>
-        <label class="mk-field">
+          <AppSelect
+            :model-value="form.campaignId"
+            :items="campaignItems"
+            label="Campanha"
+            density="compact"
+            :disabled="readOnly"
+            @update:model-value="form.campaignId = asText($event)"
+          />
+        </div>
+        <div class="mk-field">
           <span class="mk-label">Ativação</span>
-          <select v-model="form.activationId" class="mk-select" :disabled="readOnly">
-            <option value="">Nenhuma</option>
-            <option v-for="a in activations" :key="a.id" :value="a.id">{{ a.title }}</option>
-          </select>
-        </label>
-        <label class="mk-field">
+          <AppSelect
+            :model-value="form.activationId"
+            :items="activationItems"
+            label="Ativação"
+            density="compact"
+            :disabled="readOnly"
+            @update:model-value="form.activationId = asText($event)"
+          />
+        </div>
+        <div class="mk-field">
           <span class="mk-label">Card (peça)</span>
-          <select v-model="form.cardId" class="mk-select" :disabled="readOnly">
-            <option value="">Nenhum</option>
-            <option v-for="c in cards" :key="c.id" :value="c.id">{{ c.title }}</option>
-          </select>
-        </label>
+          <AppSelect
+            :model-value="form.cardId"
+            :items="cardItems"
+            label="Card (peça)"
+            density="compact"
+            :disabled="readOnly"
+            @update:model-value="form.cardId = asText($event)"
+          />
+        </div>
         <label class="mk-field">
           <span class="mk-label">Nº da nota fiscal</span>
           <input v-model="form.invoiceNumber" class="mk-input" maxlength="60" :disabled="readOnly" />

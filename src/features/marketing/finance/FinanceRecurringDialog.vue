@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Repeat, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
 import type { MarketingBrand } from '@/service/marketing/marketing-core'
@@ -11,6 +12,7 @@ import {
   type RecurringInput,
   type RecurringRule,
 } from '@/service/marketing/marketing-finance'
+import { asText, selectItems } from '../select-items'
 import MoneyInput from './MoneyInput.vue'
 
 /** Regra mensal: assinatura, agência, mensalidade de ferramenta. */
@@ -40,6 +42,8 @@ const form = reactive({
 })
 const error = ref('')
 const saving = ref(false)
+const brandItems = computed(() => selectItems(props.brands, (b) => b.companyId, (b) => b.name))
+const categoryItems = computed(() => selectItems(props.categories, (c) => c, (c) => c))
 
 watch(
   () => props.modelValue,
@@ -107,12 +111,10 @@ async function save() {
     </header>
     <form class="fr-body" novalidate @submit.prevent="save">
       <div class="fr-grid">
-        <label v-if="brands.length > 1" class="mk-field fr-span">
+        <div v-if="brands.length > 1" class="mk-field fr-span">
           <span class="mk-label">Marca</span>
-          <select v-model="form.companyId" class="mk-select">
-            <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-          </select>
-        </label>
+          <AppSelect :model-value="form.companyId" :items="brandItems" label="Marca" density="compact" @update:model-value="form.companyId = asText($event)" />
+        </div>
         <label class="mk-field fr-span">
           <span class="mk-label">Descrição</span>
           <input v-model="form.description" class="mk-input" maxlength="200" placeholder="Ex.: Canva Pro" required />
@@ -121,12 +123,10 @@ async function save() {
           <label class="mk-label" for="fr-amount">Valor por mês</label>
           <MoneyInput id="fr-amount" v-model="form.amountCents" />
         </div>
-        <label class="mk-field">
+        <div class="mk-field">
           <span class="mk-label">Categoria</span>
-          <select v-model="form.category" class="mk-select">
-            <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-          </select>
-        </label>
+          <AppSelect :model-value="form.category" :items="categoryItems" label="Categoria" density="compact" @update:model-value="form.category = asText($event)" />
+        </div>
         <label class="mk-field">
           <span class="mk-label">Fornecedor</span>
           <input v-model="form.supplier" class="mk-input" maxlength="120" />

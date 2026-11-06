@@ -8,6 +8,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { CalendarPlus, Loader2, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import type { MarketingBrand } from '@/service/marketing/marketing-core'
 import type { QuickCreateInput } from '@/service/marketing/marketing-calendar-api'
 import {
@@ -18,6 +19,7 @@ import {
   type CardKind,
   type CardNetwork,
 } from '../../marketing-labels'
+import { asText, labelItems, selectItems } from '../../select-items'
 import { formatLongDay, isYmd, spDateTimeToIso } from '../calendar-time'
 
 const props = defineProps<{
@@ -32,6 +34,8 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 
 const KINDS = (Object.keys(CARD_KIND_LABEL) as CardKind[]).filter((k) => k !== 'PRINT')
+const kindItems = labelItems(KINDS, CARD_KIND_LABEL)
+const brandItems = computed(() => selectItems(props.brands, (b) => b.companyId, (b) => b.name))
 const NETWORKS = Object.keys(CARD_NETWORK_LABEL) as CardNetwork[]
 
 const form = reactive({
@@ -129,18 +133,14 @@ async function onSubmit() {
         </label>
 
         <div class="qc__row">
-          <label v-if="brands.length > 1" class="mk-field">
+          <div v-if="brands.length > 1" class="mk-field" data-field="brand">
             <span class="mk-label">Marca</span>
-            <select v-model="form.companyId" class="mk-select" data-field="brand">
-              <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-            </select>
-          </label>
-          <label class="mk-field">
+            <AppSelect :model-value="form.companyId" :items="brandItems" label="Marca" density="compact" @update:model-value="form.companyId = asText($event)" />
+          </div>
+          <div class="mk-field" data-field="kind">
             <span class="mk-label">Tipo</span>
-            <select v-model="form.kind" class="mk-select" data-field="kind">
-              <option v-for="k in KINDS" :key="k" :value="k">{{ CARD_KIND_LABEL[k] }}</option>
-            </select>
-          </label>
+            <AppSelect :model-value="form.kind" :items="kindItems" label="Tipo" density="compact" @update:model-value="form.kind = $event as CardKind" />
+          </div>
         </div>
 
         <div class="qc__row">

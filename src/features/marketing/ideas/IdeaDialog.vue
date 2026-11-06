@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { Loader2, X } from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
+import AppSelect from '@/components/ui/AppSelect.vue'
 import type { MarketingBrand } from '@/service/marketing/marketing-core'
 import type { IdeaInput, IdeaKind, MarketingIdea } from '@/service/marketing/marketing-ideas'
 import { CARD_NETWORK_LABEL } from '../marketing-labels'
+import { asText, selectItems } from '../select-items'
 import { IDEA_KIND_HINT, IDEA_KIND_LABEL } from './idea-labels'
 
 /**
@@ -92,6 +94,8 @@ function submit() {
 
 const kinds: IdeaKind[] = ['IDEA', 'TREND', 'REFERENCE']
 const networks = Object.entries(CARD_NETWORK_LABEL)
+const networkItems = [{ label: 'Qualquer', value: '' }, ...networks.map(([value, label]) => ({ label, value }))]
+const brandItems = computed(() => selectItems(props.brands, (b) => b.companyId, (b) => b.name, 'Todas as marcas'))
 </script>
 
 <template>
@@ -171,20 +175,14 @@ const networks = Object.entries(CARD_NETWORK_LABEL)
         </label>
 
         <div class="idd__row">
-          <label class="mk-field">
+          <div class="mk-field" data-field="network">
             <span class="mk-label">Rede</span>
-            <select v-model="network" class="mk-select" :disabled="readonly">
-              <option value="">Qualquer</option>
-              <option v-for="[value, label] in networks" :key="value" :value="value">{{ label }}</option>
-            </select>
-          </label>
-          <label class="mk-field">
+            <AppSelect :model-value="network" :items="networkItems" label="Rede" density="compact" :disabled="readonly" @update:model-value="network = asText($event)" />
+          </div>
+          <div class="mk-field" data-field="brand">
             <span class="mk-label">Marca</span>
-            <select v-model="companyId" class="mk-select" :disabled="readonly">
-              <option value="">Todas as marcas</option>
-              <option v-for="b in brands" :key="b.companyId" :value="b.companyId">{{ b.name }}</option>
-            </select>
-          </label>
+            <AppSelect :model-value="companyId" :items="brandItems" label="Marca" density="compact" :disabled="readonly" @update:model-value="companyId = asText($event)" />
+          </div>
         </div>
 
         <div class="mk-field">
