@@ -97,7 +97,8 @@ async function open(browser, email, route, vp, activeCompany) {
     const { ctx, page, bad } = await open(browser, 'nicolas@nevo.test', '/marketing', desk, seed.companies.pet)
     await page.screenshot({ path: path.join(out, 'dono-d1440.png') })
     const tabs = await page.locator('.mk-tab').allInnerTexts()
-    check(tabs.length === 12, 'Dono vê as 12 abas da ala', tabs.join(' | '))
+    // 13 desde a R1 (Acervo, entre Ideias e Campanhas).
+    check(tabs.length === 13 && tabs.includes('Acervo'), 'Dono vê as 13 abas da ala (com o Acervo)', tabs.join(' | '))
     check(await page.getByRole('link', { name: 'Marketing' }).count() > 0, 'menu lateral tem Marketing')
     const brands = await page.locator('.mk-layout__brand').allInnerTexts()
     check(brands.length === 4, 'filtro de marca: Todas + 3', brands.join(' | '))
@@ -129,7 +130,7 @@ async function open(browser, email, route, vp, activeCompany) {
     check(await page.getByText('Crie sua primeira empresa').count() === 0, 'freelancer não vê "crie sua empresa"')
     check(await page.locator('.mk-layout__brand').count() === 0, 'freelancer com 1 marca não tem filtro de marca')
     const tabs = await page.locator('.mk-tab').allInnerTexts()
-    check(tabs.length === 12, 'freelancer (Editor) vê as abas', tabs.join(' | '))
+    check(tabs.length === 13 && tabs.includes('Acervo'), 'freelancer (Editor) vê as abas (com o Acervo)', tabs.join(' | '))
     check(bad.length === 0, 'freelancer: nenhuma 401/5xx', bad.join(', '))
     await ctx.close()
   }

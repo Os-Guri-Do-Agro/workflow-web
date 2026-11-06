@@ -15,7 +15,7 @@
  *   o original segue intacto.
  */
 import { computed, nextTick, ref, watch } from 'vue'
-import { Download, Expand, FileText, Film, MapPin, MessageSquarePlus } from 'lucide-vue-next'
+import { Download, Expand, FileText, Film, FolderInput, MapPin, MessageSquarePlus } from 'lucide-vue-next'
 import FileViewer, { type ViewerFile } from '@/components/ui/FileViewer.vue'
 import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
@@ -23,6 +23,7 @@ import { getAssetDownload } from '@/service/marketing/marketing-core'
 import type { MarketingCardAsset, MarketingCardComment, MarketingCardVersion } from '@/service/marketing/marketing-cards'
 import { formatBytes } from '../../marketing-labels'
 import { displayUrl, formatSeconds, isVideoMime, isViewableImage } from '../approvals-meta'
+import SendToLibraryDialog from '../../library/SendToLibraryDialog.vue'
 
 export interface DraftAnchor {
   versionId: string
@@ -42,6 +43,10 @@ const props = defineProps<{
   highlightId: string | null
   /** Só a imagem e as miniaturas (Comparar): sem pinos, sem comentar. */
   compact?: boolean
+  /** Marca do card: destino sugerido do "Mandar para o acervo" (R1). */
+  companyId?: string | null
+  /** Editor ou acima: mostra "Mandar para o acervo" (a API confere de novo). */
+  canSendToLibrary?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -165,6 +170,7 @@ const viewerItems = computed<ViewerFile[]>(() =>
     : [],
 )
 
+const sendOpen = ref(false)
 const downloading = ref(false)
 async function downloadOriginal() {
   if (!current.value || downloading.value) return
@@ -308,10 +314,27 @@ const dims = computed(() => {
         <span class="mkv__meta-name" :title="current.name">{{ current.name }}</span>
         <span class="mkv__meta-dims">{{ dims }}</span>
         <span class="mk-toolbar__spacer" />
+        <button
+          v-if="canSendToLibrary"
+          type="button"
+          class="mk-btn mk-btn--ghost"
+          data-action="send-to-library"
+          @click="sendOpen = true"
+        >
+          <FolderInput :size="14" aria-hidden="true" /> Mandar para o acervo
+        </button>
         <button type="button" class="mk-btn mk-btn--ghost" :disabled="downloading" data-action="download-original" @click="downloadOriginal">
           <Download :size="14" aria-hidden="true" /> Baixar original
         </button>
       </div>
+      <SendToLibraryDialog
+        v-if="canSendToLibrary && !compact"
+        v-model="sendOpen"
+        :group-id="groupId"
+        :asset-id="current.id"
+        :company-id="companyId ?? null"
+        :default-title="current.name"
+      />
 
       <div v-if="version.assets.length > 1" class="mkv__thumbs" role="tablist" aria-label="Arquivos da versão">
         <button

@@ -28,6 +28,8 @@ export const marketingRoutes: RouteRecordRaw[] = [
       { path: 'parceiros', name: 'marketing-partners', component: () => import('./views/MarketingPartnersView.vue') },
       { path: 'financeiro', name: 'marketing-finance', component: () => import('./views/MarketingFinanceView.vue') },
       { path: 'configuracoes', name: 'marketing-settings', component: () => import('./views/MarketingSettingsView.vue') },
+      // R1: Acervo (biblioteca de mídia por marca e Geral do grupo).
+      { path: 'acervo', name: 'marketing-library', component: () => import('./views/MarketingLibraryView.vue') },
     ],
   },
 ]

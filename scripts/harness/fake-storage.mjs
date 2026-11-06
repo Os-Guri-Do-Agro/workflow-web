@@ -552,8 +552,18 @@ async function copiarOuMover(corpo, mover) {
     await fsp.rename(sFile, dFile)
     await fsp.rename(mSrc, metaDe(destBucket, dSegs)).catch(() => {})
   } else {
+    // Copia do lado do servidor (POST /object/copy do storage-js 2.98: corpo
+    // { bucketId, sourceKey, destinationKey, destinationBucket }, resposta
+    // { Key }). Os bytes sao os mesmos (o sha256 do original vale para a
+    // copia); o objeto novo ganha id e datas proprios, como no storage real.
     await fsp.copyFile(sFile, dFile)
-    await fsp.copyFile(mSrc, metaDe(destBucket, dSegs)).catch(() => {})
+    const st = await fsp.stat(dFile)
+    const m = await lerMeta(origem.id, sSegs, st)
+    const agora = new Date().toISOString()
+    await fsp.writeFile(
+      metaDe(destBucket, dSegs),
+      JSON.stringify({ ...m, id: crypto.randomUUID(), createdAt: agora, updatedAt: agora }),
+    )
   }
   return `${destBucket}/${dSegs.join('/')}`
 }

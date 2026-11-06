@@ -570,6 +570,8 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
               :phone="phone"
               :draft="draft"
               :highlight-id="highlightId"
+              :company-id="card.companyId"
+              :can-send-to-library="mk.can('EDITOR')"
               @draft="onDraft"
               @cancel-draft="draft = null"
               @select-comment="onSelectPin"

@@ -23,9 +23,36 @@ function when(iso: string): string {
 
 function linkOf(entry: HomeActivity): RouteLocationRaw | null {
   if (entry.verb === 'deleted') return null
-  if (entry.entityType === 'card') return { name: 'marketing-card', params: { cardId: entry.entityId } }
-  if (entry.entityType === 'link') return { name: 'marketing-links' }
-  return null
+  const id = entry.entityId
+  switch (entry.entityType) {
+    case 'card':
+      return { name: 'marketing-card', params: { cardId: id } }
+    case 'link':
+      return { name: 'marketing-links' }
+    case 'utm':
+      return { name: 'marketing-utm', query: { utm: id } }
+    case 'campaign':
+      return { name: 'marketing-campaigns', query: { campanha: id } }
+    case 'activation':
+      return { name: 'marketing-activations', query: { ativacao: id } }
+    case 'partner':
+      return { name: 'marketing-partners', query: { parceiro: id } }
+    case 'idea':
+      return { name: 'marketing-ideas' }
+    // O histórico já chega filtrado pelo financeiro (logWhere): quem vê a linha vê a tela.
+    case 'expense':
+    case 'recurring_expense':
+    case 'budget':
+      return { name: 'marketing-finance' }
+    // Acervo (R1): item abre o painel dele; pasta e envio em lote abrem o Acervo.
+    case 'library':
+      return { name: 'marketing-library', query: { item: id } }
+    case 'library_folder':
+    case 'library_upload':
+      return { name: 'marketing-library' }
+    default:
+      return null
+  }
 }
 </script>
 

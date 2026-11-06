@@ -2,6 +2,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   FileImage,
+  Images,
   KeyRound,
   Lightbulb,
   LayoutDashboard,
@@ -31,7 +32,7 @@ export interface MarketingSection {
   /** Caminho, para o breadcrumb */
   path: string
   group: 'Produção' | 'Divulgação' | 'Eventos e dinheiro' | 'Base'
-  phase: 'M1' | 'M2' | 'M3' | 'Fundação'
+  phase: 'M1' | 'M2' | 'M3' | 'R1' | 'Fundação'
   minRole?: MarketingRole
   /** Regra extra (ex.: financeiro conforme a configuração do grupo) */
   visible?: (group: MarketingGroupSummary) => boolean
@@ -42,6 +43,7 @@ export const MARKETING_SECTIONS: MarketingSection[] = [
   { key: 'approvals', title: 'Aprovações', icon: ClipboardCheck, route: 'marketing-approvals', path: '/marketing/aprovacoes', group: 'Produção', phase: 'M1' },
   { key: 'calendar', title: 'Calendário', icon: CalendarDays, route: 'marketing-calendar', path: '/marketing/calendario', group: 'Produção', phase: 'M1' },
   { key: 'ideas', title: 'Ideias', icon: Lightbulb, route: 'marketing-ideas', path: '/marketing/ideias', group: 'Produção', phase: 'M2' },
+  { key: 'library', title: 'Acervo', icon: Images, route: 'marketing-library', path: '/marketing/acervo', group: 'Produção', phase: 'R1' },
   { key: 'campaigns', title: 'Campanhas', icon: Target, route: 'marketing-campaigns', path: '/marketing/campanhas', group: 'Divulgação', phase: 'M2' },
   { key: 'utm', title: 'UTMs e QR', icon: Link2, route: 'marketing-utm', path: '/marketing/utm', group: 'Divulgação', phase: 'M2' },
   { key: 'print', title: 'Gráfica', icon: Printer, route: 'marketing-print', path: '/marketing/grafica', group: 'Divulgação', phase: 'M2' },
