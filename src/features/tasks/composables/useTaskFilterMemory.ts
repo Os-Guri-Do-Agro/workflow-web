@@ -20,9 +20,12 @@
  *
  * O agrupamento ("Agrupar: Pessoa") entra junto: quem olha o board sempre por
  * pessoa não quer religar isso a cada visita. Registro sem o campo vale "Nenhum".
+ * A ordem ("Ordem: Entrega | Manual") vai pelo mesmo motivo; registro sem o
+ * campo vale "Entrega", o padrão.
  */
 import { ref, watch, type Ref } from 'vue'
 import { safeStorage } from '@/utils/safe-storage'
+import type { BoardOrder } from '../board-order'
 
 /**
  * `v1` continua valendo: o registro antigo (`user` por nome, `priority` único)
@@ -45,6 +48,7 @@ export interface TaskFilterRefs {
   recent: Ref<boolean>
   nobody: Ref<boolean>
   group: Ref<BoardGrouping>
+  order: Ref<BoardOrder>
 }
 
 interface StoredFilter {
@@ -56,6 +60,7 @@ interface StoredFilter {
   recent: boolean
   nobody: boolean
   group: BoardGrouping
+  order: BoardOrder
 }
 
 const strings = (v: unknown): string[] =>
@@ -82,6 +87,7 @@ function read(companyId: string): StoredFilter | null {
       recent: parsed.recent === true,
       nobody: parsed.nobody === true,
       group: parsed.group === 'person' ? 'person' : 'none',
+      order: parsed.order === 'manual' ? 'manual' : 'due',
     }
   } catch {
     // Registro corrompido não pode impedir o board de abrir: vale como "não
@@ -116,6 +122,7 @@ export function useTaskFilterMemory(
       recent: filters.recent.value,
       nobody: filters.nobody.value,
       group: filters.group.value,
+      order: filters.order.value,
     }
   }
 
@@ -142,6 +149,7 @@ export function useTaskFilterMemory(
     filters.recent.value = saved.recent
     filters.nobody.value = saved.nobody
     filters.group.value = saved.group
+    filters.order.value = saved.order
   }
 
   /**
@@ -184,6 +192,7 @@ export function useTaskFilterMemory(
       filters.recent,
       filters.nobody,
       filters.group,
+      filters.order,
     ],
     () => {
       if (remember.value) persist()

@@ -18,6 +18,9 @@
  *   desligado na v1: reatribuir uma tarefa com vários responsáveis pede uma
  *   decisão de produto.
  * - Durante o arraste a prop nova é ignorada, como no `KanbanBoard`.
+ * - Em "Entrega" (`order`, ver `board-order.ts`) as células chegam já na ordem
+ *   do prazo e não reordenam (`sort: false`): o arraste só troca a coluna
+ *   dentro da linha, e o card fica na coluna nova pela data dele.
  *
  * Celular (spec v2-celular-roadmap-notas, D1): abaixo de 640px a matriz de
  * cinco colunas não cabe (cada célula tinha 220px e a linha rolava de lado
@@ -39,6 +42,7 @@ import { ACTIVITY_STATUSES } from '@/features/tasks/task-meta'
 import { taskKey } from '@/features/tasks/task-key'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import type { BoardLane } from '@/features/tasks/board-lanes'
+import type { BoardOrder } from '@/features/tasks/board-order'
 import type { ActivityStatus, TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { usePhoneViewport } from '@/composables/usePhoneViewport'
@@ -48,16 +52,21 @@ import {
   useCardLongPress,
 } from '@/features/tasks/composables/useCardLongPress'
 
-const props = defineProps<{
-  lanes: BoardLane<KanbanTask>[]
-  readonly?: boolean
-  companyName?: string | null
-  /** Linhas recolhidas (chave da linha). */
-  collapsedKeys: readonly string[]
-  /** Célula com o campo de criação inline aberto. */
-  composer?: { laneKey: string; status: ActivityStatus } | null
-  composerRestore?: { title: string; nonce: number } | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    lanes: BoardLane<KanbanTask>[]
+    readonly?: boolean
+    companyName?: string | null
+    /** Linhas recolhidas (chave da linha). */
+    collapsedKeys: readonly string[]
+    /** Célula com o campo de criação inline aberto. */
+    composer?: { laneKey: string; status: ActivityStatus } | null
+    composerRestore?: { title: string; nonce: number } | null
+    /** Ordem do board. Em `due` as células já vêm ordenadas e o arraste não reordena. */
+    order?: BoardOrder
+  }>(),
+  { order: 'manual' },
+)
 
 const emit = defineEmits<{
   'move-task': [payload: KanbanMovePayload]
@@ -140,6 +149,12 @@ function onMove(evt: DragEndEvent, laneKey: string, status: ActivityStatus) {
   const at = visibleIds.indexOf(taskId)
   const position = at !== -1 ? at : typeof evt.newIndex === 'number' ? evt.newIndex : 0
   emit('move-task', { taskId, status, position, visibleIds })
+}
+
+/** Soltou na mesma célula: em Entrega não reordena, então não há o que gravar. */
+function onReorder(evt: DragEndEvent, laneKey: string, status: ActivityStatus) {
+  if (props.order === 'due') return
+  onMove(evt, laneKey, status)
 }
 
 function onMenuMove(task: KanbanTask, status: ActivityStatus) {
@@ -358,6 +373,7 @@ function onSheetSelect(status: ActivityStatus) {
                 :animation="sortAnimation"
                 easing="cubic-bezier(0.2, 0.9, 0.3, 1.08)"
                 :disabled="readonly"
+                :sort="order !== 'due'"
                 filter=".no-drag"
                 :prevent-on-filter="false"
                 :delay="HOLD_DELAY_MS"
@@ -370,7 +386,7 @@ function onSheetSelect(status: ActivityStatus) {
                 @start="onStart"
                 @end="onEnd"
                 @add="(evt) => onMove(evt, lane.key, column.value)"
-                @update="(evt) => onMove(evt, lane.key, column.value)"
+                @update="(evt) => onReorder(evt, lane.key, column.value)"
               >
                 <TaskCard
                   v-for="task in cells[lane.key]![column.value]"

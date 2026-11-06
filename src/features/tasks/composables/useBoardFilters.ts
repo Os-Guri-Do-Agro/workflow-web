@@ -10,11 +10,12 @@
  * português, iguais às do `/board` quando o significado é o mesmo:
  *
  *   ?q=pix&pessoa=u2,u3&prioridade=3,4&tags=app,site
- *   &minhas=1&atrasadas=1&recentes=1&sem-responsavel=1&agrupar=pessoa
+ *   &minhas=1&atrasadas=1&recentes=1&sem-responsavel=1&agrupar=pessoa&ordem=manual
  *
- * `agrupar` não é filtro (não conta em "Limpar filtros" nem no número de
- * filtros ligados), mas mora aqui porque segue as mesmas regras: vai para a
- * URL, atravessa a troca de mês e entra no "Lembrar filtro" (spec D12).
+ * `agrupar` e `ordem` não são filtro (não contam em "Limpar filtros" nem no
+ * número de filtros ligados), mas moram aqui porque seguem as mesmas regras:
+ * vão para a URL, atravessam a troca de mês e entram no "Lembrar filtro" (spec
+ * D12). `ordem` só aparece como `manual`: "Entrega" é o padrão.
  *
  * Como os grupos combinam: E entre grupos; dentro do grupo, pessoas e
  * prioridades por OU (um card tem um nível só, e "Ana ou Leo" é a pergunta de
@@ -32,9 +33,10 @@ import { dateOnlyDiffDays } from '@/utils/date'
 import { ACTIVITY_STATUSES, priorityLevel } from '../task-meta'
 import { matchesTaskKey, taskKey } from '../task-key'
 import type { ActivityStatus } from '../activity-types'
+import type { BoardOrder } from '../board-order'
 import { useTaskFilterMemory, type BoardGrouping } from './useTaskFilterMemory'
 
-export type { BoardGrouping }
+export type { BoardGrouping, BoardOrder }
 
 /** O mínimo do card que os filtros leem. */
 export interface FilterableTask {
@@ -76,6 +78,7 @@ export const FILTER_QUERY_KEYS = [
   'recentes',
   'sem-responsavel',
   'agrupar',
+  'ordem',
 ] as const
 
 const STATUSES = ACTIVITY_STATUSES.map((s) => s.value)
@@ -126,6 +129,8 @@ export function useBoardFilters<T extends FilterableTask>(opts: {
   const nobody = ref(false)
   /** Opção de exibição, não filtro: `person` = linhas por responsável (D12). */
   const groupBy = ref<BoardGrouping>('none')
+  /** Opção de exibição, não filtro: a ordem dos cards em cada coluna (`board-order.ts`). */
+  const order = ref<BoardOrder>('due')
 
   function readQuery(query: LocationQuery) {
     const nextQ = str(query.q)
@@ -149,6 +154,8 @@ export function useBoardFilters<T extends FilterableTask>(opts: {
     if (flag(query['sem-responsavel']) !== nobody.value) nobody.value = flag(query['sem-responsavel'])
     const nextGroup: BoardGrouping = str(query.agrupar) === 'pessoa' ? 'person' : 'none'
     if (nextGroup !== groupBy.value) groupBy.value = nextGroup
+    const nextOrder: BoardOrder = str(query.ordem) === 'manual' ? 'manual' : 'due'
+    if (nextOrder !== order.value) order.value = nextOrder
   }
 
   readQuery(route.query)
@@ -172,6 +179,7 @@ export function useBoardFilters<T extends FilterableTask>(opts: {
     if (recent.value) out.recentes = '1'
     if (nobody.value) out['sem-responsavel'] = '1'
     if (groupBy.value === 'person') out.agrupar = 'pessoa'
+    if (order.value === 'manual') out.ordem = 'manual'
     return out
   })
 
@@ -197,7 +205,7 @@ export function useBoardFilters<T extends FilterableTask>(opts: {
   // ── Memória ("Lembrar filtro") ───────────────────────────────────────────
   const { remember, setRemember, restore } = useTaskFilterMemory(
     opts.companyId,
-    { people, priorities, tags, mine, late, recent, nobody, group: groupBy },
+    { people, priorities, tags, mine, late, recent, nobody, group: groupBy, order },
     { urlHasFilters: () => urlHadFilters },
   )
 
@@ -413,6 +421,10 @@ export function useBoardFilters<T extends FilterableTask>(opts: {
     groupBy.value = value
   }
 
+  function setOrder(value: BoardOrder) {
+    order.value = value
+  }
+
   function clearTags() {
     tags.value = []
   }
@@ -438,8 +450,8 @@ export function useBoardFilters<T extends FilterableTask>(opts: {
   )
 
   /**
-   * Desligar a memória limpa a tela junto, e não só o registro. O agrupamento
-   * fica como está: é o jeito de olhar o board, não um recorte dele. Se desmarcar
+   * Desligar a memória limpa a tela junto, e não só o registro. O agrupamento e
+   * a ordem ficam como estão: são o jeito de olhar o board, não um recorte dele. Se desmarcar
    * apenas parasse de gravar, a pessoa continuaria olhando um board filtrado
    * depois de dizer que não quer mais filtro guardado.
    */
@@ -460,6 +472,8 @@ export function useBoardFilters<T extends FilterableTask>(opts: {
     nobody,
     groupBy,
     setGroupBy,
+    order,
+    setOrder,
     personKey,
     isMe,
     me,

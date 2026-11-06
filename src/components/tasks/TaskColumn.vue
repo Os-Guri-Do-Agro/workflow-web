@@ -11,8 +11,9 @@
  *
  * Menu "…" (S4): "Criar tarefa aqui", "Recolher coluna" (só Concluído) e
  * "Ordenar por prioridade", que só reordena a TELA e some ao recarregar: a
- * ordem manual gravada no mês não muda. Ordenada, a coluna mostra o ícone no
- * cabeçalho para ninguém confundir com a ordem de verdade.
+ * ordem do board (Entrega ou Manual) não muda. Ordenada, a coluna mostra o
+ * ícone no cabeçalho para ninguém confundir com a ordem de verdade, e o menu
+ * oferece voltar à ordem do board pelo nome dela.
  *
  * Em "Revisados" o menu ganha "Mover todas para Concluído" (spec
  * board-revisados-sinal-e-dialog, D7): o dia do deploy vira um clique. Quem
@@ -35,6 +36,7 @@ import {
   Rocket,
 } from 'lucide-vue-next'
 import { statusSpec } from '@/features/tasks/task-meta'
+import type { BoardOrder } from '@/features/tasks/board-order'
 import type { ActivityStatus } from '@/features/tasks/activity-types'
 
 const props = withDefaults(
@@ -51,6 +53,8 @@ const props = withDefaults(
     sortable?: boolean
     /** A coluna está ordenada por prioridade agora. */
     sorted?: boolean
+    /** A ordem do board, para onde "Voltar à ordem..." leva (`board-order.ts`). */
+    order?: BoardOrder
     /** Oferece "Mover todas para Concluído" (só "Revisados", com cards e permissão). */
     releasable?: boolean
     /** Celular: uma coluna por vez, na largura inteira da fita (spec v2-celular, D1). */
@@ -63,6 +67,7 @@ const props = withDefaults(
     over: false,
     sortable: false,
     sorted: false,
+    order: 'manual',
     releasable: false,
     paged: false,
   },
@@ -77,6 +82,9 @@ const emit = defineEmits<{
 
 const spec = computed(() => statusSpec(props.status))
 const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa' : 'tarefas'}`)
+const unsortLabel = computed(() =>
+  props.order === 'due' ? 'Voltar à ordem de entrega' : 'Voltar à ordem manual',
+)
 </script>
 
 <template>
@@ -142,7 +150,7 @@ const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa'
                 <DropdownMenuItem v-if="sortable" class="dd-item" @select="emit('toggle-sort')">
                   <ListRestart v-if="sorted" :size="14" :stroke-width="1.8" />
                   <ArrowDownWideNarrow v-else :size="14" :stroke-width="1.8" />
-                  <span>{{ sorted ? 'Voltar à ordem manual' : 'Ordenar por prioridade' }}</span>
+                  <span>{{ sorted ? unsortLabel : 'Ordenar por prioridade' }}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem v-if="releasable" class="dd-item" @select="emit('release-all')">
                   <Rocket :size="14" :stroke-width="1.8" />

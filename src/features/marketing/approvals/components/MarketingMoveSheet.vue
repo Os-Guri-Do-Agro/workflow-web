@@ -3,9 +3,9 @@
  * Folha "Mover para" do board da Aprovação no celular: abre ao segurar um card
  * e soltar sem mexer (o mesmo gesto e o mesmo desenho da `TaskMoveSheet` do
  * board de tarefas). Os status da trilha viram botões de 48px, o atual fica
- * marcado, e o motivo previsível de recusa aparece embaixo da opção (Aprovar e
- * Pedir ajuste são botões da página do card). Quem grava é o board, pelo mesmo
- * `/move` do arraste; a frase do servidor vale no fim.
+ * marcado, e o motivo previsível de recusa aparece embaixo da opção (o espelho
+ * `moveTargets`, o mesmo do menu "Mover para" do computador). Quem grava é o
+ * board, pelo mesmo `/move` do arraste; a frase do servidor vale no fim.
  *
  * Dialog modal: Teleport para o body, foco dentro, Tab preso, Esc e o fundo
  * fecham e o foco volta para o card.
@@ -13,14 +13,12 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import type { MarketingRole } from '@/service/marketing/marketing-core'
-import { CARD_STATUS_TONE, cardStatusLabel, statusesFor, toneStyle, type CardStatus } from '../../marketing-labels'
-import { moveHint } from '../approvals-meta'
+import { toneStyle, type CardStatus } from '../../marketing-labels'
+import { moveTargets, type MoveCardInfo } from '../approvals-meta'
 
-export interface MoveSheetCard {
+export interface MoveSheetCard extends MoveCardInfo {
   id: string
   title: string
-  kind: string
-  status: CardStatus
 }
 
 const props = defineProps<{
@@ -34,17 +32,7 @@ const emit = defineEmits<{ select: [status: CardStatus] }>()
 
 const sheetRef = ref<HTMLElement | null>(null)
 
-const targets = computed(() => {
-  const c = props.card
-  if (!c) return []
-  return statusesFor(c.kind).map((s) => ({
-    value: s,
-    label: cardStatusLabel(s, c.kind),
-    tone: CARD_STATUS_TONE[s],
-    current: s === c.status,
-    blocked: moveHint(c.kind, c.status, s, props.role),
-  }))
-})
+const targets = computed(() => (props.card ? moveTargets(props.card, props.role) : []))
 
 watch(open, async (isOpen) => {
   if (isOpen) {

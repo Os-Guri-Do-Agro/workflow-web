@@ -1,8 +1,16 @@
 <script setup lang="ts">
 /**
- * Card compacto do board da Aprovação: capa pequena, marca, tipo, título,
- * prazo (vermelho quando vencido, `.mk-late`), versão, contadores de
- * comentário e de ajustes abertos e o responsável.
+ * Card compacto do board da Aprovação: capa pequena, marca, tipo, título (até
+ * 3 linhas), prazo (vermelho quando vencido, `.mk-late`), versão, contadores
+ * de comentário e de ajustes abertos e o responsável.
+ *
+ * A linha de baixo ocupa a largura toda do card (também embaixo da capa): a
+ * coluna agora divide a largura da tela e chega a 232px, e espremida ao lado
+ * da capa ela estourava. Coluna estreita encolhe só a capa (container query
+ * `mkb-col`, do board), nunca o texto.
+ *
+ * `movable` liga o "Mover para" (MarketingMoveMenu) no fim da linha da marca,
+ * com o lugar reservado para nada pular quando o botão aparece.
  *
  * É um `article` com `data-id` (e não botão nem link): o segurar do celular
  * (`useCardLongPress`) ignora toque que começa em controle dentro do card.
@@ -10,19 +18,23 @@
 import { computed } from 'vue'
 import { CalendarClock, Film, FileText, ListChecks, MessageSquare } from 'lucide-vue-next'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
-import type { MarketingBrand } from '@/service/marketing/marketing-core'
+import type { MarketingBrand, MarketingRole } from '@/service/marketing/marketing-core'
 import type { MarketingCardSummary } from '@/service/marketing/marketing-cards'
-import { CARD_KIND_LABEL, brandTone, toneStyle } from '../../marketing-labels'
+import { CARD_KIND_LABEL, brandTone, toneStyle, type CardStatus } from '../../marketing-labels'
 import { displayUrl, formatDay, isImageMime, isVideoMime } from '../approvals-meta'
+import MarketingMoveMenu from './MarketingMoveMenu.vue'
 
 const props = defineProps<{
   card: MarketingCardSummary
   brand?: MarketingBrand
   draggable?: boolean
   pending?: boolean
+  /** Mostra o "Mover para" (computador, Editor+). */
+  movable?: boolean
+  role?: MarketingRole | null
 }>()
 
-const emit = defineEmits<{ open: [id: string] }>()
+const emit = defineEmits<{ open: [id: string]; move: [status: CardStatus] }>()
 
 const coverUrl = computed(() => (props.card.cover && isImageMime(props.card.cover.mimeType) ? displayUrl(props.card.cover) : null))
 const coverIcon = computed(() => (props.card.cover && isVideoMime(props.card.cover.mimeType) ? Film : FileText))
@@ -31,6 +43,14 @@ const label = computed(() => {
   if (props.card.overdue) parts.push('prazo vencido')
   return parts.join(', ')
 })
+const hasFoot = computed(
+  () =>
+    !!props.card.dueAt ||
+    !!props.card.currentVersion ||
+    !!props.card.commentsCount ||
+    !!props.card.openAdjustments ||
+    !!props.card.assignee,
+)
 </script>
 
 <template>
@@ -45,47 +65,53 @@ const label = computed(() => {
     @click="emit('open', card.id)"
     @keydown.enter.prevent="emit('open', card.id)"
   >
-    <div v-if="card.cover" class="mkc__thumb" aria-hidden="true">
-      <img v-if="coverUrl" :src="coverUrl" alt="" loading="lazy" decoding="async" draggable="false" />
-      <component :is="coverIcon" v-else :size="18" />
+    <div class="mkc__main">
+      <div v-if="card.cover" class="mkc__thumb" aria-hidden="true">
+        <img v-if="coverUrl" :src="coverUrl" alt="" loading="lazy" decoding="async" draggable="false" />
+        <component :is="coverIcon" v-else :size="18" />
+      </div>
+      <div class="mkc__body">
+        <div class="mkc__meta">
+          <span class="mk-dot" :style="toneStyle(brandTone(brand))" aria-hidden="true" />
+          <span class="mkc__brand">{{ brand?.name ?? 'Marca' }}</span>
+          <span aria-hidden="true">·</span>
+          <span class="mkc__kind">{{ CARD_KIND_LABEL[card.kind] ?? card.kind }}</span>
+          <template v-if="movable">
+            <span class="mkc__spacer" />
+            <MarketingMoveMenu :card="card" :role="role ?? null" :disabled="pending" @select="emit('move', $event)" />
+          </template>
+        </div>
+        <p class="mkc__title">{{ card.title }}</p>
+      </div>
     </div>
-    <div class="mkc__body">
-      <div class="mkc__meta">
-        <span class="mk-dot" :style="toneStyle(brandTone(brand))" aria-hidden="true" />
-        <span class="mkc__brand">{{ brand?.name ?? 'Marca' }}</span>
-        <span aria-hidden="true">·</span>
-        <span>{{ CARD_KIND_LABEL[card.kind] ?? card.kind }}</span>
-      </div>
-      <p class="mkc__title">{{ card.title }}</p>
-      <div class="mkc__foot">
-        <span v-if="card.dueAt" class="mkc__due" :class="{ 'mk-late': card.overdue }" :title="card.overdue ? 'Prazo vencido' : 'Prazo'">
-          <CalendarClock :size="13" aria-hidden="true" />
-          {{ formatDay(card.dueAt) }}
-        </span>
-        <span v-if="card.currentVersion" class="mkc__ver" :title="`Versão atual: V${card.currentVersion.number}`">
-          V{{ card.currentVersion.number }}
-        </span>
-        <span v-if="card.commentsCount" class="mkc__count" :title="`${card.commentsCount} comentário(s)`">
-          <MessageSquare :size="13" aria-hidden="true" />
-          {{ card.commentsCount }}
-        </span>
-        <span
-          v-if="card.openAdjustments"
-          class="mkc__count mkc__count--adj"
-          :title="`${card.openAdjustments} ajuste(s) em aberto`"
-        >
-          <ListChecks :size="13" aria-hidden="true" />
-          {{ card.openAdjustments }}
-        </span>
-        <span class="mkc__spacer" />
-        <PersonAvatar
-          v-if="card.assignee"
-          :id="card.assignee.id"
-          :name="card.assignee.name"
-          :size="22"
-          :title="`Responsável: ${card.assignee.name}`"
-        />
-      </div>
+    <div v-if="hasFoot" class="mkc__foot">
+      <span v-if="card.dueAt" class="mkc__due" :class="{ 'mk-late': card.overdue }" :title="card.overdue ? 'Prazo vencido' : 'Prazo'">
+        <CalendarClock :size="13" aria-hidden="true" />
+        {{ formatDay(card.dueAt) }}
+      </span>
+      <span v-if="card.currentVersion" class="mkc__ver" :title="`Versão atual: V${card.currentVersion.number}`">
+        V{{ card.currentVersion.number }}
+      </span>
+      <span v-if="card.commentsCount" class="mkc__count" :title="`${card.commentsCount} comentário(s)`">
+        <MessageSquare :size="13" aria-hidden="true" />
+        {{ card.commentsCount }}
+      </span>
+      <span
+        v-if="card.openAdjustments"
+        class="mkc__count mkc__count--adj"
+        :title="`${card.openAdjustments} ajuste(s) em aberto`"
+      >
+        <ListChecks :size="13" aria-hidden="true" />
+        {{ card.openAdjustments }}
+      </span>
+      <span class="mkc__spacer" />
+      <PersonAvatar
+        v-if="card.assignee"
+        :id="card.assignee.id"
+        :name="card.assignee.name"
+        :size="22"
+        :title="`Responsável: ${card.assignee.name}`"
+      />
     </div>
   </article>
 </template>
@@ -94,7 +120,8 @@ const label = computed(() => {
 .mkc {
   position: relative;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -123,6 +150,12 @@ const label = computed(() => {
 .mkc.card--held {
   box-shadow: var(--shadow-overlay);
   background: var(--surface-2);
+}
+
+.mkc__main {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
 }
 
 .mkc__thumb {
@@ -157,7 +190,9 @@ const label = computed(() => {
   align-items: center;
   gap: 5px;
   min-width: 0;
+  min-height: 16px;
   font-size: 12px;
+  line-height: 16px;
   color: var(--text-3);
   white-space: nowrap;
 }
@@ -166,6 +201,10 @@ const label = computed(() => {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.mkc__kind {
+  flex: none;
 }
 
 .mkc__title {
@@ -185,6 +224,7 @@ const label = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   min-height: 22px;
   font-size: 12px;
   color: var(--text-2);
@@ -216,5 +256,25 @@ const label = computed(() => {
 
 .mkc__spacer {
   flex: 1;
+}
+
+/* Coluna estreita (232px a 260px): a capa encolhe para o título ganhar largura. */
+@container mkb-col (max-width: 260px) {
+  .mkc {
+    padding: 8px 9px;
+  }
+
+  .mkc__main {
+    gap: 8px;
+  }
+
+  .mkc__thumb {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mkc__foot {
+    gap: 7px;
+  }
 }
 </style>

@@ -14,6 +14,11 @@
  *    e numa coluna já renumerada isso a poria em 2º lugar, não no fim;
  * 2. `PATCH /move` para o fim da coluna (só se houver outro card nela), o mesmo
  *    caminho do "Mover para", que renumera e avisa o realtime.
+ *
+ * Na ordem "Entrega" (`board-order.ts`) o fim também É o lugar da data: a
+ * tarefa nasce sem prazo e sem prioridade, e todo card da coluna vem antes
+ * dela (`dueInsertIndex` daria o mesmo índice). Se a criação inline passar a
+ * mandar prazo ou prioridade, a posição tem que sair do `dueInsertIndex`.
  */
 import { ref, watch, type Ref } from 'vue'
 import activityService from '@/service/activities/activity-service'

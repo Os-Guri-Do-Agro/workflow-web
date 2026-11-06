@@ -20,6 +20,12 @@
  * dela (soltar ali só troca a coluna), porque a ordem vista deixa de ser a
  * gravada. Colunas e cards levam `data-nav-col` para o teclado (J/K e setas).
  *
+ * Ordem (`order`, ver `board-order.ts`): em "Entrega" as colunas chegam JÁ
+ * ordenadas pelo prazo e o Sortable não reordena dentro de nenhuma lista
+ * (`sort: false`): arrastar entre colunas continua valendo, e quem decide onde
+ * o card fica na coluna nova é a data dele (o TasksView). Em "Manual" é o
+ * arraste de sempre.
+ *
  * Celular (spec v2-celular-roadmap-notas, D1 e D2): abaixo de 640px é uma
  * coluna por vez, com abas (`BoardColumnTabs` + `useBoardPager`). Deslizar é a
  * rolagem do navegador; o Sortable só pega o card depois de segurar 300ms
@@ -37,6 +43,7 @@ import TaskQuickCreate from './TaskQuickCreate.vue'
 import BoardColumnTabs from './BoardColumnTabs.vue'
 import TaskMoveSheet from './TaskMoveSheet.vue'
 import { ACTIVITY_STATUSES, priorityLevel, statusSpec } from '@/features/tasks/task-meta'
+import type { BoardOrder } from '@/features/tasks/board-order'
 import { taskKey } from '@/features/tasks/task-key'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import { useCollapsedColumns } from '@/features/tasks/composables/useCollapsedColumns'
@@ -69,9 +76,11 @@ interface Props {
   composerStatus?: ActivityStatus | null
   /** Título devolvido ao campo quando a criação falhou. */
   composerRestore?: { title: string; nonce: number } | null
+  /** Ordem do board. Em `due` as colunas já vêm ordenadas e o arraste não reordena. */
+  order?: BoardOrder
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { order: 'manual' })
 const emit = defineEmits<{
   // Único evento de arraste: cobre troca de coluna (@add), reordenação
   // (@update) e o "Mover para" do menu do card.
@@ -111,6 +120,8 @@ const columnActivities = ref(
 // ── Ordenar por prioridade (só na tela, some ao recarregar) ──
 const sortedColumns = ref<ActivityStatus[]>([])
 const isSorted = (status: ActivityStatus) => sortedColumns.value.includes(status)
+/** A lista desta coluna aceita reordenar no arraste? Só na ordem manual e sem "Ordenar por prioridade". */
+const canReorder = (status: ActivityStatus) => props.order !== 'due' && !isSorted(status)
 
 /** Maior prioridade primeiro; empate fica na ordem manual (sort estável). */
 const byPriority = (list: KanbanTask[]) =>
@@ -161,6 +172,9 @@ interface DragEndEvent {
 const onMove = (evt: DragEndEvent, status: ActivityStatus) => {
   const taskId = evt.item?.dataset?.id
   if (!taskId) return
+  // Entrega: a coluna nova é que importa, o lugar sai da data (o TasksView
+  // ignora o índice visto). O índice e a ordem visível seguem no payload só
+  // para o caminho ser um só.
   // Coluna "Ordenada por prioridade": a ordem vista não é a gravada, então o
   // lugar onde o card caiu nela não diz nada sobre a ordem manual. Soltar ali
   // só troca a coluna, e o card vai para o FIM da ordem manual (como o
@@ -173,6 +187,17 @@ const onMove = (evt: DragEndEvent, status: ActivityStatus) => {
   const at = visibleIds.indexOf(taskId)
   const position = at !== -1 ? at : typeof evt.newIndex === 'number' ? evt.newIndex : 0
   emit('move-task', { taskId, status, position, visibleIds })
+}
+
+/**
+ * Soltou na MESMA lista. Com `sort: false` o Sortable ainda dispara isto quando
+ * o card sai, passeia por outra coluna e volta para a dele num índice novo.
+ * Sem reordenar (Entrega, ou a coluna ordenada por prioridade), não há o que
+ * gravar: o `onEnd` devolve a coluna à ordem da prop.
+ */
+const onReorder = (evt: DragEndEvent, status: ActivityStatus) => {
+  if (!canReorder(status)) return
+  onMove(evt, status)
 }
 
 // "Mover para" do menu do card: vai para o FIM da coluna de destino.
@@ -293,6 +318,7 @@ function onSheetSelect(status: ActivityStatus) {
       :paged="paged"
       sortable
       :sorted="isSorted(column.value)"
+      :order="order"
       :releasable="
         column.value === 'REVIEWED' && !readonly && (columnActivities.REVIEWED?.length ?? 0) > 0
       "
@@ -313,7 +339,7 @@ function onSheetSelect(status: ActivityStatus) {
           :animation="sortAnimation"
           easing="cubic-bezier(0.2, 0.9, 0.3, 1.08)"
           :disabled="props.readonly"
-          :sort="!isSorted(column.value)"
+          :sort="canReorder(column.value)"
           filter=".no-drag"
           :prevent-on-filter="false"
           :delay="HOLD_DELAY_MS"
@@ -326,7 +352,7 @@ function onSheetSelect(status: ActivityStatus) {
           @start="onStart"
           @end="onEnd"
           @add="(evt) => onMove(evt, column.value)"
-          @update="(evt) => onMove(evt, column.value)"
+          @update="(evt) => onReorder(evt, column.value)"
           @dragenter="onEnterColumn(column.value)"
         >
           <TaskCard

@@ -44,7 +44,7 @@ import { groupByPerson, NOBODY_LANE } from '@/features/tasks/board-lanes'
 import { isPendingTaskId } from '@/features/tasks/pending-task'
 import { taskKey } from '@/features/tasks/task-key'
 import { ACTIVITY_STATUSES, statusSpec } from '@/features/tasks/task-meta'
-import { resolveDropIndex } from '@/features/tasks/board-order'
+import { dueInsertIndex, resolveDropIndex, sortByDue } from '@/features/tasks/board-order'
 import type {
   ActivityDetail,
   ActivityStatus,
@@ -484,7 +484,9 @@ const occurrenceToBoardTask = (occurrence: BoardOccurrence): BoardTask => ({
  *
  * As geradas entram no FIM de cada coluna. Card virtual não tem ordem manual
  * (não existe linha no servidor para gravá-la), e intercalá-las pela data faria
- * a ordem que a pessoa arrumou à mão mudar sozinha a cada refetch.
+ * a ordem que a pessoa arrumou à mão mudar sozinha a cada refetch. Isso vale
+ * na ordem "Manual"; em "Entrega" (`displayTasks`) todo card entra pela data,
+ * a rotina também.
  *
  * Os otimistas da criação inline (S4) vêm logo depois dos reais, que é onde o
  * card de verdade vai ficar quando o POST voltar. Moram fora de `tasks`: o
@@ -637,10 +639,28 @@ const createActivity = async () => {
     }
     const created = await activityService.postActivity(payload)
 
-    // O move que sobra só ORDENA: o card nasce no topo da coluna escolhida (a
-    // API cria com `position` 0, que empataria com o primeiro card). Mesmo
-    // status, então não passa por nenhuma regra de troca de coluna.
-    if (formActivity.value.initialStatus !== 'TODO') {
+    // O move que sobra só ORDENA, no mesmo status (não passa por nenhuma regra
+    // de troca de coluna). A API cria com `position` 0, que empata com o
+    // primeiro card da coluna.
+    // - Entrega: o card vai para o lugar da data na coluna inteira, o mesmo
+    //   que a tela dá a ele, e o "Manual" o encontra ali também.
+    // - Manual: nasce no topo da coluna escolhida (em A fazer fica o 0).
+    const column = (tasks.value[formActivity.value.initialStatus] ?? []).filter(
+      (t) => t.id !== created.id,
+    )
+    if (dueOrder.value) {
+      if (column.length) {
+        try {
+          await activityService.moveActivity(created.id, {
+            status: formActivity.value.initialStatus,
+            position: dueInsertIndex(column, created),
+          })
+        } catch {
+          // Já está na coluna certa e a tela ordena pela data; só a ordem
+          // manual não foi gravada.
+        }
+      }
+    } else if (formActivity.value.initialStatus !== 'TODO') {
       try {
         await activityService.moveActivity(created.id, {
           status: formActivity.value.initialStatus,
@@ -790,6 +810,24 @@ const filters = useBoardFilters({
 
 const filteredTasks = computed<BoardColumns>(() => filters.filtered.value)
 
+// ── Ordem das colunas ("Ordem: Entrega | Manual", ver `board-order.ts`) ──────
+// "Entrega" é o padrão: prazo crescente pelo dia que o card mostra (atrasadas e
+// "Hoje" no topo, sem data no fim), no empate a prioridade mais alta, depois a
+// ordem manual. É SÓ apresentação, computada a cada render sobre as colunas
+// filtradas: `tasks` continua na ordem manual do servidor, que é a que o
+// `PATCH /move` indexa e o realtime devolve. Por isso nada pula no refetch nem
+// no eco: o servidor mexe na ordem manual e a tela é sempre a mesma conta.
+const boardOrder = computed(() => filters.order.value)
+const dueOrder = computed(() => boardOrder.value === 'due')
+
+/** O que o Board, o agrupado e a Lista desenham: as colunas filtradas na ordem escolhida. */
+const displayTasks = computed<BoardColumns>(() => {
+  if (!dueOrder.value) return filteredTasks.value
+  const sorted = emptyColumns()
+  for (const status of STATUSES) sorted[status] = sortByDue(filteredTasks.value[status] ?? [])
+  return sorted
+})
+
 // Soma SÓ as colunas de status: a resposta do board também carrega `monthId`,
 // e um Object.values cru contava essa chave como "1 atividade" a mais.
 const totalTasks = computed(() =>
@@ -831,6 +869,12 @@ const handleMove = async (payload: KanbanMovePayload) => {
   // D11). Recusa ANTES de mexer no estado e sem await: o `onEnd` do arraste
   // ressincroniza pela prop, e o card volta sozinho para "Em teste".
   const origin = findBoardTask(taskId)
+  const shown = origin ?? findShownCard(taskId)
+  // Entrega: dentro da coluna quem manda é a data, então soltar na mesma
+  // coluna não grava nada (o board já não reordena; isto cobre a volta de um
+  // card que passeou por outra coluna e voltou para a dele).
+  if (dueOrder.value && shown?.status === status) return
+
   const blocked = reviewBlockReason(origin?.task, origin?.status, status)
   if (blocked) {
     showError(blocked)
@@ -840,16 +884,22 @@ const handleMove = async (payload: KanbanMovePayload) => {
   const movedTask = removeFromColumns(taskId)
   const target = tasks.value[status as BoardStatus] ?? []
 
-  // O índice que o board manda é o da lista VISÍVEL. Com filtro ligado, a
-  // coluna completa tem cards escondidos no meio, e aplicar o índice visível
+  // Entrega: o card vai para o lugar da data na coluna INTEIRA, filtro ligado
+  // ou não, e é esse índice que o servidor recebe (o "Manual" abre com ele no
+  // lugar da data). Onde a pessoa soltou não conta: a coluna não reordena.
+  //
+  // Manual: o índice que o board manda é o da lista VISÍVEL. Com filtro ligado,
+  // a coluna completa tem cards escondidos no meio, e aplicar o índice visível
   // nela gravava a posição errada. A posição absoluta sai do vizinho que a
   // pessoa viu (ver `board-order.ts`); sem filtro, as duas contas coincidem.
-  const position = resolveDropIndex(
-    target.map((t) => t.id),
-    payload.visibleIds,
-    taskId,
-    payload.position,
-  )
+  const position = dueOrder.value
+    ? dueInsertIndex(target, movedTask ?? shown?.task ?? {})
+    : resolveDropIndex(
+        target.map((t) => t.id),
+        payload.visibleIds,
+        taskId,
+        payload.position,
+      )
   // O servidor apaga o sinal do teste quando a tarefa sai de "Em teste".
   if (movedTask && status !== 'IN_TESTING') movedTask.testSignal = null
   if (movedTask) target.splice(position, 0, movedTask)
@@ -889,7 +939,7 @@ const confirmRelease = ref(false)
 const releasing = ref(false)
 
 const releasableIds = computed(() =>
-  (filteredTasks.value.REVIEWED ?? [])
+  (displayTasks.value.REVIEWED ?? [])
     .map((t) => t.id)
     .filter((id) => !isOccurrenceId(id) && !id.startsWith('tmp:')),
 )
@@ -903,17 +953,21 @@ async function releaseAll() {
   releasing.value = true
   let movidas = 0
   let falharam = 0
+  // Entrega: cada uma entra em Concluído no lugar da data dela. A conta roda
+  // sobre uma cópia da coluna que recebe cada card gravado, na mesma ordem do
+  // servidor, então o índice de cada `/move` é o da coluna que ele tem.
+  const done = dueOrder.value ? [...(tasks.value.DONE ?? [])] : null
   try {
     // Em SÉRIE, como a massa da Lista: dois `/move` em paralelo saindo da
     // mesma coluna travam as mesmas linhas em ordem cruzada e o Postgres aborta
-    // um deles (deadlock). Um por vez, cada um no fim de Concluído, mantém a
-    // ordem de Revisados.
+    // um deles (deadlock). Um por vez, cada um no fim de Concluído (Manual),
+    // mantém a ordem de Revisados.
     for (const id of ids) {
+      const card = done ? findBoardTask(id)?.task : undefined
+      const position = done && card ? dueInsertIndex(done, card) : Number.MAX_SAFE_INTEGER
       try {
-        await activityService.moveActivity(id, {
-          status: 'DONE',
-          position: Number.MAX_SAFE_INTEGER,
-        })
+        await activityService.moveActivity(id, { status: 'DONE', position })
+        if (done) done.splice(Math.min(position, done.length), 0, card ?? { id })
         movidas++
       } catch {
         falharam++
@@ -1103,6 +1157,15 @@ const findBoardTask = (id: string): { task: BoardTask; status: BoardStatus } | n
   return null
 }
 
+/** Como `findBoardTask`, mas também nos cards que não moram em `tasks` (rotina virtual, otimista). */
+const findShownCard = (id: string): { task: BoardTask; status: BoardStatus } | null => {
+  for (const status of STATUSES) {
+    const task = (boardTasks.value[status] ?? []).find((t) => t.id === id)
+    if (task) return { task, status }
+  }
+  return null
+}
+
 /** Rótulo da rotina que materializou a tarefa aberta (linha "Rotina" do painel). */
 const openTaskRecurrenceLabel = computed(() => {
   const id = openTaskId.value
@@ -1198,12 +1261,41 @@ const applyPanelPatch = (id: string, patch: Partial<ActivityDetail>) => {
  * avisa o realtime com a posição final. O `PATCH /status` não renumera: o card
  * ia para o fim e, no refetch, pulava para a posição antiga dele. O servidor
  * limita a posição ao tamanho da coluna, então o comprimento local basta.
+ *
+ * Em "Entrega" a posição é o lugar da data na coluna inteira (`dueInsertIndex`),
+ * e o card é posto no MESMO índice aqui (o otimista do painel o tinha deixado
+ * no fim): com tela e servidor iguais, o eco e o refetch não mudam nada. É
+ * também o caminho da troca de status em massa da Lista, que manda um por vez:
+ * os cards que ela já empurrou para a coluna e que o servidor ainda não gravou
+ * (têm `patchOrigin` de outra coluna) ficam fora da conta, senão o índice
+ * contaria linhas que o servidor ainda não tem.
  */
-const writePanelStatus = (id: string, status: string): Promise<ActivityDetail> =>
-  activityService.moveActivity(id, {
-    status,
-    position: tasks.value[status as BoardStatus]?.length ?? 0,
-  })
+const writePanelStatus = async (id: string, status: string): Promise<ActivityDetail> => {
+  const column = tasks.value[status as BoardStatus]
+  if (!dueOrder.value || !column) {
+    return activityService.moveActivity(id, { status, position: column?.length ?? 0 })
+  }
+  const card = column.find((t) => t.id === id) ?? findBoardTask(id)?.task
+  const onServer = (t: BoardTask) => {
+    const origin = patchOrigin.get(t.id)
+    return t.id !== id && !(origin && !origin.task && origin.status !== status)
+  }
+  const others = column.filter(onServer)
+  const position = card ? dueInsertIndex(others, card) : others.length
+  if (card && column.includes(card)) {
+    column.splice(column.indexOf(card), 1)
+    // Logo antes do card que o servidor terá depois dele; sem nenhum, logo
+    // depois do último que o servidor tem (os ainda não gravados ficam atrás).
+    const next = others[position]
+    const last = others[others.length - 1]
+    const at = next ? column.indexOf(next) : last ? column.indexOf(last) + 1 : column.length
+    column.splice(at, 0, card)
+  }
+  const updated = await activityService.moveActivity(id, { status, position })
+  // Gravado: este card já é do servidor na coluna nova (conta para o próximo da massa).
+  patchOrigin.delete(id)
+  return updated
+}
 
 const deleteFromPanel = (task: { id: string; title: string }) => {
   openDeleteConfirm(findBoardTask(task.id)?.task ?? task)
@@ -1215,9 +1307,11 @@ const deleteFromPanel = (task: { id: string; title: string }) => {
 // continuam valendo). Linhas recolhidas valem até sair da tela.
 const groupedByPerson = computed(() => filters.groupBy.value === 'person')
 
+// Saem das colunas JÁ na ordem escolhida: `groupByPerson` mantém a ordem da
+// coluna dentro de cada célula, então a linha de cada pessoa segue a mesma régua.
 const lanes = computed(() =>
   groupedByPerson.value
-    ? groupByPerson(filteredTasks.value, filters.personKey, filters.isMe)
+    ? groupByPerson(displayTasks.value, filters.personKey, filters.isMe)
     : [],
 )
 
@@ -1602,6 +1696,41 @@ const skeletonLanes = [
         </div>
       </div>
 
+      <!-- Ordem dos cards em cada coluna. Opção de exibição, como o Agrupar:
+           vai para a URL (`ordem=manual`; Entrega é o padrão e não aparece) e
+           para o "Lembrar filtro". Vale também na Lista, que desenha as
+           mesmas colunas em grupos. -->
+      <div
+        v-show="currentTab === 'board' || currentTab === 'list'"
+        class="group-by"
+        role="group"
+        aria-label="Ordem dos cards"
+      >
+        <span class="group-by__label" aria-hidden="true">Ordem</span>
+        <div class="views">
+          <button
+            type="button"
+            class="views__btn hit"
+            data-order="due"
+            :aria-pressed="dueOrder"
+            title="Atrasadas e prazos mais próximos no topo, sem data no fim"
+            @click="filters.setOrder('due')"
+          >
+            Entrega
+          </button>
+          <button
+            type="button"
+            class="views__btn hit"
+            data-order="manual"
+            :aria-pressed="!dueOrder"
+            title="A ordem arrumada arrastando os cards"
+            @click="filters.setOrder('manual')"
+          >
+            Manual
+          </button>
+        </div>
+      </div>
+
       <span class="head-spacer" />
 
       <button
@@ -1713,6 +1842,7 @@ const skeletonLanes = [
             :collapsed-keys="collapsedLanes"
             :composer="composer?.laneKey ? { laneKey: composer.laneKey, status: composer.status } : null"
             :composer-restore="composerRestore"
+            :order="boardOrder"
             @move-task="handleMove"
             @open-details="openDetails"
             @delete-task="openDeleteConfirm"
@@ -1727,11 +1857,12 @@ const skeletonLanes = [
           />
           <KanbanBoard
             v-else
-            :tasks="filteredTasks"
+            :tasks="displayTasks"
             :readonly="!isWorkerRole"
             :company-name="companyName"
             :composer-status="composer && !composer.laneKey ? composer.status : null"
             :composer-restore="composerRestore"
+            :order="boardOrder"
             @move-task="handleMove"
             @open-details="openDetails"
             @delete-task="openDeleteConfirm"
@@ -1763,7 +1894,7 @@ const skeletonLanes = [
           </EmptyState>
           <TaskListView
             v-else
-            :tasks="filteredTasks"
+            :tasks="displayTasks"
             :company-name="companyName"
             :readonly="!isWorkerRole"
             :members="members"
@@ -2289,9 +2420,11 @@ const skeletonLanes = [
 /* ─── Mobile (spec v2-mobile-e-home, B1) ───
    Antes o cabeçalho e os filtros ocupavam metade da tela antes do primeiro
    card. Agora: linha 1 com o mês e as ações, linha 2 com as vistas, e os
-   filtros numa faixa só que rola de lado. Atalhos de teclado e o "Agrupar"
-   saem (não há teclado físico, e uma coluna por tela não comporta linhas por
-   pessoa; o agrupamento que veio pela URL continua valendo). */
+   filtros numa faixa só que rola de lado. Atalhos de teclado, o "Agrupar" e a
+   "Ordem" saem (não há teclado físico, e uma coluna por tela não comporta
+   linhas por pessoa nem mais uma faixa no topo; o agrupamento e a ordem que
+   vieram pela URL ou pelo "Lembrar filtro" continuam valendo, e o padrão é a
+   ordem de entrega). */
 @media (max-width: 640px) {
   .tasks-page {
     padding: 10px 12px 0;
