@@ -526,8 +526,10 @@ features/tasks/
                       `dueSignal()` = regra de cor do prazo (vermelho vencido/hoje, laranja até 7d)
   task-key.ts         chave de exibição `PJ-K7Q2XM` (iniciais da empresa + 6 últimos do id),
                       sem migration; rotina virtual (`rec:*`) não tem chave
-  board-order.ts      `resolveDropIndex`: traduz a soltura da lista FILTRADA para o índice
-                      absoluto da coluna pela âncora do vizinho visível
+  board-order.ts      a ordem das colunas: `sortByDue` (Entrega, o padrão), `dueInsertIndex`
+                      (o índice do `PATCH /move` em Entrega) e `resolveDropIndex` (Manual:
+                      traduz a soltura da lista FILTRADA para o índice absoluto da coluna
+                      pela âncora do vizinho visível). Testes: `scripts/harness/board-order.test.mjs`
   board-lanes.ts      `groupByPerson` (S6): linhas por 1º responsável, "Sem responsável" no
                       topo, depois "você", depois alfabética. Computado, nunca cópia
   pending-task.ts     id `tmp:*` do card otimista da criação inline (sem chave, sem arrastar)
@@ -566,8 +568,8 @@ features/tasks/composables/
   useCardLongPress.ts segurar 300ms e soltar sem mexer = `onHold`; mexer antes = rolagem
 ```
 
-**URL do board do mês:** `?q=&pessoa=u2,u3&prioridade=3,4&tags=app&minhas=1&atrasadas=1&recentes=1&sem-responsavel=1&agrupar=pessoa`
-(filtro e agrupamento, sempre por `replace`) e `?task=<id>` (painel aberto; abrir é `push`, então o voltar do
+**URL do board do mês:** `?q=&pessoa=u2,u3&prioridade=3,4&tags=app&minhas=1&atrasadas=1&recentes=1&sem-responsavel=1&agrupar=pessoa&ordem=manual`
+(filtro, agrupamento e ordem, sempre por `replace`; `ordem` só aparece como `manual`, Entrega é o padrão) e `?task=<id>` (painel aberto; abrir é `push`, então o voltar do
 navegador fecha; J/K e setas trocam por `replace`). A página cheia `/tasks/:month/:taskId` continua
 existindo ("Abrir em página"). O breadcrumb do `CommandShell` monta `Tarefas / Q3 / Setembro / PJ-XXXXXX`
 a partir do `useNavQuarters` e da chave. Teclado do board (`useTaskKeyboard`, ajuda no `?`): C cria
@@ -578,7 +580,7 @@ Enter). Tudo ignorado em campo de texto, com menu ou diálogo aberto e com modif
 Na Lista, o teclado é dela (J/K, ↓/↑, Enter/O, X, Shift+X, Esc), e com o painel aberto sobre ela
 J/K trocam a tarefa na ordem da LISTA.
 
-**Celular, abaixo de 640px (spec [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md), D1 e D2):** o board do mês, o agrupado por pessoa e o `/board` mostram UMA coluna por vez, com `BoardColumnTabs` no topo. Deslizar é a rolagem do navegador (`scroll-snap-stop: always`, a aba acompanha pelo `useBoardPager`); o Sortable só pega o card depois de segurar (`delay` 300 + `delayOnTouchOnly`, então o mouse não muda) e no celular só reordena DENTRO da coluna (grupo por coluna; no agrupado, a célula da coluna ativa). Segurar e soltar sem mexer abre a `TaskMoveSheet`, que NÃO tem caminho próprio de gravação: emite o status e o board chama o mesmo `onMenuMove` (mês e agrupado) ou `updateTaskStatus` (`/board`) do "Mover para" do menu "…"; a regra de Revisados (`reviewBlockReason`) vale ali e a folha só adianta a frase embaixo da opção. O `/board` no celular não arrasta nada (HTML5 não funciona com o dedo; `draggable` sai). O engolir do clique fantasma depois do segurar vale só para o mesmo card e por 400ms: mais largo que isso engolia o toque seguinte (o "…" do reka abre no `click`). Roteiro: `scripts/harness/celular-e2e.cjs` (toque de verdade pelo CDP).
+**Celular, abaixo de 640px (spec [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md), D1 e D2):** o board do mês, o agrupado por pessoa e o `/board` mostram UMA coluna por vez, com `BoardColumnTabs` no topo. Deslizar é a rolagem do navegador (`scroll-snap-stop: always`, a aba acompanha pelo `useBoardPager`); o Sortable só pega o card depois de segurar (`delay` 300 + `delayOnTouchOnly`, então o mouse não muda) e no celular só reordena DENTRO da coluna (grupo por coluna; no agrupado, a célula da coluna ativa), e só na ordem Manual: em Entrega, o padrão, nem isso (trocar de coluna é a folha). O controle "Ordem" sai no celular como o "Agrupar"; vale o que veio pela URL ou pelo "Lembrar filtro". Segurar e soltar sem mexer abre a `TaskMoveSheet`, que NÃO tem caminho próprio de gravação: emite o status e o board chama o mesmo `onMenuMove` (mês e agrupado) ou `updateTaskStatus` (`/board`) do "Mover para" do menu "…"; a regra de Revisados (`reviewBlockReason`) vale ali e a folha só adianta a frase embaixo da opção. O `/board` no celular não arrasta nada (HTML5 não funciona com o dedo; `draggable` sai). O engolir do clique fantasma depois do segurar vale só para o mesmo card e por 400ms: mais largo que isso engolia o toque seguinte (o "…" do reka abre no `click`). Roteiro: `scripts/harness/celular-e2e.cjs` (toque de verdade pelo CDP).
 
 Quatro regras que não são óbvias:
 
@@ -609,9 +611,10 @@ Quatro regras que não são óbvias:
    (o rollback nunca chegava ao card). Troca de coluna ou de mês pelo `applyPanelPatch` guarda
    de onde o card saiu (`patchOrigin`): o rollback volta ao MESMO lugar, e o card que foi para
    outro mês volta ao board.
-6. **O lozenge do painel no board do mês grava por `PATCH /move`** (fim da coluna nova), injetado
-   por `writeStatus`. `PATCH /status` não renumera: o card ia para o fim e pulava de volta para a
-   posição antiga no refetch. O `/board` (várias empresas) continua no `PATCH /status`.
+6. **O lozenge do painel no board do mês grava por `PATCH /move`** (fim da coluna nova em Manual,
+   lugar da data em Entrega), injetado por `writeStatus`. `PATCH /status` não renumera: o card ia
+   para o fim e pulava de volta para a posição antiga no refetch. O `/board` (várias empresas)
+   continua no `PATCH /status`.
 7. **Alvo de 44px sem empurrar o board:** os botões da toolbar têm 32px de desenho e um `::after`
    que fecha 44px, medido pela caixa de padding (com borda de 1px são 7px). Cabeçalho e toolbar
    ocupam faixas de 44px que se tocam sem se sobrepor; por isso o 1º card fica em 124px do topo da
@@ -630,7 +633,28 @@ Quatro regras que não são óbvias:
     formulário completo** e é o que o "+" da Lista usa. Não troque um pelo outro.
 11. **Agrupado, a ordem de arraste é da coluna do mês inteiro:** cada linha é um grupo do Sortable
     (entre linhas não solta) e o `move-task` leva a ordem visível da CÉLULA, que o
-    `resolveDropIndex` traduz pela âncora do vizinho, como no filtro.
+    `resolveDropIndex` traduz pela âncora do vizinho, como no filtro (na ordem Manual).
+12. **"Ordem: Entrega" é só apresentação, e é o padrão** (`board-order.ts`, `displayTasks` no
+    TasksView). Chave: o dia do prazo pela MESMA leitura do card (`dateOnlyDiffDays`, o que escreve
+    "Hoje" e "Atrasada"), crescente, sem data no fim; no empate a prioridade mais alta
+    (`priorityLevel`); depois a ordem manual, que é o ÍNDICE na lista (a API manda por
+    `position, createdAt`), nunca o campo `position` do card, que fica velho no otimismo. Rotina
+    virtual e otimista entram pela data como qualquer card. `tasks` continua na ordem manual do
+    servidor; a tela é sempre a mesma conta sobre ele, então eco e refetch não mexem em nada.
+    Regras que seguem disso:
+    - em Entrega nenhuma lista reordena (`sort: false`); soltar na mesma coluna não grava;
+    - todo `PATCH /move` em Entrega (arraste entre colunas, menu e folha "Mover para", lozenge,
+      massa da Lista, "Mover todas para Concluído", criação pelo formulário) leva o
+      `dueInsertIndex` da coluna INTEIRA, e o card entra no MESMO índice em `tasks`: tela e
+      servidor ficam iguais, e quem abre "Manual" encontra o card no lugar da data;
+    - na massa, os cards que a Lista já empurrou para a coluna e o servidor ainda não gravou (têm
+      `patchOrigin` de outra coluna) ficam fora da conta: num empate eles contariam como "antes"
+      e o índice iria um a mais (o roteiro prova com um par empatado);
+    - a criação inline continua indo para o fim: ela nasce sem prazo e sem prioridade, e aí o fim
+      É o lugar da data. Quem gravar no fim por fora (a ala Marketing) aparece no lugar da data
+      na tela; só a ordem manual fica no fim;
+    - trocar prazo ou prioridade no painel reordena a tela na hora e NÃO regrava a posição.
+    - Roteiro: `scripts/harness/board-entrega-e2e.cjs`.
 
 ### Em teste, Revisados e o teste por plataforma
 
@@ -661,7 +685,7 @@ Cinco regras que não são óbvias:
 
 [`features/tasks/composables/useTaskFilterMemory.ts`](./features/tasks/composables/useTaskFilterMemory.ts) —
 o botão **Lembrar filtro** (marcador no fim da toolbar) de `/tasks/:month`. Guarda
-pessoas, prioridades, tags, os quatro filtros rápidos e o agrupamento (S6) em `localStorage` **por
+pessoas, prioridades, tags, os quatro filtros rápidos, o agrupamento (S6) e a ordem (Entrega ou Manual) em `localStorage` **por
 empresa** (`workflow:tasks-filter:v1:<companyId>`; tag de uma empresa aplicada em
 outra filtraria para o vazio sem explicação). A busca por texto não é guardada. O
 registro antigo (`user` por nome, `priority` único) ainda é lido e convertido.

@@ -175,7 +175,7 @@ async function statusOf(db, id) {
 }
 
 ;(async () => {
-  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PGPORT}/wf` })
+  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PGPORT}/${process.env.HARNESS_DB ?? 'wf'}` })
   await db.connect()
   const company = (await db.query(`SELECT id FROM "Company" WHERE name='PetJourney'`)).rows[0].id
   const month = (
@@ -398,7 +398,11 @@ async function statusOf(db, id) {
       check('Revisados pelo menu: recusado também', (await statusOf(db, pushId)).status === 'IN_TESTING')
       await sleep(4500) // os toasts somem sozinhos
 
-      // Segurar e arrastar reordena dentro da coluna.
+      // Segurar e arrastar reordena dentro da coluna. Desde a "Ordem: Entrega"
+      // (padrão), reordenar na mão só existe no modo Manual (`?ordem=manual`).
+      await page.goto(`${WEB}/tasks/${month}?ordem=manual`, { waitUntil: 'domcontentloaded' })
+      await page.waitForLoadState('networkidle').catch(() => {})
+      await sleep(800)
       await page.locator('.kb__tabs [data-tab="TODO"]').tap()
       await sleep(700)
       const order = async () =>

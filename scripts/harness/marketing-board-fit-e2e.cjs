@@ -717,8 +717,15 @@ const enabledOf = (items) => items.filter((i) => !i.disabled).map((i) => i.to)
     const gp = await open(gCtx, `${BOARD}?trilha=grafica`, 'marcel-grafica')
     m = await metrics(gp)
     const del = col(m, 'DELIVERED')
+    // Outro roteiro (marketing-print-e2e) pode ter deixado peças entregues neste banco.
+    const deliveredDb = (await q(`SELECT count(*)::int n FROM "MarketingCard" WHERE "groupId"=$1 AND kind='PRINT' AND status='DELIVERED' AND "archivedAt" IS NULL`, [G]))[0].n
     check('grafica', m.cols.map((c) => c.s).join() === 'IDEA,IN_PRODUCTION,AWAITING_APPROVAL,CHANGES_REQUESTED,APPROVED,SENT_TO_PRINTER,PROOF_RECEIVED,DELIVERED', 'Gráfica: as 8 colunas da trilha da peça', m.cols.map((c) => c.s).join(','))
-    check('grafica', del.collapsed && del.count === '1' && col(m, 'APPROVED').label === 'Aprovado para impressão' && !col(m, 'SENT_TO_PRINTER').collapsed, 'Impresso e entregue começa recolhido com 1 card; "Aprovado para impressão" aberto', JSON.stringify([del, col(m, 'APPROVED').label]))
+    check(
+      'grafica',
+      del.collapsed && deliveredDb >= 1 && del.count === String(deliveredDb) && col(m, 'APPROVED').label === 'Aprovado para impressão' && !col(m, 'SENT_TO_PRINTER').collapsed,
+      'Impresso e entregue começa recolhido com cards (o número do banco); "Aprovado para impressão" aberto',
+      JSON.stringify([del, deliveredDb, col(m, 'APPROVED').label]),
+    )
     check('grafica', m.lanesScroll <= m.lanesClient + 1, '1512: a Gráfica também cabe sem rolagem lateral', `${m.lanesScroll}/${m.lanesClient}`)
     await shot(gp, 'grafica-d1512-claro.png')
     const itemsG = await openMenu(gp, ids.printApproved)

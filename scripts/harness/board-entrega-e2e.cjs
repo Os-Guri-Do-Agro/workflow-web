@@ -8,7 +8,7 @@
 // Uso (cada agente com o seu banco, API e Vite; ver README.md):
 //   API=http://127.0.0.1:3609 WEB=http://localhost:5179 HARNESS_DB=wf_board \
 //   node board-entrega-e2e.cjs
-//   ONLY=desktop|lanes|manual|marketing|celular|prints  roda uma parte
+//   ONLY=desktop|lanes|manual|marketing|celular  roda uma parte (ou várias, por vírgula)
 //   SHOTS=<pasta>  (padrão: prints/board-entrega)
 // Precisa do banco do marketing-db.sh (o passo da ala lê o seed-marketing-out).
 //
