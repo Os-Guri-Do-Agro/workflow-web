@@ -23,6 +23,7 @@ import { ACTIVATION_STATUS_LABEL, ACTIVATION_STATUS_TONE, formatWhen } from '../
 import { useActivationsList } from '../activations/useActivations'
 import { todaySp } from '../calendar/calendar-time'
 import { useMarketing } from '../composables/useMarketing'
+import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
 import FormDialog from '../events/FormDialog.vue'
 import { brandTone, toneStyle } from '../marketing-labels'
 import { labelItems, useSavedSelect } from '../select-items'
@@ -53,6 +54,7 @@ const emit = defineEmits<{ close: []; deleted: [] }>()
 const mk = useMarketing()
 const qc = useQueryClient()
 const { success, error: toastError } = useToast()
+const trashUndo = useTrashUndo()
 const { me } = useCurrentUser()
 
 const query = usePartner(
@@ -198,17 +200,19 @@ const activations = computed(() => activationsQuery.data.value ?? [])
 
 const deleteOpen = ref(false)
 const deleteMessage = computed(
-  () => `"${p.value?.name ?? ''}" e o histórico de contatos saem do sistema. Ativações e orçamentos ligados continuam, sem o parceiro.`,
+  () =>
+    `${trashConfirmMessage(`"${p.value?.name ?? ''}", com o histórico de contatos,`)} Ativações e orçamentos ligados ficam onde estão.`,
 )
 const deleteMutation = useMutation({
   mutationFn: () => deletePartner(props.groupId, props.partnerId),
-  onSuccess: () => {
+  onSuccess: (res) => {
     deleteOpen.value = false
-    success('Parceiro apagado.')
+    // R2 (C6): foi para a lixeira, com "Desfazer".
+    trashUndo.announce(res?.trashed, `O parceiro "${p.value?.name ?? ''}"`, { groupId: props.groupId })
     refresh()
     emit('deleted')
   },
-  onError: (e) => fail(e, 'Não foi possível apagar o parceiro.'),
+  onError: (e) => fail(e, 'Não foi possível mandar o parceiro para a lixeira.'),
 })
 </script>
 
@@ -412,7 +416,7 @@ const deleteMutation = useMutation({
       <section v-if="canDelete" class="pp__sec pp__danger">
         <button type="button" class="mk-btn mk-btn--danger" @click="deleteOpen = true">
           <Trash2 :size="14" aria-hidden="true" />
-          Apagar parceiro
+          Mandar para a lixeira
         </button>
       </section>
     </div>
@@ -454,9 +458,9 @@ const deleteMutation = useMutation({
     />
     <ConfirmDialog
       v-model="deleteOpen"
-      title="Apagar este parceiro?"
+      title="Mandar este parceiro para a lixeira?"
       :message="deleteMessage"
-      confirm-label="Apagar"
+      :confirm-label="TRASH_CONFIRM_LABEL"
       danger
       :loading="deleteMutation.isPending.value"
       @confirm="deleteMutation.mutate()"

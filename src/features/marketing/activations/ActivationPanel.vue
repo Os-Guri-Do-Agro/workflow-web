@@ -40,6 +40,7 @@ import {
   formatWhen,
 } from './activation-meta'
 import { useActivation } from './useActivations'
+import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
 
 /**
  * Painel da ativação (URL `?ativacao=<id>`): dados, checklist, fotos, custo e
@@ -51,6 +52,7 @@ const emit = defineEmits<{ close: []; deleted: [] }>()
 const mk = useMarketing()
 const qc = useQueryClient()
 const { success, error: toastError } = useToast()
+const trashUndo = useTrashUndo()
 const { me } = useCurrentUser()
 
 const query = useActivation(
@@ -271,17 +273,19 @@ const resultsMutation = useMutation({
 
 const deleteOpen = ref(false)
 const deleteMessage = computed(
-  () => `"${a.value?.title ?? ''}", o checklist e as ${a.value?.photos.length ?? 0} foto(s) saem do sistema. Lançamentos e orçamentos ligados continuam, sem a ativação.`,
+  () =>
+    `${trashConfirmMessage(`"${a.value?.title ?? ''}", com o checklist e as ${a.value?.photos.length ?? 0} foto(s),`)} Lançamentos e orçamentos ligados ficam onde estão.`,
 )
 const deleteMutation = useMutation({
   mutationFn: () => deleteActivation(props.groupId, props.activationId),
-  onSuccess: () => {
+  onSuccess: (res) => {
     deleteOpen.value = false
-    success('Ativação apagada.')
+    // R2 (C6): foi para a lixeira, com "Desfazer".
+    trashUndo.announce(res?.trashed, `A ativação "${a.value?.title ?? ''}"`, { groupId: props.groupId })
     refresh()
     emit('deleted')
   },
-  onError: (e) => fail(e, 'Não foi possível apagar a ativação.'),
+  onError: (e) => fail(e, 'Não foi possível mandar a ativação para a lixeira.'),
 })
 
 function ddmm(ymd: string) {
@@ -550,7 +554,7 @@ function ddmm(ymd: string) {
       <section v-if="canDelete" class="ap__sec ap__danger">
         <button type="button" class="mk-btn mk-btn--danger" @click="deleteOpen = true">
           <Trash2 :size="14" aria-hidden="true" />
-          Apagar ativação
+          Mandar para a lixeira
         </button>
       </section>
     </div>
@@ -568,9 +572,9 @@ function ddmm(ymd: string) {
     />
     <ConfirmDialog
       v-model="deleteOpen"
-      title="Apagar esta ativação?"
+      title="Mandar esta ativação para a lixeira?"
       :message="deleteMessage"
-      confirm-label="Apagar"
+      :confirm-label="TRASH_CONFIRM_LABEL"
       danger
       :loading="deleteMutation.isPending.value"
       @confirm="deleteMutation.mutate()"

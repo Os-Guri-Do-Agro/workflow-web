@@ -38,12 +38,15 @@ import CalendarAgenda from '../calendar/components/CalendarAgenda.vue'
 import CalendarMonth from '../calendar/components/CalendarMonth.vue'
 import CalendarQuickCreate from '../calendar/components/CalendarQuickCreate.vue'
 import CalendarWeek from '../calendar/components/CalendarWeek.vue'
+import CalendarFeed from '../calendar/components/CalendarFeed.vue'
 
-type View = 'mes' | 'semana' | 'lista'
+type View = 'mes' | 'semana' | 'lista' | 'feed'
 const VIEWS: { key: View; label: string; hint: string }[] = [
   { key: 'mes', label: 'Mês', hint: 'M' },
   { key: 'semana', label: 'Semana', hint: 'S' },
   { key: 'lista', label: 'Lista', hint: 'L' },
+  // R2 (C5): prévia do feed do Instagram (grade de 3 colunas por marca).
+  { key: 'feed', label: 'Feed', hint: 'F' },
 ]
 const NETWORKS = Object.keys(CARD_NETWORK_LABEL) as CardNetwork[]
 const networkItems = labelItems(NETWORKS, CARD_NETWORK_LABEL, 'Todas as redes')
@@ -60,8 +63,9 @@ let clock: ReturnType<typeof setInterval> | null = null
 // ── Estado na URL ─────────────────────────────────────────────────────────
 const view = computed<View>(() => {
   const v = route.query.vista
-  return v === 'semana' || v === 'lista' ? v : 'mes'
+  return v === 'semana' || v === 'lista' || v === 'feed' ? v : 'mes'
 })
+const isFeed = computed(() => view.value === 'feed')
 const anchor = computed(() => {
   const d = route.query.dia
   return isYmd(d) ? d : today.value
@@ -183,6 +187,7 @@ function onKeydown(event: KeyboardEvent) {
   else if (key === 'm') setView('mes')
   else if (key === 's') setView('semana')
   else if (key === 'l') setView('lista')
+  else if (key === 'f') setView('feed')
   else if (key === 'n' && canEdit.value) openCreate(anchor.value)
   else return
   event.preventDefault()
@@ -206,7 +211,7 @@ const approvalsLink = computed(() => ({
 <template>
   <div class="mk-page mkcal" :class="{ 'is-phone': phone }">
     <div class="mk-toolbar mkcal__bar">
-      <div class="mkcal__nav">
+      <div v-if="!isFeed" class="mkcal__nav">
         <button type="button" class="mk-icon-btn" :aria-label="`${unit} anterior (seta para a esquerda)`" :title="`${unit} anterior (←)`" @click="step(-1)">
           <ChevronLeft :size="17" />
         </button>
@@ -219,7 +224,7 @@ const approvalsLink = computed(() => ({
 
       <span class="mk-toolbar__spacer" />
 
-      <div class="mkcal__net" data-testid="calendar-network">
+      <div v-if="!isFeed" class="mkcal__net" data-testid="calendar-network">
         <AppSelect
           :model-value="network ?? ''"
           :items="networkItems"
@@ -260,7 +265,15 @@ const approvalsLink = computed(() => ({
       </button>
     </div>
 
-    <div class="mkcal__meta">
+    <!-- R2 (C5): prévia do feed do Instagram (tem dados próprios: `GET calendar/feed`) -->
+    <CalendarFeed
+      v-if="isFeed && mk.groupId.value"
+      :group-id="mk.groupId.value"
+      :brands="mk.brands.value"
+      :brand-filter="mk.brandFilter.value"
+    />
+
+    <div v-if="!isFeed" class="mkcal__meta">
       <div v-if="legend.length" class="mkcal__legend" aria-label="Status no período">
         <span v-for="l in legend" :key="l.status" class="mkcal__leg">
           <span class="mk-dot" :style="toneStyle(CARD_STATUS_TONE[l.status])" aria-hidden="true" />
@@ -275,12 +288,13 @@ const approvalsLink = computed(() => ({
       <span v-if="!canEdit" class="mkcal__ro">Você vê o calendário; criar e mudar datas é com Editor ou Admin.</span>
     </div>
 
-    <p v-if="data?.failed" class="mkcal__warn" role="status">
+    <p v-if="!isFeed && data?.failed" class="mkcal__warn" role="status">
       <AlertTriangle :size="14" aria-hidden="true" />
       Parte do calendário não carregou agora. O que apareceu está certo; tente atualizar daqui a pouco.
     </p>
 
-    <div v-if="loading" class="mkcal__loading">
+    <template v-if="isFeed" />
+    <div v-else-if="loading" class="mkcal__loading">
       <Skeleton type="block" />
     </div>
 

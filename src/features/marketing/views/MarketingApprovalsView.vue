@@ -152,6 +152,18 @@ const canEdit = computed(() => mk.can('EDITOR'))
 async function onMove(id: string, status: CardStatus, position: number | undefined) {
   const card = cards.value.find((c) => c.id === id)
   if (!card || pending.value.has(id)) return
+  // R2 (A, achado 7): Agendado sem publicação não sai em rede nenhuma. Soltar
+  // em Agendado um card APROVADO abre o diálogo "Agendar publicação" (a API
+  // recusa o move). De outro status, segue o move e a recusa vira o toast de
+  // sempre, sem sair do board (revisão B da parte A).
+  if (status === 'SCHEDULED' && card.status === 'APPROVED') {
+    void router.push({
+      name: 'marketing-card',
+      params: { cardId: id },
+      query: { ...(mk.brandFilter.value ? { marca: mk.brandFilter.value } : {}), agendar: '1' },
+    })
+    return
+  }
   const optimistic = position ?? Math.max(0, ...cards.value.filter((c) => c.status === status).map((c) => c.position)) + 1024
   overrides.value = new Map(overrides.value).set(id, { status, position: optimistic })
   pending.value = new Set(pending.value).add(id)

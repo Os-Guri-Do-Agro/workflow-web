@@ -41,6 +41,47 @@ export async function getCalendar(
   return data
 }
 
+/** Post da prévia do feed do Instagram (R2, C5). */
+export interface FeedCard extends CalendarCard {
+  publishedAt: string | null
+  publishedUrl: string | null
+  /** Arquivos da versão aprovada (mais de 1 = carrossel) */
+  fileCount: number
+  /** Primeiro arquivo da versão aprovada (prévia RGB quando a arte é CMYK) */
+  cover: { url: string | null; previewUrl: string | null; mimeType: string } | null
+  /** Agendado e a pessoa edita: pode trocar o horário arrastando */
+  canSwap: boolean
+}
+
+export interface FeedResponse {
+  companyId: string
+  timeZone: string
+  limit: number
+  cards: FeedCard[]
+}
+
+export async function getInstagramFeed(groupId: string, companyId: string): Promise<FeedResponse> {
+  const { data } = await api.get<FeedResponse>(mkt(groupId, '/calendar/feed'), { params: { companyId } })
+  return data
+}
+
+/**
+ * Troca o horário de dois agendados do feed numa transação (R2, C5). Cada lado
+ * leva o horário que a grade mostrava: se um deles já mudou (outra pessoa
+ * trocou com a grade aberta), a API responde 409 com a frase e nada muda.
+ */
+export async function swapFeedTimes(
+  groupId: string,
+  a: { id: string; publishAt: string },
+  b: { id: string; publishAt: string },
+): Promise<{ ok: true; cards: Array<{ id: string; publishAt: string }> }> {
+  const { data } = await api.post<{ ok: true; cards: Array<{ id: string; publishAt: string }> }>(
+    mkt(groupId, '/calendar/feed/swap'),
+    { a, b },
+  )
+  return data
+}
+
 export async function rescheduleCard(groupId: string, cardId: string, publishAt: string): Promise<CalendarCard> {
   const { data } = await api.patch<CalendarCard>(mkt(groupId, `/calendar/cards/${encodeURIComponent(cardId)}`), {
     publishAt,

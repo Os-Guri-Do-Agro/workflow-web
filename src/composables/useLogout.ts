@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import type { Router } from 'vue-router'
+import { unsubscribePushOnLogout } from '@/composables/usePushSubscription'
 import { clearSession } from '@/service/api'
 import { cancelPendingWork, pendingWorkCount } from '@/service/session-hooks'
 
@@ -20,7 +21,9 @@ export const logoutPrompt = reactive({
 /** Fora do `reactive` (o Vue desembrulharia os refs do roteador). */
 let promptRouter: Router | null = null
 
-function finish(router: Router) {
+async function finish(router: Router) {
+  // O push deste navegador sai antes da sessão (a API precisa do token).
+  await unsubscribePushOnLogout()
   // clearSession preserva preferências de UI (tema, acento, shell).
   clearSession()
   void router.push('/login')
@@ -29,7 +32,7 @@ function finish(router: Router) {
 export function requestLogout(router: Router) {
   const pending = pendingWorkCount()
   if (!pending) {
-    finish(router)
+    void finish(router)
     return
   }
   promptRouter = router
@@ -47,7 +50,7 @@ export async function confirmLogout() {
     logoutPrompt.open = false
     promptRouter = null
   }
-  finish(router)
+  await finish(router)
 }
 
 export function dismissLogout() {

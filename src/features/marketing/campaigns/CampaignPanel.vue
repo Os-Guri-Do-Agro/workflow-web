@@ -36,6 +36,8 @@ import {
   PACE_TONE,
 } from './campaign-labels'
 import { useCampaignActions, useCampaignDetail, useLinkableCards } from './useCampaigns'
+import CampaignSocialResults from '../social/CampaignSocialResults.vue'
+import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
 
 /**
  * Painel lateral da campanha, aberto por `?campanha=<id>`. Abas: Resumo,
@@ -52,6 +54,7 @@ const emit = defineEmits<{
 const mk = useMarketing()
 const { me } = useCurrentUser()
 const { success, error: showError } = useToast()
+const trashUndo = useTrashUndo()
 const groupId = mk.groupId
 const idRef = computed(() => props.campaignId)
 
@@ -131,13 +134,15 @@ function actionTone(status: CampaignStatus, index: number) {
 const askDelete = ref(false)
 async function confirmDelete() {
   if (!c.value) return
+  const name = c.value.name
   try {
-    await actions.remove.mutateAsync(c.value.id)
+    const res = await actions.remove.mutateAsync(c.value.id)
     askDelete.value = false
-    success('Campanha apagada.')
+    // R2 (C6): foi para a lixeira, com "Desfazer".
+    trashUndo.announce(res?.trashed, `A campanha "${name}"`)
     emit('deleted')
   } catch (error) {
-    showError(getApiErrorMessage(error, 'Não foi possível apagar a campanha.'))
+    showError(getApiErrorMessage(error, 'Não foi possível mandar a campanha para a lixeira.'))
   }
 }
 
@@ -394,7 +399,14 @@ const notFound = computed(() => {
         <button v-if="canEdit" type="button" class="mk-icon-btn" aria-label="Editar campanha" @click="emit('edit')">
           <Pencil :size="16" />
         </button>
-        <button v-if="canDelete" type="button" class="mk-icon-btn" aria-label="Apagar campanha" @click="askDelete = true">
+        <button
+          v-if="canDelete"
+          type="button"
+          class="mk-icon-btn"
+          aria-label="Mandar a campanha para a lixeira"
+          title="Mandar para a lixeira"
+          @click="askDelete = true"
+        >
           <Trash2 :size="16" />
         </button>
         <button type="button" class="mk-icon-btn cp__x" aria-label="Fechar painel" @click="emit('close')">
@@ -612,6 +624,8 @@ const notFound = computed(() => {
 
         <!-- Resultados -->
         <template v-else-if="tab === 'results'">
+          <!-- R2 (A8, A9): números dos posts e anúncios da Meta, puxados sozinhos. -->
+          <CampaignSocialResults v-if="groupId" :group-id="groupId" :campaign-id="c.id" />
           <p class="mk-hint">Números lançados à mão com o que as plataformas mostram. Cliques e leituras das UTMs já aparecem no Resumo.</p>
           <form class="cp__form" novalidate @submit.prevent="saveResults">
             <div class="cp__grid">
@@ -706,9 +720,9 @@ const notFound = computed(() => {
       />
       <ConfirmDialog
         v-model="askDelete"
-        title="Apagar esta campanha?"
-        :message="`&quot;${c.name}&quot; será apagada. Os cards, as UTMs e os lançamentos continuam existindo, só perdem o vínculo.`"
-        confirm-label="Apagar"
+        title="Mandar esta campanha para a lixeira?"
+        :message="`${trashConfirmMessage(`&quot;${c.name}&quot;`)} Os cards, as UTMs e os lançamentos ficam onde estão e voltam a mostrar a campanha se ela for restaurada.`"
+        :confirm-label="TRASH_CONFIRM_LABEL"
         danger
         :loading="actions.remove.isPending.value"
         @confirm="confirmDelete"

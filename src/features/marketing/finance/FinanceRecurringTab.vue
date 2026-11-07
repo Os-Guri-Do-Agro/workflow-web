@@ -12,6 +12,7 @@ import { brandTone, formatCents, toneStyle } from '../marketing-labels'
 import FinanceRecurringDialog from './FinanceRecurringDialog.vue'
 import { dayBr, monthShort } from './finance-format'
 import { useFinanceInvalidate, useFinanceRecurring } from './useFinance'
+import { TRASH_CONFIRM_LABEL, useTrashUndo } from '../trash/useTrashUndo'
 
 /**
  * Aba Recorrentes: as regras mensais e a situação de cada uma no mês aberto.
@@ -29,6 +30,7 @@ const props = defineProps<{
 }>()
 
 const toast = useToast()
+const trashUndo = useTrashUndo()
 const invalidate = useFinanceInvalidate(() => props.groupId)
 const query = useFinanceRecurring(() => props.groupId, () => props.month, () => true)
 const rules = computed(() =>
@@ -54,13 +56,15 @@ function openEdit(rule: RecurringRule) {
 async function doDelete() {
   if (!toDelete.value) return
   deleting.value = true
+  const name = toDelete.value.description
   try {
-    await deleteRecurring(props.groupId, toDelete.value.id)
-    toast.success('Regra apagada. Os lançamentos já feitos ficam.')
+    const res = await deleteRecurring(props.groupId, toDelete.value.id)
+    // R2 (C6): foi para a lixeira (para de gerar), com "Desfazer".
+    trashUndo.announce(res?.trashed, `A regra "${name}"`, { groupId: props.groupId })
     toDelete.value = null
     await invalidate()
   } catch (e) {
-    toast.error(getApiErrorMessage(e, 'Não foi possível apagar a regra.'))
+    toast.error(getApiErrorMessage(e, 'Não foi possível mandar a regra para a lixeira.'))
   } finally {
     deleting.value = false
   }
@@ -72,6 +76,8 @@ function period(r: RecurringRule) {
 
 const STATE: Record<string, { label: string; tone: string }> = {
   LAUNCHED: { label: 'Lançado', tone: 'green' },
+  // R2 (C6): o lançamento do mês está na lixeira (restaurar traz de volta).
+  TRASHED: { label: 'Na lixeira', tone: 'slate' },
   PENDING: { label: 'Pendente', tone: 'amber' },
   OUT: { label: 'Fora do período', tone: 'slate' },
 }
@@ -149,7 +155,8 @@ function stateOf(r: RecurringRule) {
                 v-if="canAdmin"
                 type="button"
                 class="mk-icon-btn"
-                :aria-label="`Apagar ${r.description}`"
+                :aria-label="`Mandar ${r.description} para a lixeira`"
+                title="Mandar para a lixeira"
                 @click="toDelete = r"
               >
                 <Trash2 :size="15" />
@@ -172,9 +179,9 @@ function stateOf(r: RecurringRule) {
     />
     <ConfirmDialog
       :model-value="!!toDelete"
-      title="Apagar a regra?"
-      :message="`${toDelete?.description ?? ''} para de lançar. Os lançamentos já feitos continuam no financeiro.`"
-      confirm-label="Apagar"
+      title="Mandar a regra para a lixeira?"
+      :message="`${toDelete?.description ?? ''} para de lançar agora e fica 30 dias na Lixeira da ala, de onde dá para restaurar. Os lançamentos já feitos continuam no financeiro.`"
+      :confirm-label="TRASH_CONFIRM_LABEL"
       danger
       :loading="deleting"
       @update:model-value="(v: boolean) => !v && (toDelete = null)"

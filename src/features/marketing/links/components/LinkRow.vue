@@ -172,7 +172,8 @@ async function copy(what: 'link' | 'user' | 'secret') {
         v-if="link.canDelete"
         type="button"
         class="mk-icon-btn lk__del"
-        :aria-label="`Apagar ${link.title}`"
+        :aria-label="`Mandar ${link.title} para a lixeira`"
+        title="Mandar para a lixeira"
         data-action="delete"
         @click="emit('delete', link)"
       >

@@ -22,11 +22,13 @@ import { apiErrorMessage } from '../calendar/api-error'
 import { useMarketingLinks } from '../links/composables/useMarketingLinks'
 import LinkDialog from '../links/components/LinkDialog.vue'
 import LinkRow from '../links/components/LinkRow.vue'
+import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
 
 const route = useRoute()
 const router = useRouter()
 const mk = useMarketing()
 const toast = useToast()
+const trashUndo = useTrashUndo()
 const links = useMarketingLinks({ groupId: mk.groupId, brandId: mk.brandFilter })
 
 const canEdit = computed(() => mk.can('EDITOR'))
@@ -127,11 +129,12 @@ async function confirmDelete() {
   if (!link) return
   deleting.value = true
   try {
-    await links.remove(link.id)
-    toast.success('Link apagado.')
+    const trashed = await links.remove(link.id)
+    // R2 (C6): foi para a lixeira, com "Desfazer".
+    trashUndo.announce(trashed, `O link "${link.title}"`)
     toDelete.value = null
   } catch (err) {
-    toast.error(apiErrorMessage(err, 'Não deu para apagar o link.'))
+    toast.error(apiErrorMessage(err, 'Não deu para mandar o link para a lixeira.'))
   } finally {
     deleting.value = false
   }
@@ -295,9 +298,9 @@ onBeforeUnmount(() => {
 
     <ConfirmDialog
       :model-value="!!toDelete"
-      title="Apagar link"
-      :message="toDelete ? `Apagar “${toDelete.title}”? A senha guardada vai junto e não tem como desfazer.` : ''"
-      confirm-label="Apagar"
+      title="Mandar o link para a lixeira?"
+      :message="toDelete ? trashConfirmMessage(`“${toDelete.title}”, com a senha guardada,`) : ''"
+      :confirm-label="TRASH_CONFIRM_LABEL"
       danger
       :loading="deleting"
       @update:model-value="!$event && (toDelete = null)"

@@ -303,13 +303,46 @@ function runDeadlineCron() {
     if (r.status !== 201) console.log('  criar falhou', r.status, r.text)
     return r.json
   }
-  // Dia de origem/destino do arraste, sempre dentro da grade do mês atual.
-  const dragFrom = today
-  const dragTo = inGrid(addDays(today, 1)) ? addDays(today, 1) : addDays(today, -1)
   const weekFrom = today
   const weekTo = weekday(today) === 0 ? addDays(today, -1) : addDays(today, 1) // mesma semana
   const tzDay = inGrid(addDays(today, 2)) ? addDays(today, 2) : addDays(today, -2)
-  // No máximo 3 por dia (o 4º vira "+N"): hoje tem arrastar, recusa e semana.
+  const schedDay = inGrid(addDays(today, 3)) ? addDays(today, 3) : addDays(today, -3)
+  const schedTo = inGrid(addDays(today, 4)) ? addDays(today, 4) : addDays(today, -4)
+  // Dias ocupados por ativação (do início ao fim) ou card vivo: outro roteiro
+  // no mesmo banco (a lixeira deixa uma ativação hoje às 10h) empurraria o card
+  // do arraste para o "+1" da célula.
+  const busy = new Set(
+    (
+      await q(
+        `SELECT to_char(d, 'YYYY-MM-DD') d FROM "MarketingActivation" a,
+           generate_series(date_trunc('day', a."startAt" AT TIME ZONE 'America/Sao_Paulo'),
+                           date_trunc('day', COALESCE(a."endAt", a."startAt") AT TIME ZONE 'America/Sao_Paulo'), interval '1 day') d
+          WHERE a."groupId"=$1 AND a."deletedAt" IS NULL
+         UNION
+         SELECT to_char("publishAt" AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') FROM "MarketingCard"
+          WHERE "groupId"=$1 AND "archivedAt" IS NULL AND "deletedAt" IS NULL AND "publishAt" IS NOT NULL`,
+        [G],
+      )
+    ).map((r) => r.d),
+  )
+  const reserved = new Set([weekTo, tzDay, schedDay, schedTo])
+  const freeDay = (d) => inGrid(d) && !busy.has(d) && !reserved.has(d)
+  // Dia de origem/destino do arraste: livres e dentro da grade do mês atual
+  // (de preferência hoje e amanhã).
+  let dragFrom = today
+  let dragTo = inGrid(addDays(today, 1)) ? addDays(today, 1) : addDays(today, -1)
+  for (const off of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6, -7, 7]) {
+    const from = addDays(today, off)
+    const to = [addDays(from, 1), addDays(from, -1)].find(freeDay)
+    if (freeDay(from) && to) {
+      dragFrom = from
+      dragTo = to
+      reserved.add(from).add(to)
+      break
+    }
+  }
+  // No máximo 3 por dia (o 4º vira "+N"): o dia do arraste tem arrastar e
+  // recusa; hoje, a semana (e o arraste quando hoje está livre).
   const cDrag = await quick('marcel', { companyId: C.pet, title: `E2E arrastar ${STAMP}`, kind: 'REEL', publishAt: spIso(dragFrom, '14:30'), networks: ['INSTAGRAM'] })
   const cWeekDrag = await quick('marcel', { companyId: C.pet, title: `E2E semana ${STAMP}`, publishAt: spIso(weekFrom, '09:15') })
   const cRefuse = await quick('nicolas', { companyId: C.pet, title: `E2E recusa ${STAMP}`, publishAt: spIso(dragFrom, '11:00') })
@@ -557,6 +590,97 @@ function runDeadlineCron() {
       return sp(row.publishAt).day === weekTo ? row : null
     })
     check(!!movedWeek && sp(movedWeek.publishAt).time === '09:15', `Semana: arrastar para ${ddmm(weekTo)} grava e mantém 09:15`, movedWeek ? sp(movedWeek.publishAt).time : '')
+
+    // Auditoria da parte C (ALTO 3): arrastar um AGENDADO no calendário leva
+    // junto o `scheduledAt` da publicação (antes só o card mudava e o post saía
+    // no horário velho). Dias livres do mês para não empurrar ninguém para "+N".
+    {
+      const cSched = await quick('marcel', { companyId: C.pet, title: `E2E agendado ${STAMP}`, publishAt: spIso(schedDay, '16:45'), networks: ['INSTAGRAM'] })
+      const ver = await q(`INSERT INTO "MarketingCardVersion"(id,"cardId",number,"createdById") VALUES ($1,$2,1,$3) RETURNING id`, [`v${STAMP}s`, cSched.id, U.marcel])
+      await q(`UPDATE "MarketingCard" SET status='SCHEDULED', "currentVersionId"=$2, "approvedVersionId"=$2, "approvedAt"=now() WHERE id=$1`, [cSched.id, ver[0].id])
+      await q(
+        `INSERT INTO "MarketingPublication"(id,"groupId","companyId","cardId",network,mode,status,"scheduledAt","versionId","updatedAt")
+         SELECT 'pub_' || md5(random()::text), "groupId", "companyId", id, 'INSTAGRAM', 'MANUAL', 'SCHEDULED', "publishAt", "approvedVersionId", now() FROM "MarketingCard" WHERE id=$1`,
+        [cSched.id],
+      )
+      await page.goto(`${WEB}/marketing/calendario?dia=${today}`, { waitUntil: 'networkidle' })
+      await calendarReady(page)
+      const sChip = page.locator(`.mkc-day[data-day="${schedDay}"] .mkc-chip[data-item="card:${cSched.id}"]`)
+      await sChip.waitFor({ timeout: 6000 })
+      await realDrag(page, sChip, page.locator(`.mkc-day[data-day="${schedTo}"]`))
+      const pubAt = async () => (await q(`SELECT "scheduledAt" FROM "MarketingPublication" WHERE "cardId"=$1`, [cSched.id]))[0]?.scheduledAt?.getTime()
+      const movedSched = await waitFor(async () => {
+        const row = await cardRow(cSched.id)
+        return sp(row.publishAt).day === schedTo && (await pubAt()) === row.publishAt.getTime() ? row : null
+      }, 8000)
+      check(!!movedSched, `agendado arrastado de ${ddmm(schedDay)} para ${ddmm(schedTo)}: a publicação vai junto (scheduledAt = publishAt)`, `${(await cardRow(cSched.id)).publishAt.toISOString()} / ${new Date((await pubAt()) ?? 0).toISOString()}`)
+      const re = await q(`SELECT summary FROM "MarketingLog" WHERE "entityId"=$1 AND verb='publish_rescheduled'`, [cSched.id])
+      check(re.length === 1, 'histórico: "a publicação ... passou para" (o hook da parte A)', re.map((r) => r.summary).join(' | '))
+      await q(`UPDATE "MarketingCard" SET "archivedAt"=now() WHERE id=$1`, [cSched.id])
+    }
+
+    // Revisão da parte C (médio): Agendado arrastado para o PASSADO saía na
+    // hora (o `PATCH /calendar/cards` gravava e o cron publicava em ~30 s). Agora
+    // 400 com a frase do `PATCH /cards`, nada muda e a publicação fica como está.
+    // A troca do feed recusa do mesmo jeito quando um dos horários já passou.
+    {
+      const PAST_MSG = 'Card agendado precisa de data de publicação no futuro: com data passada ele sairia na hora. Escolha um horário a partir de agora, ou desagende antes.'
+      const futureDay = [5, 6, 7, 8, 9, 10].map((n) => addDays(today, n)).find(freeDay) ?? schedTo
+      const pastDay = [-1, -2, -3, -4, -5, -6].map((n) => addDays(today, n)).find(freeDay) ?? null
+      const scheduled = async (title, publishAt) => {
+        const c = await quick('marcel', { companyId: C.pet, title, publishAt, networks: ['PINTEREST'] })
+        const v = await q(`INSERT INTO "MarketingCardVersion"(id,"cardId",number,"createdById") VALUES ($1,$2,1,$3) RETURNING id`, [`v${STAMP}${c.id.slice(-4)}`, c.id, U.marcel])
+        await q(`UPDATE "MarketingCard" SET status='SCHEDULED', "currentVersionId"=$2, "approvedVersionId"=$2, "approvedAt"=now() WHERE id=$1`, [c.id, v[0].id])
+        return c
+      }
+      const cPast = await scheduled(`E2E agendado passado ${STAMP}`, spIso(futureDay, '15:20'))
+      await q(
+        `INSERT INTO "MarketingPublication"(id,"groupId","companyId","cardId",network,mode,status,"scheduledAt","versionId","updatedAt")
+         SELECT 'pub_' || md5(random()::text), "groupId", "companyId", id, 'PINTEREST', 'MANUAL', 'SCHEDULED', "publishAt", "approvedVersionId", now() FROM "MarketingCard" WHERE id=$1`,
+        [cPast.id],
+      )
+      const before = (await cardRow(cPast.id)).publishAt.toISOString()
+      const pubOf = async () => (await q(`SELECT status, "scheduledAt" FROM "MarketingPublication" WHERE "cardId"=$1`, [cPast.id]))[0]
+      const yesterday = new Date(Date.now() - 86400e3).toISOString()
+      const viaApi = await api('marcel', 'PATCH', `/calendar/cards/${cPast.id}`, { publishAt: yesterday })
+      check(viaApi.status === 400 && viaApi.json?.message === PAST_MSG, 'agendado para ontem pelo PATCH /calendar/cards: 400 com a frase', `${viaApi.status} ${viaApi.json?.message}`)
+      if (pastDay) {
+        await page.goto(`${WEB}/marketing/calendario?dia=${today}`, { waitUntil: 'networkidle' })
+        await calendarReady(page)
+        const pChip = page.locator(`.mkc-day[data-day="${futureDay}"] .mkc-chip[data-item="card:${cPast.id}"]`)
+        await pChip.waitFor({ timeout: 6000 })
+        await realDrag(page, pChip, page.locator(`.mkc-day[data-day="${pastDay}"]`))
+        const toastPast = await waitFor(async () => (await page.locator('[data-sonner-toast]', { hasText: 'sairia na hora' }).count()) > 0, 5000)
+        check(!!toastPast, `arrastar o agendado para ${ddmm(pastDay)} (passado): aviso com a frase da API`)
+        await waitFor(async () => (await page.locator(`.mkc-day[data-day="${futureDay}"] .mkc-chip[data-item="card:${cPast.id}"]`).count()) === 1, 5000)
+        check((await page.locator(`.mkc-day[data-day="${futureDay}"] .mkc-chip[data-item="card:${cPast.id}"]`).count()) === 1, 'e o card volta para o dia de antes (desfaz)')
+        await shot(page, 'cal-agendado-passado-d1440.png')
+      } else {
+        check(true, 'sem dia passado livre na grade deste mês: o arraste pela tela fica para outro dia (a API já foi conferida)')
+      }
+      await sleep(1500)
+      const pub = await pubOf()
+      check((await cardRow(cPast.id)).publishAt.toISOString() === before, 'banco não mudou (publishAt do card)')
+      check(pub?.status === 'SCHEDULED' && pub?.scheduledAt.toISOString() === before, 'a publicação segue Agendada no horário de antes (não saiu na hora)', `${pub?.status} ${pub?.scheduledAt?.toISOString()}`)
+      const logs = await logsOf(cPast.id, 'rescheduled')
+      check(logs.length === 0, 'nada no histórico (a recusa não grava)')
+      // Troca do feed: o outro card agendado já está com o horário vencido.
+      const cOverdue = await scheduled(`E2E agendado vencido ${STAMP}`, spIso(futureDay, '15:50'))
+      const overdueAt = new Date(Date.now() - 2 * 3600e3)
+      // Coluna `timestamp` sem fuso: vai o texto em UTC (o Date do pg iria na hora local).
+      await q(`UPDATE "MarketingCard" SET "publishAt"=$2 WHERE id=$1`, [cOverdue.id, overdueAt.toISOString()])
+      const swap = await api('marcel', 'POST', '/calendar/feed/swap', {
+        a: { id: cPast.id, publishAt: before },
+        b: { id: cOverdue.id, publishAt: overdueAt.toISOString() },
+      })
+      check(
+        swap.status === 400 && swap.json?.message?.startsWith(`O horário de "E2E agendado vencido ${STAMP}" já passou: trocar faria "E2E agendado passado ${STAMP}" sair na hora.`),
+        'troca do feed com um horário vencido: 400 com a frase, nada trocado',
+        `${swap.status} ${swap.json?.message}`,
+      )
+      check((await cardRow(cPast.id)).publishAt.toISOString() === before && (await cardRow(cOverdue.id)).publishAt.getTime() === overdueAt.getTime(), 'os dois cards ficam com o horário de antes')
+      await q(`UPDATE "MarketingCard" SET "archivedAt"=now() WHERE id = ANY($1)`, [[cPast.id, cOverdue.id]])
+    }
     check(badRes.length === 0, 'sem 401/5xx (a recusa é 400, de propósito)', badRes.join(', '))
     await ctx.close()
 
@@ -827,8 +951,10 @@ function runDeadlineCron() {
       check((await page.locator(`li.lk[data-link="${L.pet.id}"] [data-action="delete"]`).count()) === 0, 'Editor não vê Apagar no link de outra pessoa')
       await page.locator(`li.lk[data-link="${row.id}"] [data-action="delete"]`).click()
       await page.locator('.confirm-submit').click()
-      const gone = await waitFor(async () => (await q('SELECT 1 FROM "MarketingLink" WHERE id=$1', [row.id])).length === 0)
-      check(!!gone && (await logsOf(row.id, 'deleted')).length === 1, 'apagar com confirmação remove e registra')
+      // R2 (C6): apagar manda para a Lixeira (deletedAt de quem apagou) e o link some da tela.
+      const gone = await waitFor(async () => (await q('SELECT 1 FROM "MarketingLink" WHERE id=$1 AND "deletedAt" IS NOT NULL AND "deletedById"=$2', [row.id, U.marcel])).length === 1)
+      await page.locator(`li.lk[data-link="${row.id}"]`).waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
+      check(!!gone && (await logsOf(row.id, 'trashed')).length === 1 && (await page.locator(`li.lk[data-link="${row.id}"]`).count()) === 0, 'apagar com confirmação manda para a lixeira, some da tela e registra')
       const mDelOther = await api('marcel', 'DELETE', `/links/${L.pet.id}`)
       check(mDelOther.status === 403, 'Editor apagando link de outra pessoa pela API: 403')
       check(badRes.length === 0, 'sem 401/5xx', badRes.join(', '))

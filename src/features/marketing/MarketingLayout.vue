@@ -7,7 +7,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { MARKETING_ROLE_LABEL } from '@/service/marketing/marketing-core'
 import { useMarketing, useMarketingRealtime } from './composables/useMarketing'
-import { visibleSections, type MarketingSection } from './marketing-nav'
+import { sectionPlacement, visibleSections, type MarketingSection } from './marketing-nav'
 import { brandTone, toneStyle } from './marketing-labels'
 import { asText, selectItems } from './select-items'
 import CreateGroupDialog from './settings/CreateGroupDialog.vue'
@@ -109,10 +109,14 @@ watch(() => route.name, () => void nextTick(revealActiveTab))
 onBeforeUnmount(() => tabsObserver?.disconnect())
 
 const sections = computed(() => visibleSections(mk.group.value))
+/** A fita: só as seções do dia a dia (`placement` = tabs). */
+const tabSections = computed(() => sections.value.filter((s) => sectionPlacement(s) === 'tabs'))
+/** Atalhos do cabeçalho (Meus avisos, Lixeira, Configurações), na ordem da lista. */
+const headerSections = computed(() => sections.value.filter((s) => sectionPlacement(s) === 'header'))
 const groupsOrdered = computed(() => {
   const order: MarketingSection['group'][] = ['Produção', 'Divulgação', 'Eventos e dinheiro', 'Base']
   return order
-    .map((name) => ({ name, items: sections.value.filter((s) => s.group === name) }))
+    .map((name) => ({ name, items: tabSections.value.filter((s) => s.group === name) }))
     .filter((g) => g.items.length)
 })
 
@@ -156,21 +160,44 @@ function onCreated(groupId: string) {
 
     <template v-else>
       <header class="mk-layout__head">
-        <div class="mk-layout__title">
-          <h1>Marketing</h1>
-          <div v-if="mk.groups.value.length > 1" class="mk-layout__group" data-testid="group-switch">
-            <AppSelect
-              :model-value="mk.groupId.value ?? ''"
-              :items="groupItems"
-              label="Grupo de empresas"
-              density="compact"
-              @update:model-value="switchGroup(asText($event))"
-            />
+        <div class="mk-layout__lead">
+          <div class="mk-layout__title">
+            <h1>Marketing</h1>
+            <div v-if="mk.groups.value.length > 1" class="mk-layout__group" data-testid="group-switch">
+              <AppSelect
+                :model-value="mk.groupId.value ?? ''"
+                :items="groupItems"
+                label="Grupo de empresas"
+                density="compact"
+                @update:model-value="switchGroup(asText($event))"
+              />
+            </div>
+            <span v-else class="mk-layout__group-name">{{ mk.group.value?.name }}</span>
+            <span class="mk-chip" :title="mk.group.value?.title ?? undefined">
+              {{ mk.role.value ? MARKETING_ROLE_LABEL[mk.role.value] : '' }}
+            </span>
           </div>
-          <span v-else class="mk-layout__group-name">{{ mk.group.value?.name }}</span>
-          <span class="mk-chip" :title="mk.group.value?.title ?? undefined">
-            {{ mk.role.value ? MARKETING_ROLE_LABEL[mk.role.value] : '' }}
-          </span>
+          <!--
+            Atalhos do cabeçalho (`placement: 'header'` em marketing-nav.ts): o
+            que não é do dia a dia sai da fita. Ícone e rótulo; no celular só o
+            ícone, com o nome no `aria-label` e a dica no `title`.
+          -->
+          <nav class="mk-layout__tools" aria-label="Atalhos da ala">
+            <RouterLink
+              v-for="s in headerSections"
+              :key="s.key"
+              :to="{ name: s.route, query: brandQuery }"
+              class="mk-layout__tool"
+              :class="{ 'is-active': isActive(s) }"
+              :aria-current="isActive(s) ? 'page' : undefined"
+              :data-testid="`header-link-${s.key}`"
+              :title="s.hint ?? s.title"
+              :aria-label="s.title"
+            >
+              <component :is="s.icon" :size="14" aria-hidden="true" />
+              <span class="mk-layout__tool-label">{{ s.title }}</span>
+            </RouterLink>
+          </nav>
         </div>
 
         <div
@@ -220,7 +247,7 @@ function onCreated(groupId: string) {
             :class="{ 'is-active': isActive(s) }"
             :aria-current="isActive(s) ? 'page' : undefined"
           >
-            <component :is="s.icon" :size="15" aria-hidden="true" />
+            <component :is="s.icon" :size="14" aria-hidden="true" />
             <span>{{ s.title }}</span>
           </RouterLink>
         </template>
@@ -262,6 +289,15 @@ function onCreated(groupId: string) {
   flex-wrap: wrap;
 }
 
+/* Título e atalhos juntos à esquerda; o filtro de marca fica na outra ponta. */
+.mk-layout__lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
 .mk-layout__title {
   display: flex;
   align-items: center;
@@ -272,6 +308,11 @@ function onCreated(groupId: string) {
 
 .mk-layout__title > * {
   min-width: 0;
+}
+
+/* O papel não corta ("Visualizador" inteiro); quem encolhe é o nome do grupo. */
+.mk-layout__title > .mk-chip {
+  flex-shrink: 0;
 }
 
 .mk-layout__title h1 {
@@ -291,9 +332,51 @@ function onCreated(groupId: string) {
 }
 
 .mk-layout__group-name {
+  overflow: hidden;
   color: var(--text-3);
   font-size: 13px;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-layout__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mk-layout__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mk-layout__tool:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.mk-layout__tool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.mk-layout__tool.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .mk-layout__brands {
@@ -333,10 +416,15 @@ function onCreated(groupId: string) {
   box-shadow: var(--shadow-sm);
 }
 
+/*
+ * A fita de 13 abas cabe em 1440 px com o menu lateral (1152 px úteis): sem
+ * vão entre as abas (o respiro é o padding de cada uma), ícone de 14px e
+ * separador de 9px. Mais estreito que isso, rola com o esmaecido.
+ */
 .mk-layout__tabs {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   min-width: 0;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
@@ -365,16 +453,16 @@ function onCreated(groupId: string) {
   flex-shrink: 0;
   width: 1px;
   height: 18px;
-  margin: 0 6px;
+  margin: 0 4px;
   background: var(--border);
 }
 
 .mk-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-shrink: 0;
-  padding: 8px 10px;
+  padding: 8px 7px;
   border-bottom: 2px solid transparent;
   color: var(--text-2);
   font-size: 13px;
@@ -404,6 +492,30 @@ function onCreated(groupId: string) {
 
   .mk-tab {
     min-height: 44px;
+  }
+
+  /*
+   * No celular os atalhos viram só o ícone, com alvo de 44px. Sem espaço ao
+   * lado do papel, descem para a linha de baixo, à direita (o nome do grupo e
+   * o papel ficam inteiros; nada é cortado).
+   */
+  .mk-layout__lead {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .mk-layout__tools {
+    margin-left: auto;
+  }
+
+  .mk-layout__tool {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+
+  .mk-layout__tool-label {
+    display: none;
   }
 
   .mk-layout__group :deep(.app-select__trigger) {

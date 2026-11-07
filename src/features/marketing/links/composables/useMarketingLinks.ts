@@ -59,10 +59,12 @@ export function useMarketingLinks(opts: {
     return link
   }
 
+  /** Manda para a lixeira (R2, C6); devolve o `trashed` para o "Desfazer". */
   async function remove(linkId: string) {
-    await deleteLink(groupId(), linkId)
+    const res = await deleteLink(groupId(), linkId)
     patch((list) => list.filter((l) => l.id !== linkId))
     void invalidate()
+    return res?.trashed
   }
 
   /** Favorito é otimista (volta se a API recusar). */

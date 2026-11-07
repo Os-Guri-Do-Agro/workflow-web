@@ -320,6 +320,11 @@ const enabledOf = (items) => items.filter((i) => !i.disabled).map((i) => i.to)
     must(await api(tok.marcel, 'POST', `/cards/${id}/versions`, { assetIds: [] }), 'versão só de legenda')
   }
   const moveApi = async (token, id, status) => must(await api(token, 'POST', `/cards/${id}/move`, { status }), `mover ${status}`)
+  // R2 (A, achado 7): Agendado só pelo "Agendar publicação" (aqui, à mão em cada rede); o move direto dá 409.
+  async function scheduleApi(token, id) {
+    const plan = must(await api(token, 'GET', `/cards/${id}/publications`), 'plano').plan
+    must(await api(token, 'POST', `/cards/${id}/publications`, { items: plan.map((p) => ({ network: p.network, mode: 'MANUAL', placement: p.defaultPlacement, accountId: null })) }), 'agendar')
+  }
   const allowedOf = async (token, id) => must(await api(token, 'GET', `/cards/${id}`), 'detalhe').me.allowedMoves
 
   const browser = await chromium.launch({ channel: 'msedge', headless: true })
@@ -457,7 +462,7 @@ const enabledOf = (items) => items.filter((i) => !i.disabled).map((i) => i.to)
     for (const k of ['adjKey', 'adjEdge', 'approved', 'scheduled', 'pub1', 'pub2']) await moveApi(tok.marcel, ids[k], 'AWAITING_APPROVAL')
     for (const k of ['adjKey', 'adjEdge']) must(await api(tok.leticia, 'POST', `/cards/${ids[k]}/request-changes`, { body: 'Trocar a foto de capa' }), 'ajuste')
     for (const k of ['approved', 'scheduled', 'pub1', 'pub2']) must(await api(tok.leticia, 'POST', `/cards/${ids[k]}/approve`, {}), 'aprovar')
-    for (const k of ['scheduled', 'pub1', 'pub2']) await moveApi(tok.marcel, ids[k], 'SCHEDULED')
+    for (const k of ['scheduled', 'pub1', 'pub2']) await scheduleApi(tok.marcel, ids[k])
     for (const k of ['pub1', 'pub2']) await moveApi(tok.marcel, ids[k], 'PUBLISHED')
     // Versão que perdeu a legenda: o resumo do board só sabe que há V1.
     must(await api(tok.marcel, 'PATCH', `/cards/${ids.noContent}`, { captions: {} }), 'tirar legenda')

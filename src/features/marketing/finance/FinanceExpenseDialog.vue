@@ -27,6 +27,7 @@ import { expenseInvoiceTarget } from '../uploads/upload-targets'
 import { itemStatusText } from '../uploads/upload-format'
 import MoneyInput from './MoneyInput.vue'
 import { defaultDateFor } from './finance-format'
+import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
 
 /**
  * Lançamento completo: criar (com notas na fila, sobem depois de salvar),
@@ -55,6 +56,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const trashUndo = useTrashUndo()
 const PAYMENT_METHODS = ['Pix', 'Cartão de crédito', 'Cartão de débito', 'Boleto', 'Transferência', 'Dinheiro']
 
 const form = reactive({
@@ -334,14 +336,16 @@ async function doRemove() {
 async function doDelete() {
   if (!props.expense) return
   removing.value = true
+  const name = props.expense.description
   try {
-    await deleteExpense(props.groupId, props.expense.id)
-    toast.success('Lançamento apagado.')
+    const res = await deleteExpense(props.groupId, props.expense.id)
+    // R2 (C6): foi para a lixeira (sai dos totais), com "Desfazer".
+    trashUndo.announce(res?.trashed, `O lançamento "${name}"`, { groupId: props.groupId })
     confirmDelete.value = false
     emit('changed')
     emit('update:modelValue', false)
   } catch (e) {
-    toast.error(getApiErrorMessage(e, 'Não foi possível apagar o lançamento.'))
+    toast.error(getApiErrorMessage(e, 'Não foi possível mandar o lançamento para a lixeira.'))
   } finally {
     removing.value = false
   }
@@ -594,7 +598,7 @@ async function doDelete() {
           class="mk-btn mk-btn--ghost mk-btn--danger"
           @click="confirmDelete = true"
         >
-          <Trash2 :size="15" aria-hidden="true" /> Apagar
+          <Trash2 :size="15" aria-hidden="true" /> Mandar para a lixeira
         </button>
         <span class="mk-toolbar__spacer" />
         <button type="button" class="mk-btn mk-btn--ghost" @click="close">{{ readOnly ? 'Fechar' : 'Cancelar' }}</button>
@@ -607,9 +611,9 @@ async function doDelete() {
 
   <ConfirmDialog
     v-model="confirmDelete"
-    title="Apagar lançamento?"
-    message="As notas fiscais anexadas são apagadas junto. Não dá para desfazer."
-    confirm-label="Apagar"
+    title="Mandar o lançamento para a lixeira?"
+    :message="trashConfirmMessage('O lançamento, com as notas fiscais anexadas,')"
+    :confirm-label="TRASH_CONFIRM_LABEL"
     danger
     :loading="removing"
     @confirm="doDelete"

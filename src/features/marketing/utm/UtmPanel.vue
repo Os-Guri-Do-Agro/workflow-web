@@ -15,6 +15,7 @@ import { formatYmd } from '../campaigns/campaign-labels'
 import UtmMetricsChart from './UtmMetricsChart.vue'
 import { fileSlug } from './utm-normalize'
 import { useUtmMetrics, useUtmMutations } from './useUtm'
+import { TRASH_CONFIRM_LABEL, useTrashUndo } from '../trash/useTrashUndo'
 
 /**
  * Painel de uma UTM: o que divulgar (link curto e QR, lado a lado no topo),
@@ -42,6 +43,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const trashUndo = useTrashUndo()
 const mut = useUtmMutations(() => props.groupId)
 const metrics = useUtmMetrics(
   () => props.groupId,
@@ -106,13 +108,15 @@ async function download(format: 'png' | 'svg') {
 }
 
 async function remove() {
+  const placement = props.utm.placement
   try {
-    await mut.remove.mutateAsync(props.utm.id)
+    const res = await mut.remove.mutateAsync(props.utm.id)
     confirmDelete.value = false
-    toast.success('UTM apagada.')
+    // R2 (C6): foi para a lixeira (link e QR param), com "Desfazer".
+    trashUndo.announce(res?.trashed, `A UTM "${placement}"`)
     emit('deleted')
   } catch (e) {
-    toast.error(getApiErrorMessage(e, 'Não foi possível apagar a UTM.'))
+    toast.error(getApiErrorMessage(e, 'Não foi possível mandar a UTM para a lixeira.'))
   }
 }
 
@@ -156,8 +160,14 @@ function fmtDate(iso: string) {
       <button v-if="canEdit" type="button" class="mk-btn" :disabled="mut.setActive.isPending.value" @click="toggleActive">
         <Power :size="14" />{{ active ? 'Desativar' : 'Reativar' }}
       </button>
-      <button v-if="canDelete" type="button" class="mk-btn mk-btn--danger" @click="confirmDelete = true">
-        <Trash2 :size="14" />Apagar
+      <button
+        v-if="canDelete"
+        type="button"
+        class="mk-btn mk-btn--danger"
+        data-action="trash-utm"
+        @click="confirmDelete = true"
+      >
+        <Trash2 :size="14" />Mandar para a lixeira
       </button>
     </div>
 
@@ -315,9 +325,9 @@ function fmtDate(iso: string) {
 
     <ConfirmDialog
       v-model="confirmDelete"
-      title="Apagar UTM"
-      message="Isso apaga o link curto, o QR e os cliques e leituras contados. QR impresso com esse código para de funcionar. Para só pausar, use Desativar."
-      confirm-label="Apagar UTM"
+      title="Mandar a UTM para a lixeira?"
+      message="O link curto e o QR param de redirecionar agora: QR impresso com esse código deixa de funcionar enquanto a UTM estiver na lixeira. Os cliques e leituras ficam guardados e tudo volta se ela for restaurada em 30 dias. Para só pausar, use Desativar."
+      :confirm-label="TRASH_CONFIRM_LABEL"
       danger
       :loading="mut.remove.isPending.value"
       @confirm="remove"

@@ -25,6 +25,7 @@ import { applyThemeTokens, type AccentName, type ThemeName } from '@/plugins/tok
 import reveal from '@/plugins/reveal'
 import { queryClient } from '@/service/query-client'
 import { startRealtimeQuerySync } from '@/composables/useRealtimeQuerySync'
+import { startPushNavigation } from '@/composables/usePushNavigation'
 
 // O echarts NÃO é registrado aqui de propósito. Registrar `VChart` global fazia
 // os 536 KB da biblioteca entrarem no chunk de entrada, então quem abria a tela
@@ -69,6 +70,10 @@ app.use(reveal)
 // reconexão e ao voltar pra aba). Fora de componente porque a view que precisa
 // do dado nem sempre está montada quando o evento chega.
 startRealtimeQuerySync()
+
+// Clique no push com o Nevo aberto: o service worker pede e o roteador troca de
+// tela, sem recarregar o app (ala Marketing, R2 C1).
+startPushNavigation(router)
 
 // Sincronizar authStore com localStorage na inicialização
 import('@/stores/authStores').then(({ useActiveCompanyId }) => {

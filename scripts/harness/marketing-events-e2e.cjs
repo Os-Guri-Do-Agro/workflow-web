@@ -467,9 +467,14 @@ async function pagination(browser) {
     check(freelaDelete.status === 403, 'Editor não apaga ativação que outra pessoa criou (403)', String(freelaDelete.status))
     const delB = await del('marcel', `/activations/${B}`)
     check(delB.status === 200, 'quem criou apaga a própria ativação', String(delB.status))
-    const afterDel = await fetch(urlB)
-    check(afterDel.status !== 200, 'V2: a foto some do storage ao apagar a ativação', `GET ${afterDel.status}`)
     check((await get('marcel', `/activations/${B}`)).status === 404, 'ativação apagada dá 404')
+    // R2 (C6): na Lixeira a foto fica (restaurar devolve); o "Apagar de vez"
+    // (Admin) ou o expurgo de 30 dias limpa o storage e as linhas.
+    check((await fetch(urlB)).status === 200, 'na lixeira a foto da ativação continua no storage')
+    const purgeB = await del('leticia', `/trash/activation/${B}`)
+    check(purgeB.status === 200, 'Admin apaga de vez a ativação da lixeira', String(purgeB.status))
+    const afterDel = await fetch(urlB)
+    check(afterDel.status !== 200, 'V2: a foto some do storage ao apagar de vez a ativação', `GET ${afterDel.status}`)
     const orphanRows = await db.query('SELECT count(*)::int AS n FROM "MarketingAsset" WHERE "activationId"=$1', [B])
     check(orphanRows.rows[0].n === 0, 'nenhuma linha de arquivo sobra no banco', String(orphanRows.rows[0].n))
 
@@ -645,7 +650,10 @@ async function pagination(browser) {
     const q2url = (await get('marcel', `/quotes?partnerId=${partnerId}`)).body.find((q) => q.id === solo2.body.id).files[0]?.url
     check(upQ2.ok && !!q2url && (await fetch(q2url)).status === 200, 'segundo arquivo de orçamento sobe')
     check((await del('leticia', `/quotes/${solo2.body.id}`)).status === 200, 'Admin apaga o orçamento')
-    check((await fetch(q2url)).status !== 200, 'apagar o orçamento tira os arquivos do storage')
+    // R2 (C6): na Lixeira o arquivo fica; apagar de vez tira do storage.
+    check((await fetch(q2url)).status === 200, 'na lixeira o arquivo do orçamento continua no storage')
+    check((await del('leticia', `/trash/quote/${solo2.body.id}`)).status === 200, 'Admin apaga de vez o orçamento da lixeira')
+    check((await fetch(q2url)).status !== 200, 'apagar de vez o orçamento tira os arquivos do storage')
 
     // ════════════════════════════════════════════════════════════════════════
     section('Q2: fonte do calendário')

@@ -155,7 +155,7 @@ function onDrop(event: DragEvent) {
                 <DropdownMenuSeparator class="dd-sep" />
                 <DropdownMenuItem class="dd-item dd-item--danger" @select="emit('remove', node)">
                   <Trash2 :size="15" aria-hidden="true" />
-                  <span>Apagar pasta</span>
+                  <span>Mandar para a lixeira</span>
                 </DropdownMenuItem>
               </template>
             </DropdownMenuContent>

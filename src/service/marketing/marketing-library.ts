@@ -2,6 +2,7 @@ import axios from 'axios'
 import api, { apiBaseUrl } from '../api'
 import { mkt, type MarketingUploadTicket } from './marketing-core'
 import type { MarketingCardDetail } from './marketing-cards'
+import type { TrashedRef } from './marketing-trash'
 import { blobErrorMessage, filenameFromDisposition } from './marketing-finance'
 
 /**
@@ -230,8 +231,19 @@ export async function updateLibraryFolder(groupId: string, folderId: string, bod
   return data
 }
 
+/**
+ * Manda a pasta para a lixeira (R2, C6) com o que tem dentro; `moveToParent`
+ * leva o conteúdo para a pasta de cima e manda só a pasta.
+ */
 export async function deleteLibraryFolder(groupId: string, folderId: string, moveToParent = false) {
-  const { data } = await api.delete<{ ok: true; movedItems: number; movedFolders: number }>(
+  const { data } = await api.delete<{
+    ok: true
+    movedItems: number
+    movedFolders: number
+    trashedItems?: number
+    trashedFolders?: number
+    trashed?: TrashedRef
+  }>(
     lib(groupId, `/folders/${enc(folderId)}`),
     { params: moveToParent ? { mover: 'pai' } : undefined },
   )
@@ -272,15 +284,18 @@ export async function updateLibraryItem(
   return data
 }
 
+/** Manda para a lixeira (R2, C6): `trashed` serve ao "Desfazer". */
 export async function deleteLibraryItem(groupId: string, itemId: string) {
-  await api.delete(lib(groupId, `/items/${enc(itemId)}`))
+  const { data } = await api.delete<{ ok: true; trashed?: TrashedRef }>(lib(groupId, `/items/${enc(itemId)}`))
+  return data
 }
 
 export async function bulkLibraryItems(
   groupId: string,
   body: { ids: string[]; acao: LibraryBulkAction; folderId?: string | null; companyId?: string | null; tags?: string[] },
 ) {
-  const { data } = await api.post<{ ok: true; count: number }>(lib(groupId, '/items/bulk'), body)
+  // `apagar` manda o lote para a lixeira e devolve `trashed.ids` (R2, C6).
+  const { data } = await api.post<{ ok: true; count: number; trashed?: TrashedRef }>(lib(groupId, '/items/bulk'), body)
   return data
 }
 

@@ -1,5 +1,6 @@
 import api from '../api'
 import { mkt } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 
 /**
  * Cliente dos Links de trabalho (cofre da ala, M1-B). A listagem NUNCA traz a
@@ -57,8 +58,12 @@ export async function updateLink(groupId: string, linkId: string, input: LinkInp
   return data
 }
 
-export async function deleteLink(groupId: string, linkId: string): Promise<void> {
-  await api.delete(mkt(groupId, `/links/${encodeURIComponent(linkId)}`))
+/** Manda para a lixeira (R2, C6): `trashed` serve ao "Desfazer". */
+export async function deleteLink(groupId: string, linkId: string) {
+  const { data } = await api.delete<{ id: string; deleted: boolean; trashed?: TrashedRef }>(
+    mkt(groupId, `/links/${encodeURIComponent(linkId)}`),
+  )
+  return data
 }
 
 export async function revealLink(groupId: string, linkId: string): Promise<string> {

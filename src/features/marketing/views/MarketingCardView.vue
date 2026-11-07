@@ -75,6 +75,8 @@ import MarketingVersionCompare from '../approvals/components/MarketingVersionCom
 import MarketingVersionViewer, { type DraftAnchor } from '../approvals/components/MarketingVersionViewer.vue'
 import { cardKeys } from '../approvals/approvals-meta'
 import MarketingCardTasks from '../tasks/MarketingCardTasks.vue'
+import MarketingCardPublish from '../social/MarketingCardPublish.vue'
+import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
 
 const route = useRoute()
 const router = useRouter()
@@ -82,6 +84,7 @@ const mk = useMarketing()
 const members = useMarketingMembers(mk.groupId)
 const queryClient = useQueryClient()
 const { success, error: toastError } = useToast()
+const trashUndo = useTrashUndo()
 const phone = usePhoneViewport()
 const { me } = useCurrentUser()
 
@@ -277,6 +280,12 @@ function pickMove(value: unknown) {
 const moving = ref(false)
 async function onMove(status: CardStatus) {
   if (moving.value) return
+  // R2 (A, achado 7): agendar é pelo painel Publicação (cada rede com o seu jeito de sair).
+  // Só do Aprovado; de outro status, a API diz o motivo de sempre (revisão B da parte A).
+  if (status === 'SCHEDULED' && card.value?.status === 'APPROVED') {
+    void router.replace({ query: { ...route.query, agendar: '1' } })
+    return
+  }
   moving.value = true
   try {
     applyDetail(await moveCard(groupId.value, cardId.value, status))
@@ -385,14 +394,22 @@ async function onDelete() {
   // Antes de tirar o card do cache: a volta depende do tipo (trilha Gráfica).
   const back = backTo.value
   try {
-    await deleteCard(groupId.value, cardId.value)
+    const res = await deleteCard(groupId.value, cardId.value)
     deleteOpen.value = false
+    // A volta leva o `?grupo=` (auditoria da parte C): quem trocou de grupo
+    // antes do "Desfazer" abria o card no grupo errado e via "não encontrado".
+    const current = router.currentRoute.value
+    const here = { path: current.path, hash: current.hash, query: { ...current.query, grupo: groupId.value } }
     queryClient.removeQueries({ queryKey: cardKeys.detail(groupId.value, cardId.value) })
     void queryClient.invalidateQueries({ queryKey: cardKeys.all(groupId.value) })
-    success('Card apagado, com os arquivos.')
+    // R2 (C6): foi para a lixeira; "Desfazer" restaura e volta para o card.
+    trashUndo.announce(res.trashed, `"${card.value?.title ?? 'Card'}"`, {
+      groupId: groupId.value,
+      onRestored: () => void router.push(here),
+    })
     void router.replace(back)
   } catch (err) {
-    toastError(getApiErrorMessage(err, 'Não deu para apagar o card.'))
+    toastError(getApiErrorMessage(err, 'Não deu para mandar o card para a lixeira.'))
   } finally {
     deleting.value = false
   }
@@ -493,8 +510,8 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
             v-if="card.me.canDelete"
             type="button"
             class="mk-icon-btn mkcv__danger"
-            aria-label="Apagar card"
-            title="Apagar card"
+            aria-label="Mandar o card para a lixeira"
+            title="Mandar para a lixeira"
             data-action="delete-card"
             @click="deleteOpen = true"
           >
@@ -606,7 +623,17 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
             :members="members.data.value ?? []"
             :can-edit="canEdit"
             @patch="onPatch"
-          />
+          >
+            <!-- R2 (A): publicação nas redes (agendar, status por rede, à mão, números). -->
+            <template #after-details>
+              <MarketingCardPublish
+                :group-id="groupId"
+                :card-id="card.id"
+                :card-updated-at="card.updatedAt"
+                :card-kind="card.kind"
+              />
+            </template>
+          </MarketingCardFields>
         </div>
 
         <!-- R1 (P3): tarefa do Nevo que segue o card (some sem a migration da R1). -->
@@ -670,9 +697,9 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
       />
       <ConfirmDialog
         v-model="deleteOpen"
-        title="Apagar o card?"
-        :message="`&quot;${card.title}&quot; some do board com todas as versões, comentários e arquivos. Não dá para desfazer.`"
-        confirm-label="Apagar"
+        title="Mandar o card para a lixeira?"
+        :message="trashConfirmMessage(`&quot;${card.title}&quot;, com versões, comentários e arquivos,`)"
+        :confirm-label="TRASH_CONFIRM_LABEL"
         danger
         :loading="deleting"
         @confirm="onDelete"

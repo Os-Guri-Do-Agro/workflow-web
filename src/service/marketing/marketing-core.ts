@@ -36,6 +36,8 @@ export interface MarketingSettings {
   utmSources: string[]
   utmMediums: string[]
   linkCategories: string[]
+  /** Relatório do Looker Studio do grupo (M4): botão da área Dados. API antiga não manda. */
+  lookerStudioUrl?: string | null
 }
 
 export interface MarketingBrand {

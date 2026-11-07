@@ -1,6 +1,8 @@
 // Ponta a ponta das melhorias "úteis" (spec v2-uteis): Ctrl+K por chave e por
 // título, ações do Meu dia (Começar, Adiar, timer), timer no painel da tarefa e
-// "Nova tarefa" no mês atual. Confere no banco do harness.
+// "Nova tarefa" no mês atual. Confere no banco do harness e devolve o estado no
+// fim, passe ou falhe (status, posição e prazo das tarefas do mês, e apaga os
+// registros de tempo que criou): roda antes ou depois do celular-e2e no mesmo banco.
 // Uso: PGPORT=55433 node uteis-e2e.cjs
 const { chromium } = require('playwright-core')
 const pg = require('pg')
@@ -11,6 +13,8 @@ const WEB = process.env.WEB ?? 'http://localhost:5174'
 const PGPORT = process.env.PGPORT ?? '55432'
 const results = []
 const check = (name, ok, extra = '') => results.push(`${ok ? 'OK   ' : 'FALHA'} ${name}${extra ? ' :: ' + extra : ''}`)
+// Devolve o banco como estava (passe ou falhe). Definida depois de ler o estado.
+let restore = async () => {}
 
 ;(async () => {
   const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PGPORT}/wf` })
@@ -29,6 +33,33 @@ const check = (name, ok, extra = '') => results.push(`${ok ? 'OK   ' : 'FALHA'} 
     )
   ).rows[0]
   if (!todo) throw new Error('harness sem tarefa aberta do Nicolas na PetJourney')
+  // Estado antes de tudo, que volta no fim: status, posição, prazo e `updatedAt` das
+  // tarefas do mês da tarefa usada, e os registros de tempo que o roteiro cria saem.
+  // Sem isso o "Começar" deixava a tarefa em Em andamento e com outro prazo, e quem
+  // rodasse depois no mesmo banco (o celular-e2e, que espera o seed) quebrava.
+  const monthOfTodo = (await db.query(`SELECT "monthId" FROM "Activity" WHERE id=$1`, [todo.id])).rows[0].monthId
+  const snapshot = (
+    await db.query(`SELECT id, status, position, "dueDate", "updatedAt" FROM "Activity" WHERE "monthId"=$1`, [monthOfTodo])
+  ).rows
+  const entriesBefore = (await db.query(`SELECT id FROM "TimeEntry" WHERE "userId"=$1`, [nicolas])).rows.map((r) => r.id)
+  restore = async () => {
+    for (const r of snapshot) {
+      await db.query(`UPDATE "Activity" SET status=$2, position=$3, "dueDate"=$4, "updatedAt"=$5 WHERE id=$1`, [
+        r.id,
+        r.status,
+        r.position,
+        r.dueDate,
+        r.updatedAt,
+      ])
+    }
+    await db.query(`DELETE FROM "TimeEntry" WHERE "userId"=$1 AND NOT (id = ANY($2))`, [nicolas, entriesBefore])
+    const now = (await db.query(`SELECT id, status, position, "dueDate" FROM "Activity" WHERE "monthId"=$1`, [monthOfTodo])).rows
+    const same = snapshot.every((s) => {
+      const n = now.find((x) => x.id === s.id)
+      return n && n.status === s.status && n.position === s.position && String(n.dueDate) === String(s.dueDate)
+    })
+    return same
+  }
   await db.query(`UPDATE "Activity" SET status='TODO', "dueDate"=NULL WHERE id=$1`, [todo.id])
   const key = `PJ-${todo.id.slice(-6).toUpperCase()}`
   await db.query(`UPDATE "TimeEntry" SET "endedAt"=now(), "durationSec"=60 WHERE "userId"=$1 AND "endedAt" IS NULL`, [nicolas])
@@ -171,7 +202,16 @@ const check = (name, ok, extra = '') => results.push(`${ok ? 'OK   ' : 'FALHA'} 
   check('desktop: clicar no vão da linha abre a tarefa', p.url().includes('/board?task='), p.url().replace(WEB, ''))
 
   check('sem erro de página', errs.length === 0, errs.join(' | '))
-  console.log(results.join('\n'))
   await b.close()
+  check('devolve o estado do mês (status, posição e prazo) e apaga os tempos que criou', await restore())
+  console.log(results.join('\n'))
   await db.end()
-})().catch((e) => { console.log(results.join('\n')); console.error('ERRO', e.message); process.exit(1) })
+  // Sai com 1 quando alguma checagem falhou, como o celular-e2e: quem roda em
+  // lote não precisa ler as linhas FALHA para saber.
+  process.exitCode = results.some((r) => r.startsWith('FALHA')) ? 1 : 0
+})().catch(async (e) => {
+  await restore().catch(() => {})
+  console.log(results.join('\n'))
+  console.error('ERRO', e.message)
+  process.exit(1)
+})

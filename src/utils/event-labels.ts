@@ -48,6 +48,16 @@ const INBOX_LABEL: Record<string, string> = {
   MARKETING_CAMPAIGN_REOPENED: 'Campanha reaberta',
   MARKETING_MEMBER_ADDED: 'Ala Marketing',
   MARKETING_PROOF_RECEIVED: 'Prova da gráfica',
+  // R2 (A): publicação nas redes
+  MARKETING_PUBLISH_NOW: 'Hora de publicar',
+  MARKETING_PUBLISH_DRAFT: 'Rascunho no app',
+  MARKETING_PUBLISH_FAILED: 'Publicação falhou',
+  MARKETING_PUBLISH_CANCELED: 'Publicação cancelada',
+  MARKETING_PUBLISHED: 'Publicado',
+  MARKETING_SOCIAL_EXPIRING: 'Conta de rede vencendo',
+  MARKETING_SOCIAL_EXPIRED: 'Reconectar rede',
+  // R2 (C4): meta de cadência da semana atrasada
+  MARKETING_CADENCE_BEHIND: 'Cadência da semana',
 }
 
 export function inboxTypeLabel(type: string | null | undefined): string {

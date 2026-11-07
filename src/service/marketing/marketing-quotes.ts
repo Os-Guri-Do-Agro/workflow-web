@@ -1,5 +1,6 @@
 import api from '../api'
 import { mkt, type MarketingAsset } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 
 /**
  * Cliente dos Orçamentos (M3-B). Rotas em `/marketing/g/:groupId/quotes`.
@@ -71,8 +72,12 @@ export async function updateQuote(groupId: string, id: string, input: QuoteInput
   return data
 }
 
+/** Manda para a lixeira (R2, C6): `trashed` serve ao "Desfazer". */
 export async function deleteQuote(groupId: string, id: string) {
-  await api.delete(mkt(groupId, `/quotes/${encodeURIComponent(id)}`))
+  const { data } = await api.delete<{ ok: boolean; trashed?: TrashedRef }>(
+    mkt(groupId, `/quotes/${encodeURIComponent(id)}`),
+  )
+  return data
 }
 
 export async function chooseQuote(

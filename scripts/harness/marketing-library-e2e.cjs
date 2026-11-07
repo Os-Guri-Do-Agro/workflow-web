@@ -469,8 +469,14 @@ async function mountDialog(page, opts) {
     const crossLoc = await api(tok.nicolas, 'PATCH', `/library/folders/${chain[0]}`, { parentId: gF.data.id })
     check('pasta', crossLoc.status === 400, 'pasta não muda de marca para a Geral (400)', crossLoc.data?.message)
     const lvlItem = await uploadLib(tok.marcel, { companyId: C.pet, folderId: chain[1], name: 'nivel2.jpg', buffer: extra[7] })
-    const del409 = await api(tok.marcel, 'DELETE', `/library/folders/${chain[1]}`)
-    check('pasta', del409.status === 409 && del409.data?.folders === 1 && del409.data?.items === 1, 'apagar pasta com conteúdo: 409 com a contagem', del409.data?.message)
+    // R2 (C6): pasta com conteúdo não dá mais 409; vai para a Lixeira levando as
+    // subpastas e os arquivos (mesmo deletedAt), e restaurar devolve tudo junto.
+    const delTrash = await api(tok.marcel, 'DELETE', `/library/folders/${chain[1]}`)
+    check('pasta', delTrash.status === 200 && delTrash.data?.trashedFolders === 3 && delTrash.data?.trashedItems === 1 && delTrash.data?.trashed?.type === 'library_folder', 'apagar pasta com conteúdo: vai para a lixeira com as 3 subpastas e o arquivo', JSON.stringify(delTrash.data))
+    const restored = await api(tok.marcel, 'POST', '/trash/restore', { type: 'library_folder', id: chain[1] })
+    const back = await q(`SELECT count(*)::int AS n FROM "MarketingLibraryFolder" WHERE id = ANY($1) AND "deletedAt" IS NULL`, [chain.slice(1)])
+    const itemBack = await q(`SELECT "deletedAt" FROM "MarketingLibraryItem" WHERE id=$1`, [lvlItem.item.id])
+    check('pasta', (restored.status === 200 || restored.status === 201) && back[0]?.n === 4 && itemBack[0]?.deletedAt === null, 'restaurar a pasta devolve as subpastas e o arquivo juntos', `${restored.status} ${back[0]?.n}`)
     const delUp = await api(tok.marcel, 'DELETE', `/library/folders/${chain[1]}?mover=pai`)
     const after = await q(`SELECT "folderId" FROM "MarketingLibraryItem" WHERE id=$1`, [lvlItem.item.id])
     const n3 = await q(`SELECT "parentId" FROM "MarketingLibraryFolder" WHERE id=$1`, [chain[2]])
@@ -705,7 +711,8 @@ async function mountDialog(page, opts) {
     // ════════════════════════════════════════════════════════════════════
     // 3. Zip de 50 e recusa de 201 (API)
     // ════════════════════════════════════════════════════════════════════
-    let pool = (await q(`SELECT id FROM "MarketingLibraryItem" WHERE "groupId"=$1 AND ("companyId"=$2 OR "companyId" IS NULL) ORDER BY "createdAt"`, [G, C.pet])).map((r) => r.id)
+    // R2 (C6): o que está na Lixeira não entra no zip (a API dá 404 para ele).
+    let pool = (await q(`SELECT id FROM "MarketingLibraryItem" WHERE "groupId"=$1 AND ("companyId"=$2 OR "companyId" IS NULL) AND "deletedAt" IS NULL ORDER BY "createdAt"`, [G, C.pet])).map((r) => r.id)
     for (let i = 8; pool.length < 50 && i < extra.length; i++) {
       const r = await uploadLib(tok.marcel, { companyId: C.pet, folderId: ids.camp, name: `extra-${i}.jpg`, buffer: extra[i] })
       if (r.item?.id) pool.push(r.item.id)
@@ -797,8 +804,16 @@ async function mountDialog(page, opts) {
     const g1Dl = await api(tok.marcel, 'GET', `/library/items/${ids.G1}/download`)
     const g1Fetch = g1Dl.status === 200 ? await fetch(g1Dl.data.url) : null
     check('independência', delCard.status === 200 && g1Row.length === 1 && g1Fetch?.ok, 'apagar o card não apaga o item do Acervo (e o "Usado em" sai junto)', `${delCard.status} ${g1Dl.status}`)
-    const usageGone = await q(`SELECT count(*)::int n FROM "MarketingLibraryUsage" WHERE "cardId"=$1`, [cardId])
-    check('independência', usageGone[0].n === 0, 'o uso do card apagado sai do "Usado em"', usageGone[0].n)
+    // R2 (C6): o card vai para a Lixeira; a linha de uso fica no banco (restaurar
+    // devolve), mas o "Usado em" e a contagem não mostram card na lixeira.
+    const g1Detail = await api(tok.marcel, 'GET', `/library/items/${ids.G1}`)
+    const usageRows = await q(`SELECT count(*)::int n FROM "MarketingLibraryUsage" WHERE "cardId"=$1`, [cardId])
+    check(
+      'independência',
+      g1Detail.status === 200 && !(g1Detail.data?.usages ?? []).some((u) => u.cardId === cardId) && usageRows[0].n > 0,
+      'o uso do card apagado sai do "Usado em" (a linha fica para o restaurar)',
+      `${g1Detail.status} usos=${(g1Detail.data?.usages ?? []).length} linhas=${usageRows[0].n}`,
+    )
 
     // ════════════════════════════════════════════════════════════════════
     // 6. "Mandar para o acervo" (cópia de um arquivo de versão)

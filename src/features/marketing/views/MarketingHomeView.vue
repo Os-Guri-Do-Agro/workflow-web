@@ -7,7 +7,7 @@
  */
 import { computed } from 'vue'
 import { RouterLink, type RouteLocationRaw } from 'vue-router'
-import { RefreshCw } from 'lucide-vue-next'
+import { Gauge, RefreshCw } from 'lucide-vue-next'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import type { CalendarCard } from '@/service/marketing/marketing-calendar-api'
 import { useMarketing } from '../composables/useMarketing'
@@ -16,6 +16,7 @@ import { useMarketingHome } from '../home/composables/useMarketingHome'
 import HomeActivity from '../home/components/HomeActivity.vue'
 import HomeCardList from '../home/components/HomeCardList.vue'
 import HomeWeekStrip from '../home/components/HomeWeekStrip.vue'
+import AppHomeIndicators from '../app-data/AppHomeIndicators.vue'
 
 const mk = useMarketing()
 const home = useMarketingHome({ groupId: mk.groupId, brandId: mk.brandFilter })
@@ -91,6 +92,9 @@ function moreLinks(cards: CalendarCard[], extra: Record<string, string>) {
   return [{ label: 'Ver na lista', to: approvalsList(hasPrint ? { ...extra, trilha: 'grafica' } : extra) }]
 }
 
+/** R2 (C4): metas da semana (vem no próprio `GET /home`, sem requisição a mais). */
+const cadence = computed(() => data.value?.cadence?.items ?? [])
+
 const awaitingTitle = computed(() => (data.value?.isAdmin ? 'Para aprovar' : 'Seus cards aguardando aprovação'))
 const awaitingEmpty = computed(() =>
   data.value?.isAdmin ? 'Nada para aprovar agora.' : 'Nenhum card seu esperando aprovação.',
@@ -144,6 +148,27 @@ const awaitingEmpty = computed(() =>
           </RouterLink>
         </template>
       </div>
+
+      <!-- R2 (C4): "Cadência da semana: 2 de 3 no Instagram" (metas em Configurações, aba Cadência) -->
+      <div v-if="cadence.length" class="mkh__cadence" data-section="cadencia" aria-label="Cadência da semana">
+        <span class="mkh__cadence-title"><Gauge :size="14" aria-hidden="true" /> Cadência da semana</span>
+        <RouterLink
+          v-for="c in cadence"
+          :key="c.goalId"
+          :to="{ name: 'marketing-calendar', query: { marca: c.companyId } }"
+          class="mkh__cadence-item"
+          :class="{ 'is-met': c.met }"
+          :data-goal="`${c.companyId}:${c.network}`"
+          :title="c.met ? 'Meta da semana batida' : `Faltam ${c.missing} agendados ou publicados até domingo`"
+        >
+          <span class="mk-dot" :style="toneStyle(brandToneOf(c.companyId))" aria-hidden="true" />
+          <span v-if="multiBrand" class="mkh__cadence-brand">{{ brandNameOf(c.companyId) }}:</span>
+          <b>{{ c.label }}</b>
+        </RouterLink>
+      </div>
+
+      <!-- R2 (B, M4): indicadores do app, dentro do próprio GET /home; sem app conectado não aparece -->
+      <AppHomeIndicators :app="data.app" />
 
       <HomeWeekStrip
         :week-start="data.weekStart"
@@ -214,6 +239,53 @@ const awaitingEmpty = computed(() =>
   justify-items: start;
   gap: 8px;
   padding: 14px 16px;
+}
+
+.mkh__cadence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.mkh__cadence-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.mkh__cadence-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 10px;
+  border: 1px solid color-mix(in srgb, var(--warn, #b45309) 45%, var(--border));
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.mkh__cadence-item.is-met {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+}
+
+.mkh__cadence-item b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.mkh__cadence-brand {
+  color: var(--text-3);
 }
 
 .mkh__error p {
@@ -287,7 +359,8 @@ const awaitingEmpty = computed(() =>
 }
 
 @media (max-width: 640px) {
-  .mkh__count {
+  .mkh__count,
+  .mkh__cadence-item {
     min-height: 36px;
   }
 }

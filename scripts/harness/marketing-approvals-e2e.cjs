@@ -773,7 +773,8 @@ const headStatus = (page) => page.locator('[data-testid="head-status"]').innerTe
     await shot(mPage, 'board-grafica-d1440.png')
 
     // ════════════════════════════════════════════════════════════════════
-    // A9. Apagar card apaga os objetos no storage
+    // A9. Apagar card (R2, C6): vai para a Lixeira, restaurar devolve, e só o
+    // "Apagar de vez" (Admin) tira a linha e os objetos do storage.
     // ════════════════════════════════════════════════════════════════════
     const before = (await api(tok.marcel, 'GET', `/cards/${mainCardId}`)).data
     const urls = before.versions.flatMap((v) => v.assets.map((a) => a.url))
@@ -786,11 +787,28 @@ const headStatus = (page) => page.locator('[data-testid="head-status"]').innerTe
     await shot(mPage, 'apagar-card-d1440.png')
     await mPage.click('.confirm-submit')
     await mPage.waitForURL(/\/marketing\/aprovacoes/, { timeout: 8000 }).catch(() => {})
+    const trashedRow = await waitFor(async () => (await q(`SELECT "deletedAt", "deletedById" FROM "MarketingCard" WHERE id=$1 AND "deletedAt" IS NOT NULL`, [mainCardId]))[0])
+    const keptRows = await q(`SELECT 1 FROM "MarketingAsset" WHERE "cardId"=$1`, [mainCardId])
+    const inTrash = await Promise.all(urls.map((u) => fetch(u).then((r) => r.status)))
+    check('A9', !!trashedRow && trashedRow.deletedById === U.marcel && keptRows.length === 4, 'lixeira: o card fica no banco com deletedAt de quem apagou, com os 4 arquivos', `${trashedRow?.deletedById} ${keptRows.length} linhas`)
+    check('A9', inTrash.every((s) => s === 200), 'lixeira: os objetos continuam no storage (restaurar devolve)', inTrash.join(','))
+    const a9Hidden = await api(tok.marcel, 'GET', `/cards/${mainCardId}`)
+    const a9Listed = (await api(tok.leticia, 'GET', '/cards')).data ?? []
+    const trashList = (await api(tok.leticia, 'GET', '/trash?type=card')).data?.items ?? []
+    check('A9', a9Hidden.status === 404 && !a9Listed.some((c) => c.id === mainCardId) && trashList.some((i) => i.id === mainCardId), 'lixeira: o card some do board e do detalhe (404) e aparece na Lixeira', `${a9Hidden.status}`)
+    const restoredCard = await api(tok.marcel, 'POST', '/trash/restore', { type: 'card', id: mainCardId })
+    const a9Back = await api(tok.marcel, 'GET', `/cards/${mainCardId}`)
+    const backFiles = a9Back.data?.versions?.flatMap((v) => v.assets) ?? []
+    check('A9', (restoredCard.status === 200 || restoredCard.status === 201) && a9Back.status === 200 && backFiles.length === 4, 'restaurar devolve o card com V1, V2 e os 4 arquivos', `${restoredCard.status} ${a9Back.status} ${backFiles.length}`)
+    const again = await api(tok.marcel, 'DELETE', `/cards/${mainCardId}`)
+    const editorPurge = await api(tok.marcel, 'DELETE', `/trash/card/${mainCardId}`)
+    check('A9', again.status === 200 && again.data?.trashed?.type === 'card' && editorPurge.status === 403, 'de novo para a lixeira; Editor não apaga de vez (403)', `${again.status} ${editorPurge.status}`)
+    const purged = await api(tok.leticia, 'DELETE', `/trash/card/${mainCardId}`)
     const goneRows = await q(`SELECT 1 FROM "MarketingAsset" WHERE "cardId"=$1`, [mainCardId])
     const goneCard = await q(`SELECT 1 FROM "MarketingCard" WHERE id=$1`, [mainCardId])
     const after = await Promise.all(urls.map((u) => fetch(u).then((r) => r.status)))
-    check('A9', goneRows.length === 0 && goneCard.length === 0, 'banco: card e arquivos apagados')
-    check('A9', after.every((s) => s === 404 || s === 400), 'fake-storage: nenhum dos objetos existe mais', after.join(','))
+    check('A9', purged.status === 200 && goneRows.length === 0 && goneCard.length === 0, 'apagar de vez (Admin): card e arquivos saem do banco', `${purged.status} ${JSON.stringify(purged.data)}`)
+    check('A9', after.every((s) => s === 404 || s === 400), 'apagar de vez: nenhum dos objetos existe mais no storage', after.join(','))
     mainCardId = null
 
     // Fecha: 401/5xx e erros de página

@@ -13,7 +13,7 @@ import { useMarketing } from '../composables/useMarketing'
 import { brandTone, toneStyle } from '../marketing-labels'
 import UtmFormDialog from '../utm/UtmFormDialog.vue'
 import UtmPanel from '../utm/UtmPanel.vue'
-import { useUtmList, useUtmLookup, useUtmOptions, useWideViewport } from '../utm/useUtm'
+import { useUtmLookup, useUtmOptions, useUtmPages, useWideViewport } from '../utm/useUtm'
 
 /**
  * UTMs e QR (M2-A): lista densa com filtros na URL e painel do item (`?utm=`).
@@ -57,9 +57,11 @@ const filters = computed(() => ({
 }))
 const hasFilters = computed(() => Object.keys(filters.value).some((k) => k !== 'companyId') || !!mk.brandFilter.value)
 
-const list = useUtmList(mk.groupId, filters)
+// R2 (C7): em páginas, com "Carregar mais" (a lista antiga cortava em 500 calada).
+const list = useUtmPages(mk.groupId, filters)
 const options = useUtmOptions(mk.groupId)
-const rows = computed(() => list.data.value ?? [])
+const rows = computed(() => list.data.value?.pages.flatMap((p) => p.items) ?? [])
+const total = computed(() => list.data.value?.pages[0]?.total ?? rows.value.length)
 const inList = computed(() => rows.value.find((r) => r.id === selectedId.value) ?? null)
 // `?utm=` que a lista (filtrada, 500 no máximo) não trouxe: procura a UTM fora do filtro.
 const lookup = useUtmLookup(
@@ -318,6 +320,22 @@ function brandOf(id: string) {
           </tbody>
         </table>
       </div>
+      <div v-if="rows.length" class="mk-utm__more" data-testid="utm-more">
+        <span class="mk-hint">
+          {{ rows.length.toLocaleString('pt-BR') }} de {{ total.toLocaleString('pt-BR') }}
+          {{ total === 1 ? 'UTM' : 'UTMs' }}
+        </span>
+        <button
+          v-if="list.hasNextPage.value"
+          type="button"
+          class="mk-btn"
+          data-action="utm-load-more"
+          :disabled="list.isFetchingNextPage.value"
+          @click="list.fetchNextPage()"
+        >
+          {{ list.isFetchingNextPage.value ? 'Carregando...' : 'Carregar mais' }}
+        </button>
+      </div>
     </div>
 
     <aside v-if="wide && selected" class="mk-panel mk-utm__aside" aria-label="Detalhe da UTM">
@@ -456,6 +474,14 @@ function brandOf(id: string) {
 
 .mk-utm-list {
   overflow: hidden;
+}
+
+.mk-utm__more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 2px;
 }
 
 .mk-utm-row {

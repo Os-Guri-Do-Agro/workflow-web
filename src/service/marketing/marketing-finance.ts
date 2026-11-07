@@ -1,6 +1,7 @@
 import axios from 'axios'
 import api from '../api'
 import { mkt, type MarketingAsset } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 
 /**
  * Cliente do financeiro da ala Marketing (spec
@@ -148,7 +149,8 @@ export interface MarketingBudget {
   updatedBy?: { id: string; name: string } | null
 }
 
-export type RecurringMonthState = 'OUT' | 'PENDING' | 'LAUNCHED'
+/** TRASHED (R2, C6): o lançamento do mês foi para a lixeira (conta como lançado). */
+export type RecurringMonthState = 'OUT' | 'PENDING' | 'LAUNCHED' | 'TRASHED'
 
 export interface RecurringRule {
   id: string
@@ -221,8 +223,9 @@ export async function updateExpense(
   return data
 }
 
+/** Manda para a lixeira (R2, C6): sai dos totais na hora; `trashed` serve ao "Desfazer". */
 export async function deleteExpense(groupId: string, expenseId: string) {
-  const { data } = await api.delete<{ ok: true; removedInvoices: number }>(fin(groupId, `/expenses/${id(expenseId)}`))
+  const { data } = await api.delete<{ ok: true; trashed?: TrashedRef }>(fin(groupId, `/expenses/${id(expenseId)}`))
   return data
 }
 
@@ -274,8 +277,10 @@ export async function updateRecurring(groupId: string, ruleId: string, patch: Pa
   return data
 }
 
+/** Manda a regra para a lixeira (R2, C6): para de gerar; `trashed` serve ao "Desfazer". */
 export async function deleteRecurring(groupId: string, ruleId: string) {
-  await api.delete(fin(groupId, `/recurring/${id(ruleId)}`))
+  const { data } = await api.delete<{ ok: true; trashed?: TrashedRef }>(fin(groupId, `/recurring/${id(ruleId)}`))
+  return data
 }
 
 export async function generateRecurring(groupId: string, month: string, companyId?: string | null) {

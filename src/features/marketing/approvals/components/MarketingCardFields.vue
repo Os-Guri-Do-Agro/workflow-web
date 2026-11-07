@@ -340,6 +340,9 @@ const captionNetworks = computed(() => props.card.networks)
     </dl>
   </section>
 
+  <!-- R2 (A): o painel Publicação entra logo abaixo dos detalhes (a data mora aqui). -->
+  <slot name="after-details" />
+
   <section v-if="!isPrint" class="mk-panel mkf" aria-labelledby="mkf-text">
     <header class="mk-panel__head">
       <h2 id="mkf-text" class="mkf__title">Texto do post</h2>

@@ -271,7 +271,8 @@ async function smallTargets(page, scope) {
   const delOwn = await api('marcel', 'DELETE', `/ideas/${own.data.id}`)
   check('Autor apaga a própria ideia (200)', delOwn.status === 200)
   const logIdea = await q(`SELECT verb FROM "MarketingLog" WHERE "entityType"='idea' AND "groupId"=$1`, [G])
-  check('Histórico registra criar, converter, editar, arquivar e apagar', ['created', 'converted', 'updated', 'archived', 'deleted'].every((v) => logIdea.rows.some((r) => r.verb === v)))
+  // R2 (C6): apagar manda para a Lixeira, e o histórico registra 'trashed'.
+  check('Histórico registra criar, converter, editar, arquivar e mandar para a lixeira', ['created', 'converted', 'updated', 'archived', 'trashed'].every((v) => logIdea.rows.some((r) => r.verb === v)))
 
   // ═══ Campanhas, pela API ════════════════════════════════════════════════
   console.log('\n── C1 a C4: Campanhas (API) ──')

@@ -108,6 +108,17 @@ function clearFilters() {
 const list = useFinanceExpenses(() => props.groupId, filter, () => true)
 const items = computed(() => list.data.value?.items ?? [])
 const totals = computed(() => list.data.value?.totals)
+/**
+ * "2.000 de 2.431 lançamentos" quando a lista corta no teto (R2, C7); os
+ * totais do rodapé continuam contando todos.
+ */
+const countLabel = computed(() => {
+  const total = totals.value?.count ?? 0
+  const shown = items.value.length
+  const n = (v: number) => v.toLocaleString('pt-BR')
+  if (list.data.value?.truncated && shown < total) return `${n(shown)} de ${n(total)} lançamentos`
+  return `${n(total)} ${total === 1 ? 'lançamento' : 'lançamentos'}`
+})
 
 const multiBrand = computed(() => props.brands.length > 1 && !props.brandFilter)
 const brandOf = (id: string) => props.brands.find((b) => b.companyId === id)
@@ -529,7 +540,7 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
         </span>
       </li>
       <li class="fe-cards__total">
-        <span>{{ totals?.count ?? 0 }} lançamentos</span>
+        <span data-testid="expenses-count">{{ countLabel }}</span>
         <span class="mk-num">Pago {{ formatCents(totals?.paidCents) }}</span>
         <span class="mk-num fin-muted">Previsto {{ formatCents(totals?.plannedCents) }}</span>
       </li>
@@ -615,7 +626,7 @@ const statusTone: Record<ExpenseStatus, string> = { PAID: 'green', PLANNED: 'sla
         </tbody>
         <tfoot>
           <tr>
-            <td :colspan="multiBrand ? 4 : 3">{{ totals?.count ?? 0 }} lançamentos</td>
+            <td :colspan="multiBrand ? 4 : 3" data-testid="expenses-count">{{ countLabel }}</td>
             <td colspan="2" class="fin-muted fe-foot-planned">Previsto {{ formatCents(totals?.plannedCents) }}</td>
             <td class="mk-num">Pago {{ formatCents(totals?.paidCents) }}</td>
           </tr>

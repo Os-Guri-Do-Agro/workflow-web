@@ -1,11 +1,13 @@
 # Ala Marketing, rodada R2: publicação nas redes, dados do app, avisos e lixeira
 
-**Status:** Em implementação (06/11/2026)
+**Status:** Concluído (07/11/2026). O código está pronto. O uso real depende das chaves das redes, do VAPID e do SendGrid no Railway e do release da PetJourney (ver "Ordem do release" na [M4](m4-dados-do-app.md)).
 **Épico:** [ala-marketing](../../../../epicos/ala-marketing.md) · **Depois de:** [R1](r1-acervo-tarefas-convite.md) · **Inclui:** [M4](m4-dados-do-app.md) inteira e a M5 possível sem conta paga
 **Repos:**
 - no Nevo: `work-flow` e `workflow-api`;
 - na PetJourney, só a parte B: `petjourney-web`, `petjourney-api` e `petjourney-app`
-**Migration:** `20261108120000_ala_marketing_r2`. É só aditiva: 9 tabelas novas e `deletedAt`/`deletedById` em 12 tabelas. **Já aplicada em produção** em 06/11; o código antigo ignora as colunas.
+**Migrations:**
+- `20261108120000_ala_marketing_r2`: só aditiva, com 9 tabelas novas e `deletedAt`/`deletedById` em 12 tabelas. **Já aplicada em produção** em 06/11; o código antigo ignora as colunas.
+- `20261108130000_ala_marketing_r2_expense_source`: coluna `sourceKey` e índice único em `MarketingExpense`. Também aditiva.
 
 ## Origem
 
@@ -193,31 +195,33 @@ Segue a [M4](m4-dados-do-app.md) inteira, decisões D1 a D9 e partes A a F, com 
 
 ## Critérios de aceite
 
-**A. Publicação**
-- [ ] Sem chave da rede, a aba Redes mostra o passo a passo com as URLs de callback, e a ala inteira segue funcionando.
-- [ ] Conectar a Meta no harness (rede falsa) traz a página, o Instagram e a conta de anúncio da marca, e nenhum token aparece em resposta, log ou socket.
-- [ ] Agendar um carrossel de 3 fotos (uma CMYK) para daqui a 2 min: na hora sai um carrossel com 3 JPEG sRGB de até 1440 px, e o card vai para Publicado com o link.
-- [ ] Foto fora da proporção, Story longo e Reels curto são barrados com a frase do motivo, antes de agendar.
-- [ ] Dois agendadores ao mesmo tempo não publicam duas vezes.
-- [ ] Rede fora do ar: 3 tentativas, depois FAILED com aviso. "Tentar de novo" publica.
-- [ ] Mudar `publishAt` do card reagenda; versão nova ou lixeira cancelam e avisam.
-- [ ] TikTok vira rascunho com aviso, e MANUAL vira lembrete com baixar, copiar e "Marquei como publicado".
-- [ ] Os resultados do post e o gasto da campanha de anúncio aparecem no card e na campanha; "Lançar gasto do mês" não duplica.
-- [ ] Editor de outra marca não vê a conta nem agenda nela; Visualizador só vê o status.
+Conferência de 07/11, na árvore final, com banco novo (`wf_final`). A prova de cada item é o roteiro do harness (parte entre colchetes) ou o teste de unidade indicado.
+
+**A. Publicação** (`marketing-publish-e2e.cjs`, 126/0, contra redes falsas)
+- [x] Sem chave da rede, a aba Redes mostra o passo a passo com as URLs de callback, e a ala inteira segue funcionando. Prova: [A1].
+- [x] Conectar a Meta no harness (rede falsa) traz a página, o Instagram e a conta de anúncio da marca, e nenhum token aparece em resposta, log ou socket. Prova: [A2], que varre 2.167 respostas, socket e logs. Desde a auditoria, a volta da rede só guarda uma reserva de uso único, e o Admin escolhe as contas e a marca no front logado.
+- [x] Agendar um carrossel de 3 fotos (uma CMYK) para daqui a 2 min: na hora sai um carrossel com 3 JPEG sRGB de até 1440 px, e o card vai para Publicado com o link. Prova: [A3].
+- [x] Foto fora da proporção, Story longo e Reels curto são barrados com a frase do motivo, antes de agendar. Prova: [A4] e `media-rules.spec.ts`.
+- [x] Dois agendadores ao mesmo tempo não publicam duas vezes. Prova: [A5], com duas APIs reais no mesmo banco, e o teste de claim concorrente.
+- [x] Rede fora do ar: 3 tentativas, depois FAILED com aviso. "Tentar de novo" publica. Prova: [A6]. Erro ambíguo no passo final ("pode ter saído") não tenta sozinho; só volta pelo "Tentar de novo", depois de conferir na rede.
+- [x] Mudar `publishAt` do card reagenda; versão nova ou lixeira cancelam e avisam. Prova: [A7], o B2 do `marketing-calendar-e2e.cjs` (arrastar no calendário) e o `marketing-feed-e2e.cjs` (troca no feed).
+- [x] TikTok vira rascunho com aviso, e MANUAL vira lembrete com baixar, copiar e "Marquei como publicado". Prova: [A8].
+- [x] Os resultados do post e o gasto da campanha de anúncio aparecem no card e na campanha; "Lançar gasto do mês" não duplica. Prova: [A9] e os testes de "anúncios" do `social-services.spec.ts`. A origem fica na coluna única `MarketingExpense.sourceKey` (migration `20261108130000`).
+- [x] Editor de outra marca não vê a conta nem agenda nela; Visualizador só vê o status. Prova: [A10].
 
 **B. Dados do app** (os critérios da [M4](m4-dados-do-app.md), mais estes)
-- [ ] O job local manda o dia, o Nevo grava, e reenviar não duplica.
-- [ ] O teste de contrato da PetJourney falha com id, e-mail, nome, IP, token ou célula menor que 5.
-- [ ] Sem dado, a área Dados explica como conectar.
+- [x] O job local manda o dia, o Nevo grava, e reenviar não duplica. Prova: no DEV da PetJourney, em 07/11, com a API local da PetJourney (`develop 34fd6aec`) mandando para o Nevo do harness. O dia vai uma vez só, com o conteúdo congelado, e o reenvio respondeu "nada pendente" com o mesmo hash no Nevo. O modo simulado do `marketing-appdata-e2e.cjs` deu 128/0.
+- [x] O teste de contrato da PetJourney falha com id, e-mail, nome, IP, token ou célula menor que 5. Prova: `nevo-contrato.spec.ts` e o teste de propriedade `nevo-recorte.propriedade.spec.ts`, que cobre subtração no dia, dias seguidos, a semana e duas versões do mesmo dia.
+- [x] Sem dado, a área Dados explica como conectar. Prova: `marketing-appdata-e2e.cjs`.
 
 **C. Avisos, lixeira e acabamento**
-- [ ] Aviso da ala chega por push para quem ligou e não chega para quem silenciou o tipo.
-- [ ] IMMEDIATE manda um e-mail por aviso; o resumo DAILY junta os não lidos, uma vez por dia. Sem SendGrid, nada quebra.
-- [ ] Meta de 3 no Instagram com 2 agendados: um aviso na quarta e nenhum repetido na semana.
-- [ ] O feed mostra a grade, e trocar dois agendados troca os horários (e reagenda a publicação).
-- [ ] Apagar cada um dos 12 tipos manda para a Lixeira, some de todas as telas e totais, e restaurar volta tudo. O teste estático passa.
-- [ ] O expurgo de 30 dias apaga de vez e limpa o storage.
-- [ ] `?ativo=false` chega como false em todas as rotas com booleano de query.
+- [x] Aviso da ala chega por push para quem ligou e não chega para quem silenciou o tipo. Prova: `notify.spec.ts` e `marketing-notify-e2e.cjs` (71/0).
+- [x] IMMEDIATE manda um e-mail por aviso; o resumo DAILY junta os não lidos, uma vez por dia. Sem SendGrid, nada quebra. Prova: `notify.spec.ts` e o roteiro notify. O resumo só leva aviso de marca que a pessoa ainda vê, de item fora da lixeira, e devolve a reserva se o envio falhar.
+- [x] Meta de 3 no Instagram com 2 agendados: um aviso na quarta e nenhum repetido na semana. Prova: `cadence.spec.ts` e a parte D do roteiro notify.
+- [x] O feed mostra a grade, e trocar dois agendados troca os horários (e reagenda a publicação). Prova: `marketing-feed-e2e.cjs` (44/0). A troca confere o horário esperado e dá 409 na grade velha.
+- [x] Apagar cada um dos 12 tipos manda para a Lixeira, some de todas as telas e totais, e restaurar volta tudo. O teste estático passa. Prova: `marketing-trash-e2e.cjs` (142/0) e `trash-reads.spec.ts`, que lê o código pela árvore do TypeScript.
+- [x] O expurgo de 30 dias apaga de vez e limpa o storage. Prova: `trash.service.spec.ts` e a parte F do roteiro. Apagar de vez trava a linha, e o storage só sai depois do commit.
+- [x] `?ativo=false` chega como false em todas as rotas com booleano de query. Prova: `to-boolean.spec.ts`, com o ValidationPipe real e a varredura do `src/`. Os booleanos de body da ala também usam `@ToBoolean`.
 
 ## Riscos
 
@@ -247,3 +251,4 @@ Segue a [M4](m4-dados-do-app.md) inteira, decisões D1 a D9 e partes A a F, com 
 | Data | Versão | O quê |
 |---|---|---|
 | 2026-11-06 | 0.1 | Spec da rodada a partir do pedido do Nicolas; schema e migration congelados e aplicados em produção antes dos agentes |
+| 2026-11-07 | 0.2 | Entregue e conferido. Auditoria cruzada em duas voltas, cada achado corrigido por um agente diferente do autor e revisado pelo dono. Mudanças de desenho que saíram das auditorias: (1) conectar com reserva de uso único e escolha de contas e marca no front logado; (2) travas de PUBLISHING no card, container do Instagram (`ctr:`) e falha ambígua (`amb:`) sem republicar sozinha; (3) M4 com cada dia mandado uma vez, `utm` e `parceiro` por semana ISO fechada, estoques só no total e arredondados, sem canceladas; (4) `MarketingExpense.sourceKey` único (migration `20261108130000_ala_marketing_r2_expense_source`); (5) Lixeira, Configurações e Meus avisos no cabeçalho da ala. Regressão final: 21 roteiros da ala e 5 de fora, todos verdes |

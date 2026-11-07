@@ -95,6 +95,7 @@ import {
   type LibrarySelection,
 } from '../library/library-meta'
 import { enqueueLibraryUploads } from '../library/library-upload'
+import { TRASH_CONFIRM_LABEL, useTrashUndo } from '../trash/useTrashUndo'
 import { useLibraryItem, useLibraryItems, useLibraryRefresh, useLibraryTags, useLibraryTree } from '../library/useLibrary'
 import '../library/library.css'
 
@@ -102,6 +103,7 @@ const mk = useMarketing()
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const trashUndo = useTrashUndo()
 const phone = usePhoneViewport()
 const groupId = computed(() => mk.groupId.value!)
 const refresh = useLibraryRefresh(groupId)
@@ -603,14 +605,23 @@ const folderDel = reactive({
   loading: false,
 })
 
+/**
+ * Pasta vai para a lixeira LEVANDO o conteúdo (R2, C6): subpastas e arquivos
+ * vão juntos e voltam juntos no "Desfazer" ou na Lixeira. `withContent` aqui
+ * quer dizer "levar o conteúdo para a pasta de cima" (`?mover=pai`): é a saída
+ * quando a pasta tem arquivo de outra pessoa que o Editor não pode apagar.
+ */
 function askDeleteFolder(folder: LibraryFolder) {
+  const parts: string[] = []
+  if (folder.childCount) parts.push(folder.childCount === 1 ? '1 subpasta' : `${folder.childCount} subpastas`)
+  if (folder.totalCount) parts.push(folder.totalCount === 1 ? '1 arquivo' : `${folder.totalCount} arquivos`)
   Object.assign(folderDel, {
     open: true,
     folder,
     withContent: false,
-    message: folder.totalCount || folder.childCount
-      ? `A pasta "${folder.name}" não está vazia. Na próxima etapa você escolhe o que fazer com o conteúdo.`
-      : `A pasta "${folder.name}" está vazia e vai sair do Acervo.`,
+    message: parts.length
+      ? `A pasta "${folder.name}" vai para a lixeira com ${parts.join(' e ')}. Tudo fica 30 dias na Lixeira da ala e volta junto se você restaurar.`
+      : `A pasta "${folder.name}" está vazia e vai para a Lixeira da ala por 30 dias.`,
     loading: false,
   })
 }
@@ -619,8 +630,9 @@ async function confirmDeleteFolder() {
   const folder = folderDel.folder
   if (!folder) return
   folderDel.loading = true
+  const moveUp = folderDel.withContent
   try {
-    await deleteLibraryFolder(groupId.value, folder.id, folderDel.withContent)
+    const res = await deleteLibraryFolder(groupId.value, folder.id, moveUp)
     folderDel.open = false
     // A pasta aberta era a apagada (ou estava dentro dela): volta para a de cima.
     const open = currentFolder.value
@@ -629,21 +641,36 @@ async function confirmDeleteFolder() {
       open.companyId === folder.companyId &&
       open.path.length >= folder.path.length &&
       folder.path.every((n, i) => open.path[i] === n)
-    if (insideDeleted && !folderDel.withContent) go({ companyId: folder.companyId, folderId: folder.parentId })
+    if (insideDeleted && !moveUp) go({ companyId: folder.companyId, folderId: folder.parentId })
     else if (open?.id === folder.id) go({ companyId: folder.companyId, folderId: folder.parentId })
-    toast.success(folderDel.withContent ? `Pasta "${folder.name}" apagada; o conteúdo subiu um nível.` : `Pasta "${folder.name}" apagada.`)
+    // Com o conteúdo levado para cima, o "Desfazer" devolve só a pasta, vazia:
+    // a frase diz isso antes e depois (auditoria da parte C).
+    const upTo = moveUp
+      ? placeLabel(
+          locations.value.find((l) => l.companyId === folder.companyId),
+          folder.parentId ? folders.value.find((f) => f.id === folder.parentId) : undefined,
+        )
+      : ''
+    trashUndo.announce(
+      res?.trashed,
+      moveUp ? `A pasta "${folder.name}" (o conteúdo subiu um nível)` : `A pasta "${folder.name}"`,
+      {
+        groupId: groupId.value,
+        undoNote: moveUp ? `O "Desfazer" devolve só a pasta, vazia: o conteúdo continua em ${upTo}.` : undefined,
+      },
+    )
     refresh()
   } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 409 && !folderDel.withContent) {
+    if (axios.isAxiosError(error) && error.response?.status === 403 && !moveUp) {
       const parentLabel = placeLabel(
         locations.value.find((l) => l.companyId === folder.companyId),
         folder.parentId ? folders.value.find((f) => f.id === folder.parentId) : undefined,
       )
       folderDel.withContent = true
-      folderDel.message = `${getApiErrorMessage(error, 'A pasta tem conteúdo.')} Apagar mesmo assim leva tudo para ${parentLabel}. Nenhum arquivo é apagado.`
+      folderDel.message = `${getApiErrorMessage(error, 'A pasta tem arquivos de outras pessoas.')} Dá para levar o conteúdo para ${parentLabel} e mandar só a pasta para a lixeira. Nenhum arquivo sai do Acervo.`
     } else {
       folderDel.open = false
-      toast.error(getApiErrorMessage(error, 'Não foi possível apagar a pasta.'))
+      toast.error(getApiErrorMessage(error, 'Não foi possível mandar a pasta para a lixeira.'))
     }
   } finally {
     folderDel.loading = false
@@ -797,17 +824,19 @@ function askDelete(ids: string[]) {
 async function confirmDelete() {
   delDlg.loading = true
   try {
-    if (delDlg.ids.length === 1) await deleteLibraryItem(groupId.value, delDlg.ids[0]!)
-    else await runBulk('apagar', delDlg.ids)
-    const n = delDlg.ids.length
-    if (openId.value && delDlg.ids.includes(openId.value)) closeDetails()
+    const ids = [...delDlg.ids]
+    const res =
+      ids.length === 1 ? await deleteLibraryItem(groupId.value, ids[0]!) : await runBulk('apagar', ids)
+    const n = ids.length
+    if (openId.value && ids.includes(openId.value)) closeDetails()
     selected.value = new Set()
     delDlg.open = false
     refresh()
-    toast.success(n === 1 ? 'Arquivo apagado do Acervo.' : `${n} arquivos apagados do Acervo.`)
+    // R2 (C6): foi para a lixeira; o "Desfazer" do lote devolve todos de uma vez.
+    trashUndo.announce(res?.trashed, n === 1 ? 'O arquivo' : `${n} arquivos do Acervo`, { groupId: groupId.value })
   } catch (error) {
     delDlg.open = false
-    toast.error(getApiErrorMessage(error, 'Não foi possível apagar.'))
+    toast.error(getApiErrorMessage(error, 'Não foi possível mandar para a lixeira.'))
   } finally {
     delDlg.loading = false
   }
@@ -1009,7 +1038,7 @@ const emptyDescription = computed(() => {
         </button>
         <button v-if="canDeleteSelection" type="button" class="mk-btn mk-btn--ghost mk-btn--danger" data-bulk="apagar" :disabled="busy" @click="askDelete([...selected])">
           <Trash2 :size="14" aria-hidden="true" />
-          Apagar
+          Mandar para a lixeira
         </button>
         <span class="mk-toolbar__spacer" />
         <button type="button" class="mk-btn mk-btn--ghost" @click="selected = new Set()">
@@ -1266,9 +1295,9 @@ const emptyDescription = computed(() => {
 
     <ConfirmDialog
       v-model="folderDel.open"
-      :title="folderDel.withContent ? 'Levar o conteúdo para cima?' : 'Apagar a pasta?'"
+      :title="folderDel.withContent ? 'Levar o conteúdo para cima?' : 'Mandar a pasta para a lixeira?'"
       :message="folderDel.message"
-      :confirm-label="folderDel.withContent ? 'Apagar e levar o conteúdo' : 'Apagar pasta'"
+      :confirm-label="folderDel.withContent ? 'Levar o conteúdo e mandar a pasta' : TRASH_CONFIRM_LABEL"
       :loading="folderDel.loading"
       danger
       @confirm="confirmDeleteFolder"
@@ -1309,9 +1338,9 @@ const emptyDescription = computed(() => {
 
     <ConfirmDialog
       v-model="delDlg.open"
-      :title="delDlg.ids.length === 1 ? 'Apagar do Acervo?' : `Apagar ${delDlg.ids.length} arquivos do Acervo?`"
-      message="O arquivo sai do Acervo de vez. As versões de card que usaram estes arquivos têm cópia própria e continuam intactas."
-      confirm-label="Apagar"
+      :title="delDlg.ids.length === 1 ? 'Mandar para a lixeira?' : `Mandar ${delDlg.ids.length} arquivos para a lixeira?`"
+      message="Sai do Acervo agora e fica 30 dias na Lixeira da ala, de onde dá para restaurar. As versões de card que usaram estes arquivos têm cópia própria e continuam intactas."
+      :confirm-label="TRASH_CONFIRM_LABEL"
       :loading="delDlg.loading"
       danger
       @confirm="confirmDelete"

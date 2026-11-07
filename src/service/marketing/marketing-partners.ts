@@ -1,5 +1,6 @@
 import api from '../api'
 import { mkt } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 
 /** Cliente dos Parceiros (M3-B). Rotas em `/marketing/g/:groupId/partners`. */
 
@@ -92,8 +93,12 @@ export async function updatePartner(groupId: string, id: string, input: PartnerI
   return data
 }
 
+/** Manda para a lixeira (R2, C6): `trashed` serve ao "Desfazer". */
 export async function deletePartner(groupId: string, id: string) {
-  await api.delete(mkt(groupId, `/partners/${encodeURIComponent(id)}`))
+  const { data } = await api.delete<{ ok: boolean; trashed?: TrashedRef }>(
+    mkt(groupId, `/partners/${encodeURIComponent(id)}`),
+  )
+  return data
 }
 
 export async function listPartnerContacts(groupId: string, id: string) {

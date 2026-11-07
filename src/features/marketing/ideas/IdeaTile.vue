@@ -80,7 +80,7 @@ const hasMenu = computed(() => props.canWrite || props.idea.canDelete)
               <DropdownMenuSeparator class="dd-sep" />
               <DropdownMenuItem class="dd-item dd-item--danger" @select="emit('remove')">
                 <Trash2 :size="15" />
-                <span>Apagar</span>
+                <span>Mandar para a lixeira</span>
               </DropdownMenuItem>
             </template>
           </DropdownMenuContent>

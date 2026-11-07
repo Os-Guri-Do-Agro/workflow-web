@@ -1,6 +1,6 @@
 # Ala Marketing, rodada R1: Acervo, envios, tarefa do Nevo, convite e UTM
 
-**Status:** Em implementação (06/11/2026)
+**Status:** Concluído (em produção desde 06/11/2026; critérios conferidos um por um em 07/11/2026)
 **Épico:** [ala-marketing](../../../../epicos/ala-marketing.md) · **Depois de:** [M1](m1-aprovacao-calendario.md), [M2](m2-rastreio-estrategia.md), [M3](m3-dinheiro-eventos.md)
 **Repos:** `work-flow` (front) e `workflow-api` (API)
 **Migration:** `20261107120000_ala_marketing_r1`, só aditiva: 4 tabelas novas e nenhuma coluna em tabela existente
@@ -136,49 +136,84 @@ Todas as rotas ficam em `/marketing/groups/:groupId/...`, atrás do `MarketingAc
 
 ## Critérios de aceite
 
+Conferidos em 07/11/2026 no banco novo `wf_r1ac` (roteiros em `scripts/harness/`, nomes sem o `marketing-`). A linha "prova" cita o rótulo da checagem.
+
 **Acervo**
-- [ ] O Editor arrasta uma pasta com subpastas e 30 fotos e o Acervo recria a árvore. A bandeja mostra o progresso de cada arquivo e dá para continuar usando a ala enquanto sobe.
-- [ ] Ctrl+V de uma imagem copiada cai na pasta aberta. No celular, "Tirar foto" abre a câmera.
-- [ ] O mesmo arquivo de novo avisa "já está no acervo em <pasta>", com "Manter os dois" e "Pular".
-- [ ] "Escolher do acervo" no card cria a V2 com cópia de mesmo sha256. O card volta para Aguardando aprovação, e o item mostra "Usado em: <card>".
-- [ ] Apagar o item do Acervo não apaga a versão do card, e vice-versa.
-- [ ] O Editor restrito à marca A não vê nem baixa o item da marca B (inclusive por id na URL), e vê a Geral do grupo.
-- [ ] O Visualizador vê, filtra e baixa, mas não sobe, não move e não apaga.
-- [ ] Baixar 50 itens em zip funciona, e 201 itens dão uma mensagem clara.
+- [x] O Editor arrasta uma pasta com subpastas e 30 fotos e o Acervo recria a árvore. A bandeja mostra o progresso de cada arquivo e dá para continuar usando a ala enquanto sobe.
+  prova: library-e2e, 'a bandeja de envios mostra os 30 arquivos', 'os 30 itens chegaram mesmo com a pessoa em outra tela da ala', 'o Acervo recria a árvore' e 'cada subpasta com as suas 10 fotos'
+- [x] Ctrl+V de uma imagem copiada cai na pasta aberta. No celular, "Tirar foto" abre a câmera.
+  prova: library-e2e, 'Ctrl+V de uma imagem cai na pasta aberta', '"Tirar foto" abre a câmera traseira (capture=environment)' e 'foto da câmera cai na pasta aberta'
+- [x] O mesmo arquivo de novo avisa "já está no acervo em <pasta>", com "Manter os dois" e "Pular".
+  prova: library-e2e, 'mesmo arquivo de novo avisa "já está no acervo em <pasta>"', 'Pular: nada novo no Acervo' e 'Manter os dois: sobe a segunda cópia'
+- [x] "Escolher do acervo" no card cria a V2 com cópia de mesmo sha256. O card volta para Aguardando aprovação, e o item mostra "Usado em: <card>".
+  prova: library-e2e, 'a V2 é CÓPIA (arquivo e objeto novos) com o mesmo sha256', 'cria a V2 e o card volta para Aguardando aprovação' e 'o item mostra "Usado em: V2 de <card>" com link'; r1-stitch-e2e pela janela da versão
+- [x] Apagar o item do Acervo não apaga a versão do card, e vice-versa.
+  prova: library-e2e, 'apagar o item do Acervo não apaga a versão do card' e 'apagar o card não apaga o item do Acervo' (desde a R2, apagar é mandar para a lixeira)
+- [x] O Editor restrito à marca A não vê nem baixa o item da marca B (inclusive por id na URL), e vê a Geral do grupo.
+  prova: library-e2e, 'id da Emmitec na mão do freelancer: 404 em detalhe, download, editar, apagar, lote, download do arquivo e cópia', 'zip com um id da Emmitec no meio: 404' e 'freelancer abre na PetJourney e vê a Geral; sem Emmitec'
+- [x] O Visualizador vê, filtra e baixa, mas não sobe, não move e não apaga.
+  prova: library-e2e, 'Visualizador vê, baixa e baixa zip', 'Visualizador não sobe, não cria pasta, não edita, não apaga, não move, não copia (403)' e as duas de tela
+- [x] Baixar 50 itens em zip funciona, e 201 itens dão uma mensagem clara.
+  prova: library-e2e, 'zip de 50 arquivos: 50 entradas, sem nome repetido' e '201 itens dão a mensagem clara'
 
 **Envios**
-- [ ] Fechar o diálogo da versão no meio do envio não cancela: a bandeja segue e o card recebe a versão ao terminar.
-- [ ] A rede cai no meio de um arquivo grande: ele retoma de onde parou, ou tenta de novo sozinho na volta da rede.
-- [ ] Fechar a aba com envio pendente pede confirmação.
-- [ ] Hash de 300 MB não trava a tela.
+- [x] Fechar o diálogo da versão no meio do envio não cancela: a bandeja segue e o card recebe a versão ao terminar.
+  prova: uploads-e2e, U2: 'o diálogo fecha na hora', 'trocar de tela não para o envio' e 'a V1 nasce sozinha quando o último arquivo termina'
+- [x] A rede cai no meio de um arquivo grande: ele retoma de onde parou, ou tenta de novo sozinho na volta da rede.
+  prova: uploads-e2e, U4: 'retomou do offset (HEAD) sem recriar o upload', 'a rede volta e o envio retoma sozinho até o fim' e 'arquivo de 40 MB íntegro depois da queda'
+- [x] Fechar a aba com envio pendente pede confirmação.
+  prova: uploads-e2e, U5: 'fechar a aba com envio pendente pede confirmação'
+- [x] Hash de 300 MB não trava a tela.
+  prova: uploads-e2e, U6: 238 fps durante o hash, atraso máximo de 54 ms, clique em 26 ms, e o sha256 bate no navegador, no banco e no storage
+- Também passaram os roteiros r1-stitch-e2e (15/0) e r1-audit-e2e (66/0).
 
 **Tarefa**
-- [ ] Ligar a tarefa Em andamento ao card Aguardando aprovação leva a tarefa para Em teste na hora. Aprovar leva para Concluído, e o board de quem está com a empresa aberta atualiza ao vivo.
-- [ ] O histórico da tarefa mostra quem aprovou "pela ala Marketing".
-- [ ] O freelancer sem empresa vê o nome da tarefa no card e não tem link.
-- [ ] Uma tarefa apagada no Nevo some do card sem erro.
-- [ ] Falha ao mover aparece no card com "Tentar de novo".
+- [x] Ligar a tarefa Em andamento ao card Aguardando aprovação leva a tarefa para Em teste na hora. Aprovar leva para Concluído, e o board de quem está com a empresa aberta atualiza ao vivo.
+  prova: tasks-e2e, 'banco: a tarefa foi para Em teste na hora (D6)', 'banco: a tarefa foi para Concluído' e 'o board do Nicolas (outra página, sem recarregar) leva a tarefa para Concluído'
+- [x] O histórico da tarefa mostra quem aprovou "pela ala Marketing".
+  prova: tasks-e2e, 'painel da tarefa: "Letícia moveu de Em teste para Concluído pela ala Marketing"'
+- [x] O freelancer sem empresa vê o nome da tarefa no card e não tem link.
+  prova: tasks-e2e, 'vê título, status e empresa' e 'nenhum link para o board'
+- [x] Uma tarefa apagada no Nevo some do card sem erro.
+  prova: tasks-e2e, 'a tarefa apagada some do card e a outra fica' e 'sem erro na tela'
+- [x] Falha ao mover aparece no card com "Tentar de novo".
+  prova: tasks-e2e, 'o card mostra a falha com "Tentar de novo"' e '"Tentar de novo" move a tarefa e o aviso some'
+- Testes de unidade que também passaram: marketing-task-sync (o mapa da D6) e marketing-tasks.
 
 **Convite**
-- [ ] O Admin marca 3 colegas na aba "Do Nevo" e todos entram com o papel escolhido e recebem o aviso.
-- [ ] `userId` fora do conjunto de candidatos dá 403.
+- [x] O Admin marca 3 colegas na aba "Do Nevo" e todos entram com o papel escolhido e recebem o aviso.
+  prova: settings-e2e, pela tela: 'a escolha sobrevive à busca (3 escolhidas)', 'no banco: os 3 com o papel e o rótulo escolhidos na tela' e 'o sino da Ana mostra o aviso "Você entrou na ala Marketing"'
+- [x] `userId` fora do conjunto de candidatos dá 403.
+  prova: settings-e2e, 'userId de fora (Sentia) e id inventado dão o mesmo 403' e 'lote com um de fora não inclui ninguém (tudo ou nada)'
 
 **UTM e QR**
-- [ ] Criar uma UTM gera o QR junto, visível no topo do painel e na lista.
-- [ ] A URL com UTM avisa que não conta clique.
-- [ ] O QR da ala aparece na tela QR Codes com o selo, só leitura.
+- [x] Criar uma UTM gera o QR junto, visível no topo do painel e na lista.
+  prova: utm-e2e, 'R1 withQr cria a UTM já com QR ativo', 'QR criado junto e desenhado no topo do painel' e 'lista mostra a miniatura do QR', em 1440 e 375
+- [x] A URL com UTM avisa que não conta clique.
+  prova: utm-e2e, 'aviso exato na URL com UTM' e 'gerador fala "URL com UTM" e avisa que ela não conta clique'
+- [x] O QR da ala aparece na tela QR Codes com o selo, só leitura.
+  prova: utm-e2e, 'QR Codes: o QR da ala tem o selo "Ala Marketing"', 'QR Codes: o QR da ala é só leitura, mesmo para quem criou' e 'R1 o criador (membro da empresa) leva 403 com a frase "edite pela ala"'
 
 **Campos**
 - [x] Nenhum `<select>` nativo na ala sem comentário de motivo.
+  prova: selects-e2e, 'nenhum <select> sem o comentário de motivo' (zero nativos)
 - [x] Quando a API recusa, o campo volta ao valor anterior.
+  prova: selects-e2e, parte d: Tipo do card, Situação do parceiro e da ativação e Cor da empresa voltam ao valor gravado, com o banco intacto
 
 **Gaps**
-- [ ] Export e resumo do financeiro acima do teto dão uma mensagem clara.
-- [ ] Ativações acima de 500 paginam.
-- [ ] O painel inicial faz uma requisição a menos.
+- [x] Export e resumo do financeiro acima do teto dão uma mensagem clara.
+  prova: finance-e2e, 'Excel do mês acima do teto: 400 com a frase', 'PDF do mês acima do teto', 'Excel do ano acima do teto' e 'tela: clicar em Excel mostra a frase do teto no aviso'. O resumo foi atendido de outro jeito: não tem teto, porque soma no banco e sai exato ('resumo do mês: 5.001 lançamentos, pago e previsto exatos'); a lista corta em 2.000 e diz que cortou.
+- [x] Ativações acima de 500 paginam.
+  prova: events-e2e, 'primeira página: 50 itens e um cursor', 'percorrendo as páginas nenhuma ativação repete' (565 itens) e '"Carregar mais" traz mais 50', em 1440 e 375
+- [x] O painel inicial faz uma requisição a menos.
+  prova: marketing-shot, 'painel: uma chamada ao /home e nenhuma à lista de cards'
 
 **Produção**
-- [ ] Sem a migration R1, a API sobe e a ala existente funciona. Acervo e tarefa respondem "indisponível", sem 500 em tela.
+- [x] Sem a migration R1, a API sobe e a ala existente funciona. Acervo e tarefa respondem "indisponível", sem 500 em tela.
+  prova:
+  - library-e2e, 'sem as tabelas da R1, toda rota do Acervo responde 503 com a frase amigável (nunca 500)' e 'a tela mostra "O Acervo ainda não está disponível"';
+  - tasks-e2e, as 6 checagens 'sem migration';
+  - prova à mão em 07/11: a API subiu do zero sem as 4 tabelas da R1, 18 rotas da ala responderam 200, Acervo e tarefa responderam 503 e 5 telas abriram sem nenhuma resposta 500. Prints em `scripts/harness/prints/marketing-r1-conferencia/`.
 
 ## Riscos
 
@@ -210,3 +245,4 @@ Todas as rotas ficam em `/marketing/groups/:groupId/...`, atrás do `MarketingAc
 | 2026-11-06 | 0.1 | Spec da rodada a partir do uso real do Nicolas em produção; schema e migration congelados antes dos agentes |
 | 2026-11-06 | 0.2 | Auditoria do front (30 achados): repetido vira pergunta da fila (não trava ao sair da tela), cancelar e tentar de novo sem duplicar, falha do item do Acervo vira erro com retomada só do passo, subpasta base fixa, logout limpa a fila, zip por download nativo (`POST library/zip/ticket` + `GET library/zip/:token`), "Mandar para o acervo" só para a marca do arquivo ou a Geral, `GET utm/:id`. Roteiro `marketing-r1-audit-e2e.cjs` |
 | 2026-11-06 | 0.3 | P5 (R1-E): os 62 `<select>` da ala viraram `AppSelect` (`select-items.ts`, `useSavedSelect`); Tipo e Responsável do card, Situação da ativação e do parceiro e Cor da empresa voltam ao valor gravado quando a API recusa. Nativo só o `<datalist>` de forma de pagamento, com motivo. Roteiro `marketing-selects-e2e.cjs` e helper `app-select.cjs` nos roteiros antigos |
+| 2026-11-07 | 0.4 | Conferência dos critérios de aceite, um por um, no banco novo `wf_r1ac`, com a API na 3671 (build à parte), o Vite na 5271 e um storage falso só da conferência na 54339. Resultados: library 94/0, uploads 82/0 (com o U6 de 300 MB), tasks 89/0, r1-audit 66/0, r1-stitch 15/0, utm 200/0, settings 108/0, finance 188/0, events 245/0, selects 131/0 e marketing-shot 39/0. Passaram também 466 testes de unidade (tarefas, grupo, Acervo, UTM, financeiro, ativações, painel e QR). O critério "Produção" ganhou a prova à mão: a API sobe sem as 4 tabelas. O passo "Aprovado para Agendado" do tasks-e2e agora agenda pelo "Agendar publicação", porque desde a R2 o `/move` para Agendado dá 409. Todos os critérios atendidos; status Concluído |

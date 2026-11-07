@@ -1,5 +1,6 @@
 import api from '../api'
 import { mkt } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 
 /**
  * Cliente das Ideias e trends da ala Marketing (spec
@@ -108,6 +109,10 @@ export async function archiveIdea(groupId: string, ideaId: string, archived: boo
   return data
 }
 
+/** Manda para a lixeira (R2, C6): `trashed` serve ao "Desfazer". */
 export async function deleteIdea(groupId: string, ideaId: string) {
-  await api.delete(mkt(groupId, `/ideas/${encodeURIComponent(ideaId)}`))
+  const { data } = await api.delete<{ ok: boolean; trashed?: TrashedRef }>(
+    mkt(groupId, `/ideas/${encodeURIComponent(ideaId)}`),
+  )
+  return data
 }

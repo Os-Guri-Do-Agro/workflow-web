@@ -1,5 +1,6 @@
 import api from '../api'
 import { mkt, type MarketingAsset } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 import type { CardKind, CardNetwork, CardStatus } from '@/features/marketing/marketing-labels'
 
 /**
@@ -259,8 +260,9 @@ export async function archiveCard(groupId: string, cardId: string, archived: boo
   return data
 }
 
+/** Manda o card para a lixeira (R2, C6): `trashed` serve ao "Desfazer". */
 export async function deleteCard(groupId: string, cardId: string) {
-  const { data } = await api.delete<{ ok: boolean; removedFiles: number }>(card(groupId, cardId))
+  const { data } = await api.delete<{ ok: boolean; trashed?: TrashedRef }>(card(groupId, cardId))
   return data
 }
 

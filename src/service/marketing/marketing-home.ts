@@ -1,6 +1,8 @@
 import api from '../api'
 import { mkt } from './marketing-core'
 import type { CalendarCard } from './marketing-calendar-api'
+import type { CadenceStatus, CadenceWeek } from './marketing-notify'
+import type { AppDataHome } from './marketing-app-data'
 import type { CardStatus } from '@/features/marketing/marketing-labels'
 
 /** Cliente do Painel inicial da ala (M1-B). */
@@ -41,6 +43,16 @@ export interface MarketingHome {
     digital: Partial<Record<CardStatus, number>>
     print: Partial<Record<CardStatus, number>>
   }
+  /**
+   * R2 (C4): "Cadência da semana" das metas ativas das marcas visíveis, na
+   * mesma resposta. Ausente em API antiga (aí a faixa não aparece).
+   */
+  cadence?: { week: CadenceWeek | null; items: CadenceStatus[] }
+  /**
+   * R2 (B, M4): indicadores do app (7 dias) na mesma resposta. `null` ou
+   * ausente (API antiga, falha na leitura): o bloco não aparece.
+   */
+  app?: AppDataHome | null
   recent: HomeActivity[]
 }
 

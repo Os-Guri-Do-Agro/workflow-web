@@ -1,5 +1,6 @@
 import api from '../api'
 import { mkt, type MarketingAsset } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 
 /**
  * Cliente das Ativações (M3-B). Rotas em `/marketing/g/:groupId/activations`.
@@ -170,8 +171,12 @@ export async function updateActivation(groupId: string, id: string, input: Activ
   return data
 }
 
+/** Manda para a lixeira (R2, C6): `trashed` serve ao "Desfazer". */
 export async function deleteActivation(groupId: string, id: string) {
-  await api.delete(mkt(groupId, `/activations/${encodeURIComponent(id)}`))
+  const { data } = await api.delete<{ ok: boolean; trashed?: TrashedRef }>(
+    mkt(groupId, `/activations/${encodeURIComponent(id)}`),
+  )
+  return data
 }
 
 export async function addChecklistItem(groupId: string, id: string, text: string) {

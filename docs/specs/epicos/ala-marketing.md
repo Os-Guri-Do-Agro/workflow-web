@@ -1,6 +1,10 @@
 # Épico: Ala Marketing (começando pela PetJourney)
 
-**Status:** M1 a M3 e a rodada R1 em produção (06/11/2026). Rodada R2 em implementação: publicação nas redes, M4 (dados do app) e a M5 possível sem conta paga ([r2-publicacao-dados-avisos](../2026/q4/q4-2/ala-marketing/r2-publicacao-dados-avisos.md)). Specs filhas em `docs/specs/2026/q4/q4-2/ala-marketing/`.
+**Status:**
+- M1 a M3 e a rodada R1 em produção desde 06/11/2026; a R1 foi conferida critério por critério em 07/11.
+- Rodada R2 concluída em 07/11/2026 ([r2-publicacao-dados-avisos](../2026/q4/q4-2/ala-marketing/r2-publicacao-dados-avisos.md)). Ela entrega a publicação nas redes, a M4 (dados do app) e a M5 possível sem conta paga.
+- O uso real da R2 depende das chaves das redes e do release da PetJourney.
+- Specs filhas em `docs/specs/2026/q4/q4-2/ala-marketing/`.
 **Autor:** Nicolas (via spec-driven, modo 1)
 **Criado em:** 2026-11-05
 **Última atualização:** 2026-11-05
@@ -137,3 +141,4 @@ Estimativa grosseira: a M1 leva de 1 a 2 semanas de trabalho focado, a M2 e a M3
 | 2026-11-06 | 0.3 | M1 a M3 em produção. Rodada R1 aberta a partir do uso real: Acervo, motor de envio, tarefa do Nevo ligada ao card, convite "Do Nevo", UTM e QR, gaps da auditoria ([r1-acervo-tarefas-convite](../2026/q4/q4-2/ala-marketing/r1-acervo-tarefas-convite.md)) | Nicolas e orquestrador |
 | 2026-11-06 | 0.2 | Decisões do Nicolas (Visualizador vê o financeiro; freelancer só com papel na ala; arquivo no máximo do storage; ala de um GRUPO de empresas com o cargo Dono). Fundação + M1 a M3 implementadas por 6 agentes em paralelo, juntadas e auditadas | Orquestrador |
 | 2026-11-06 | 0.4 | R1 fechada (AppSelect em e840eb3). Rodada R2 aberta: publicação nas redes (Instagram, Facebook, YouTube, LinkedIn; TikTok em rascunho), resultados do post e de anúncio da Meta, M4 inteira, push e e-mail dos avisos, meta de cadência, prévia do feed, lixeira. Fora: WhatsApp (custo), anúncios do TikTok (outra aprovação), X (API paga). Schema `20261108120000_ala_marketing_r2` aplicado em produção | Orquestrador |
+| 2026-11-07 | 0.5 | R2 concluída e conferida, depois de auditoria cruzada em duas voltas e regressão final com 21 roteiros da ala e 5 de fora. Migration nova `20261108130000_ala_marketing_r2_expense_source`. R1 com todos os critérios provados. PetJourney (M4) no `develop`; o release para produção é do Nicolas | Orquestrador |

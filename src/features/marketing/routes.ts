@@ -24,12 +24,17 @@ export const marketingRoutes: RouteRecordRaw[] = [
       { path: 'campanhas', name: 'marketing-campaigns', component: () => import('./views/MarketingCampaignsView.vue') },
       { path: 'utm', name: 'marketing-utm', component: () => import('./views/MarketingUtmView.vue') },
       { path: 'grafica', name: 'marketing-print', component: () => import('./views/MarketingPrintView.vue') },
+      // R2 (B, M4): Dados do app (qualquer papel vê).
+      { path: 'dados', name: 'marketing-app-data', component: () => import('./views/MarketingAppDataView.vue') },
       { path: 'ativacoes', name: 'marketing-activations', component: () => import('./views/MarketingActivationsView.vue') },
       { path: 'parceiros', name: 'marketing-partners', component: () => import('./views/MarketingPartnersView.vue') },
       { path: 'financeiro', name: 'marketing-finance', component: () => import('./views/MarketingFinanceView.vue') },
       { path: 'configuracoes', name: 'marketing-settings', component: () => import('./views/MarketingSettingsView.vue') },
       // R1: Acervo (biblioteca de mídia por marca e Geral do grupo).
       { path: 'acervo', name: 'marketing-library', component: () => import('./views/MarketingLibraryView.vue') },
+      // R2 (C): Lixeira (Editor+) e Meus avisos (qualquer papel; link dos e-mails da ala).
+      { path: 'lixeira', name: 'marketing-trash', component: () => import('./views/MarketingTrashView.vue') },
+      { path: 'avisos', name: 'marketing-notify', component: () => import('./views/MarketingNotifyView.vue') },
     ],
   },
 ]

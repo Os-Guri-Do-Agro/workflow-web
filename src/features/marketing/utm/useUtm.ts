@@ -1,5 +1,5 @@
 import { useMediaQuery } from '@vueuse/core'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 import { hasSession } from '@/composables/useSession'
 import { qrKeys } from '@/composables/useQrCodes'
@@ -10,6 +10,7 @@ import {
   findUtmById,
   getUtmMetrics,
   getUtmOptions,
+  listUtmPage,
   listUtms,
   setUtmActive,
   updateUtm,
@@ -32,6 +33,21 @@ export const utmKeys = {
 
 /** Largura em que a lista e o painel cabem lado a lado (a moldura do app já tira 248px). */
 export const useWideViewport = () => useMediaQuery('(min-width: 1280px)')
+
+/**
+ * A lista da tela em páginas de 200 com "Carregar mais" (R2, C7: acima de
+ * 500 a lista antiga cortava calada). O total com o filtro vem em toda página.
+ */
+export function useUtmPages(groupId: MaybeRefOrGetter<string | null>, filters: MaybeRefOrGetter<UtmFilters>) {
+  return useInfiniteQuery({
+    queryKey: computed(() => ['marketing', toValue(groupId) ?? '-', 'utm', 'page', toValue(filters)] as const),
+    queryFn: ({ pageParam }) => listUtmPage(toValue(groupId)!, toValue(filters), pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    enabled: computed(() => hasSession.value && !!toValue(groupId)),
+    staleTime: 15_000,
+  })
+}
 
 export function useUtmList(groupId: MaybeRefOrGetter<string | null>, filters: MaybeRefOrGetter<UtmFilters>) {
   return useQuery({

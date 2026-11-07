@@ -28,6 +28,7 @@ import { quoteFileTarget } from '../uploads/upload-targets'
 import { itemPercent } from '../uploads/upload-format'
 import { formatBytes, formatCents, parseMoneyToCents } from '../marketing-labels'
 import { todaySp } from '../calendar/calendar-time'
+import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
 import FormDialog from '../events/FormDialog.vue'
 import { asText, selectItems } from '../select-items'
 import { usePartnersList } from '../partners/usePartners'
@@ -51,6 +52,7 @@ const props = defineProps<{
 const mk = useMarketing()
 const qc = useQueryClient()
 const { success, error: toastError } = useToast()
+const trashUndo = useTrashUndo()
 const { me } = useCurrentUser()
 
 const filters = computed(() => ({
@@ -248,17 +250,19 @@ const removeOpen = computed({
 })
 const removeMutation = useMutation({
   mutationFn: () => deleteQuote(props.groupId, removeTarget.value!.id),
-  onSuccess: () => {
+  onSuccess: (res) => {
+    const name = removeTarget.value?.description ?? ''
     removeTarget.value = null
-    success('Orçamento apagado.')
+    // R2 (C6): foi para a lixeira, com "Desfazer".
+    trashUndo.announce(res?.trashed, `O orçamento "${name}"`, { groupId: props.groupId })
     refresh()
   },
-  onError: (error) => fail(error, 'Não foi possível apagar o orçamento.'),
+  onError: (error) => fail(error, 'Não foi possível mandar o orçamento para a lixeira.'),
 })
 
 const removeMessage = computed(
   () =>
-    `O orçamento "${removeTarget.value?.description ?? ''}" e os arquivos dele saem do sistema. Lançamentos já criados no financeiro continuam lá.`,
+    `${trashConfirmMessage(`O orçamento "${removeTarget.value?.description ?? ''}", com os arquivos dele,`)} Lançamentos já criados no financeiro continuam lá.`,
 )
 
 const fileRemove = ref<{ quote: Quote; assetId: string; name: string } | null>(null)
@@ -490,8 +494,8 @@ function linkOf(q: Quote) {
               v-if="canDeleteQuote(q)"
               type="button"
               class="mk-icon-btn"
-              aria-label="Apagar orçamento"
-              title="Apagar"
+              aria-label="Mandar o orçamento para a lixeira"
+              title="Mandar para a lixeira"
               @click="removeTarget = q"
             >
               <Trash2 :size="15" aria-hidden="true" />
@@ -577,9 +581,9 @@ function linkOf(q: Quote) {
 
     <ConfirmDialog
       v-model="removeOpen"
-      title="Apagar este orçamento?"
+      title="Mandar este orçamento para a lixeira?"
       :message="removeMessage"
-      confirm-label="Apagar"
+      :confirm-label="TRASH_CONFIRM_LABEL"
       danger
       :loading="removeMutation.isPending.value"
       @confirm="removeMutation.mutate()"

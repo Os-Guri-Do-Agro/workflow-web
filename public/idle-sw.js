@@ -46,10 +46,16 @@ self.addEventListener('push', (event) => {
     icon: '/brand/marca.png',
     badge: '/brand/marca.png',
     tag: payload.tag || 'nevo-push',
+    // Mesma `tag` substitui a notificação em silêncio; com `renotify` (aviso da
+    // ala, R2) a nova toca e aparece de novo. Sempre há `tag` aqui, que é o que
+    // o navegador exige para aceitar o `renotify`.
+    renotify: payload.renotify === true,
     // `kind` é o que distingue aviso real de teste no roteamento das ações; sem
     // ele o clique num teste poderia mexer no timer de verdade.
     data: { kind: payload.kind || 'unknown', ...(payload.data || {}) },
-    requireInteraction: true,
+    // Aviso da ala Marketing (R2) some sozinho como uma notificação comum; o do
+    // timer continua pedindo ação.
+    requireInteraction: payload.kind !== 'marketing',
     actions: payload.actions || [],
   }
 
@@ -64,12 +70,72 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(routeAction(action, data))
 })
 
+/**
+ * Só caminho do próprio Nevo: começa com UMA barra (`//outro.site` e `/\outro`
+ * levariam para fora) e, resolvido, fica na mesma origem. Devolve o caminho
+ * limpo, ou null.
+ */
+function appPath(url) {
+  if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) return null
+  try {
+    const parsed = new URL(url, self.location.origin)
+    if (parsed.origin !== self.location.origin) return null
+    return parsed.pathname + parsed.search + parsed.hash
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Pede para a aba aberta trocar de tela pelo roteador (sem recarregar o app).
+ * O app responde pelo canal; aba de uma versão anterior (sem o ouvinte) não
+ * responde, e aí quem chama navega a janela.
+ */
+function askAppToOpen(client, path) {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel()
+    const timer = setTimeout(() => resolve(false), 1500)
+    channel.port1.onmessage = () => {
+      clearTimeout(timer)
+      resolve(true)
+    }
+    try {
+      client.postMessage({ type: 'nevo-open-url', url: path }, [channel.port2])
+    } catch {
+      clearTimeout(timer)
+      resolve(false)
+    }
+  })
+}
+
 async function routeAction(action, data) {
   const windows = await self.clients.matchAll({
     type: 'window',
     includeUncontrolled: true,
   })
   const target = windows.find((client) => 'focus' in client)
+
+  // Aviso com destino (ala Marketing, R2 C1): o clique abre o link do aviso
+  // (`/marketing/...?grupo=`). Com o Nevo aberto, a aba troca de tela pelo
+  // roteador (antes recarregava o app inteiro); sem aba aberta, abre uma.
+  const path = action === 'open' ? appPath(data.url) : null
+  if (path) {
+    const href = new URL(path, self.location.origin).href
+    if (target) {
+      await target.focus()
+      if (await askAppToOpen(target, path)) return
+      try {
+        if ('navigate' in target) {
+          await target.navigate(href)
+          return
+        }
+      } catch {
+        // Janela de fora do controle do worker: abre outra.
+      }
+    }
+    await self.clients.openWindow(href)
+    return
+  }
 
   if (target) {
     await target.focus()

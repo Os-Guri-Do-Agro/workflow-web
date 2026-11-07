@@ -1,5 +1,6 @@
 import api from '../api'
 import { mkt } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 
 /**
  * Cliente das Campanhas da ala Marketing (spec
@@ -211,8 +212,10 @@ export async function listLinkableCards(groupId: string, campaignId: string, q =
   return data
 }
 
+/** Manda para a lixeira (R2, C6): `trashed` serve ao "Desfazer". */
 export async function deleteCampaign(groupId: string, campaignId: string) {
-  await api.delete(base(groupId, `/${enc(campaignId)}`))
+  const { data } = await api.delete<{ ok: boolean; trashed?: TrashedRef }>(base(groupId, `/${enc(campaignId)}`))
+  return data
 }
 
 export async function listCampaignCalendar(

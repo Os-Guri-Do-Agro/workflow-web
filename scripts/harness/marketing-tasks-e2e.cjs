@@ -385,8 +385,11 @@ const itemText = (page) => section(page).locator('.mct__item').allInnerTexts().c
     await api(tok.nicolas, 'PATCH', `/activity/${T6}/move`, { status: 'IN_PROGRESS', position: 0 }, { 'x-company-id': C.pet })
     const publishAt = new Date(Date.now() + 5 * 864e5).toISOString()
     await api(tok.marcel, 'PATCH', `/cards/${CC}`, { publishAt })
-    const sch = await api(tok.marcel, 'POST', `/cards/${CC}/move`, { status: 'SCHEDULED' })
-    check('legenda', sch.status === 200 && (await status(T6)) === 'IN_PROGRESS', 'Aprovado para Agendado não atropela a tarefa reaberta no board', `${sch.status} / ${await status(T6)}`)
+    // Desde a R2, Agendado só pelo "Agendar publicação" (o /move dá 409); o agendar
+    // também chama a sincronia da tarefa (Aprovado para Agendado, mesma faixa do mapa).
+    const sch = await api(tok.marcel, 'POST', `/cards/${CC}/publications`, { items: [{ network: 'INSTAGRAM', mode: 'MANUAL' }] })
+    const schCard = await api(tok.marcel, 'GET', `/cards/${CC}`)
+    check('legenda', sch.status < 300 && schCard.data?.status === 'SCHEDULED' && (await status(T6)) === 'IN_PROGRESS', 'Aprovado para Agendado (pelo Agendar publicação) não atropela a tarefa reaberta no board', `${sch.status} ${schCard.data?.status} / ${await status(T6)}`)
 
     // ════════════════════════════════════════════════════════════════════
     // 7. Falha ao mover: aparece no card com "Tentar de novo"

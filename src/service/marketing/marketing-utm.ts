@@ -1,6 +1,7 @@
 import axios from 'axios'
 import api from '../api'
 import { mkt } from './marketing-core'
+import type { TrashedRef } from './marketing-trash'
 
 /**
  * Cliente da M2-A: UTMs e QR (spec m2-rastreio-estrategia.md). Uma UTM da ala é
@@ -99,6 +100,21 @@ export async function listUtms(groupId: string, filters: UtmFilters = {}) {
   return data
 }
 
+/** Página da lista (R2, C7): acima de 500 UTMs a tela pagina pelo cursor. */
+export interface UtmPage {
+  items: MarketingUtm[]
+  nextCursor: string | null
+  /** Quantas casam com o filtro (todas as páginas) */
+  total: number
+}
+
+export async function listUtmPage(groupId: string, filters: UtmFilters, cursor: string | null, limit = 200) {
+  const { data } = await api.get<UtmPage>(mkt(groupId, '/utm/page'), {
+    params: { ...filters, limit: String(limit), ...(cursor ? { cursor } : {}) },
+  })
+  return data
+}
+
 export async function getUtmOptions(groupId: string) {
   const { data } = await api.get<UtmOptions>(mkt(groupId, '/utm/options'))
   return data
@@ -129,8 +145,12 @@ export async function createUtmQr(groupId: string, utmId: string, style?: Record
   return data
 }
 
+/** Manda para a lixeira (R2, C6): o link e o QR param de redirecionar; `trashed` serve ao "Desfazer". */
 export async function deleteUtm(groupId: string, utmId: string) {
-  await api.delete(mkt(groupId, `/utm/${encodeURIComponent(utmId)}`))
+  const { data } = await api.delete<{ ok: boolean; trashed?: TrashedRef }>(
+    mkt(groupId, `/utm/${encodeURIComponent(utmId)}`),
+  )
+  return data
 }
 
 /**

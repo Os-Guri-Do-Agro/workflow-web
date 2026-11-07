@@ -247,8 +247,8 @@ const colorSpace = computed(() => formatColorSpace(it.value.asset.colorSpace))
         v-if="it.me.canDelete"
         type="button"
         class="mk-icon-btn ldt__danger"
-        aria-label="Apagar do Acervo"
-        title="Apagar do Acervo"
+        aria-label="Mandar para a lixeira"
+        title="Mandar para a lixeira"
         data-action="delete-one"
         @click="emit('remove', it)"
       >

@@ -46,6 +46,8 @@ import { useAssistant } from '@/composables/useAssistant'
 import { useOnboarding } from '@/composables/useOnboarding'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 import { isNavHidden } from '@/config/nav-visibility'
+import { useMarketing } from '@/features/marketing/composables/useMarketing'
+import { visibleSections } from '@/features/marketing/marketing-nav'
 
 const router = useRouter()
 const activeCompanyStore = useActiveCompanyId()
@@ -208,6 +210,27 @@ const companyCommands = computed<Command[]>(() =>
 
 const allCommands = computed(() => [...staticCommands.value, ...companyCommands.value])
 
+// ─── Ala Marketing ──────────────────────────────────────────────────────────
+// As seções do grupo ativo saem da MESMA lista das abas e dos atalhos do
+// cabeçalho (`marketing-nav.ts`, com papel e financeiro): Lixeira e
+// Configurações, que estão no cabeçalho, seguem achadas aqui. Só na busca (e
+// nos recentes): a paleta vazia continua a de sempre.
+const marketing = useMarketing()
+const marketingCommands = computed<Command[]>(() =>
+  marketing.hasAccess.value
+    ? visibleSections(marketing.group.value).map((s) => ({
+        id: `mkt-${s.key}`,
+        label: s.title,
+        hint: 'Ala Marketing',
+        icon: s.icon,
+        section: 'Marketing',
+        keywords: `marketing ${s.group}`,
+        action: () => go(s.path),
+      }))
+    : [],
+)
+const searchableCommands = computed(() => [...allCommands.value, ...marketingCommands.value])
+
 const workspaceCommands = computed<Command[]>(() =>
   workspaceHits.value.map((hit) => ({
     id: `workspace-${hit.entityType}-${hit.entityId}`,
@@ -249,7 +272,7 @@ const filtered = computed(() => {
   const q = query.value.trim()
   if (!q) return allCommands.value
   const scored: { cmd: Command; score: number }[] = []
-  for (const cmd of allCommands.value) {
+  for (const cmd of searchableCommands.value) {
     const target = `${cmd.label} ${cmd.hint || ''} ${cmd.keywords || ''} ${cmd.section}`
     const s = fuzzyScore(target, q)
     if (s !== null) scored.push({ cmd, score: s })
@@ -264,7 +287,7 @@ const groups = computed(() => {
   if (taskCommands.value.length) groupsMap.set('Tarefas', taskCommands.value)
   if (!q && recentIds.value.length) {
     const recents = recentIds.value
-      .map((id) => allCommands.value.find((c) => c.id === id))
+      .map((id) => searchableCommands.value.find((c) => c.id === id))
       .filter((x): x is Command => !!x)
     if (recents.length) groupsMap.set('Recentes', recents)
   }

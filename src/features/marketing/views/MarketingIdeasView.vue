@@ -17,6 +17,7 @@ import IdeaDialog from '../ideas/IdeaDialog.vue'
 import IdeaTile from '../ideas/IdeaTile.vue'
 import { IDEA_KIND_LABEL, IDEA_KIND_PLURAL, referenceDomain } from '../ideas/idea-labels'
 import { useIdeaActions, useIdeaFilters, useIdeasQuery, type IdeaStatusTab } from '../ideas/useIdeas'
+import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
 
 /**
  * Ideias e trends (spec m2-rastreio-estrategia.md, "M2-B: Ideias e trends").
@@ -26,6 +27,7 @@ import { useIdeaActions, useIdeaFilters, useIdeasQuery, type IdeaStatusTab } fro
 const router = useRouter()
 const mk = useMarketing()
 const { success, error: showError } = useToast()
+const trashUndo = useTrashUndo()
 
 const filters = useIdeaFilters(() => mk.brandFilter.value)
 const query = useIdeasQuery(mk.groupId, filters.apiFilters)
@@ -124,11 +126,12 @@ async function confirmDelete() {
   const idea = toDelete.value
   if (!idea) return
   try {
-    await actions.remove.mutateAsync(idea.id)
+    const res = await actions.remove.mutateAsync(idea.id)
     toDelete.value = null
-    success('Ideia apagada.')
+    // R2 (C6): foi para a lixeira, com "Desfazer".
+    trashUndo.announce(res?.trashed, `A ideia "${idea.title}"`)
   } catch (error) {
-    showError(getApiErrorMessage(error, 'Não foi possível apagar.'))
+    showError(getApiErrorMessage(error, 'Não foi possível mandar para a lixeira.'))
   }
 }
 
@@ -360,9 +363,9 @@ const emptyText = computed(() => {
 
     <ConfirmDialog
       v-model="confirmOpen"
-      title="Apagar esta ideia?"
-      :message="`&quot;${toDelete?.title ?? ''}&quot; e as curtidas dela serão apagadas. Um post que já saiu dela continua existindo.`"
-      confirm-label="Apagar"
+      title="Mandar esta ideia para a lixeira?"
+      :message="`${trashConfirmMessage(`&quot;${toDelete?.title ?? ''}&quot;`)} Um post que já saiu dela continua existindo.`"
+      :confirm-label="TRASH_CONFIRM_LABEL"
       danger
       :loading="actions.remove.isPending.value"
       @confirm="confirmDelete"
