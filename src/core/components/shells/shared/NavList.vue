@@ -8,6 +8,7 @@ import {
   ListTodo,
   KeyRound,
   StickyNote,
+  CalendarClock,
   CalendarDays,
   Timer,
   Users,
@@ -161,6 +162,7 @@ const personalItems = computed<NavItem[]>(() => (<NavItem[]>[
   { title: 'Meu tempo', icon: Timer, to: '/time', section: 'Pessoal' },
   { title: 'Notas', icon: StickyNote, to: '/notes', section: 'Pessoal' },
   { title: 'Calendário', icon: CalendarDays, to: '/calendar', section: 'Pessoal' },
+  { title: 'Agendamentos', icon: CalendarClock, to: '/agendamentos', section: 'Pessoal' },
 ]).filter((i) => !isNavHidden(i.to)))
 
 const workItems = computed<NavItem[]>(() => {

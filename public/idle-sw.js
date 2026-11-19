@@ -53,9 +53,9 @@ self.addEventListener('push', (event) => {
     // `kind` é o que distingue aviso real de teste no roteamento das ações; sem
     // ele o clique num teste poderia mexer no timer de verdade.
     data: { kind: payload.kind || 'unknown', ...(payload.data || {}) },
-    // Aviso da ala Marketing (R2) some sozinho como uma notificação comum; o do
-    // timer continua pedindo ação.
-    requireInteraction: payload.kind !== 'marketing',
+    // Aviso da ala Marketing (R2) e de reunião agendada somem sozinhos como uma
+    // notificação comum; o do timer continua pedindo ação.
+    requireInteraction: payload.kind !== 'marketing' && payload.kind !== 'booking',
     actions: payload.actions || [],
   }
 

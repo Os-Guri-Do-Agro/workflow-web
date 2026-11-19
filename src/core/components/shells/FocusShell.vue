@@ -8,6 +8,7 @@ import {
   KeyRound,
   Users,
   StickyNote,
+  CalendarClock,
   CalendarDays,
   Settings,
   ListTodo,
@@ -101,6 +102,7 @@ const railItems = computed<RailItem[]>(() => {
     { to: '/time', icon: Timer, label: 'Meu tempo', section: 'Pessoal' },
     { to: '/notes', icon: StickyNote, label: 'Notas', section: 'Pessoal' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendário', section: 'Pessoal' },
+    { to: '/agendamentos', icon: CalendarClock, label: 'Agendamentos', section: 'Pessoal' },
     // Empresa: recursos e administração da empresa.
     { to: '/drive', icon: HardDrive, label: 'Drive', section: 'Empresa' },
     { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER', section: 'Empresa' },

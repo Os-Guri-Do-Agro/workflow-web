@@ -174,6 +174,9 @@ const BARE_ROUTES = new Set([
   'public-board',
   'public-roadmap',
   'public-note',
+  'public-booking',
+  'public-booking-event',
+  'public-booking-manage',
 ])
 
 /**

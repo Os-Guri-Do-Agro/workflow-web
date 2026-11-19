@@ -7,6 +7,7 @@ import {
   Milestone,
   KeyRound,
   StickyNote,
+  CalendarClock,
   CalendarDays,
   Sparkles,
   Plus,
@@ -91,6 +92,7 @@ const tabGroups = computed<TabGroup[]>(() => {
         { to: '/time', icon: Timer, label: 'Meu tempo' },
         { to: '/notes', icon: StickyNote, label: 'Notas' },
         { to: '/calendar', icon: CalendarDays, label: 'Calendário' },
+        { to: '/agendamentos', icon: CalendarClock, label: 'Agendamentos' },
       ],
     },
     {

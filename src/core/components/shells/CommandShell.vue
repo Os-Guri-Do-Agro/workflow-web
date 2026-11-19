@@ -99,6 +99,7 @@ function plainCrumbs(path: string): string[] {
     '/links': 'Encurtador',
     '/ocr': 'OCR Digital',
     '/public-access': 'Acessos Públicos',
+    '/agendamentos': 'Agendamentos',
   }
   if (routes[path]) return [routes[path]]
   if (path.startsWith('/relatorio/')) return ['Tarefas', 'Relatório']

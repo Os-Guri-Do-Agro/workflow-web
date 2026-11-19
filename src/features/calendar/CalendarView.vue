@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowRight,
   Bell,
+  CalendarClock,
   CalendarDays,
   CheckSquare,
   ChevronLeft,
@@ -621,6 +622,14 @@ function isTodayColumn(date: Date): boolean {
           <Link2 v-else :size="13" />
           {{ googleConnected ? 'Google conectado' : 'Conectar Google' }}
         </button>
+        <RouterLink
+          class="btn-ghost press"
+          to="/agendamentos"
+          title="Sua página pública para outras pessoas marcarem reuniões com você"
+        >
+          <CalendarClock :size="13" />
+          Página de agendamento
+        </RouterLink>
         <button class="btn-ghost press" @click="goToToday">Hoje</button>
         <button class="btn-primary press" @click="openSelectedDayEventModal">
           <Plus :size="13" />
@@ -1036,6 +1045,10 @@ function isTodayColumn(date: Date): boolean {
 .btn-ghost {
   height: 34px;
   padding: 0 12px;
+}
+
+a.btn-ghost {
+  text-decoration: none;
 }
 
 .btn-ghost--ok {

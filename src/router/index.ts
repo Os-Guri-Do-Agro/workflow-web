@@ -167,6 +167,24 @@ const router = createRouter({
     { path: '/public/board/:token', name: 'public-board', component: () => import('@/features/public/PublicBoardView.vue') },
     { path: '/public/roadmap/:token', name: 'public-roadmap', component: () => import('@/features/public/PublicRoadmapView.vue') },
     { path: '/public/note/:token', name: 'public-note', component: () => import('@/features/public/PublicNoteView.vue') },
+    // Agendamento público estilo Calendly (spec: docs/specs/2026/q4/agendamento-publico.md).
+    // Sem login: é a página que clientes e parceiros recebem. `/reuniao/:token`
+    // é o link que vai DENTRO do convite do Google (remarcar/cancelar).
+    {
+      path: '/agendar/:slug',
+      name: 'public-booking',
+      component: () => import('@/features/booking/public/PublicBookingPageView.vue'),
+    },
+    {
+      path: '/agendar/:slug/:eventSlug',
+      name: 'public-booking-event',
+      component: () => import('@/features/booking/public/PublicBookingEventView.vue'),
+    },
+    {
+      path: '/reuniao/:token',
+      name: 'public-booking-manage',
+      component: () => import('@/features/booking/public/PublicBookingManageView.vue'),
+    },
     { path: '/', name: 'home', component: () => import('@/features/dashboard/DashboardView.vue') },
     { path: '/board', name: 'board', component: () => import('@/features/board/BoardView.vue') },
     { path: '/boards', name: 'boards', component: () => import('@/features/boards/BoardsListView.vue') },
@@ -175,6 +193,8 @@ const router = createRouter({
     { path: '/notes', name: 'notes', component: () => import('@/features/notes/NotesView.vue') },
     { path: '/notes/:id', name: 'note-editor', component: () => import('@/features/notes/NoteEditorView.vue') },
     { path: '/calendar', name: 'calendar', component: () => import('@/features/calendar/CalendarView.vue') },
+    // Configuração da página pública de agendamento (pessoal, não depende da empresa).
+    { path: '/agendamentos', name: 'booking', component: () => import('@/features/booking/BookingView.vue') },
     { path: '/time', name: 'time', component: () => import('@/features/time/TimeTrackingView.vue') },
     // Drive de arquivos (spec: docs/specs/2026/q3/q3-2/drive-p1-nativo.md).
     // Acesso por login; escopo pessoal/empresa é resolvido dentro da view.
@@ -239,6 +259,9 @@ const PUBLIC_ROUTES = new Set([
   'public-board',
   'public-roadmap',
   'public-note',
+  'public-booking',
+  'public-booking-event',
+  'public-booking-manage',
 ])
 
 

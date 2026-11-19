@@ -26,6 +26,7 @@ import {
   ListTodo,
   Timer,
   NotebookPen,
+  CalendarClock,
   Plus,
   CircleCheck,
   type LucideIcon,
@@ -166,6 +167,7 @@ const staticCommands = computed<Command[]>(() => [
   { id: 'nav-tasks', label: 'Tarefas do mês', hint: 'Board do mês da empresa ativa', icon: ListTodo, section: 'Navegação', keywords: 'tarefas mes kanban lista agenda', action: () => go(tasksMonthPath.value) },
   { id: 'nav-time', label: 'Meu tempo', hint: 'Timer e banco de horas', icon: Timer, section: 'Navegação', keywords: 'timer cronometro horas tempo banco', action: () => go('/time') },
   { id: 'nav-notes', label: 'Notas', hint: 'Documentação do time', icon: NotebookPen, section: 'Navegação', keywords: 'notas anotacoes documentos', action: () => go('/notes') },
+  { id: 'nav-booking', label: 'Agendamentos', hint: 'Sua página de agendamento (Google Meet)', icon: CalendarClock, section: 'Navegação', keywords: 'agenda agendar reuniao reunioes calendly meet link marcar horario disponibilidade', action: () => go('/agendamentos') },
   { id: 'act-new-task', label: 'Nova tarefa', hint: 'No mês atual da empresa ativa', icon: Plus, section: 'Ações', keywords: 'criar tarefa nova atividade', action: () => go(currentMonthId(navQuarters.value) ? `${tasksMonthPath.value}?new=1` : '/board') },
   { id: 'act-new-note', label: 'Nova nota', hint: 'Abrir o editor', icon: NotebookPen, section: 'Ações', keywords: 'criar nota nova anotacao', action: () => go('/notes/new') },
   ...(isNavHidden('/roadmap')

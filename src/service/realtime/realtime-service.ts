@@ -133,7 +133,14 @@ export interface MarketingChangedPayload {
   actorId: string
 }
 
+/** Reunião da página de agendamento marcada, remarcada ou cancelada. */
+export interface BookingChangedPayload {
+  id: string
+  kind?: 'new' | 'rescheduled' | 'canceled'
+}
+
 export interface RealtimeHandlers {
+  bookingChanged?: (payload: BookingChangedPayload) => void
   notificationNew?: (notification: AppNotification) => void
   marketingChanged?: (payload: MarketingChangedPayload) => void
   /** `notification:read` e `notification:cleared` (outras abas do mesmo usuário). */
@@ -206,6 +213,7 @@ function bindEvents(target: Socket) {
   fanout<AssistantDonePayload>(target, 'assistant:done', (h) => h.assistantDone)
   fanout<AssistantErrorPayload>(target, 'assistant:error', (h) => h.assistantError)
   fanout<MarketingChangedPayload>(target, 'marketing:changed', (h) => h.marketingChanged)
+  fanout<BookingChangedPayload>(target, 'booking:changed', (h) => h.bookingChanged)
 
   target.on('connect', () => {
     const isReconnect = hasConnectedOnce

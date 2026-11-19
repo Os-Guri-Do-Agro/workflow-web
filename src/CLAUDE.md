@@ -216,6 +216,7 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
 | **Notas** ★     | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | Redesenhada na P1 do épico de notas colaborativas. Autosave, pastas com CRUD e aninhamento, bubble/slash menu, modo imersivo. Sub-components em `features/notes/` |
 | Calendário      | [`features/calendar/CalendarView.vue`](./features/calendar/CalendarView.vue)                   | `/calendar`        | Google Calendar integration                                           |
+| Agendamentos    | [`features/booking/BookingView.vue`](./features/booking/BookingView.vue)                       | `/agendamentos`    | Página pública estilo Calendly (pessoal). Públicas sem shell: `/agendar/:slug`, `/agendar/:slug/:eventSlug`, `/reuniao/:token`. Ver a seção abaixo. Spec: [agendamento-publico.md](../docs/specs/2026/q4/agendamento-publico.md) |
 | Time Tracking   | [`features/time/TimeTrackingView.vue`](./features/time/TimeTrackingView.vue)                   | `/time`            | Timer estilo Clockify. Widget global nos 3 shells + `useTimeTracking` (Vue Query + socket `time:*`). Período = **Hoje · Mês navegável · Tudo** (`useTimePeriod` + `PeriodPicker`, uma instância por aba); totais e ritmo vêm de `/time/summary`, não da lista paginada. **Aviso de ociosidade** (ver abaixo). Specs: [time-periodos-mes-e-lifetime.md](../docs/specs/2026/q3/q3-2/time-periodos-mes-e-lifetime.md) · [timer-ociosidade.md](../docs/specs/2026/q3/q3-2/timer-ociosidade.md) |
 | **Drive** ★     | [`features/drive/DriveView.vue`](./features/drive/DriveView.vue)                               | `/drive`           | Arquivos em bucket PRIVADO (signed URL, nunca URL pública). Sidebar **multi-empresa** (modelo QR): Pessoal + TODAS as empresas do usuário, seleção em `?scope=personal\|<companyId>` sem mexer na empresa ativa do topo. Capas derivadas no navegador (`useFileCover`: pdf.js p/ 1ª página, frame de vídeo, snippet de texto, capa tipográfica por extensão em `file-palette.ts`), menu de ações reka-ui, painel de detalhes, ordenação, upload com fila, viewer compartilhado (`components/ui/FileViewer.vue`). **Link público** de download (`/f/:token`, rota sem shell): token revogável, URL assinada de 60s gerada no acesso e nunca persistida. Permissão padrão QR: pessoal = dono; empresa = membro vê/sobe, uploader gerencia o próprio, ADMIN tudo. Spec: docs/specs/2026/q3/q3-2/drive-p1-nativo.md |
 | OCR Digital     | [`features/ocr/OcrDigitalView.vue`](./features/ocr/OcrDigitalView.vue)                         | `/ocr`             | Ferramenta de integração (seção Ferramentas): leitura inteligente sem configuração (template opcional por empresa), acervo de documentos lidos, webhook. Spec: docs/specs/ocr-digital.md |
@@ -704,6 +705,38 @@ Cinco regras que não são óbvias:
 3. **Retrabalho apaga o teste.** Voltar para A fazer ou Em andamento apaga os checks, e o front limpa SÓ depois da troca confirmada (`checksAfterMove`), para um rollback não sumir com check válido. Revisados e Concluído mantêm os checks como registro.
 4. **Ícone de marca vem de `@mdi/js`** (SVG por constante, tree-shaken), desenhado por `PlatformIcon.vue`. O Lucide não tem logo; o `@mdi/font` (classes `mdi-*`) continua proibido em código novo.
 5. **`container-type: inline-size` exige largura explícita** em item que não é esticado pelo pai. Sem `width: 100%`, o `.tpf` media 0px dentro do `<dd>` do dialog e cortava o nome de quem testou.
+
+### Agendamento público (estilo Calendly)
+
+Spec: [agendamento-publico.md](../docs/specs/2026/q4/agendamento-publico.md).
+
+```
+features/booking/
+  BookingView.vue                 /agendamentos (anfitrião): Reuniões · Tipos · Horários · Página
+  booking-time.ts                 fuso só com Intl: instante ↔ data civil, rótulos, lista de fusos
+  availability.ts                 validação dos intervalos (mesma regra do servidor)
+  components/SlotPicker.vue       calendário do mês + horários do dia, no fuso escolhido
+  components/TimezoneSelect.vue   combobox de fuso com busca (reka)
+  components/host/*               painéis do anfitrião (usam styles/booking-host.css, prefixo bk-)
+  public/*                        as três páginas sem login
+service/booking/booking-service.ts   bookingService (api) + publicBookingService (publicApi)
+```
+
+Quatro coisas que não são óbvias:
+
+1. **O servidor fala em instantes UTC; a tela escolhe o fuso.** O convidado vê
+   no fuso do navegador dele (trocável e lembrado), o anfitrião configura no
+   fuso da página. Nunca `getHours()` de `Date` aqui: é a hora da máquina, o erro
+   que faz alguém em Lisboa entrar três horas atrasado.
+2. **O mês do calendário é pedido como janela de instantes no fuso do
+   CONVIDADO** (`zonedMidnight`). Horário 23:30 de SP aparece no dia seguinte
+   para Lisboa, e precisa estar nesse dia.
+3. **409 volta ao calendário recarregado; 429 e 503 ficam no formulário.** São
+   ações diferentes: horário tomado pede outro horário; limite por e-mail e
+   Google fora do ar pedem outra coisa, sem redigitar os dados.
+4. **As páginas públicas usam `publicApi`**, sem token: o anfitrião logado que
+   testa o próprio link vê exatamente o que o convidado vê, e um 401 nunca o
+   manda para o login.
 
 ### Memória do filtro do board
 

@@ -51,6 +51,7 @@ const appLinks = computed<MenuLink[]>(() => {
   links.push(
     { label: 'Notas', icon: 'notes', to: '/notes' },
     { label: 'Calendário', icon: 'calendar', to: '/calendar' },
+    { label: 'Agendamentos', icon: 'calendar', to: '/agendamentos' },
     { label: 'Variáveis', icon: 'variables', to: '/variables' },
     { label: 'Usuários', icon: 'users', to: '/company-users' },
     { label: 'QR Codes', icon: 'qr', to: '/qr' },
