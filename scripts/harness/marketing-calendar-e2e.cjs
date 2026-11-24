@@ -130,7 +130,7 @@ async function api(who, method, suffix, body) {
 // O Prisma grava DateTime como `timestamp` SEM fuso, em UTC. O pg leria como
 // hora local da máquina (o harness roda em Cuiabá, -4h): lê como UTC.
 pg.types.setTypeParser(1114, (s) => new Date(`${s.replace(' ', 'T')}Z`))
-const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
 const q = async (sql, params) => (await db.query(sql, params)).rows
 const cardRow = async (id) => (await q('SELECT * FROM "MarketingCard" WHERE id=$1', [id]))[0]
 const logsOf = (entityId, verb) =>
@@ -255,7 +255,7 @@ async function realDrag(page, src, dst, dstPos = { x: 0.5, y: 0.75 }) {
 function runDeadlineCron() {
   const env = { ...process.env }
   for (const k of Object.keys(env)) if (/^DATABASE_URL|^SUPABASE|^JWT|^ENCRYPTION/.test(k)) delete env[k]
-  const url = `postgresql://postgres:postgres@127.0.0.1:55432/${DB}?sslmode=disable`
+  const url = `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}?sslmode=disable`
   Object.assign(env, {
     NODE_ENV: 'development',
     DOTENV_CONFIG_PATH: 'C:/nao-existe/.env',

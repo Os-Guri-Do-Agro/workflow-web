@@ -160,6 +160,38 @@ const STEPS: Record<Track, Partial<Record<CardStatus, CardStatus[]>>> = {
 const NEEDS_APPROVAL = new Set<CardStatus>(['APPROVED', 'SCHEDULED', 'PUBLISHED', 'SENT_TO_PRINTER', 'PROOF_RECEIVED', 'DELIVERED'])
 const FINAL = new Set<CardStatus>(['PUBLISHED', 'DELIVERED'])
 
+// ── Registrar o que já saiu (o `checkRecordDone` da API) ─────────────────
+// O Admin põe no fim da trilha o que saiu fora do Nevo (post antigo, peça já
+// entregue), sem versão e sem aprovação, pelo `POST /record-done`. Não é seta
+// de arraste: soltar (ou escolher) o fim da trilha quando o fluxo normal não
+// deixa abre o diálogo de registro, com a data e o link.
+
+/** Fim da trilha: Publicado (post) ou Impresso e entregue (peça impressa). */
+export function finalStatusOf(kind: CardKind | string): CardStatus {
+  return kind === 'PRINT' ? 'DELIVERED' : 'PUBLISHED'
+}
+
+/** Nome da ação, igual ao da API (a frase de recusa do servidor aponta para ele). */
+export function recordDoneLabel(kind: CardKind | string): string {
+  return kind === 'PRINT' ? 'Registrar como já entregue' : 'Registrar como já publicado'
+}
+
+/** Admin, e o card ainda não está no fim da trilha. */
+export function canRecordDone(card: Pick<MoveCardInfo, 'status'>, role: MarketingRole | null): boolean {
+  return hasMarketingRole(role, 'ADMIN') && !FINAL.has(card.status)
+}
+
+/**
+ * Ir para `to` é registrar (abre o diálogo) e não mover? Só quando `to` é o fim
+ * da trilha e o fluxo normal recusaria: Agendado e aprovado indo para Publicado
+ * segue o `/move` de sempre ("marcado como publicado à mão").
+ */
+export function wantsRecord(card: MoveCardInfo, to: CardStatus, role: MarketingRole | null, canRecord?: boolean): boolean {
+  if (to === card.status || to !== finalStatusOf(card.kind)) return false
+  if (!(canRecord ?? canRecordDone(card, role))) return false
+  return moveRule(card, to, role) !== 'ok'
+}
+
 type MoveRule =
   | 'ok'
   | 'viewer'
@@ -221,6 +253,12 @@ function moveReason(rule: MoveRule, card: MoveCardInfo, to: CardStatus, role: Ma
       const order = statusesFor(card.kind)
       const at = order.indexOf(card.status)
       const back = order.indexOf(to) < at
+      // Pular para o fim da trilha é registrar o que já saiu (a frase da API).
+      if (!back && to === finalStatusOf(card.kind)) {
+        return admin
+          ? `Para o que já saiu fora do Nevo, use "${recordDoneLabel(card.kind)}".`
+          : 'Antes passa pela aprovação. Só Admin registra um post como já publicado.'
+      }
       if (back && (to === 'IDEA' || to === 'IN_PRODUCTION')) return 'Só Admin reabre o card.'
       if (back && to === 'AWAITING_APPROVAL') return 'Volta para aprovação ao subir uma versão nova.'
       if (back) return 'Esse passo não existe no fluxo do card.'
@@ -247,15 +285,32 @@ export interface MoveTarget {
   current: boolean
   /** Motivo da recusa prevista; null = pode ir. */
   blocked: string | null
+  /** Escolher abre "Registrar como já publicado/entregue" (não é o `/move`). */
+  record: boolean
+  /** Dica de quem PODE ir e muda algo além do status (ex.: reabrir derruba a aprovação). */
+  note: string | null
 }
 
-/** Os status da trilha do card, na ordem do board, com o atual e o motivo de cada recusa. */
-export function moveTargets(card: MoveCardInfo, role: MarketingRole | null): MoveTarget[] {
-  return statusesFor(card.kind).map((s) => ({
-    value: s,
-    label: cardStatusLabel(s, card.kind),
-    tone: CARD_STATUS_TONE[s],
-    current: s === card.status,
-    blocked: s === card.status ? null : moveHint(card, s, role),
-  }))
+/**
+ * Os status da trilha do card, na ordem do board, com o atual e o motivo de
+ * cada recusa. O fim da trilha que o fluxo normal recusaria vira o registro
+ * para o Admin (`record`). `canRecord`: a página do card usa o que o servidor
+ * diz (`me.canRecordDone`); o board, o espelho pelo papel.
+ */
+export function moveTargets(card: MoveCardInfo, role: MarketingRole | null, canRecord?: boolean): MoveTarget[] {
+  return statusesFor(card.kind).map((s) => {
+    const record = wantsRecord(card, s, role, canRecord)
+    const blocked = s === card.status || record ? null : moveHint(card, s, role)
+    // Voltar ao começo um card aprovado (ou já no fim) é reabrir: a aprovação cai.
+    const reopen = !blocked && s !== card.status && (s === 'IDEA' || s === 'IN_PRODUCTION') && NEEDS_APPROVAL.has(card.status)
+    return {
+      value: s,
+      label: cardStatusLabel(s, card.kind),
+      tone: CARD_STATUS_TONE[s],
+      current: s === card.status,
+      blocked,
+      record,
+      note: reopen ? 'Reabre o card: a aprovação cai.' : null,
+    }
+  })
 }

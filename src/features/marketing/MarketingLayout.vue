@@ -7,7 +7,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { MARKETING_ROLE_LABEL } from '@/service/marketing/marketing-core'
 import { useMarketing, useMarketingRealtime } from './composables/useMarketing'
-import { sectionPlacement, visibleSections, type MarketingSection } from './marketing-nav'
+import { cardOrigin, rememberCardOrigin, sectionPlacement, visibleSections, type MarketingSection } from './marketing-nav'
 import { brandTone, toneStyle } from './marketing-labels'
 import { asText, selectItems } from './select-items'
 import CreateGroupDialog from './settings/CreateGroupDialog.vue'
@@ -121,10 +121,20 @@ const groupsOrdered = computed(() => {
 })
 
 function isActive(section: MarketingSection) {
+  // Card em página própria: acende a aba de onde ele foi aberto (ou Aprovações).
+  if (route.name === 'marketing-card') return section.key === (cardOrigin.value?.key ?? 'approvals')
   if (section.key === 'home') return route.name === 'marketing'
-  if (section.key === 'approvals' && route.name === 'marketing-card') return true
   return route.name === section.route
 }
+
+// A origem do card aberto vale só dentro desta visita à ala: o layout que
+// monta de novo (vindo de fora, ou recarregando) começa sem origem.
+cardOrigin.value = null
+const stopOrigin = router.afterEach(rememberCardOrigin)
+onBeforeUnmount(() => {
+  stopOrigin()
+  cardOrigin.value = null
+})
 
 const brandQuery = computed(() => (mk.brandFilter.value ? { marca: mk.brandFilter.value } : {}))
 const loading = computed(() => mk.me.isLoading.value)

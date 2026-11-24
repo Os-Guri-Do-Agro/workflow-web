@@ -257,6 +257,8 @@ function menuItems(page) {
     [...document.querySelectorAll('[role="menu"] [data-move-to]')].map((el) => ({
       to: el.dataset.moveTo,
       disabled: el.hasAttribute('data-disabled'),
+      // Fim da trilha para o Admin: abre o registro do que já saiu (não é o /move).
+      record: el.hasAttribute('data-record'),
       current: el.classList.contains('is-current'),
       why: el.querySelector('[data-why]')?.textContent?.trim() ?? '',
     })),
@@ -277,10 +279,10 @@ async function closeMenu(page) {
   await page.waitForSelector('[role="menu"]', { state: 'detached', timeout: 5000 }).catch(() => {})
 }
 
-const enabledOf = (items) => items.filter((i) => !i.disabled).map((i) => i.to)
+const enabledOf = (items) => items.filter((i) => !i.disabled && !i.record).map((i) => i.to)
 
 ;(async () => {
-  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
   await db.connect()
   const q = async (sql, params) => (await db.query(sql, params)).rows
   const statusOf = async (id) => (await q(`SELECT status FROM "MarketingCard" WHERE id=$1`, [id]))[0]?.status

@@ -7,6 +7,15 @@
  * Escolher emite `select`; o board grava pelo MESMO `/move` do arraste, então
  * a regra e a frase de recusa do servidor continuam valendo.
  *
+ * O fim da trilha que o fluxo normal recusaria aparece liberado para o Admin
+ * com "Registrar como já publicado" (ou entregue): escolher emite o mesmo
+ * `select`, e quem chama abre o diálogo de registro (`wantsRecord`).
+ *
+ * Duas caras: `icon` (o botão pequeno do card do board) e `button` (a página do
+ * card, "Mudar status"). Na página, `allowed` e `canRecord` vêm do servidor
+ * (`me.allowedMoves`, `me.canRecordDone`) e valem no lugar do espelho; o
+ * espelho só escreve o motivo de quem não pode ir.
+ *
  * Teclado (reka-ui): Tab chega no botão, Enter/Espaço/seta abre com o foco na
  * primeira opção liberada, setas andam (pulam as desabilitadas), Enter escolhe,
  * Esc fecha e devolve o foco ao botão. Depois de mover, o board leva o foco
@@ -25,22 +34,47 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from 'reka-ui'
-import { ArrowRightLeft, Check, Printer } from 'lucide-vue-next'
+import { ArrowRightLeft, Check, ChevronDown, Printer } from 'lucide-vue-next'
 import type { MarketingRole } from '@/service/marketing/marketing-core'
-import type { MarketingCardSummary } from '@/service/marketing/marketing-cards'
 import { toneStyle, type CardStatus } from '../../marketing-labels'
-import { PRINT_DESK_STATUSES, moveInfoOf, moveTargets } from '../approvals-meta'
+import { PRINT_DESK_STATUSES, canRecordDone, moveTargets, recordDoneLabel, type MoveCardInfo } from '../approvals-meta'
 
 const props = defineProps<{
-  card: MarketingCardSummary
+  card: MoveCardInfo & { id: string; title: string }
   role: MarketingRole | null
   disabled?: boolean
+  variant?: 'icon' | 'button'
+  /** Página do card: os status que o servidor libera (`me.allowedMoves`). */
+  allowed?: CardStatus[]
+  /**
+   * Página do card: o servidor diz se o registro vale (`me.canRecordDone`).
+   * Só vale junto com `allowed`: prop booleana que não veio chega `false` (o
+   * Vue converte), então sem `allowed` o menu usa o espelho pelo papel.
+   */
+  canRecord?: boolean
 }>()
 
 const emit = defineEmits<{ select: [status: CardStatus] }>()
 
+/** Motivo de quem o servidor não libera e o espelho não sabe explicar (ex.: sem arte nem legenda). */
+function serverReason(status: CardStatus) {
+  return status === 'AWAITING_APPROVAL'
+    ? 'Suba a arte ou escreva a legenda antes de mandar para aprovação.'
+    : 'Esse passo não existe no fluxo do card.'
+}
+
 // Computado preguiçoso: só roda quando o menu abre (o conteúdo é quem lê).
-const targets = computed(() => moveTargets(moveInfoOf(props.card), props.role))
+const targets = computed(() => {
+  const list = moveTargets(props.card, props.role, props.allowed ? props.canRecord : canRecordDone(props.card, props.role))
+  const allowed = props.allowed
+  if (!allowed) return list
+  return list.map((t) => {
+    if (t.current || t.record) return t
+    if (allowed.includes(t.value)) return { ...t, blocked: null }
+    return { ...t, blocked: t.blocked ?? serverReason(t.value) }
+  })
+})
+const recordLabel = computed(() => recordDoneLabel(props.card.kind))
 
 /** Peça impressa aprovada: o próximo passo mora na tela Gráfica. */
 const printDesk = computed(
@@ -64,6 +98,17 @@ function onCloseAutoFocus(event: Event) {
   <DropdownMenuRoot>
     <DropdownMenuTrigger as-child :disabled="disabled">
       <button
+        v-if="variant === 'button'"
+        type="button"
+        class="mk-btn mkmm__field"
+        data-action="status-menu"
+        :aria-label="`Mudar o status de ${card.title}`"
+      >
+        Mudar status
+        <ChevronDown :size="14" aria-hidden="true" class="mkmm__chev" />
+      </button>
+      <button
+        v-else
         type="button"
         class="mkmm__btn"
         data-action="move-menu"
@@ -90,16 +135,19 @@ function onCloseAutoFocus(event: Event) {
           v-for="t in targets"
           :key="t.value"
           class="dd-item mk-move-menu__item"
-          :class="{ 'is-current': t.current }"
+          :class="{ 'is-current': t.current, 'is-record': t.record }"
           :disabled="t.current || !!t.blocked"
           :data-move-to="t.value"
+          :data-record="t.record ? '' : undefined"
           @select="pick(t.value)"
         >
           <span class="mk-dot" :style="toneStyle(t.tone)" aria-hidden="true" />
           <span class="mk-move-menu__text">
             <span class="mk-move-menu__name">{{ t.label }}</span>
             <span v-if="t.current" class="mk-move-menu__why">Status atual</span>
+            <span v-else-if="t.record" class="mk-move-menu__why mk-move-menu__record">{{ recordLabel }}</span>
             <span v-else-if="t.blocked" class="mk-move-menu__why" data-why>{{ t.blocked }}</span>
+            <span v-else-if="t.note" class="mk-move-menu__why" data-note>{{ t.note }}</span>
           </span>
           <Check v-if="t.current" :size="14" class="mk-move-menu__check" aria-hidden="true" />
         </DropdownMenuItem>
@@ -169,6 +217,27 @@ function onCloseAutoFocus(event: Event) {
 /* Card indo para outra coluna (gravando): sem botão até o servidor responder. */
 .mkmm__btn:disabled {
   visibility: hidden;
+}
+
+/* Página do card: o gatilho tem cara de campo ("Mudar status" e a seta). */
+.mkmm__field {
+  min-height: 32px;
+  min-width: 150px;
+  justify-content: space-between;
+}
+
+.mkmm__chev {
+  color: var(--text-3);
+}
+
+.mkmm__field[data-state='open'] .mkmm__chev {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 640px) {
+  .mkmm__field {
+    min-height: 44px;
+  }
 }
 
 /* Tela de toque não tem hover: o botão fica sempre à vista, com alvo maior. */

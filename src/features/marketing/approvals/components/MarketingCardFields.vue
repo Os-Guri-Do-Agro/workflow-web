@@ -7,7 +7,7 @@
  * publicado) e a frase aparece no toast de quem chamou.
  */
 import { computed, ref, watch } from 'vue'
-import { CalendarClock, Info, Send } from 'lucide-vue-next'
+import { CalendarClock, ExternalLink, Info, Send } from 'lucide-vue-next'
 import AppSelect from '@/components/ui/AppSelect.vue'
 import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { hasMarketingRole, type MarketingBrand, type MarketingMember } from '@/service/marketing/marketing-core'
@@ -328,7 +328,19 @@ const captionNetworks = computed(() => props.card.networks)
 
       <template v-if="card.publishedAt">
         <dt>Publicado</dt>
-        <dd class="mkf__inline"><Send :size="13" aria-hidden="true" /> {{ formatDayTime(card.publishedAt) }}</dd>
+        <dd class="mkf__inline">
+          <Send :size="13" aria-hidden="true" /> {{ formatDayTime(card.publishedAt) }}
+          <a
+            v-if="card.publishedUrl"
+            class="mkf__link"
+            :href="card.publishedUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="card-published-link"
+          >
+            Ver o post <ExternalLink :size="12" aria-hidden="true" />
+          </a>
+        </dd>
       </template>
 
       <template v-if="card.createdBy">
@@ -484,6 +496,13 @@ const captionNetworks = computed(() => props.card.networks)
 
 .mkf__link:hover {
   text-decoration: underline;
+}
+
+.mkf__inline > .mkf__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
 }
 
 .mkf__link:focus-visible {

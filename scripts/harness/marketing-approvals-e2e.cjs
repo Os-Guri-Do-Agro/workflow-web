@@ -237,7 +237,7 @@ const toasts = (page) => page.evaluate(() => [...document.querySelectorAll('[dat
 const headStatus = (page) => page.locator('[data-testid="head-status"]').innerText().catch(() => '')
 
 ;(async () => {
-  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
   await db.connect()
   const q = async (sql, params) => (await db.query(sql, params)).rows
 

@@ -63,7 +63,7 @@ async function waitFor(fn, timeout = 10000, step = 150) {
   return last
 }
 
-const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
 const q = async (sql, params) => (await db.query(sql, params)).rows
 
 const TOKEN_CACHE = path.join(os.tmpdir(), `nevo-harness-tokens-${DB}-${new URL(API).port}.json`)
@@ -112,7 +112,7 @@ async function api(who, method, route, body) {
 function runInApi(code, { spies = true } = {}) {
   const env = { ...process.env }
   for (const k of Object.keys(env)) if (/^DATABASE_URL|^SUPABASE|^JWT|^ENCRYPTION|^VAPID|^SENDGRID/.test(k)) delete env[k]
-  const url = `postgresql://postgres:postgres@127.0.0.1:55432/${DB}?sslmode=disable`
+  const url = `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}?sslmode=disable`
   Object.assign(env, {
     NODE_ENV: 'development',
     DOTENV_CONFIG_PATH: 'C:/nao-existe/.env',

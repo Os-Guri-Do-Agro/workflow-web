@@ -324,7 +324,8 @@ async function partC(browser) {
   await openSelect(page, kind)
   await page.keyboard.press('Escape')
   await page.locator('[role="listbox"]').first().waitFor({ state: 'detached', timeout: 3000 }).catch(() => {})
-  check((await dlg.isVisible()) && (await selectedText(page, kind)) === 'Reel', '2. novo card: Escape com a lista aberta fecha só a lista e o diálogo fica')
+  const afterEsc = { dialog: await dlg.isVisible(), kind: await selectedText(page, kind), lists: await page.locator('[role="listbox"]').count() }
+  check(afterEsc.dialog && afterEsc.kind === 'Reel', '2. novo card: Escape com a lista aberta fecha só a lista e o diálogo fica', JSON.stringify(afterEsc))
   await page.keyboard.press('Escape')
   await dlg.waitFor({ state: 'detached', timeout: 4000 }).catch(() => {})
   check(!(await dlg.isVisible().catch(() => false)), '2. novo card: o segundo Escape fecha o diálogo')
@@ -627,7 +628,7 @@ async function partE(browser) {
 }
 
 async function main() {
-  db = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+  db = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
   await db.connect()
   const browser = await chromium.launch({ channel: 'msedge', headless: true })
   try {

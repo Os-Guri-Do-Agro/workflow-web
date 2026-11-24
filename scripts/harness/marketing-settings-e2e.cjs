@@ -135,7 +135,7 @@ async function apiPart() {
 
   // Auditoria de 06/11: Admin restrito a uma marca não concede as outras
   {
-    const db = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+    const db = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
     await db.connect()
     await db.query('UPDATE "CompanyGroupMember" SET role=$1, "brandIds"=$2 WHERE "groupId"=$3 AND "userId"=$4', ['ADMIN', [C.pet], G, seed.users.marcel])
     r = await call('marcel', 'POST', g('/members'), { email: 'restrito1@nevo.test', name: 'Teste Restrito', role: 'EDITOR', brandIds: [] })
@@ -174,14 +174,14 @@ async function apiPart() {
   check(r.status === 200 && r.data.marketingEnabled === true, 'Dono religa a ala')
 
   // limpa a conta criada (o e-mail fica livre para a próxima rodada)
-  const db = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+  const db = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
   await db.connect()
   await db.query('DELETE FROM "User" WHERE email=$1', ['freela2@nevo.test'])
   await db.end()
 }
 
 // ── R1 (D9): convite "Do Nevo" pela API ───────────────────────────────────────
-const pgClient = () => new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const pgClient = () => new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
 const COLLEAGUES = ['ana', 'bia', 'caio']
 async function userIdOf(db, key) {
   return (await db.query('SELECT id FROM "User" WHERE email=$1', [`${key}@nevo.test`])).rows[0]?.id ?? null
@@ -376,7 +376,7 @@ async function uiPart() {
     await page.screenshot({ path: path.join(SHOTS, 'convite-link-d1440.png') })
     check(/redefinir-senha\?token=/.test(linkValue), 'tela mostra o link de primeiro acesso do convidado', linkValue.slice(0, 48))
     await ctx.close()
-    const db = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+    const db = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
     await db.connect()
     await db.query('DELETE FROM "User" WHERE email=$1', ['freela3@nevo.test'])
     await db.end()

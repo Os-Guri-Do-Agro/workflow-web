@@ -4,7 +4,9 @@
  * e soltar sem mexer (o mesmo gesto e o mesmo desenho da `TaskMoveSheet` do
  * board de tarefas). Os status da trilha viram botões de 48px, o atual fica
  * marcado, e o motivo previsível de recusa aparece embaixo da opção (o espelho
- * `moveTargets`, o mesmo do menu "Mover para" do computador). Quem grava é o
+ * `moveTargets`, o mesmo do menu "Mover para" do computador). O fim da trilha
+ * que o Admin registra traz "Registrar como já publicado" e abre o diálogo de
+ * registro (quem chama decide, pelo `wantsRecord`). Quem grava é o
  * board, pelo mesmo `/move` do arraste; a frase do servidor vale no fim.
  *
  * Dialog modal: Teleport para o body, foco dentro, Tab preso, Esc e o fundo
@@ -14,7 +16,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import type { MarketingRole } from '@/service/marketing/marketing-core'
 import { toneStyle, type CardStatus } from '../../marketing-labels'
-import { moveTargets, type MoveCardInfo } from '../approvals-meta'
+import { moveTargets, recordDoneLabel, type MoveCardInfo } from '../approvals-meta'
 
 export interface MoveSheetCard extends MoveCardInfo {
   id: string
@@ -106,8 +108,10 @@ function trapTab(e: KeyboardEvent) {
                 <span class="mk-dot" :style="toneStyle(t.tone)" aria-hidden="true" />
                 <span class="mks__opt-label">{{ t.label }}</span>
                 <span v-if="t.current" class="mks__opt-note">Status atual</span>
+                <span v-else-if="t.record" class="mks__opt-note mks__opt-note--record" :data-record="''">{{ recordDoneLabel(card.kind) }}</span>
               </button>
               <p v-if="t.blocked && !t.current" :id="`mk-move-why-${t.value}`" class="mks__why">{{ t.blocked }}</p>
+              <p v-else-if="t.note" class="mks__why" data-note>{{ t.note }}</p>
             </li>
           </ul>
         </section>
@@ -243,6 +247,10 @@ function trapTab(e: KeyboardEvent) {
 .mks__opt-note {
   font-size: 12px;
   font-weight: 600;
+}
+
+.mks__opt-note--record {
+  color: var(--accent-ink);
 }
 
 .mks__opt--blocked {

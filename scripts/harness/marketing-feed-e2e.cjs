@@ -58,7 +58,7 @@ async function waitFor(fn, timeout = 10000, step = 150) {
 }
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex')
 
-const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
 const q = async (sql, params) => (await db.query(sql, params)).rows
 
 const TOKEN_CACHE = path.join(os.tmpdir(), `nevo-harness-tokens-${DB}-${new URL(API).port}.json`)

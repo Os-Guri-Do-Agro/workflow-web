@@ -8,7 +8,7 @@ PORT="${2:-3599}"
 export NODE_ENV=development
 export DOTENV_CONFIG_PATH="C:/nao-existe/.env"
 # HARNESS_DB troca o banco (cada worktree/fase usa o seu no MESMO Postgres embutido).
-export DATABASE_URL_IPV6_FAST_CONNECTION="postgresql://postgres:postgres@127.0.0.1:55432/${HARNESS_DB:-wf}?sslmode=disable"
+export DATABASE_URL_IPV6_FAST_CONNECTION="postgresql://postgres:postgres@127.0.0.1:${PGPORT:-55432}/${HARNESS_DB:-wf}?sslmode=disable"
 export DATABASE_URL_IPV4_POOL_CONNECTION="$DATABASE_URL_IPV6_FAST_CONNECTION"
 export JWT_SECRET="harness-jwt-secret-local-only"
 export ENCRYPTION_KEY="harnesskey-32-bytes-local-only!!"

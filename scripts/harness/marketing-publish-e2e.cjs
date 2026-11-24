@@ -120,7 +120,7 @@ const SOCIAL_ENV = {
 function baseEnv(port) {
   const env = { ...process.env }
   for (const k of [...Object.keys(SOCIAL_ENV), 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']) delete env[k]
-  const db = `postgresql://postgres:postgres@127.0.0.1:55432/${DB}?sslmode=disable`
+  const db = `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}?sslmode=disable`
   return {
     ...env,
     NODE_ENV: 'development',
@@ -332,7 +332,7 @@ const scrollWidth = (page) => page.evaluate(() => document.documentElement.scrol
 pg.types.setTypeParser(1114, (s) => new Date(`${s.replace(' ', 'T')}Z`))
 
 ;(async () => {
-  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
   await db.connect()
   const q = async (sql, params) => (await db.query(sql, params)).rows
   const one = async (sql, params) => (await q(sql, params))[0]

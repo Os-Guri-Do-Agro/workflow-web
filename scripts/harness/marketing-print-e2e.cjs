@@ -68,7 +68,7 @@ async function call(who, method, route, body) {
   return { status: r.status, json }
 }
 
-const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
 const storage = createClient(STORAGE, 'harness').storage
 
 /** Arte de teste: um cartaz simples, gravada em CMYK (JPEG CMYK, como a gráfica pede). */

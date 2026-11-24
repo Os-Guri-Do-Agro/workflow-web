@@ -158,7 +158,7 @@ const section = (page) => page.locator('[data-testid="card-tasks"]')
 const itemText = (page) => section(page).locator('.mct__item').allInnerTexts().catch(() => [])
 
 ;(async () => {
-  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
   await db.connect()
   const q = async (sql, params) => (await db.query(sql, params)).rows
   const one = async (sql, params) => (await q(sql, params))[0]

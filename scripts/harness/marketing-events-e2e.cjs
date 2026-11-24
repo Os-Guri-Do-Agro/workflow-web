@@ -136,7 +136,7 @@ async function uploadViaTicket(who, ticketRoute, name, mimeType, bytes) {
 
 // ── Banco ───────────────────────────────────────────────────────────────────
 
-const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
 
 function ymdOffset(days) {
   const d = new Date()

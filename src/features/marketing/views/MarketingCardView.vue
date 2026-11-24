@@ -28,7 +28,6 @@ import {
   Undo2,
   Upload,
 } from 'lucide-vue-next'
-import AppSelect from '@/components/ui/AppSelect.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -67,13 +66,16 @@ import {
 } from '../marketing-labels'
 import MarketingCardFields from '../approvals/components/MarketingCardFields.vue'
 import MarketingCardHistory from '../approvals/components/MarketingCardHistory.vue'
+import MarketingMoveMenu from '../approvals/components/MarketingMoveMenu.vue'
+import MarketingRecordDoneDialog, { type RecordDoneCard } from '../approvals/components/MarketingRecordDoneDialog.vue'
 import MarketingChecklist from '../approvals/components/MarketingChecklist.vue'
 import MarketingCommentsPanel from '../approvals/components/MarketingCommentsPanel.vue'
 import MarketingReviewDialog from '../approvals/components/MarketingReviewDialog.vue'
 import MarketingUploadVersionDialog from '../approvals/components/MarketingUploadVersionDialog.vue'
 import MarketingVersionCompare from '../approvals/components/MarketingVersionCompare.vue'
 import MarketingVersionViewer, { type DraftAnchor } from '../approvals/components/MarketingVersionViewer.vue'
-import { cardKeys } from '../approvals/approvals-meta'
+import { cardKeys, wantsRecord, type MoveCardInfo } from '../approvals/approvals-meta'
+import { cardOrigin } from '../marketing-nav'
 import MarketingCardTasks from '../tasks/MarketingCardTasks.vue'
 import MarketingCardPublish from '../social/MarketingCardPublish.vue'
 import { TRASH_CONFIRM_LABEL, trashConfirmMessage, useTrashUndo } from '../trash/useTrashUndo'
@@ -269,12 +271,54 @@ function saveTitle() {
   if (t !== card.value.title) void onPatch({ title: t })
 }
 
-const moveItems = computed(() => [
-  { label: 'Mudar status', value: '' },
-  ...otherMoves.value.map((s) => ({ label: moveLabel(s), value: s })),
-])
-function pickMove(value: unknown) {
-  if (typeof value === 'string' && value) void onMove(value as CardStatus)
+/**
+ * "Mudar status": o menu com TODOS os status da trilha (o mesmo "Mover para" do
+ * board). O servidor diz o que está liberado (`me.allowedMoves`) e se o Admin
+ * pode registrar o que já saiu (`me.canRecordDone`); quem não pode ir aparece
+ * desabilitado com o motivo. Pedido da Leticia (19/11): o campo só mostrava
+ * Ideia e Em produção, e não dava para lançar o que já tinha sido feito.
+ */
+const statusCard = computed<(MoveCardInfo & { id: string; title: string }) | null>(() =>
+  card.value
+    ? {
+        id: card.value.id,
+        title: card.value.title,
+        kind: card.value.kind,
+        status: card.value.status,
+        approvalValid: card.value.approvalValid,
+        hasVersion: !!card.value.currentVersionId,
+        hasPublishAt: !!card.value.publishAt,
+      }
+    : null,
+)
+const canRecord = computed(() => !!card.value?.me.canRecordDone)
+
+function pickStatus(status: CardStatus) {
+  if (!statusCard.value || status === statusCard.value.status) return
+  if (wantsRecord(statusCard.value, status, mk.role.value, canRecord.value)) {
+    recordOpen.value = true
+    return
+  }
+  void onMove(status)
+}
+
+// ── Registrar o que já saiu (Admin) ─────────────────────────────────────
+const recordOpen = ref(false)
+const recordCard = computed<RecordDoneCard | null>(() =>
+  card.value
+    ? {
+        id: card.value.id,
+        title: card.value.title,
+        kind: card.value.kind,
+        status: card.value.status,
+        publishAt: card.value.publishAt,
+        hasVersion: card.value.versions.length > 0,
+      }
+    : null,
+)
+function onRecorded(detail: MarketingCardDetail) {
+  applyDetail(detail)
+  success(detail.kind === 'PRINT' ? 'Registrado como entregue.' : 'Registrado como publicado.')
 }
 
 const moving = ref(false)
@@ -297,19 +341,10 @@ async function onMove(status: CardStatus) {
   }
 }
 
-const otherMoves = computed(() => (card.value?.me.allowedMoves ?? []).filter((s) => s !== 'AWAITING_APPROVAL'))
 const canSend = computed(() => !!card.value?.me.allowedMoves.includes('AWAITING_APPROVAL'))
 const canReview = computed(() => !!card.value?.me.canApprove)
 const canUpload = computed(() => !!card.value?.me.canUploadVersion)
 const hasPrimary = computed(() => canReview.value || canSend.value || canUpload.value)
-
-function moveLabel(s: CardStatus) {
-  if (!card.value) return s
-  if (s === 'IN_PRODUCTION' && ['APPROVED', 'SCHEDULED', 'PUBLISHED', 'SENT_TO_PRINTER', 'PROOF_RECEIVED', 'DELIVERED'].includes(card.value.status)) {
-    return 'Reabrir para produção'
-  }
-  return cardStatusLabel(s, card.value.kind)
-}
 
 // ── Diálogos ────────────────────────────────────────────────────────────
 const uploadOpen = ref(false)
@@ -415,14 +450,23 @@ async function onDelete() {
   }
 }
 
-/** Peça impressa volta para a trilha Gráfica (a Digital nem mostra o card). */
-const backTo = computed(() => ({
-  name: 'marketing-approvals',
-  query: {
-    ...(mk.brandFilter.value ? { marca: mk.brandFilter.value } : {}),
-    ...(card.value?.kind === 'PRINT' ? { trilha: 'grafica' } : {}),
-  },
-}))
+/**
+ * A volta: para a aba de onde o card foi aberto (Calendário com a mesma vista e
+ * o mesmo dia, Painel, Ideias...), senão para Aprovações. Peça impressa volta
+ * para a trilha Gráfica (a Digital nem mostra o card).
+ */
+const backTo = computed(() =>
+  cardOrigin.value
+    ? cardOrigin.value.fullPath
+    : {
+        name: 'marketing-approvals',
+        query: {
+          ...(mk.brandFilter.value ? { marca: mk.brandFilter.value } : {}),
+          ...(card.value?.kind === 'PRINT' ? { trilha: 'grafica' } : {}),
+        },
+      },
+)
+const backLabel = computed(() => cardOrigin.value?.title ?? 'Aprovações')
 
 const reviewVersionNumber = computed(() => currentVersion.value?.number ?? 0)
 const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
@@ -430,8 +474,8 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
 
 <template>
   <div class="mk-page mkcv" :class="{ 'mkcv--bar': phone && hasPrimary }">
-    <RouterLink :to="backTo" class="mkcv__back">
-      <ArrowLeft :size="14" aria-hidden="true" /> Aprovações
+    <RouterLink :to="backTo" class="mkcv__back" data-testid="card-back">
+      <ArrowLeft :size="14" aria-hidden="true" /> {{ backLabel }}
     </RouterLink>
 
     <div v-if="detailQuery.isLoading.value" class="mkcv__loading">
@@ -446,7 +490,7 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
       description="Ele pode ter sido apagado, ou é de uma marca que você não vê nesta ala."
     >
       <template #action>
-        <RouterLink :to="backTo" class="mk-btn">Voltar para Aprovações</RouterLink>
+        <RouterLink :to="backTo" class="mk-btn">Voltar para {{ backLabel }}</RouterLink>
       </template>
     </EmptyState>
 
@@ -485,15 +529,16 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
         </div>
 
         <div class="mkcv__tools">
-          <div v-if="canEdit && otherMoves.length" class="mkcv__status" data-testid="status-select">
-            <!-- Menu de ação: o campo fica sempre em "Mudar status" e a escolha dispara a mudança. -->
-            <AppSelect
-              model-value=""
-              :items="moveItems"
-              label="Mudar status"
-              density="compact"
+          <div v-if="canEdit && statusCard" class="mkcv__status" data-testid="status-select">
+            <!-- Menu de ação: todos os status da trilha; quem não pode ir mostra o motivo. -->
+            <MarketingMoveMenu
+              variant="button"
+              :card="statusCard"
+              :role="mk.role.value"
+              :allowed="card.me.allowedMoves"
+              :can-record="canRecord"
               :disabled="moving"
-              @update:model-value="pickMove"
+              @select="pickStatus"
             />
           </div>
           <button
@@ -684,6 +729,7 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
         </div>
       </div>
 
+      <MarketingRecordDoneDialog v-if="canRecord" v-model="recordOpen" :group-id="groupId" :card="recordCard" @done="onRecorded" />
       <MarketingUploadVersionDialog v-if="canUpload" v-model="uploadOpen" :group-id="groupId" :card="card" @done="onVersionDone" />
       <MarketingReviewDialog
         v-if="isAdmin"
@@ -845,9 +891,6 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
   min-width: 150px;
 }
 
-.mkcv__status :deep(.app-select__trigger) {
-  min-height: 32px;
-}
 
 .mkcv__danger:hover {
   color: var(--err);
@@ -1074,9 +1117,6 @@ const isMember = computed(() => hasMarketingRole(mk.role.value, 'VIEWER'))
     min-height: 44px;
   }
 
-  .mkcv__status :deep(.app-select__trigger) {
-    min-height: 44px;
-  }
 
   .mkcv__back {
     min-height: 44px;

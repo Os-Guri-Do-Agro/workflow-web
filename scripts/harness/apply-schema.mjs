@@ -3,7 +3,7 @@
 import pg from 'pg'
 import { readFileSync } from 'node:fs'
 
-const admin = new pg.Client({ connectionString: 'postgresql://postgres:postgres@127.0.0.1:55432/postgres' })
+const admin = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? 55432}/postgres` })
 await admin.connect()
 // HARNESS_DB troca o banco (padrão wf): cada fase da ala Marketing usa o seu.
 const DB = process.env.HARNESS_DB ?? 'wf'
@@ -12,7 +12,7 @@ await admin.query(`DROP DATABASE IF EXISTS ${DB} WITH (FORCE)`)
 await admin.query(`CREATE DATABASE ${DB} ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0`)
 await admin.end()
 
-const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? 55432}/${DB}` })
 await db.connect()
 for (const file of process.argv.slice(2)) {
   const sql = readFileSync(file, 'utf8')

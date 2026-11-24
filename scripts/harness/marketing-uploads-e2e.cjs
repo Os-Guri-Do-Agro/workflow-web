@@ -228,7 +228,7 @@ async function dropFiles(page, selector, files) {
 }
 
 ;(async () => {
-  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+  const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
   await db.connect()
   const q = async (sql, params) => (await db.query(sql, params)).rows
 

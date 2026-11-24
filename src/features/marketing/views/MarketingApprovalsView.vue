@@ -33,7 +33,8 @@ import {
 import MarketingBoard from '../approvals/components/MarketingBoard.vue'
 import MarketingCardList, { type ListSort } from '../approvals/components/MarketingCardList.vue'
 import MarketingCardCreateDialog from '../approvals/components/MarketingCardCreateDialog.vue'
-import { cardKeys, trackStatuses, type Track } from '../approvals/approvals-meta'
+import MarketingRecordDoneDialog, { type RecordDoneCard } from '../approvals/components/MarketingRecordDoneDialog.vue'
+import { cardKeys, moveInfoOf, trackStatuses, wantsRecord, type Track } from '../approvals/approvals-meta'
 import { asText, labelItems, selectItems } from '../select-items'
 
 const route = useRoute()
@@ -41,7 +42,7 @@ const router = useRouter()
 const mk = useMarketing()
 const members = useMarketingMembers(mk.groupId)
 const queryClient = useQueryClient()
-const { error: toastError } = useToast()
+const { error: toastError, success } = useToast()
 const phone = usePhoneViewport()
 
 // ── Filtros na URL ───────────────────────────────────────────────────────
@@ -164,6 +165,20 @@ async function onMove(id: string, status: CardStatus, position: number | undefin
     })
     return
   }
+  // Fim da trilha que o fluxo normal recusa: o Admin registra o que já saiu
+  // fora do Nevo (data e link), no diálogo, em vez de mover.
+  if (wantsRecord(moveInfoOf(card), status, mk.role.value)) {
+    recordCard.value = {
+      id: card.id,
+      title: card.title,
+      kind: card.kind,
+      status: card.status,
+      publishAt: card.publishAt,
+      hasVersion: !!card.currentVersion,
+    }
+    recordOpen.value = true
+    return
+  }
   const optimistic = position ?? Math.max(0, ...cards.value.filter((c) => c.status === status).map((c) => c.position)) + 1024
   overrides.value = new Map(overrides.value).set(id, { status, position: optimistic })
   pending.value = new Set(pending.value).add(id)
@@ -180,6 +195,13 @@ async function onMove(id: string, status: CardStatus, position: number | undefin
     nextPending.delete(id)
     pending.value = nextPending
   }
+}
+
+const recordOpen = ref(false)
+const recordCard = ref<RecordDoneCard | null>(null)
+async function onRecorded(detail: { title: string; kind: string }) {
+  success(detail.kind === 'PRINT' ? `"${detail.title}" registrado como entregue.` : `"${detail.title}" registrado como publicado.`)
+  await queryClient.invalidateQueries({ queryKey: cardKeys.all(groupId.value) })
 }
 
 function openCard(id: string) {
@@ -392,6 +414,8 @@ function onCreated(card: { id: string }) {
       @open="openCard"
       @sort="onSort"
     />
+
+    <MarketingRecordDoneDialog v-if="canEdit" v-model="recordOpen" :group-id="groupId" :card="recordCard" @done="onRecorded" />
 
     <MarketingCardCreateDialog
       v-if="canEdit"

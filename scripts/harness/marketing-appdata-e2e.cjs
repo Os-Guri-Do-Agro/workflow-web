@@ -202,7 +202,7 @@ function pj(args, { allowFail = false } = {}) {
   }
 }
 
-const nevoDb = () => new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const nevoDb = () => new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? '55432'}/${DB}` })
 async function nevoQuery(sql, params = []) {
   const c = nevoDb()
   await c.connect()

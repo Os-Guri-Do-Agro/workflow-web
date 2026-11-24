@@ -18,6 +18,8 @@ import {
   Wallet,
   type LucideIcon,
 } from 'lucide-vue-next'
+import { ref } from 'vue'
+import type { RouteLocationNormalized } from 'vue-router'
 import type { MarketingGroupSummary, MarketingRole } from '@/service/marketing/marketing-core'
 import { hasMarketingRole } from '@/service/marketing/marketing-core'
 
@@ -127,11 +129,44 @@ export function visibleSections(group: MarketingGroupSummary | null): MarketingS
   )
 }
 
-/** Título da seção pelo caminho (breadcrumb). Card aberto conta como Aprovações. */
-export function marketingSectionTitle(path: string): string | null {
-  if (path.startsWith('/marketing/cards/')) return 'Aprovações'
+/** Seção dona do caminho (exato ou prefixo); o card aberto não é seção. */
+function sectionOfPath(path: string): MarketingSection | null {
+  if (path.startsWith('/marketing/cards/')) return null
   const exact = MARKETING_SECTIONS.find((s) => s.path === path)
-  if (exact) return exact.key === 'home' ? null : exact.title
-  const prefix = MARKETING_SECTIONS.filter((s) => s.key !== 'home').find((s) => path.startsWith(`${s.path}/`))
-  return prefix?.title ?? null
+  if (exact) return exact
+  return MARKETING_SECTIONS.filter((s) => s.key !== 'home').find((s) => path.startsWith(`${s.path}/`)) ?? null
+}
+
+/**
+ * De onde o card aberto em página própria veio: a aba da ala (Calendário,
+ * Painel, Ideias...) e o endereço com o estado dela (`?vista=semana&dia=`).
+ * A volta do card, a aba acesa e o breadcrumb seguem a origem; sem origem
+ * (link colado, sino vindo de fora da ala) vale Aprovações, a casa do card.
+ * Pedido da Leticia (19/11): editar pelo Calendário "jogava para Aprovações".
+ */
+export interface CardOrigin {
+  key: string
+  title: string
+  fullPath: string
+}
+
+export const cardOrigin = ref<CardOrigin | null>(null)
+
+/**
+ * `router.afterEach` do layout da ala: guarda a aba de onde se abriu o card.
+ * De card para card a origem fica (a volta é para a lista, não para o card
+ * anterior); vindo de fora da ala, some.
+ */
+export function rememberCardOrigin(to: RouteLocationNormalized, from: RouteLocationNormalized) {
+  if (to.name !== 'marketing-card' || from.name === 'marketing-card') return
+  const section = sectionOfPath(from.path)
+  cardOrigin.value = section ? { key: section.key, title: section.title, fullPath: from.fullPath } : null
+}
+
+/** Título da seção pelo caminho (breadcrumb). Card aberto conta como a aba de onde veio (ou Aprovações). */
+export function marketingSectionTitle(path: string): string | null {
+  if (path.startsWith('/marketing/cards/')) return cardOrigin.value?.title ?? 'Aprovações'
+  const section = sectionOfPath(path)
+  if (!section) return null
+  return section.key === 'home' ? null : section.title
 }

@@ -21,7 +21,7 @@ import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import type { MarketingBrand, MarketingRole } from '@/service/marketing/marketing-core'
 import type { MarketingCardSummary } from '@/service/marketing/marketing-cards'
 import { CARD_KIND_LABEL, brandTone, toneStyle, type CardStatus } from '../../marketing-labels'
-import { displayUrl, formatDay, isImageMime, isVideoMime } from '../approvals-meta'
+import { displayUrl, formatDay, isImageMime, isVideoMime, moveInfoOf } from '../approvals-meta'
 import MarketingMoveMenu from './MarketingMoveMenu.vue'
 
 const props = defineProps<{
@@ -36,6 +36,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ open: [id: string]; move: [status: CardStatus] }>()
 
+/** O que o "Mover para" precisa saber do card (o espelho da regra de mover). */
+const moveCard = computed(() => ({ id: props.card.id, title: props.card.title, ...moveInfoOf(props.card) }))
 const coverUrl = computed(() => (props.card.cover && isImageMime(props.card.cover.mimeType) ? displayUrl(props.card.cover) : null))
 const coverIcon = computed(() => (props.card.cover && isVideoMime(props.card.cover.mimeType) ? Film : FileText))
 const label = computed(() => {
@@ -78,7 +80,7 @@ const hasFoot = computed(
           <span class="mkc__kind">{{ CARD_KIND_LABEL[card.kind] ?? card.kind }}</span>
           <template v-if="movable">
             <span class="mkc__spacer" />
-            <MarketingMoveMenu :card="card" :role="role ?? null" :disabled="pending" @select="emit('move', $event)" />
+            <MarketingMoveMenu :card="moveCard" :role="role ?? null" :disabled="pending" @select="emit('move', $event)" />
           </template>
         </div>
         <p class="mkc__title">{{ card.title }}</p>

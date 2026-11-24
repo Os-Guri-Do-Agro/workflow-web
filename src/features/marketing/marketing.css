@@ -371,6 +371,12 @@
   color: var(--accent-ink);
 }
 
+/* Fim da trilha para o Admin: abre o registro do que já saiu (não move). */
+.mk-move-menu__record {
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
   .mk-btn,
   .mk-input,

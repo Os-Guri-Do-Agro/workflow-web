@@ -78,6 +78,11 @@ export interface MarketingCardPermissions {
   canDelete: boolean
   canUploadVersion: boolean
   allowedMoves: CardStatus[]
+  /**
+   * Admin registra o que já saiu fora do Nevo (`POST /record-done`). Opcional:
+   * a API anterior a 24/11 não manda (vale `false`).
+   */
+  canRecordDone?: boolean
 }
 
 export interface MarketingCardDetail {
@@ -223,6 +228,19 @@ export async function moveCard(
   position?: number,
 ): Promise<MarketingCardDetail> {
   const { data } = await api.post<MarketingCardDetail>(card(groupId, cardId, '/move'), { status, position })
+  return data
+}
+
+/**
+ * Registra o que já saiu fora do Nevo: o post vai para Publicado (com a data de
+ * verdade e o link) e a peça impressa para Impresso e entregue. Só Admin.
+ */
+export async function recordCardDone(
+  groupId: string,
+  cardId: string,
+  input: { at?: string | null; url?: string | null },
+): Promise<MarketingCardDetail> {
+  const { data } = await api.post<MarketingCardDetail>(card(groupId, cardId, '/record-done'), input)
   return data
 }
 

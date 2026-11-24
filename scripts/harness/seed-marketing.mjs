@@ -18,7 +18,7 @@ const require = createRequire(new URL('../../../workflow-api/package.json', impo
 const bcrypt = require('bcrypt')
 
 const DB = process.env.HARNESS_DB ?? 'wf'
-const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:55432/${DB}` })
+const db = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${process.env.PGPORT ?? 55432}/${DB}` })
 await db.connect()
 const id = () => 'c' + randomUUID().replace(/-/g, '').slice(0, 24)
 const q = (sql, params) => db.query(sql, params)
