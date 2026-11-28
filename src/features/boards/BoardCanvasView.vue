@@ -2367,10 +2367,8 @@ onBeforeUnmount(cleanupCanvasPage)
   align-items: center;
   gap: 6px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .title-wrap h1 {
@@ -2677,10 +2675,8 @@ onBeforeUnmount(cleanupCanvasPage)
   display: block;
   margin: 0 6px 7px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .actions-menu__grid {
@@ -2940,10 +2936,8 @@ onBeforeUnmount(cleanupCanvasPage)
   display: block;
   padding: 5px 8px 4px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .canvas-context-menu button {
@@ -3064,10 +3058,8 @@ onBeforeUnmount(cleanupCanvasPage)
   display: block;
   margin-bottom: 6px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .inspector-card strong {

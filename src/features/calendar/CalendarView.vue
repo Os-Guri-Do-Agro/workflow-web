@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowRight,
   Bell,
+  CalendarClock,
   CalendarDays,
   CheckSquare,
   ChevronLeft,
@@ -621,6 +622,14 @@ function isTodayColumn(date: Date): boolean {
           <Link2 v-else :size="13" />
           {{ googleConnected ? 'Google conectado' : 'Conectar Google' }}
         </button>
+        <RouterLink
+          class="btn-ghost press"
+          to="/agendamentos"
+          title="Sua página pública para outras pessoas marcarem reuniões com você"
+        >
+          <CalendarClock :size="13" />
+          Página de agendamento
+        </RouterLink>
         <button class="btn-ghost press" @click="goToToday">Hoje</button>
         <button class="btn-primary press" @click="openSelectedDayEventModal">
           <Plus :size="13" />
@@ -972,10 +981,8 @@ function isTodayColumn(date: Date): boolean {
   align-items: center;
   gap: 6px;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .page-title {
@@ -1038,6 +1045,10 @@ function isTodayColumn(date: Date): boolean {
 .btn-ghost {
   height: 34px;
   padding: 0 12px;
+}
+
+a.btn-ghost {
+  text-decoration: none;
 }
 
 .btn-ghost--ok {
@@ -1416,11 +1427,9 @@ function isTodayColumn(date: Date): boolean {
 .week-allday-label {
   display: grid;
   place-items: center;
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--text-4);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .week-allday-col {
@@ -1580,10 +1589,8 @@ function isTodayColumn(date: Date): boolean {
   gap: 10px;
   margin-bottom: 9px;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .side-new {

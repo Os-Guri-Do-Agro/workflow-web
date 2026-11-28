@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, type Component } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, type Component } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   Check,
   Sun,
@@ -21,6 +22,8 @@ import {
   Send,
   Eye,
   EyeOff,
+  UserRound,
+  Rocket,
 } from 'lucide-vue-next'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
@@ -33,10 +36,12 @@ import importService from '@/service/import/import-service'
 import notificationsService from '@/service/notifications/notifications-service'
 // import RepositoriesSection from './RepositoriesSection.vue' // oculto até liberar feature
 import type { AccentName, Density, FontScale, ShellVariant } from '@/plugins/tokens'
-import { accents } from '@/plugins/tokens'
+import { accents, FONT_FAMILIES } from '@/plugins/tokens'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
 import IdleDiagnostics from '@/features/settings/components/IdleDiagnostics.vue'
 import WorkScheduleCard from '@/features/settings/components/WorkScheduleCard.vue'
+import ProfileAvatarCard from '@/features/settings/components/ProfileAvatarCard.vue'
+import DeployIntegrationsCard from '@/features/settings/components/DeployIntegrationsCard.vue'
 
 const { success: toastSuccess, error: toastError } = useToast()
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -57,7 +62,7 @@ const handleJiraFile = async (file: File) => {
     const result = await importService.importJiraXml(file)
     importResult.value = result
     const imported = result?.imported ?? result?.count ?? result?.total ?? '?'
-    toastSuccess(`Importação concluída — ${imported} issue(s)`)
+    toastSuccess(`Importação concluída: ${imported} issue(s)`)
   } catch (e: any) {
     toastError(e?.response?.data?.message || 'Falha ao importar XML do Jira')
   } finally {
@@ -92,6 +97,8 @@ const {
   density,
   shell,
   fontScale,
+  font,
+  setFont,
   setTheme,
   toggleTheme,
   setAccent,
@@ -418,6 +425,12 @@ interface Secao {
 
 const SECOES: Secao[] = [
   {
+    id: 'perfil',
+    label: 'Seu perfil',
+    icon: UserRound,
+    termos: 'perfil foto avatar imagem retrato trocar remover conta nome',
+  },
+  {
     id: 'aparencia',
     label: 'Aparência',
     icon: Palette,
@@ -437,6 +450,12 @@ const SECOES: Secao[] = [
     termos: 'discord webhook aviso canal atraso',
   },
   {
+    id: 'deploys',
+    label: 'Deploys',
+    icon: Rocket,
+    termos: 'deploy build amplify aws railway webhook falhou sucesso pipeline integração token',
+  },
+  {
     id: 'integracoes',
     label: 'Integrações',
     icon: Plug,
@@ -450,8 +469,31 @@ const SECOES: Secao[] = [
   },
 ]
 
-const secaoAtiva = ref('aparencia')
+const secaoAtiva = ref('perfil')
 const busca = ref('')
+
+/**
+ * Âncora na URL abre a seção dela (`/settings#perfil`, do "Trocar foto" do menu
+ * do avatar). Sem isto o router rolaria até um card escondido pelo `v-show` e
+ * nada aconteceria na tela. Vale também com a tela já aberta (só o hash muda).
+ */
+const route = useRoute()
+watch(
+  () => route.hash,
+  (hash) => {
+    let id = (hash ?? '').replace(/^#/, '')
+    try {
+      id = decodeURIComponent(id)
+    } catch {
+      // Hash malformado: compara com o texto cru.
+    }
+    if (SECOES.some((s) => s.id === id)) {
+      secaoAtiva.value = id
+      busca.value = ''
+    }
+  },
+  { immediate: true },
+)
 
 /** Sem acento e sem caixa: quem digita "aparencia" quer achar "Aparência". */
 const normalizar = (s: string) =>
@@ -480,13 +522,23 @@ function mostra(id: string): boolean {
 function irPara(id: string) {
   secaoAtiva.value = id
   busca.value = ''
-}</script>
+}
+
+// A prévia das fontes só se mostra direito com a woff2 de cada uma: carrega as
+// quatro quando a Aparência abre (e só aí; quem não abre não baixa nada).
+watch(
+  () => mostra('aparencia'),
+  (on) => {
+    if (on) for (const f of FONT_FAMILIES) void f.load?.().catch(() => {})
+  },
+  { immediate: true },
+)</script>
 
 <template>
   <div class="settings-page">
     <div class="settings-header">
       <h1 class="settings-title">Configurações</h1>
-      <p class="settings-sub">Aparência e preferências</p>
+      <p class="settings-sub">Perfil, aparência e preferências</p>
     </div>
 
     <div class="settings-shell">
@@ -523,6 +575,19 @@ function irPara(id: string) {
         <p v-if="buscando && !secoesEncontradas.length" class="settings-empty">
           Nada encontrado para "{{ busca }}".
         </p>
+
+      <!-- Seu perfil: a foto que aparece para o time em todo o Nevo. `id` é a
+           âncora do "Trocar foto" do menu do avatar (tabindex para o foco ir
+           junto com a rolagem). -->
+      <section
+        v-show="mostra('perfil')"
+        id="perfil"
+        class="settings-card settings-card--anchor"
+        tabindex="-1"
+        aria-label="Seu perfil"
+      >
+        <ProfileAvatarCard />
+      </section>
 
       <!-- Appearance: theme + accent + density -->
       <div v-show="mostra('aparencia')" class="settings-card">
@@ -609,6 +674,32 @@ function irPara(id: string) {
               @click="setFontScale(opt.value)"
             >
               {{ opt.label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Fonte (spec v2-mobile-e-home, T2): comparação real antes de trocar
+             o padrão do time. Cada opção se mostra na própria fonte. -->
+        <div class="setting-row setting-row--column">
+          <div class="setting-info">
+            <span class="setting-label">Fonte</span>
+            <span class="setting-desc">Vale só para você. Experimente no board e nas notas antes de decidir.</span>
+          </div>
+          <div class="font-options" role="radiogroup" aria-label="Fonte do app">
+            <button
+              v-for="opt in FONT_FAMILIES"
+              :key="opt.value"
+              type="button"
+              role="radio"
+              class="font-option"
+              :class="{ 'font-option--on': font === opt.value }"
+              :aria-checked="font === opt.value"
+              :style="{ fontFamily: opt.stack ?? undefined }"
+              @click="setFont(opt.value)"
+            >
+              <span class="font-option-name">{{ opt.label }}</span>
+              <span class="font-option-sample">Tela de cadastro do pet · 1Il 0O · 12:45</span>
+              <span class="font-option-desc">{{ opt.desc }}</span>
             </button>
           </div>
         </div>
@@ -980,7 +1071,7 @@ function irPara(id: string) {
           <div class="setting-info">
             <span class="setting-label">Disparar verificação agora</span>
             <span class="setting-desc">
-              Roda o cron manualmente — útil pra testar se o webhook está certo.
+              Roda o cron manualmente: útil pra testar se o webhook está certo.
             </span>
           </div>
           <button
@@ -998,6 +1089,11 @@ function irPara(id: string) {
 
       <!-- Repositórios — oculto enquanto a feature de Repos está em desenvolvimento -->
       <!-- <div class="settings-card"><RepositoriesSection /></div> -->
+
+      <!-- Deploys (Amplify / Railway): só ADMIN configura; o card explica para os outros. -->
+      <section v-show="mostra('deploys')" id="deploys" class="settings-card">
+        <DeployIntegrationsCard />
+      </section>
 
       <!-- Integrations -->
       <div v-show="mostra('integracoes')" class="settings-card">
@@ -1239,12 +1335,20 @@ function irPara(id: string) {
   padding: 16px 18px;
 }
 
+/* Alvo de âncora: recebe o foco da rolagem sem desenhar anel no card todo. */
+.settings-card--anchor:focus {
+  outline: none;
+}
+
+.settings-card--anchor:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .card-section-title {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-4);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   margin-bottom: 12px;
 }
 
@@ -1511,10 +1615,8 @@ function irPara(id: string) {
 }
 
 .notif-status {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--text-3);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -1664,6 +1766,56 @@ function irPara(id: string) {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.font-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.font-option {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  transition: border-color var(--motion-fast) var(--motion-ease);
+}
+
+.font-option:hover {
+  border-color: var(--border-strong);
+}
+
+.font-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.font-option--on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.font-option-name {
+  font-weight: 700;
+}
+
+.font-option-sample {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.font-option-desc {
+  font-size: 12.5px;
+  color: var(--text-3);
 }
 
 .setting-label {

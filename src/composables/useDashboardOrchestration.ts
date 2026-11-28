@@ -16,8 +16,11 @@ import { useActiveCompanyId } from '@/stores/authStores'
 import { useDashboardMetrics } from '@/composables/useDashboardMetrics'
 import { useWorkspaceDashboard } from '@/composables/useWorkspaceDashboard'
 import { useNavQuarters } from '@/composables/useNavQuarters'
+import { currentMonthId } from '@/core/components/shells/shared/current-month'
 import { useToast } from '@/composables/useToast'
 import { useAssistant } from '@/composables/useAssistant'
+import { useCurrentUser } from '@/composables/useCurrentUser'
+import { getUserToken } from '@/utils/authContent'
 import type { CalendarEvent } from '@/service/events/events-service'
 
 export type DashboardMode = 'company' | 'workspace'
@@ -53,6 +56,7 @@ type WeeklyTrendPayload = {
 export type BacklogChange = {
   activityTitle?: string
   changedBy?: {
+    id?: string
     name?: string
   } | null
   changedAt: string
@@ -110,6 +114,10 @@ export const statusMeta: Record<string, { color: string; label: string }> = {
   todo: { color: 'var(--status-todo)', label: 'A fazer' },
   'in-progress': { color: 'var(--status-prog)', label: 'Em andamento' },
   testing: { color: 'var(--status-test)', label: 'Em teste' },
+  // O feed manda o status cru normalizado (`IN_TESTING` vira `in-testing`):
+  // sem estas chaves o histórico mostrava "Atualizado" no lugar da coluna.
+  'in-testing': { color: 'var(--status-test)', label: 'Em teste' },
+  reviewed: { color: 'var(--task-status-review)', label: 'Revisados' },
   done: { color: 'var(--status-done)', label: 'Concluído' },
   completed: { color: 'var(--status-done)', label: 'Concluído' },
   planning: { color: 'var(--status-todo)', label: 'Planejando' },
@@ -128,7 +136,7 @@ export function useDashboardOrchestration() {
   const route = useRoute()
   const activeCompanyStore = useActiveCompanyId()
   const assistant = useAssistant()
-  const { firstMonth } = useNavQuarters()
+  const { firstMonth, quarters: navQuarters } = useNavQuarters()
   const { error: showError, success } = useToast()
 
   // ── Mode (company / workspace) ──
@@ -173,6 +181,18 @@ export function useDashboardOrchestration() {
     if (h < 12) return 'Bom dia'
     if (h < 18) return 'Boa tarde'
     return 'Boa noite'
+  })
+
+  // Primeiro nome para "Boa tarde, Nicolas". `/user/me` é a fonte de verdade
+  // (reflete o banco); o token entra de reserva para a saudação já nascer com
+  // nome enquanto a consulta não volta. Sem nome nenhum, fica só a saudação.
+  const { me } = useCurrentUser()
+  const firstName = computed(() => {
+    const full = me.value?.name || getUserToken()?.name || ''
+    const first = full.trim().split(/\s+/)[0] ?? ''
+    if (!first) return ''
+    // Nome salvo em minúsculas ("nicolas") não pode sair assim na saudação.
+    return first.charAt(0).toLocaleUpperCase('pt-BR') + first.slice(1)
   })
 
   const todayLabel = computed(() => {
@@ -289,7 +309,8 @@ export function useDashboardOrchestration() {
       else if (progress >= 50) status = 'in-progress'
       return {
         id: company?.id || '',
-        name: company?.name || '—',
+        // Texto visível: em-dash é proibido na copy do produto.
+        name: company?.name || 'Sem nome',
         progress,
         cnpj: company?.cnpj || '',
         total: m.total || 0,
@@ -327,7 +348,10 @@ export function useDashboardOrchestration() {
   }
 
   const handleNewTask = () => {
-    if (firstMonth.value) router.push(`/tasks/${firstMonth.value.id}?new=1`)
+    // Mês CORRENTE da empresa ativa. Antes ia para o primeiro mês do ano
+    // (janeiro): a tarefa criada pela home caía no board errado.
+    const monthId = currentMonthId(navQuarters.value) ?? firstMonth.value?.id
+    if (monthId) router.push(`/tasks/${monthId}?new=1`)
   }
 
   const openCalendar = () => router.push('/calendar')
@@ -424,6 +448,7 @@ export function useDashboardOrchestration() {
     hero,
     stats,
     greeting,
+    firstName,
     todayLabel,
     weeklySeries,
     weeklyTrendData,

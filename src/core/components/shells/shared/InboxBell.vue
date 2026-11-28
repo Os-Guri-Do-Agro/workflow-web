@@ -6,6 +6,7 @@ import { useInbox } from '@/composables/useInbox'
 import { useToast } from '@/composables/useToast'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import type { AppNotification } from '@/service/inbox/inbox-service'
+import { inboxTypeLabel } from '@/utils/event-labels'
 
 const router = useRouter()
 const { error: showError, success } = useToast()
@@ -42,7 +43,10 @@ async function handleOpenNotification(notification: AppNotification) {
   close()
   if (!notification.link) return
   // Notificação de outra empresa: ativa a empresa certa antes de navegar.
-  if (notification.companyId && notification.companyId !== workspaceStore.activeCompanyId) {
+  // Aviso da ala Marketing não: a ala é do GRUPO (o grupo vem no `?grupo=` do
+  // link) e trocar a empresa ativa do topo aqui só atrapalharia quem volta.
+  const isMarketing = notification.type?.startsWith('MARKETING_') ?? false
+  if (!isMarketing && notification.companyId && notification.companyId !== workspaceStore.activeCompanyId) {
     workspaceStore.setActiveCompany(notification.companyId)
   }
   try {
@@ -145,7 +149,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
               <span class="inbox-copy">
                 <span class="inbox-item-title">{{ item.title }}</span>
                 <span v-if="item.body" class="inbox-item-body">{{ item.body }}</span>
-                <span class="inbox-item-meta">{{ item.type }} · {{ formatDate(item.createdAt) }}</span>
+                <span class="inbox-item-meta">{{ inboxTypeLabel(item.type) }} · {{ formatDate(item.createdAt) }}</span>
               </span>
             </button>
             <button
@@ -249,10 +253,8 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 .inbox-eyebrow {
   margin: 0 0 2px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .inbox-title {
@@ -363,10 +365,8 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentClick)
 
 .inbox-item-meta {
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .inbox-dismiss {

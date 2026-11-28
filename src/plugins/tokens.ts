@@ -14,6 +14,12 @@ const sharedRadiusAndShadow = {
   '--radius': '10px',
   '--radius-lg': '14px',
   '--radius-xl': '20px',
+  // Raios de trabalho do board de tarefas (spec board-tarefas-redesign): 4px
+  // para tag, badge e checkbox; 8px para coluna, menu e popover. O card usa
+  // `--radius-sm` (6px). Ficam fora da escala acima porque ela é a das telas de
+  // vitrine, e ferramenta densa com raio grande em tudo é o que lê como "IA".
+  '--radius-xs': '4px',
+  '--radius-md': '8px',
   // `--shadow-sm` é redefinida por tema logo abaixo: a mesma sombra suave que
   // funciona no claro desaparece sobre fundo escuro.
   '--shadow-sm': '0 1px 2px rgba(0,0,0,0.20)',
@@ -21,12 +27,15 @@ const sharedRadiusAndShadow = {
   '--motion': '180ms',
   '--motion-slow': '280ms',
   '--motion-ease': 'cubic-bezier(0.2, 0.8, 0.2, 1)',
-  // Geist (self-host, ver assets/fonts/geist) é a fonte do produto — variável
-  // 100–900, então os pesos intermediários (550/650/720…) renderizam exatos.
-  // Inter fica de fallback caso a woff2 ainda não tenha carregado: é a grotesque
-  // mais próxima em métrica, o swap quase não desloca layout.
+  // Figtree (self-host via @fontsource-variable/figtree, importada no main.ts)
+  // é a fonte do produto desde set/2026: o time achou a Geist pouco confortável
+  // no board e escolheu a Figtree comparando as duas nos mesmos cards. É
+  // variável 300–900, então os pesos intermediários (550/650…) renderizam
+  // exatos. Inter fica de fallback enquanto a woff2 não chega.
+  // `--font-family-user` é a escolha da pessoa em Configurações > Aparência
+  // (applyFontFamily); sem escolha, vale a Figtree.
   '--font-family':
-    '"Geist", "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    'var(--font-family-user, "Figtree Variable", "Figtree", "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif)',
   '--font-mono':
     'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
   // Cores fixas de identidade da marca (o mascote xícara). Não variam por tema:
@@ -53,7 +62,9 @@ const sharedRadiusAndShadow = {
   '--metal-silver': '#C2CBD6',
   '--metal-silver-lo': '#7E8894',
   '--metal-bronze-hi': '#F0C39A',
-  '--metal-bronze': '#C58045',
+  // Um passo mais claro que o bronze "de catálogo" (#C58045): o número da
+  // medalha em --brand-ink ficava em 4,49:1; aqui dá 4,76:1 (AA).
+  '--metal-bronze': '#C9854A',
   '--metal-bronze-lo': '#7E4A1F',
 }
 
@@ -116,6 +127,69 @@ const darkTokens: TokenMap = {
   '--avatar-4': '#E0A1B8',
   '--avatar-5': '#D4B476',
   '--avatar-6': '#93C79C',
+  // Board de tarefas (spec board-tarefas-redesign, D5 e D6). A coluna é um
+  // poço um passo acima do fundo e abaixo do card; o card não tem sombra no
+  // escuro (sombra preta sobre fundo preto não aparece), só um fio de 1px.
+  '--surface-sunken': '#15171C',
+  '--shadow-raised': '0 0 0 1px rgba(230,238,250,0.10)',
+  // Status só no ícone de 14px. Família própria, e não `--status-*`, porque
+  // aqui "A fazer" é NEUTRO e "Em andamento" é azul; os gráficos do Dashboard
+  // continuam na paleta de `--status-*`. Todos passam 3:1 como objeto gráfico.
+  '--task-status-todo': 'rgba(240,243,247,0.50)',
+  '--task-status-prog': '#5B9BF8',
+  '--task-status-test': '#A98BF0',
+  // Revisados (aprovada, esperando subir): verde-azulado, entre o violeta do
+  // teste e o verde do concluído (spec board-revisados-sinal-e-dialog, D6).
+  '--task-status-review': '#2ED3B7',
+  '--task-status-done': '#3CCB7F',
+  // Sinal do teste: a bolinha do card em "Em teste" (D5). Cor chapada, nunca
+  // brilho. Objeto gráfico de 10px: passa 3:1 sobre o card.
+  '--test-signal-testing': '#53B1FD',
+  '--test-signal-adjust': '#FDB022',
+  '--test-signal-rejected': '#F97066',
+  // No escuro o disco já contrasta sozinho; o anel só existe no claro.
+  '--test-signal-ring': 'transparent',
+  // Teste por plataforma (spec teste-por-plataforma, D9): o check marcado é
+  // verde (o mesmo do Concluído), com fundo suave. Cor chapada, sem brilho.
+  '--test-check-on': '#3CCB7F',
+  '--test-check-on-bg': 'rgba(60,203,127,0.14)',
+  '--test-check-on-border': 'rgba(60,203,127,0.42)',
+  // Cor só onde muda decisão: prioridade Urgente/Alta e prazo vencido/perto.
+  // São TEXTO de 12px, então passam AA (>= 4,5:1) sobre --surface e --surface-2.
+  '--prio-urgent': '#F97066',
+  '--prio-high': '#F79009',
+  '--due-late': '#F97066',
+  '--due-soon': '#F7B04B',
+  // Sequência diária do Nevo (spec sequencia-diaria-nevo). Cor como sinal
+  // chapado (número, anel, tinta de fundo), nunca brilho em volta. Os tons que
+  // viram TEXTO (chama, níveis) passam AA sobre --surface: chama 8,2:1,
+  // perfeito 10,6:1, níveis entre 7,4:1 e 10,6:1. `--streak-off` é a chama
+  // apagada (ícone, não texto; 4,5:1) e `--streak-missed` é discreto de
+  // propósito: dia perdido é informação, não alarme (o vermelho de --err
+  // já significa "gravando" no timer).
+  '--streak-flame': '#FF9A3D',
+  '--streak-flame-soft': 'rgba(255,154,61,0.14)',
+  '--streak-off': '#7C838F',
+  '--streak-rest': '#8FA6C7',
+  '--streak-perfect': '#F5C542',
+  '--streak-missed': '#A98387',
+  // Verde de "feito" da sequência: "Concluído!" em TEXTO e preenchimento
+  // sólido com glifo na cor da superfície (check do dia garantido, selos das
+  // trilhas, check das missões). No escuro é o próprio --success (5,9:1);
+  // existe porque no claro o verde de --success dá só 2,4:1 como texto e 2,6:1
+  // como objeto gráfico.
+  '--streak-done': '#12B76A',
+  // Níveis do mascote, na mesma família das chamas-cristal de cada nível
+  // (seq-basico laranja, seq-disciplina laranja-dourado, seq-constancia azul,
+  // seq-avancado roxo, seq-lendario dourado).
+  '--tier-basico': '#FB923C',
+  '--tier-progresso': '#F9A83B',
+  '--tier-determinado': '#8EAEE0',
+  '--tier-especialista': '#B89AF7',
+  '--tier-lendario': '#F5C542',
+  // Sombra de chão do mascote: neutra, mais densa no escuro pelo mesmo motivo
+  // de --shadow (sombra fraca some sobre fundo escuro).
+  '--nevo-floor': 'rgba(0,0,0,0.42)',
 }
 
 /**
@@ -161,6 +235,52 @@ const lightTokens: TokenMap = {
   '--avatar-4': '#B34A6E',
   '--avatar-5': '#96690F',
   '--avatar-6': '#35793F',
+  // Board de tarefas: ver o comentário no tema escuro. No claro o card é
+  // branco com a sombra `raised` do Atlassian (sem borda) sobre o poço cinza.
+  '--surface-sunken': '#E9E9EC',
+  '--shadow-raised': '0 1px 1px rgba(30,31,33,0.20), 0 0 1px rgba(30,31,33,0.30)',
+  '--task-status-todo': 'rgba(11,11,12,0.45)',
+  '--task-status-prog': '#2563EB',
+  '--task-status-test': '#7C3AED',
+  '--task-status-review': '#0E9384',
+  '--task-status-done': '#15803D',
+  // Amarelo sobre branco não passa 3:1 nem como objeto: o anel escuro fino dá
+  // o contorno, e o miolo continua amarelo (é a cor que o time pediu).
+  '--test-signal-testing': '#1570EF',
+  '--test-signal-adjust': '#FDB022',
+  '--test-signal-rejected': '#D92D20',
+  '--test-signal-ring': 'rgba(16,24,40,0.32)',
+  // Check marcado: o verde do Concluído passa 5:1 sobre branco como ícone.
+  '--test-check-on': '#15803D',
+  '--test-check-on-bg': 'rgba(21,128,61,0.09)',
+  '--test-check-on-border': 'rgba(21,128,61,0.38)',
+  // O laranja e o vermelho de --warn/--err dão 2,2:1 e 3,6:1 sobre branco:
+  // não servem como texto. Estes passam AA (4,8:1 a 5,6:1).
+  '--prio-urgent': '#D92D20',
+  '--prio-high': '#B54708',
+  '--due-late': '#D92D20',
+  '--due-soon': '#B54708',
+  // Sequência diária: versão escura dos mesmos matizes do tema dark, porque o
+  // laranja da marca (--brand-accent) dá só 3:1 sobre branco. Os tons que viram
+  // texto também precisam passar sobre a TINTA do próprio tom (cartão do nível
+  // atual, selo, "Dia perfeito!", "Faltam N dias" no cartão do próximo marco,
+  // topo aceso do popover), não só sobre --surface: com a chama em #C2410C e o
+  // dourado em #9A5B06 esses casos davam 4,2 a 4,5:1. Um passo mais escuros,
+  // o pior caso medido (tinta de até 16% e --surface-3, também no Modo XP) fica
+  // em 4,6:1. Sobre --surface: chama 6,1:1, dourado 6,3:1, níveis de 6,1 a 7,1:1.
+  '--streak-flame': '#AF3A0A',
+  '--streak-flame-soft': 'rgba(234,88,12,0.10)',
+  '--streak-off': '#878D97',
+  '--streak-rest': '#4F6485',
+  '--streak-perfect': '#8C5205',
+  '--streak-missed': '#A86A70',
+  '--streak-done': '#067647',
+  '--tier-basico': '#AF3A0A',
+  '--tier-progresso': '#9F4807',
+  '--tier-determinado': '#3B5B9A',
+  '--tier-especialista': '#6D28D9',
+  '--tier-lendario': '#8C5205',
+  '--nevo-floor': 'rgba(11,11,12,0.16)',
 }
 
 export const themeTokens: Record<ThemeName, TokenMap> = {
@@ -274,6 +394,88 @@ export function applyFontScale(scale: FontScale = 1): void {
   root.setAttribute('data-font-scale', String(scale))
 }
 
+// ── Fonte do app (spec v2-mobile-e-home, T2) ─────────────────────────────────
+
+export type FontFamilyName = 'figtree' | 'plex' | 'source' | 'atkinson' | 'system'
+
+export interface FontFamilyOption {
+  value: FontFamilyName
+  label: string
+  /** Por que escolher esta, em uma linha. */
+  desc: string
+  /** Pilha CSS. `null` = a padrão do token (Figtree). */
+  stack: string | null
+  /** Carrega a woff2 sob demanda: só quem escolhe a fonte baixa a fonte. */
+  load?: () => Promise<unknown>
+}
+
+const SYSTEM_STACK = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif'
+
+/**
+ * A Figtree segue padrão (escolhida pelo time em set/2026 comparando nos
+ * mesmos cards). As outras existem para o time comparar no uso real antes de
+ * trocar o padrão, como a memória do projeto pede para mudança de fonte.
+ */
+export const FONT_FAMILIES: readonly FontFamilyOption[] = [
+  { value: 'figtree', label: 'Figtree', desc: 'A atual: redonda e leve.', stack: null },
+  {
+    value: 'plex',
+    label: 'IBM Plex Sans',
+    desc: 'Cara de ferramenta séria, desenho próprio.',
+    stack: `"IBM Plex Sans Variable", "IBM Plex Sans", ${SYSTEM_STACK}`,
+    load: () => import('@fontsource-variable/ibm-plex-sans'),
+  },
+  {
+    value: 'source',
+    label: 'Source Sans 3',
+    desc: 'Neutra e confortável em texto pequeno.',
+    stack: `"Source Sans 3 Variable", "Source Sans 3", ${SYSTEM_STACK}`,
+    load: () => import('@fontsource-variable/source-sans-3'),
+  },
+  {
+    value: 'atkinson',
+    label: 'Atkinson Hyperlegible',
+    desc: 'Feita para legibilidade máxima: 1, l e I não se confundem.',
+    stack: `"Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", ${SYSTEM_STACK}`,
+    load: () => import('@fontsource-variable/atkinson-hyperlegible-next'),
+  },
+  {
+    value: 'system',
+    label: 'Do sistema',
+    desc: 'A fonte do seu aparelho. Nada para baixar, a mais rápida no celular.',
+    stack: SYSTEM_STACK,
+  },
+] as const
+
+export function fontFamilyOption(name: FontFamilyName): FontFamilyOption {
+  return FONT_FAMILIES.find((f) => f.value === name) ?? FONT_FAMILIES[0]!
+}
+
+/**
+ * Aplica a fonte escolhida. A woff2 chega antes da troca (sem piscar para a
+ * fonte do sistema no meio); se o download falhar, a pilha cai na do sistema.
+ */
+let fontRequest = 0
+
+export async function applyFontFamily(name: FontFamilyName): Promise<void> {
+  const option = fontFamilyOption(name)
+  const root = document.documentElement
+  // Trocas rápidas: só a última escolha vale, mesmo que um download antigo
+  // termine depois dela.
+  const request = ++fontRequest
+  if (!option.stack) {
+    root.style.removeProperty('--font-family-user')
+    return
+  }
+  try {
+    await option.load?.()
+  } catch {
+    // Sem a woff2, a própria pilha já termina na fonte do sistema.
+  }
+  if (request !== fontRequest) return
+  root.style.setProperty('--font-family-user', option.stack)
+}
+
 /**
  * Modo Windows XP (easter egg). Liga/desliga o atributo `data-xp` no <html>;
  * as sobrescritas visuais vivem em `styles/xp.css` (tema Luna + wallpaper
@@ -327,6 +529,15 @@ export function applyThemeTokens(theme: ThemeName, accent: AccentName = 'neutral
   }
   root.style.setProperty('--accent', accents[accent][theme])
   root.style.setProperty('--accent-fg', accentForeground[theme])
+  // Tons derivados da cor escolhida em Configurações (spec
+  // menu-enxuto-e-cor): o "tcham" da cor sem virar neon. O acento puro como
+  // destaque de conteúdo berra no tema claro (teal e laranja sobre branco),
+  // então: misturado ao texto para ícone e texto (`ink`, passa AA sobre o
+  // `soft`), e em transparência baixa para fundo (`soft`, `wash`). Por
+  // referência a `--accent`, acompanham o Modo XP e qualquer troca sem recalcular.
+  root.style.setProperty('--accent-ink', 'color-mix(in srgb, var(--accent) 72%, var(--text))')
+  root.style.setProperty('--accent-soft', 'color-mix(in srgb, var(--accent) 13%, transparent)')
+  root.style.setProperty('--accent-wash', 'color-mix(in srgb, var(--accent) 6%, var(--surface))')
   for (const [key, pair] of Object.entries(tagColors)) {
     root.style.setProperty(`--tag-${key}`, pair[theme])
   }

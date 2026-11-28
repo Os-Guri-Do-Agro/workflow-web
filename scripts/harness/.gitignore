@@ -1,0 +1,15 @@
+node_modules/
+pgdata/
+seed-out.json
+token.txt
+*.log
+*.png
+before/
+after*/
+states/
+schema.sql
+fake-storage-data/
+
+# saídas do seed por banco (marketing-db.sh)
+seed-out.*.json
+seed-marketing-out*.json

@@ -20,6 +20,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
+  BadgeCheck,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -478,6 +479,7 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
   TODO: { icon: CircleDashed, token: 'var(--status-todo)', label: 'A fazer' },
   IN_PROGRESS: { icon: CircleDot, token: 'var(--status-prog)', label: 'Em andamento' },
   IN_TESTING: { icon: CircleEllipsis, token: 'var(--status-test)', label: 'Em teste' },
+  REVIEWED: { icon: BadgeCheck, token: 'var(--task-status-review)', label: 'Revisados' },
   DONE: { icon: CircleCheck, token: 'var(--status-done)', label: 'Concluída' },
 }
 </script>
@@ -903,10 +905,8 @@ const STATUS_META: Record<PickerStatus, { icon: unknown; token: string; label: s
 .tp-section {
   margin: 8px 8px 3px;
   color: var(--text-4);
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
   display: flex;
   align-items: center;
   gap: 4px;

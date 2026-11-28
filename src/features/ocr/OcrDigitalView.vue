@@ -681,10 +681,8 @@ function resumoDados(dados: Record<string, unknown>): string {
 .ocr-eyebrow {
   margin: 0 0 2px;
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .ocr-title-row {

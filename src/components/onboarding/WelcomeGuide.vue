@@ -237,10 +237,8 @@ watch(isOpen, (open) => {
   align-self: flex-start;
   padding: 3px 9px;
   border-radius: 999px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
@@ -395,8 +393,6 @@ watch(isOpen, (open) => {
   margin: 0 0 8px;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-4);
 }
 .glossary-list {

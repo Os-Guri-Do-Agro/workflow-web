@@ -3,6 +3,7 @@ import { apiBaseUrl } from '@/service/api'
 import type { AppNotification } from '@/service/inbox/inbox-service'
 import type { TimeEntry, TeamLiveEntry, TeamStoppedPayload } from '@/service/time/time-service'
 import type { SearchHit } from '@/service/ai/ai-service'
+import type { ActivityStatus } from '@/features/tasks/activity-types'
 
 export interface PublicUser {
   id: string
@@ -70,7 +71,7 @@ export interface NotificationSyncPayload {
 }
 
 // ─── Kanban realtime (arraste de atividades) ────────────────────────────────
-export type ActivityBoardStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+export type ActivityBoardStatus = ActivityStatus
 
 export type ActivityChangeType = 'created' | 'updated' | 'deleted' | 'moved'
 
@@ -119,8 +120,29 @@ export interface AssistantErrorPayload {
   message: string
 }
 
+/**
+ * Algo mudou na ala Marketing (card, link, campanha...). A API manda para a sala
+ * `user:<id>` de cada membro do grupo; quem escuta invalida as queries
+ * `['marketing', groupId, ...]` (useMarketingRealtime).
+ */
+export interface MarketingChangedPayload {
+  groupId: string
+  entityType: string
+  entityId: string
+  verb: string
+  actorId: string
+}
+
+/** Reunião da página de agendamento marcada, remarcada ou cancelada. */
+export interface BookingChangedPayload {
+  id: string
+  kind?: 'new' | 'rescheduled' | 'canceled'
+}
+
 export interface RealtimeHandlers {
+  bookingChanged?: (payload: BookingChangedPayload) => void
   notificationNew?: (notification: AppNotification) => void
+  marketingChanged?: (payload: MarketingChangedPayload) => void
   /** `notification:read` e `notification:cleared` (outras abas do mesmo usuário). */
   notificationSync?: (payload: NotificationSyncPayload) => void
   feedNew?: (event: FeedEventPayload) => void
@@ -190,6 +212,8 @@ function bindEvents(target: Socket) {
   fanout<AssistantToolPayload>(target, 'assistant:tool', (h) => h.assistantTool)
   fanout<AssistantDonePayload>(target, 'assistant:done', (h) => h.assistantDone)
   fanout<AssistantErrorPayload>(target, 'assistant:error', (h) => h.assistantError)
+  fanout<MarketingChangedPayload>(target, 'marketing:changed', (h) => h.marketingChanged)
+  fanout<BookingChangedPayload>(target, 'booking:changed', (h) => h.bookingChanged)
 
   target.on('connect', () => {
     const isReconnect = hasConnectedOnce

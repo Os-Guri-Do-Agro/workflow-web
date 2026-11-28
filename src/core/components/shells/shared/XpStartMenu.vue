@@ -6,7 +6,9 @@ import XpIcon from './XpIcon.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { getUserToken } from '@/utils/authContent'
-import { clearSession } from '@/service/api'
+import { requestLogout } from '@/composables/useLogout'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
+import { isNavHidden } from '@/config/nav-visibility'
 
 /*
  * Menu Iniciar do easter egg Windows XP (tema Luna).
@@ -28,14 +30,6 @@ const { firstMonth } = useNavQuarters()
 // Usuário do JWT (mesmo caminho do UserMenu). Sem token → "Usuário".
 const user = getUserToken()
 const userName = computed(() => user?.name || 'Usuário')
-const userInitials = computed(() =>
-  (user?.name || 'U')
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2),
-)
 
 interface MenuLink {
   label: string
@@ -57,12 +51,13 @@ const appLinks = computed<MenuLink[]>(() => {
   links.push(
     { label: 'Notas', icon: 'notes', to: '/notes' },
     { label: 'Calendário', icon: 'calendar', to: '/calendar' },
+    { label: 'Agendamentos', icon: 'calendar', to: '/agendamentos' },
     { label: 'Variáveis', icon: 'variables', to: '/variables' },
     { label: 'Usuários', icon: 'users', to: '/company-users' },
     { label: 'QR Codes', icon: 'qr', to: '/qr' },
     { label: 'Meu tempo', icon: 'clock', to: '/time' },
   )
-  return links
+  return links.filter((l) => !isNavHidden(l.to))
 })
 
 function go(to: string): void {
@@ -78,9 +73,9 @@ function decorative(): void {
 // Fazer Logoff: logout real (limpa sessão, preserva preferências de UI) e vai
 // pro login.
 function logoff(): void {
-  clearSession()
   emit('close')
-  void router.push('/login')
+  // Com envio da ala Marketing subindo, pergunta antes (o `LogoutGuard` do App).
+  requestLogout(router)
 }
 
 // Desligar: "desliga" o computador = sai do modo XP.
@@ -94,7 +89,11 @@ function shutDown(): void {
   <div class="xp-startmenu" role="menu" aria-label="Menu Iniciar">
     <!-- Header azul com usuário -->
     <header class="xp-sm-header">
-      <div class="xp-sm-avatar">{{ userInitials }}</div>
+      <!-- Quadro de "foto do usuário" do XP: moldura branca Luna em volta do
+           PersonAvatar (foto, ou iniciais no tom da pessoa). -->
+      <div class="xp-sm-avatar">
+        <PersonAvatar :id="user?.sub" :name="userName" :size="34" shape="rounded" decorative />
+      </div>
       <span class="xp-sm-username">{{ userName }}</span>
     </header>
 
@@ -188,12 +187,10 @@ function shutDown(): void {
   border-radius: 5px;
   background: linear-gradient(180deg, #ffd479, #e9973a);
   border: 2px solid rgba(255, 255, 255, 0.85);
-  color: #5a3300;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 14px;
+  overflow: hidden;
   flex-shrink: 0;
 }
 

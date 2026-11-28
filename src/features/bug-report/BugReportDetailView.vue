@@ -332,10 +332,8 @@ watch(reportId, (newId) => {
 }
 
 .block-title {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   margin: 0;
 }
 

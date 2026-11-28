@@ -188,7 +188,7 @@ export function useTimerIdleGuard() {
       body: debug
         ? `Sem atividade há ${idleSec.value}s. "${describe()}" segue gravando.`
         : limitado
-          ? `Sem atividade no Nevo há ${minutes} min. "${describe()}" segue gravando — se estiver em outro programa, tudo certo.`
+          ? `Sem atividade no Nevo há ${minutes} min. "${describe()}" segue gravando. Se estiver em outro programa, tudo certo.`
           : `Sem atividade há ${minutes} min. "${describe()}" segue gravando.`,
       actions: [
         { action: 'continue', title: 'Continuar contando' },
@@ -294,6 +294,35 @@ export function useTimerIdleGuard() {
   function evaluate() {
     now.value = Date.now()
     if (!enabled.value || !isRunning.value) {
+      if (idlePhase.value === 'warning') exitWarning()
+      return
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sem uma fonte que enxergue o computador inteiro, o Nevo NÃO acusa.
+    //
+    // Esta regra já existia logo abaixo, em `cortaAutomatico`, e com a mesma
+    // justificativa escrita: "sem ela, 'sem eventos na aba' só quer dizer que o
+    // Nevo está minimizado". Ela estava aplicada só na conclusão mais grave
+    // (cortar o tempo) e não na premissa (afirmar que a pessoa parou) — então o
+    // app continuava acusando com um sinal que ele mesmo classificou como
+    // insuficiente.
+    //
+    // O que isso causava, e foi relatado: trabalhar sete minutos em OUTRA aba
+    // derrubava o aviso e punha o título a piscar "Ainda por aí?" a cada 1,2s.
+    // Como a aba do Nevo estava em segundo plano, o título piscando era a única
+    // coisa visível — o app interrogava exatamente quem estava trabalhando.
+    //
+    // Em modo limitado a rede de segurança continua existindo, e é melhor: o
+    // servidor marca o cliente como sumido após 30 min sem heartbeat e pergunta
+    // QUANDO A PESSOA VOLTA (`GET /time/abandoned`), em vez de no meio do
+    // trabalho. O aviso de timer esquecido (8h) também segue de pé: ele é por
+    // duração, não por ociosidade, e duração o app mede sem depender de palpite.
+    //
+    // Para ter o aviso de volta basta uma fonte confiável: a permissão de
+    // detecção de ociosidade (Chromium) ou a extensão. As duas ficam em
+    // Configurações › Proteção.
+    if (protectionLevel.value !== 'full') {
       if (idlePhase.value === 'warning') exitWarning()
       return
     }
@@ -427,8 +456,17 @@ export function useTimerIdleGuard() {
 
   return {
     phase: idlePhase,
-    /** `full` = corta sozinho · `limited` = só avisa (ver idle-state). */
+    /** `full` = fonte confiável (é o que permite até avisar) · `limited` = nenhuma. */
     protection: protectionLevel,
+    /**
+     * Este aviso termina em corte?
+     *
+     * Quem pergunta isso na tela precisa usar ISTO, e não `protection`: com a
+     * chave geral desligada não há corte nenhum, mesmo com proteção completa —
+     * e o card prometia "eu paro o tempo" ao lado de uma contagem parada em
+     * 00:00, que é a pior combinação possível de dizer a uma pessoa.
+     */
+    cuts: cortaAutomatico,
     idleSec,
     secondsToCut,
     lastCut,

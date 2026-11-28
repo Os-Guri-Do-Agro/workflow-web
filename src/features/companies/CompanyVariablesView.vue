@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { KeyRound, Search, Plus } from 'lucide-vue-next'
 import companyVariableService from '@/service/companies/variables/variables-services'
 import { useToast } from '@/composables/useToast'
+import { getApiErrorMessage } from '@/service/api'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
@@ -16,8 +17,11 @@ import { useEnvExport } from './components/useEnvExport'
 type VarType = 'TEXT' | 'URL' | 'SECRET'
 interface VariableField {
   key: string
-  value: string
+  /** SECRET chega mascarado: null, com `masked` e a pista `hint`. */
+  value: string | null
   type: VarType
+  masked?: boolean
+  hint?: string | null
 }
 interface Variable {
   id?: string
@@ -126,18 +130,18 @@ const handleCreate = async (payload: Variable) => {
   }
 }
 
-const handleSave = async (payload: Variable) => {
-  if (!payload.id) return
+/**
+ * O drawer manda só o que mudou. Segredo que ninguém digitou vai sem `value` e
+ * a API mantém o guardado: a listagem chega mascarada, então mandar a variável
+ * inteira apagaria toda senha com o `null` que a tela recebeu.
+ */
+const handleSave = async (id: string, patch: Record<string, unknown>) => {
   saving.value = true
   try {
-    await companyVariableService.patchCompanyVariable(payload.id, {
-      name: payload.name,
-      description: payload.description,
-      fields: payload.fields,
-    })
+    await companyVariableService.patchCompanyVariable(id, patch)
     showSuccess('Variável atualizada')
     await load()
-    const updated = variables.value.find((v) => v.id === payload.id)
+    const updated = variables.value.find((v) => v.id === id)
     if (updated) drawerVariable.value = updated
   } catch (e: any) {
     showError(e?.response?.data?.message || 'Erro ao salvar variável')
@@ -188,28 +192,44 @@ const performDelete = async () => {
   }
 }
 
-const exportAll = () => {
+// Exportar revela os segredos pela API (um registro no Histórico de cada
+// variável). Se a revelação falhar, nada é baixado nem copiado.
+const exportAll = async () => {
   if (!filtered.value.length) return
-  downloadEnv(filtered.value, 'empresa.env')
-  showSuccess('Arquivo .env baixado')
+  try {
+    await downloadEnv(filtered.value, 'empresa.env')
+    showSuccess('Arquivo .env baixado')
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível baixar o .env'))
+  }
 }
 
 const copyAll = async () => {
   if (!filtered.value.length) return
-  const ok = await copyEnv(filtered.value)
-  if (ok) showSuccess('Variáveis copiadas como .env')
-  else showError('Não foi possível copiar')
+  try {
+    await copyEnv(filtered.value)
+    showSuccess('Variáveis copiadas como .env')
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível copiar'))
+  }
 }
 
-const exportOne = (v: Variable) => {
-  downloadEnv([v], `${v.name}.env`)
-  showSuccess('Variável baixada')
+const exportOne = async (v: Variable) => {
+  try {
+    await downloadEnv([v], `${v.name}.env`)
+    showSuccess('Variável baixada')
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível baixar o .env'))
+  }
 }
 
 const copyOne = async (v: Variable) => {
-  const ok = await copyEnv([v])
-  if (ok) showSuccess('Variável copiada')
-  else showError('Não foi possível copiar')
+  try {
+    await copyEnv([v])
+    showSuccess('Variável copiada')
+  } catch (e) {
+    showError(getApiErrorMessage(e, 'Não foi possível copiar'))
+  }
 }
 
 const searchInputRef = ref<HTMLInputElement | null>(null)

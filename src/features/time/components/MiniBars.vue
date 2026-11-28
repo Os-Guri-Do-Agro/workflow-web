@@ -106,6 +106,14 @@ const barHeight = (sec: number) =>
   background: color-mix(in srgb, var(--text) 42%, transparent);
 }
 
+/*
+ * Rótulos ainda abaixo do piso de 12px (acessibilidade 50+), de propósito. Em
+ * "Tudo" cada mês tem rótulo e a coluna não encolhe abaixo dele: medido no rail
+ * de 340px, 12 meses ("out/25" ... "set") já estouram o card em 12px, e com
+ * mais de 12 meses a régua estoura até em 8.5px (o mês atual some). Subir o
+ * tamanho exige antes rarear os rótulos de mês em `buildPulseBars` e deixar a
+ * coluna encolher (`min-width: 0`).
+ */
 .bars__wd {
   font-size: 10px;
   font-weight: 600;

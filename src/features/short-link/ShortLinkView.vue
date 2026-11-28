@@ -384,7 +384,7 @@ function resumoUtm(link: ShortLink): string {
           <input
             v-model="form.targetUrl"
             class="field-input"
-            placeholder="nevo.app/precos — pode colar a URL que já tem UTM"
+            placeholder="nevo.app/precos (pode colar a URL que já tem UTM)"
             required
           />
           <small class="field-hint">
@@ -841,9 +841,7 @@ function resumoUtm(link: ShortLink): string {
 
 .utm legend {
   padding: 0 6px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
   color: var(--text-4);
 }
 

@@ -4,6 +4,8 @@ import NProgress from 'nprogress'
 import 'nprogress/nprogress.css'
 import { clearSession } from '@/service/api'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { syncSession } from '@/composables/useSession'
+import { marketingRoutes } from '@/features/marketing/routes'
 
 NProgress.configure({ showSpinner: false, speed: 300 })
 
@@ -37,18 +39,116 @@ function restoreScroll(top: number) {
   requestAnimationFrame(tick)
 }
 
+/** Folga acima do alvo da âncora quando ele não declara `scroll-margin-top`. */
+const ANCHOR_GAP_PX = 16
+
+/**
+ * Distância do alvo até o topo do CONTEÚDO do container, em coordenadas de
+ * `scrollTop`. Desconta o `translateY` do próprio alvo: o `v-reveal` entra
+ * deslocado para baixo e, lido no meio da animação, o destino sairia errado
+ * por esse tanto.
+ */
+function offsetInside(container: HTMLElement, target: HTMLElement): number {
+  const transform = getComputedStyle(target).transform
+  let shift = 0
+  if (transform && transform !== 'none') {
+    try {
+      shift = new DOMMatrixReadOnly(transform).m42
+    } catch {
+      // Transform que o DOMMatrix não entende: fica o erro de poucos pixels.
+    }
+  }
+  const containerTop = container.getBoundingClientRect().top + container.clientTop
+  return target.getBoundingClientRect().top - shift - containerTop + container.scrollTop
+}
+
+/**
+ * Âncora na URL (`/#sequencia`, o "Ver minha jornada" do chip da topbar). O
+ * vue-router resolveria o hash rolando a JANELA, que aqui nunca rola: quem
+ * rola é o container do shell. E o alvo costuma nascer depois da navegação
+ * (chunk da view + fetch), então tentamos por alguns frames, como no
+ * `restoreScroll`, até o elemento existir e o container ter altura para
+ * chegar nele.
+ *
+ * O `padding-top` do container entra na conta porque no Modo XP ele reserva a
+ * barra de título, que fica POR CIMA do conteúdo. Movimento reduzido: pulo
+ * direto, sem animação (`instant` ignora qualquer `scroll-behavior` de CSS).
+ *
+ * `fromOtherPage`: o container é do shell e guarda o scroll da tela anterior.
+ * Se o alvo ainda não existe (ou nunca vai existir, como o módulo da sequência
+ * sem a rota na API), a tela nova começa do topo, igual a qualquer navegação.
+ * Na mesma página o scroll atual fica, para a animação partir de onde está.
+ */
+function scrollToAnchor(hash: string, fromOtherPage: boolean) {
+  let id = hash.slice(1)
+  try {
+    id = decodeURIComponent(id)
+  } catch {
+    // Hash malformado: tenta com o texto cru.
+  }
+  if (!id) return
+  let resetPending = fromOtherPage
+  const deadline = Date.now() + 3000
+  const tick = () => {
+    const container = scrollContainer()
+    const target = document.getElementById(id)
+    if (!container || !target || !container.contains(target)) {
+      if (container && resetPending) container.scrollTop = 0
+      resetPending = false
+      if (Date.now() < deadline) requestAnimationFrame(tick)
+      return
+    }
+    resetPending = false
+    const styles = getComputedStyle(container)
+    const margin = parseFloat(getComputedStyle(target).scrollMarginTop) || ANCHOR_GAP_PX
+    const top = Math.max(
+      0,
+      Math.round(offsetInside(container, target) - (parseFloat(styles.paddingTop) || 0) - margin),
+    )
+    // Página ainda curta demais para o alvo chegar ao topo: espera renderizar.
+    if (container.scrollHeight - container.clientHeight < top && Date.now() < deadline) {
+      requestAnimationFrame(tick)
+      return
+    }
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    container.scrollTo({ top, behavior: reduced ? 'instant' : 'smooth' })
+    // O foco vai junto com a rolagem: sem isto ele ficava no botão que levou até
+    // aqui (o chip da topbar) e o próximo Tab voltava para a topbar, longe do
+    // que a pessoa pediu para ver. Só em alvo preparado para receber foco
+    // (`tabindex`), e sem rolar de novo.
+    if (target.hasAttribute('tabindex')) target.focus({ preventScroll: true })
+  }
+  requestAnimationFrame(tick)
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  scrollBehavior(to, _from, savedPosition) {
+  scrollBehavior(to, from, savedPosition) {
+    // Link novo com âncora vai até ela. No voltar/avançar (`savedPosition`
+    // presente) vale a posição guardada, como o navegador faria.
+    if (to.hash && !savedPosition) {
+      scrollToAnchor(to.hash, to.path !== from.path)
+      return false
+    }
     const remembered = scrollMemory.get(to.fullPath)
     const isFresh = !!remembered && Date.now() - remembered.at < SCROLL_MEMORY_MS
-    const top = savedPosition?.top ?? (isFresh ? remembered!.top : 0)
+    // A posição guardada do CONTAINER vem antes do `savedPosition`: ele é o da
+    // janela, que aqui está sempre em zero, e ganhava do valor guardado. Era por
+    // isso que o voltar do navegador caía sempre no topo da tela anterior.
+    const top = isFresh ? remembered!.top : (savedPosition?.top ?? 0)
     restoreScroll(top)
     // Devolvido pro vue-router só por completude: a janela em si não rola.
     return { top: savedPosition?.top ?? 0, left: 0 }
   },
   routes: [
     { path: '/login', name: 'login', component: () => import('@/features/auth/LoginView.vue') },
+    // Link de senha (primeiro acesso e esqueci a senha). Pública: quem abre
+    // ainda não tem senha. Está também no `bare` do AppShell.
+    {
+      path: '/redefinir-senha',
+      name: 'reset-password',
+      component: () => import('@/features/auth/ResetPasswordView.vue'),
+    },
     { path: '/download', name: 'download', component: () => import('@/features/download/DownloadView.vue') },
     // Link público de arquivo do Drive. Curto de propósito: é endereço colado
     // em conversa, e cada caractere a mais é chance de quebrar na cópia.
@@ -67,6 +167,24 @@ const router = createRouter({
     { path: '/public/board/:token', name: 'public-board', component: () => import('@/features/public/PublicBoardView.vue') },
     { path: '/public/roadmap/:token', name: 'public-roadmap', component: () => import('@/features/public/PublicRoadmapView.vue') },
     { path: '/public/note/:token', name: 'public-note', component: () => import('@/features/public/PublicNoteView.vue') },
+    // Agendamento público estilo Calendly (spec: docs/specs/2026/q4/agendamento-publico.md).
+    // Sem login: é a página que clientes e parceiros recebem. `/reuniao/:token`
+    // é o link que vai DENTRO do convite do Google (remarcar/cancelar).
+    {
+      path: '/agendar/:slug',
+      name: 'public-booking',
+      component: () => import('@/features/booking/public/PublicBookingPageView.vue'),
+    },
+    {
+      path: '/agendar/:slug/:eventSlug',
+      name: 'public-booking-event',
+      component: () => import('@/features/booking/public/PublicBookingEventView.vue'),
+    },
+    {
+      path: '/reuniao/:token',
+      name: 'public-booking-manage',
+      component: () => import('@/features/booking/public/PublicBookingManageView.vue'),
+    },
     { path: '/', name: 'home', component: () => import('@/features/dashboard/DashboardView.vue') },
     { path: '/board', name: 'board', component: () => import('@/features/board/BoardView.vue') },
     { path: '/boards', name: 'boards', component: () => import('@/features/boards/BoardsListView.vue') },
@@ -75,6 +193,8 @@ const router = createRouter({
     { path: '/notes', name: 'notes', component: () => import('@/features/notes/NotesView.vue') },
     { path: '/notes/:id', name: 'note-editor', component: () => import('@/features/notes/NoteEditorView.vue') },
     { path: '/calendar', name: 'calendar', component: () => import('@/features/calendar/CalendarView.vue') },
+    // Configuração da página pública de agendamento (pessoal, não depende da empresa).
+    { path: '/agendamentos', name: 'booking', component: () => import('@/features/booking/BookingView.vue') },
     { path: '/time', name: 'time', component: () => import('@/features/time/TimeTrackingView.vue') },
     // Drive de arquivos (spec: docs/specs/2026/q3/q3-2/drive-p1-nativo.md).
     // Acesso por login; escopo pessoal/empresa é resolvido dentro da view.
@@ -90,6 +210,13 @@ const router = createRouter({
     },
     // Ferramenta em desenvolvimento: a página apresenta o produto (spec: docs/specs/ocr-digital.md).
     { path: '/ocr', name: 'ocr', component: () => import('@/features/ocr/OcrDigitalView.vue') },
+    // Catálogo curado de onde tirar vídeo, foto e trilha, com a licença à vista.
+    // Só leitura e sem escopo de empresa: vale para o time inteiro.
+    {
+      path: '/recursos',
+      name: 'resource-library',
+      component: () => import('@/features/library/ResourceLibraryView.vue'),
+    },
     // Tokens de API das ferramentas (spec: docs/specs/acessos-publicos.md).
     // `anyCompanyAdmin`: quem não é ADMIN em NENHUMA empresa não tem o que ver.
     {
@@ -115,12 +242,16 @@ const router = createRouter({
     { path: '/activity/:id', name: 'activity-resolver', component: () => import('@/features/tasks/ActivityResolverView.vue') },
     { path: '/bugs/:id', redirect: (to) => `/bug-reports/${to.params.id}` },
     // Rota inexistente (ex.: /tickets removido) → 404 amigável.
+    // Ala Marketing (o acesso é pelo papel no GRUPO; o MarketingLayout mostra
+    // "sem acesso" para quem não é da ala).
+    ...marketingRoutes,
     { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/features/errors/NotFoundView.vue') },
   ],
 })
 
 const PUBLIC_ROUTES = new Set([
   'login',
+  'reset-password',
   'download',
   'public-file',
   'bug-report',
@@ -128,6 +259,9 @@ const PUBLIC_ROUTES = new Set([
   'public-board',
   'public-roadmap',
   'public-note',
+  'public-booking',
+  'public-booking-event',
+  'public-booking-manage',
 ])
 
 
@@ -236,6 +370,9 @@ router.beforeEach((to, from) => {
 
 router.afterEach(() => {
   NProgress.done()
+  // Login grava o token e navega; logout e o guard (token vencido) apagam e
+  // navegam: a sessão reativa (`hasSession`) acompanha aqui.
+  syncSession()
 })
 
 export default router

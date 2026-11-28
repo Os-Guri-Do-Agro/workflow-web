@@ -1,0 +1,160 @@
+/*
+ * Peças do financeiro (prefixo `fin-`), por cima dos utilitários `mk-` da ala.
+ * Importado uma vez pela MarketingFinanceView. Só tokens; denso, cara de
+ * planilha: número tabular à direita, linha fina, cor só onde é sinal.
+ */
+
+/* Contêiner que rola na horizontal: a PÁGINA nunca rola de lado no celular. */
+.fin-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.fin-scroll > .mk-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.fin-table td,
+.fin-table th {
+  padding: 6px 10px;
+}
+
+.fin-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.fin-table tfoot td {
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 0;
+  background: var(--surface-2);
+  font-weight: 700;
+}
+
+.fin-muted {
+  color: var(--text-3);
+}
+
+.fin-sub {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-3);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fin-neg {
+  color: var(--err);
+  font-weight: 700;
+}
+
+/* Controle segmentado (Pago | Previsto | ...) */
+.fin-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.fin-seg button {
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fin-seg button.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.fin-seg button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Barra fina de uso do orçamento: pago cheio, previsto claro, estouro vermelho */
+.fin-bar {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 80px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.fin-bar__paid {
+  background: var(--info);
+}
+
+.fin-bar__planned {
+  background: color-mix(in srgb, var(--info) 38%, transparent);
+}
+
+.fin-bar.is-over .fin-bar__paid {
+  background: var(--err);
+}
+
+.fin-bar.is-over .fin-bar__planned {
+  background: color-mix(in srgb, var(--err) 40%, transparent);
+}
+
+/* Aviso de linha inteira (recorrentes pendentes, financeiro fechado) */
+.fin-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+}
+
+.fin-notice svg {
+  flex-shrink: 0;
+  color: var(--warn);
+}
+
+.fin-notice__text {
+  flex: 1;
+  min-width: 180px;
+}
+
+.fin-empty-row td {
+  padding: 28px 12px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .fin-seg button {
+    min-height: 40px;
+  }
+}

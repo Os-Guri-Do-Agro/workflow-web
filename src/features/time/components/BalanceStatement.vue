@@ -21,6 +21,8 @@ import {
 } from '@/features/time/composables/useBalance'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { formatDurationLong } from '@/utils/duration'
+import BalanceWaterfall from './BalanceWaterfall.vue'
+import BalanceTrendChart from './BalanceTrendChart.vue'
 
 const workspace = useWorkspaceStore()
 const extrato = useStatement()
@@ -112,6 +114,14 @@ function removerAjuste(id: string) {
         <span class="stm-saldo-word">{{ credito ? 'de crédito' : 'devendo' }}</span>
       </div>
 
+      <!-- Os gráficos vêm antes da tabela de propósito: a pergunta que traz a
+           pessoa aqui é "por que esse número?", e ela se responde vendo o
+           movimento. A tabela continua abaixo como a leitura exata — e é ela
+           que cumpre o requisito de acessibilidade de ter os mesmos dados fora
+           do canvas. -->
+      <BalanceWaterfall :months="extrato.data.value.months" />
+      <BalanceTrendChart :months="extrato.data.value.months" />
+
       <ul class="stm-months">
         <li v-for="m in extrato.data.value.months" :key="m.month" class="stm-month">
           <button
@@ -192,16 +202,19 @@ function removerAjuste(id: string) {
                 <!-- Dia sem registro vira travessão: "0s" numa coluna de horas
                      lê como defeito, não como ausência. -->
                 <span class="stm-day-worked" :class="{ 'stm-day-empty': d.workedSec === 0 }">
-                  {{ d.workedSec > 0 ? formatDurationLong(d.workedSec) : '—' }}
+                  {{ d.workedSec > 0 ? formatDurationLong(d.workedSec) : '-' }}
                 </span>
                 <span class="stm-day-target">
                   {{ d.targetSec > 0 ? formatDurationLong(d.targetSec) : 'sem meta' }}
                 </span>
+                <!-- `chargedSec` e não `targetSec`: o dia de hoje ainda corre e
+                     só cobra o que já foi cumprido, então ele aparece zerado em
+                     vez de devendo a jornada inteira desde cedo. -->
                 <span
                   class="stm-day-diff"
-                  :class="d.workedSec - d.targetSec >= 0 ? 'stm-up' : 'stm-down'"
+                  :class="d.workedSec - d.chargedSec >= 0 ? 'stm-up' : 'stm-down'"
                 >
-                  {{ sinal(d.workedSec - d.targetSec) }}{{ abs(d.workedSec - d.targetSec) }}
+                  {{ sinal(d.workedSec - d.chargedSec) }}{{ abs(d.workedSec - d.chargedSec) }}
                 </span>
               </li>
             </ul>
@@ -278,8 +291,6 @@ function removerAjuste(id: string) {
 
 .stm-saldo-label {
   font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   opacity: 0.7;
 }
 
@@ -342,8 +353,6 @@ function removerAjuste(id: string) {
 
 .stm-cell-label {
   font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   opacity: 0.6;
 }
 

@@ -55,10 +55,8 @@ const emit = defineEmits<{ open: [file: DriveFile] }>()
 .rec-title {
   margin: 0 0 10px;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .rec-track {

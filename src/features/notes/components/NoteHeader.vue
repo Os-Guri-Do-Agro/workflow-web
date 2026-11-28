@@ -5,10 +5,16 @@
  *
  * O título não vive aqui - ele é o primeiro elemento do papel, como em Bear e
  * Craft. Esta barra existe só para o que é meta.
+ *
+ * Celular (spec v2-celular-roadmap-notas, D3): uma linha só, em qualquer
+ * estado. O salvamento vira o indicador curto ("Salvo", a hora no `title`),
+ * "Compartilhar" vira ícone, o selo de convidado vira "Só leitura" e os
+ * botões ganham 44px de alvo.
  */
 import { ArrowLeft, Eye, Maximize2, Minimize2, Pin, Users } from 'lucide-vue-next'
 import SaveStatus from '@/components/ui/SaveStatus.vue'
 import type { SaveState } from '@/components/ui/save-state'
+import { usePhoneViewport } from '@/composables/usePhoneViewport'
 
 defineProps<{
   saveState: SaveState
@@ -33,6 +39,8 @@ const emit = defineEmits<{
   toggleImmersive: []
   share: []
 }>()
+
+const phone = usePhoneViewport()
 </script>
 
 <template>
@@ -41,15 +49,20 @@ const emit = defineEmits<{
       <ArrowLeft :size="18" />
     </button>
 
-    <span v-if="readOnly" class="note-header__readonly">
+    <span
+      v-if="readOnly"
+      class="note-header__readonly"
+      :title="phone ? 'Você tem acesso apenas para ver' : undefined"
+    >
       <Eye :size="13" />
-      Você tem acesso apenas para ver
+      {{ phone ? 'Só leitura' : 'Você tem acesso apenas para ver' }}
     </span>
     <SaveStatus
       v-else
       :state="saveState"
       :saved-at="savedAt"
       :message="saveMessage"
+      :short="phone"
       @retry="emit('retry')"
     />
 
@@ -62,8 +75,8 @@ const emit = defineEmits<{
         title="Compartilhar"
         @click="emit('share')"
       >
-        <Users :size="15" />
-        Compartilhar
+        <Users :size="phone ? 18 : 15" />
+        <span v-if="!phone">Compartilhar</span>
       </button>
 
       <span class="note-header__count">
@@ -214,6 +227,45 @@ const emit = defineEmits<{
 @media (max-width: 720px) {
   .note-header__count {
     display: none;
+  }
+}
+
+/* Celular: uma linha de alvos de 44px (o "…" das propriedades segue a mesma
+   régua no NoteMetaMenu). Nada aqui quebra linha: o que não cabe encolhe. */
+@media (max-width: 640px) {
+  .note-header {
+    gap: 2px;
+    padding: 4px 8px;
+    min-height: 52px;
+    flex-wrap: nowrap;
+  }
+
+  .note-header__right {
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  .note-header__icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .note-header__share {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0;
+    justify-content: center;
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-2);
+  }
+
+  .note-header__readonly {
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 

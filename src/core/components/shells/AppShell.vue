@@ -4,7 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import CommandShell from './CommandShell.vue'
 import FocusShell from './FocusShell.vue'
 import CanvasShell from './CanvasShell.vue'
+import MobileShell from './MobileShell.vue'
 import CommandPalette from '@/components/CommandPalette.vue'
+import { useCompactViewport } from '@/composables/useCompactViewport'
 /**
  * Assíncrono porque o painel renderiza markdown da IA, e o markdown puxa o
  * `highlight.js` (314 KB). Sendo import estático aqui, o destaque de sintaxe
@@ -21,6 +23,8 @@ import XpWindowChrome from './shared/XpWindowChrome.vue'
 import XpDesktop from './shared/XpDesktop.vue'
 import CompanyCreateOverlay from '@/features/companies/components/CompanyCreateOverlay.vue'
 import NoCompanyState from '@/features/companies/components/NoCompanyState.vue'
+import MarketingOnlyShell from './MarketingOnlyShell.vue'
+import { useMarketingMe } from '@/features/marketing/composables/useMarketing'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useXpSounds } from '@/composables/useXpSounds'
@@ -39,6 +43,22 @@ import IdleAlert from '@/components/onboarding/IdleAlert.vue'
 import IdleProtectionDialog from '@/components/onboarding/IdleProtectionDialog.vue'
 import AbandonedTimerDialog from '@/components/onboarding/AbandonedTimerDialog.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { hasSession } from '@/composables/useSession'
+
+/**
+ * Comemoração da sequência ("Dia garantido!", marcos). Assíncrona para o
+ * overlay (confete, Nevo pulando, CSS da festa) não pesar no chunk de ENTRADA:
+ * ele só aparece uma vez por dia. O chunk é pedido assim que a área logada
+ * monta, então o observador já está de pé muito antes da primeira festa; o gsap
+ * do confete continua vindo por import dinâmico lá dentro.
+ *
+ * Ele mesmo liga o observador da sequência (`useStreakCelebration`), por isso é
+ * montado só dentro de `.app-shell-root`: nas rotas bare (login, links
+ * públicos) nenhuma chamada a /streak sai.
+ */
+const StreakCelebration = defineAsyncComponent(
+  () => import('@/components/nevo/StreakCelebration.vue'),
+)
 
 const route = useRoute()
 const router = useRouter()
@@ -91,9 +111,10 @@ useServerCutAlert()
 // expirada e zera falhas de uma que voltou a viver.
 const { ensureSubscribed } = usePushSubscription()
 watch(
-  notificationPermission,
-  (permissao) => {
-    if (permissao === 'granted') void ensureSubscribed()
+  [notificationPermission, hasSession],
+  ([permissao, logado]) => {
+    // Sem sessão (login, redefinir senha) a assinatura levava 401.
+    if (permissao === 'granted' && logado) void ensureSubscribed()
   },
   { immediate: true },
 )
@@ -143,19 +164,58 @@ function onAssistantHotkey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onAssistantHotkey, true))
 onUnmounted(() => window.removeEventListener('keydown', onAssistantHotkey, true))
 
-const bare = computed(
-  () =>
-    route.name === 'login' ||
-    route.name === 'download' ||
-    route.name === 'public-file' ||
-    route.name === 'bug-report' ||
-    route.name === 'report-status' ||
-    route.name === 'public-board' ||
-    route.name === 'public-roadmap' ||
-    route.name === 'public-note',
-)
+const BARE_ROUTES = new Set([
+  'login',
+  'reset-password',
+  'download',
+  'public-file',
+  'bug-report',
+  'report-status',
+  'public-board',
+  'public-roadmap',
+  'public-note',
+  'public-booking',
+  'public-booking-event',
+  'public-booking-manage',
+])
+
+/**
+ * Antes da 1ª navegação resolver, o `route` ainda é o START_LOCATION (sem
+ * nome): o `bare` dava falso e a moldura logada montava por um instante no
+ * /login e no /redefinir-senha. Era nesse instante que sino, sequência,
+ * cronômetro largado e paleta disparavam as chamadas autenticadas que levavam
+ * 401 (spec v2-celular-roadmap-notas, N1). Até o router ficar pronto, quem
+ * decide é o endereço da barra; e sem sessão nunca há moldura logada, porque o
+ * guard vai mandar para o login de qualquer jeito.
+ */
+const routerReady = ref(false)
+void router.isReady().then(() => {
+  routerReady.value = true
+})
+
+const bare = computed(() => {
+  if (routerReady.value) return BARE_ROUTES.has(route.name as string)
+  if (!hasSession.value) return true
+  const initial = router.resolve(window.location.pathname + window.location.search)
+  return BARE_ROUTES.has(initial.name as string)
+})
+
+// Tela pequena ganha a moldura de celular em qualquer variante: a variante é
+// preferência de desktop e nenhuma das três cabe abaixo de 900px.
+//
+// A troca é decidida na carga e a cada navegação, NUNCA no meio de uma página:
+// a página mora dentro do shell, e trocar de shell desmonta e remonta a página
+// inteira. Girar um iPad (768 em retrato, 1024 em paisagem) ou encaixar a janela
+// em meia tela perderia edição inline e formulário aberto (revisão cruzada de
+// 2026-11-05). Até a próxima navegação, a moldura atual continua funcional.
+const liveCompact = useCompactViewport()
+const compact = ref(liveCompact.value)
+router.afterEach(() => {
+  compact.value = liveCompact.value
+})
 
 const ActiveShell = computed(() => {
+  if (compact.value) return MobileShell
   if (shell.value === 'focus') return FocusShell
   // Canvas escondido (feature flag off): quem tinha ui.shell='canvas' no
   // localStorage cai no CommandShell em vez de uma tela quebrada.
@@ -197,6 +257,32 @@ const hasNoCompany = computed(
   () => !bare.value && companiesLoadOk.value && workspace.companies.length === 0,
 )
 
+// Ala Marketing (spec ala-marketing/00-fundacao.md): conta SEM empresa mas com
+// papel num grupo (freelancer, diretoria) entra só na ala, com moldura própria.
+// Enquanto o /marketing/me carrega, não desenha nem o "crie sua empresa" (seria
+// um piscar errado para o freelancer).
+const marketingMe = useMarketingMe()
+const marketingPending = computed(() => hasNoCompany.value && marketingMe.isLoading.value)
+const marketingOnly = computed(
+  () =>
+    hasNoCompany.value &&
+    !!marketingMe.data.value?.available &&
+    (marketingMe.data.value?.groups.length ?? 0) > 0,
+)
+const MARKETING_ONLY_PATHS = ['/marketing', '/settings']
+// `route.matched` vazio = ainda é o START_LOCATION (path '/'), antes da 1ª
+// navegação resolver. Redirecionar nesse instante jogava fora o link profundo
+// (/marketing/cards/<id> aberto por aviso ou colado) de quem só tem a ala.
+watch(
+  [marketingOnly, () => route.path, () => route.matched.length],
+  ([only, path, matched]) => {
+    if (only && matched > 0 && !MARKETING_ONLY_PATHS.some((p) => path === p || path.startsWith(`${p}/`))) {
+      void router.replace('/marketing')
+    }
+  },
+  { immediate: true },
+)
+
 // Onboarding abre sozinho UMA vez, quando o usuário entra numa rota logada
 // (sai do login/bare). maybeAutoOpen é idempotente (guarda em localStorage).
 watch(
@@ -215,6 +301,10 @@ const openPalette = () => paletteRef.value?.open()
   <div v-if="bare" class="app-shell-bare">
     <slot />
   </div>
+  <div v-else-if="marketingPending" class="app-shell-bare" aria-busy="true" />
+  <MarketingOnlyShell v-else-if="marketingOnly">
+    <slot />
+  </MarketingOnlyShell>
   <template v-else-if="hasNoCompany">
     <NoCompanyState />
     <CompanyCreateOverlay />
@@ -225,7 +315,9 @@ const openPalette = () => paletteRef.value?.open()
     </component>
     <CommandPalette ref="paletteRef" />
     <CompanyCreateOverlay />
-    <AssistantLauncher />
+    <!-- No celular o botão flutuante cobria conteúdo da lista; lá o assistente
+         abre pela folha "Mais" da tab bar. -->
+    <AssistantLauncher v-if="!compact" />
     <AssistantPanel />
     <WelcomeGuide />
     <!-- Recados do Nevo (canto inferior direito). O container empilha e fica
@@ -241,9 +333,14 @@ const openPalette = () => paletteRef.value?.open()
     <!-- Cronômetro que ficou aberto sem cliente vivo (reboot, sleep, navegador
          morto): quem decide o que fazer com o tempo é a pessoa. -->
     <AbandonedTimerDialog />
+    <!-- Festa da sequência (Nevo pulando + confete). Mora AQUI, e não no chip
+         de cada shell, porque o shell remonta ao trocar de variante: a festa
+         sumiria no meio e o observador recomeçaria do zero a cada troca.
+         Montado uma vez, vale para a sessão logada inteira, em qualquer rota. -->
+    <StreakCelebration />
     <!-- Easter egg Windows XP (só quando o modo XP está ligado): ícones de área
          de trabalho, title bar da "janela" de conteúdo e barra de tarefas. -->
-    <template v-if="xp">
+    <template v-if="xp && !compact">
       <XpDesktop />
       <XpWindowChrome />
       <XpTaskbar />
@@ -265,7 +362,7 @@ const openPalette = () => paletteRef.value?.open()
 .nevo-stack {
   position: fixed;
   right: 22px;
-  bottom: 90px;
+  bottom: calc(90px + var(--shell-bottom-inset, 0px));
   z-index: 95;
   display: flex;
   flex-direction: column-reverse;
@@ -278,7 +375,7 @@ const openPalette = () => paletteRef.value?.open()
   .nevo-stack {
     right: 16px;
     left: 16px;
-    bottom: 84px;
+    bottom: calc(84px + var(--shell-bottom-inset, 0px));
     align-items: stretch;
   }
 }

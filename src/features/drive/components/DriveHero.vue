@@ -156,10 +156,8 @@ const tone = computed(() =>
   gap: 5px;
   margin: 0 0 3px;
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
 }
 
 .hero-name {

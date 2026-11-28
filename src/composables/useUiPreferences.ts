@@ -6,6 +6,7 @@ import {
   applyThemeTokens,
   type AccentName,
   type Density,
+  type FontFamilyName,
   type FontScale,
   type ShellVariant,
   type ThemeName,
@@ -19,6 +20,7 @@ export function useUiPreferences() {
     density,
     shell,
     fontScale,
+    font,
     xp,
     idleGuard,
     idleWarnMin,
@@ -48,6 +50,11 @@ export function useUiPreferences() {
 
   const setShell = (value: ShellVariant) => {
     store.shell = value
+  }
+
+  // O watch do store persiste e aplica (carrega a woff2 sob demanda).
+  const setFont = (value: FontFamilyName) => {
+    store.font = value
   }
 
   const setFontScale = (value: FontScale) => {
@@ -87,6 +94,8 @@ export function useUiPreferences() {
   }
 
   return {
+    font,
+    setFont,
     theme,
     accent,
     density,

@@ -28,6 +28,13 @@ export interface PublicAccessToken {
   createdByName: string
   /** Só o criador revoga: o back é a lei, isto habilita/desabilita o botão. */
   mine: boolean
+  /**
+   * Quem criou ainda é membro da empresa (nov/2026). Ausente em API antiga.
+   * Token de quem saiu continua valendo até alguém revogar.
+   */
+  creatorActive?: boolean
+  /** Quem está vendo pode revogar: o criador, ou ADMIN quando o criador saiu. Ausente em API antiga. */
+  canRevoke?: boolean
   lastUsedAt: string | null
   revoked: boolean
   revokedAt: string | null

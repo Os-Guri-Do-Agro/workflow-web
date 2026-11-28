@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { ChevronRight, FolderPlus } from 'lucide-vue-next'
+import { FolderPlus } from 'lucide-vue-next'
 import { useCompanyCreation } from '@/composables/useCompanyCreation'
+import { useNavQuarters } from '@/composables/useNavQuarters'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
+import { taskKey } from '@/features/tasks/task-key'
 import BrandMark from './shared/BrandMark.vue'
 import CompanySwitcher from './shared/CompanySwitcher.vue'
 import UserMenu from './shared/UserMenu.vue'
@@ -14,7 +16,9 @@ import NavList from './shared/NavList.vue'
 import InboxBell from './shared/InboxBell.vue'
 import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
+import StreakChip from './shared/StreakChip.vue'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { marketingSectionTitle } from '@/features/marketing/marketing-nav'
 
 defineEmits<{
   'open-command-palette': []
@@ -26,8 +30,53 @@ const workspace = useWorkspaceStore()
 // Só ADMIN cria empresa (regra do backend); WORKER veria um botão que sempre 403.
 const canCreateCompany = computed(() => workspace.isAdmin)
 
-const breadcrumbs = computed(() => {
+const { quarters } = useNavQuarters()
+
+interface Crumb {
+  label: string
+  /** Com destino, o crumb vira link (ex.: voltar do detalhe para o mês). */
+  to?: string
+  /** Chave da tarefa: mono, como no card e no painel. */
+  mono?: boolean
+}
+
+/**
+ * Tarefas / Q3 / Setembro / PJ-K7Q2XM (spec board-tarefas-redesign, S2). Antes
+ * era "Tarefas > Mês > Detalhes": o crumb não dizia em que mês nem em que
+ * tarefa a pessoa estava. O mês e o trimestre saem da mesma lista do menu
+ * lateral; a chave, do id da tarefa (da página cheia ou do painel `?task=`).
+ */
+function taskCrumbs(): Crumb[] {
+  const monthId = typeof route.params.month === 'string' ? route.params.month : ''
+  const taskId =
+    typeof route.params.taskId === 'string' && route.params.taskId
+      ? route.params.taskId
+      : typeof route.query.task === 'string' && route.query.task
+        ? route.query.task
+        : ''
+  const crumbs: Crumb[] = [{ label: 'Tarefas' }]
+  const quarter = quarters.value.find((q) => q.months.some((m) => m.id === monthId))
+  const month = quarter?.months.find((m) => m.id === monthId)
+  if (quarter) crumbs.push({ label: quarter.label })
+  if (month) crumbs.push({ label: month.name, to: taskId ? `/tasks/${month.id}` : undefined })
+  else if (monthId) crumbs.push({ label: 'Mês' })
+  if (taskId) {
+    const key = taskKey({ id: taskId }, workspace.activeCompany?.name)
+    if (key) crumbs.push({ label: key, mono: true })
+  }
+  return crumbs
+}
+
+const breadcrumbs = computed<Crumb[]>(() => {
   const path = route.path
+  if (path.startsWith('/tasks/')) return taskCrumbs()
+  return plainCrumbs(path).map((label) => ({ label }))
+})
+
+function plainCrumbs(path: string): string[] {
+  // Rótulos IGUAIS aos do menu lateral (shared/NavList.vue): o crumb confirma
+  // onde a pessoa clicou, e nome diferente do menu parece outra tela. Rota que
+  // não está aqui caía no fallback, e o /time mostrava um nome antigo do app.
   const routes: Record<string, string> = {
     '/': 'Dashboard',
     '/dashboard': 'Dashboard',
@@ -35,26 +84,38 @@ const breadcrumbs = computed(() => {
     // Canvas: breadcrumb '/boards' só existe com a flag ligada (ver feature-flags.ts).
     ...(CANVAS_ENABLED ? { '/boards': 'Canvas' } : {}),
     '/roadmap': 'Roadmap',
+    '/drive': 'Drive',
+    '/bug-reports': 'Bug reports',
+    // Fora do menu por enquanto (só por URL direta), mas é uma tela do app.
+    '/repos': 'Repositórios',
     '/settings': 'Configurações',
     '/protecao': 'Proteção do cronômetro',
     '/variables': 'Variáveis',
     '/company-users': 'Usuários',
+    '/time': 'Meu tempo',
     '/notes': 'Notas',
     '/calendar': 'Calendário',
+    '/qr': 'QR Codes',
+    '/links': 'Encurtador',
+    '/ocr': 'OCR Digital',
+    '/public-access': 'Acessos Públicos',
+    '/agendamentos': 'Agendamentos',
   }
   if (routes[path]) return [routes[path]]
-  if (path.startsWith('/tasks/')) {
-    const parts = path.split('/')
-    const items = ['Tarefas']
-    if (parts[2]) items.push('Mês')
-    if (parts[3]) items.push('Detalhes')
-    return items
-  }
   if (path.startsWith('/relatorio/')) return ['Tarefas', 'Relatório']
   if (CANVAS_ENABLED && path.startsWith('/boards/')) return ['Canvas', 'Board']
   if (path.startsWith('/notes/')) return ['Notas', 'Editor']
-  return ['Forge']
-})
+  if (path.startsWith('/bug-reports/')) return ['Bug reports', 'Detalhes']
+  if (path.startsWith('/repos/')) return ['Repositórios', 'Detalhes']
+  // Ala Marketing: o rótulo da área vem da lista de seções da própria ala.
+  if (path === '/marketing' || path.startsWith('/marketing/')) {
+    const area = marketingSectionTitle(path)
+    return area ? ['Marketing', area] : ['Marketing']
+  }
+  // Nome do produto (o mesmo do título da aba e do BrandMark), para rota sem
+  // rótulo próprio, como a página de "não encontrado".
+  return ['Nevo']
+}
 
 // Glossário de jargão em PT-BR simples (acessibilidade 50+). Quando um crumb é
 // um termo técnico, mostramos uma explicação amigável no tooltip (title).
@@ -63,6 +124,8 @@ const JARGON_GLOSSARY: Record<string, string> = {
   Backlog: 'Lista de tudo o que ainda está por fazer, esperando para ser priorizado.',
   Sprint: 'Ciclo curto de trabalho (geralmente 1 a 2 semanas) com metas definidas.',
   Roadmap: 'Planejamento do que será entregue ao longo do tempo.',
+  'Bug reports': 'Relatos de erro enviados pelo time, com vídeo, para acompanhar até a correção.',
+  'OCR Digital': 'Leitura automática do texto de documentos e imagens.',
 }
 
 function crumbTooltip(crumb: string): string | undefined {
@@ -76,21 +139,31 @@ function crumbTooltip(crumb: string): string | undefined {
       <BrandMark />
       <CompanySwitcher variant="compact" />
       <div class="topbar-sep" />
-      <div class="breadcrumbs">
+      <nav class="breadcrumbs" aria-label="Você está em">
         <template v-for="(crumb, i) in breadcrumbs" :key="i">
-          <ChevronRight v-if="i > 0" :size="12" class="crumb-sep" />
+          <span v-if="i > 0" class="crumb-sep" aria-hidden="true">/</span>
+          <RouterLink v-if="crumb.to" :to="crumb.to" class="crumb crumb--link">
+            {{ crumb.label }}
+          </RouterLink>
           <span
+            v-else
             class="crumb"
-            :class="{ 'crumb--active': i === breadcrumbs.length - 1, 'crumb--glossary': crumbTooltip(crumb) }"
-            :title="crumbTooltip(crumb)"
+            :class="{
+              'crumb--active': i === breadcrumbs.length - 1,
+              'crumb--glossary': crumbTooltip(crumb.label),
+              'crumb--mono': crumb.mono,
+            }"
+            :title="crumbTooltip(crumb.label)"
+            :aria-current="i === breadcrumbs.length - 1 ? 'page' : undefined"
           >
-            {{ crumb }}
+            {{ crumb.label }}
           </span>
         </template>
-      </div>
+      </nav>
       <div class="spacer" />
       <CmdKButton variant="full" @open="$emit('open-command-palette')" />
       <HelpButton />
+      <StreakChip />
       <TimerWidget />
       <InboxBell />
       <XpToggle />
@@ -122,6 +195,11 @@ function crumbTooltip(crumb: string): string | undefined {
 .command-shell {
   display: grid;
   grid-template-rows: 56px 1fr;
+  /* minmax(0, ...): conteúdo largo (a barra de cima com um caminho longo, uma
+     tabela) não empurra a moldura para fora da janela; quem é largo rola ou
+     encolhe dentro dela. Com `1fr` puro, em 1024 px a moldura passava da tela
+     e cortava a ponta direita de toda página (abas, marcas, botões). */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   color: var(--text);
   overflow: hidden;
@@ -133,8 +211,11 @@ function crumbTooltip(crumb: string): string | undefined {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   padding: 0 14px;
-  background: var(--surface);
+  /* O mesmo fio da cor escolhida do menu: barra e menu formam a moldura do
+     app, e o conteúdo continua neutro. */
+  background: var(--accent-wash);
   border-bottom: 1px solid var(--border);
   position: relative;
   z-index: 2;
@@ -151,6 +232,10 @@ function crumbTooltip(crumb: string): string | undefined {
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Encolhe antes de tudo: o caminho corta com reticências, os botões ficam. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-size: 12.5px;
   padding: 5px 10px;
   border-radius: 7px;
@@ -160,7 +245,47 @@ function crumbTooltip(crumb: string): string | undefined {
 
 .crumb-sep {
   color: var(--text-4);
-  opacity: 0.5;
+}
+
+.crumb--link {
+  color: var(--text-3);
+  text-decoration: none;
+  border-radius: var(--radius-xs);
+}
+
+.crumb--link:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.crumb--link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.crumb--mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.crumb,
+.crumb--link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumb-sep {
+  flex: none;
+}
+
+/* Sem espaço, o caminho de cima corta antes do lugar atual. */
+.crumb:not(.crumb--active),
+.crumb--link {
+  flex-shrink: 4;
 }
 
 .crumb {
@@ -185,9 +310,15 @@ function crumbTooltip(crumb: string): string | undefined {
   flex: 1;
 }
 
+/* A busca também cede um pouco em janela estreita (1024 px com menu lateral). */
+.topbar :deep(.cmdk-btn--full) {
+  flex: 0 1 auto;
+  min-width: 150px;
+}
+
 .body {
   display: grid;
-  grid-template-columns: 248px 1fr;
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
   position: relative;
@@ -197,7 +328,9 @@ function crumbTooltip(crumb: string): string | undefined {
 .sidebar {
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  /* Um fio da cor escolhida em Configurações no fundo do menu: dá identidade
+     sem pintar nada de conteúdo (5% do acento sobre a superfície). */
+  background: var(--accent-wash);
   border-right: 1px solid var(--border);
   min-height: 0;
 }

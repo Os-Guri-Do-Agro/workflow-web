@@ -549,10 +549,8 @@ function openViewer(index: number): void {
   gap: 6px;
   margin: 0;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .files__count {

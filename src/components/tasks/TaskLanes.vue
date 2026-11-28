@@ -1,0 +1,696 @@
+<script setup lang="ts">
+/**
+ * "Agrupar: Pessoa" do board do mês (spec board-tarefas-redesign, D12): as
+ * mesmas quatro colunas em linhas recolhíveis por responsável, no padrão do
+ * Taskboard do Azure (swimlanes por pessoa) com a pele do board do mês.
+ *
+ * - Quem monta as linhas é `groupByPerson` (primeiro responsável; "Sem
+ *   responsável" no topo), sempre a partir das colunas filtradas do MESMO ref
+ *   que o arraste e o realtime mutam. Aqui só se desenha.
+ * - Cabeçalhos das colunas presos no topo enquanto as linhas rolam.
+ * - Cabeçalho da linha: avatar, nome ("você" na sua), contagem por status com
+ *   os ícones do task-meta e o chevron. O card esconde o avatar do dono da
+ *   linha; os outros responsáveis continuam nele.
+ * - Arraste só dentro da MESMA linha (cada linha é um grupo do Sortable): muda
+ *   o status e a ordem como no board simples. A ordem é da coluna do mês
+ *   inteiro, então o `move-task` leva a ordem visível da célula e o TasksView
+ *   traduz pela âncora do vizinho (`resolveDropIndex`). Entre linhas fica
+ *   desligado na v1: reatribuir uma tarefa com vários responsáveis pede uma
+ *   decisão de produto.
+ * - Durante o arraste a prop nova é ignorada, como no `KanbanBoard`.
+ * - Em "Entrega" (`order`, ver `board-order.ts`) as células chegam já na ordem
+ *   do prazo e não reordenam (`sort: false`): o arraste só troca a coluna
+ *   dentro da linha, e o card fica na coluna nova pela data dele.
+ *
+ * Celular (spec v2-celular-roadmap-notas, D1): abaixo de 640px a matriz de
+ * cinco colunas não cabe (cada célula tinha 220px e a linha rolava de lado
+ * dentro da tela). Lá fica UMA coluna por vez para todas as linhas: as abas no
+ * topo escolhem qual, e deslizar o dedo de lado troca para a vizinha. Segurar
+ * um card e soltar abre a folha "Mover para", com o mesmo `onMenuMove` do "…".
+ */
+import { computed, ref, watch } from 'vue'
+import { useEventListener } from '@vueuse/core'
+import { VueDraggable } from 'vue-draggable-plus'
+import { usePreferredReducedMotion } from '@vueuse/core'
+import { ChevronDown, Plus, UserRound } from 'lucide-vue-next'
+import TaskCard from './TaskCard.vue'
+import TaskQuickCreate from './TaskQuickCreate.vue'
+import BoardColumnTabs from './BoardColumnTabs.vue'
+import TaskMoveSheet from './TaskMoveSheet.vue'
+import type { KanbanMovePayload, KanbanTask } from './KanbanBoard.vue'
+import { ACTIVITY_STATUSES } from '@/features/tasks/task-meta'
+import { taskKey } from '@/features/tasks/task-key'
+import { isPendingTaskId } from '@/features/tasks/pending-task'
+import type { BoardLane } from '@/features/tasks/board-lanes'
+import type { BoardOrder } from '@/features/tasks/board-order'
+import type { ActivityStatus, TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
+import { usePhoneViewport } from '@/composables/usePhoneViewport'
+import {
+  HOLD_DELAY_MS,
+  HOLD_TOLERANCE_PX,
+  useCardLongPress,
+} from '@/features/tasks/composables/useCardLongPress'
+
+const props = withDefaults(
+  defineProps<{
+    lanes: BoardLane<KanbanTask>[]
+    readonly?: boolean
+    companyName?: string | null
+    /** Linhas recolhidas (chave da linha). */
+    collapsedKeys: readonly string[]
+    /** Célula com o campo de criação inline aberto. */
+    composer?: { laneKey: string; status: ActivityStatus } | null
+    composerRestore?: { title: string; nonce: number } | null
+    /** Ordem do board. Em `due` as células já vêm ordenadas e o arraste não reordena. */
+    order?: BoardOrder
+  }>(),
+  { order: 'manual' },
+)
+
+const emit = defineEmits<{
+  'move-task': [payload: KanbanMovePayload]
+  'open-details': [task: KanbanTask]
+  'delete-task': [task: KanbanTask]
+  /** `previous`: o título antes do otimista, para o chamador desfazer se o servidor recusar. */
+  'rename-task': [taskId: string, title: string, previous: string]
+  'show-occurrences': [task: KanbanTask]
+  'toggle-lane': [key: string]
+  /** "+" da linha: abrir o campo inline em "A fazer" desta pessoa. */
+  'create-in': [status: ActivityStatus, laneKey: string]
+  'quick-create': [status: ActivityStatus, title: string]
+  'composer-cancel': [status: ActivityStatus, reason: 'escape' | 'blur']
+  /** Sinal do teste trocado na bolinha de um card. */
+  'test-signal': [taskId: string, view: TestSignalView]
+  'test-checks': [taskId: string, checks: TestCheckView[]]
+}>()
+
+const columns = ACTIVITY_STATUSES
+
+type Cells = Record<string, Record<ActivityStatus, KanbanTask[]>>
+
+const isDragging = ref(false)
+const cells = ref<Cells>({})
+
+function syncCells() {
+  const next: Cells = {}
+  for (const lane of props.lanes) {
+    next[lane.key] = Object.fromEntries(
+      columns.map((c) => [c.value, [...lane.columns[c.value]]]),
+    ) as Record<ActivityStatus, KanbanTask[]>
+  }
+  cells.value = next
+}
+
+watch(
+  () => props.lanes,
+  () => {
+    if (!isDragging.value) syncCells()
+  },
+  { immediate: true, deep: true },
+)
+
+/** Total de cada coluna somando as linhas (é o que o cabeçalho preso mostra). */
+const totals = computed(() => {
+  const out = Object.fromEntries(columns.map((c) => [c.value, 0])) as Record<
+    ActivityStatus,
+    number
+  >
+  for (const lane of props.lanes) {
+    for (const col of columns) out[col.value] += lane.counts[col.value]
+  }
+  return out
+})
+
+const isCollapsed = (key: string) => props.collapsedKeys.includes(key)
+
+const reducedMotion = usePreferredReducedMotion()
+const sortAnimation = computed(() => (reducedMotion.value === 'reduce' ? 0 : 150))
+
+const keyOf = (task: KanbanTask) => taskKey(task, props.companyName)
+
+const laneName = (lane: BoardLane<KanbanTask>) => lane.name ?? 'Sem responsável'
+
+function laneSummary(lane: BoardLane<KanbanTask>): string {
+  const parts = columns.map((c) => `${lane.counts[c.value]} ${c.label.toLowerCase()}`)
+  const who = `${laneName(lane)}${lane.isMe ? ' (você)' : ''}`
+  return `${who}, ${lane.total} ${lane.total === 1 ? 'tarefa' : 'tarefas'}: ${parts.join(', ')}`
+}
+
+interface DragEndEvent {
+  item?: HTMLElement
+  newIndex?: number
+}
+
+function onMove(evt: DragEndEvent, laneKey: string, status: ActivityStatus) {
+  const taskId = evt.item?.dataset?.id
+  if (!taskId) return
+  const visibleIds = (cells.value[laneKey]?.[status] ?? []).map((t) => t.id)
+  const at = visibleIds.indexOf(taskId)
+  const position = at !== -1 ? at : typeof evt.newIndex === 'number' ? evt.newIndex : 0
+  emit('move-task', { taskId, status, position, visibleIds })
+}
+
+/** Soltou na mesma célula: em Entrega não reordena, então não há o que gravar. */
+function onReorder(evt: DragEndEvent, laneKey: string, status: ActivityStatus) {
+  if (props.order === 'due') return
+  onMove(evt, laneKey, status)
+}
+
+function onMenuMove(task: KanbanTask, status: ActivityStatus) {
+  emit('move-task', { taskId: task.id, status, position: Number.MAX_SAFE_INTEGER })
+}
+
+function onRename(task: KanbanTask, title: string) {
+  const previous = task.title ?? ''
+  task.title = title
+  emit('rename-task', task.id, title, previous)
+}
+
+const showComposer = (laneKey: string, status: ActivityStatus) =>
+  !!props.composer && props.composer.laneKey === laneKey && props.composer.status === status
+
+const onStart = () => {
+  isDragging.value = true
+  longPress.dragStarted()
+}
+const onEnd = () => {
+  isDragging.value = false
+  // Como no KanbanBoard: o que chegou durante o arraste foi ignorado, e uma
+  // soltura recusada (Revisados sem o teste das três plataformas) não muda a
+  // prop. Sem ressincronizar, o card ficava na coluna errada até o próximo
+  // refetch. Soltura aceita já mudou `lanes`, então o resultado é o mesmo.
+  syncCells()
+}
+
+// ── Celular: uma coluna por vez para todas as linhas ──
+const paged = usePhoneViewport()
+const activeCol = ref(0)
+const visibleColumns = computed(() =>
+  paged.value ? columns.filter((_, i) => i === activeCol.value) : columns,
+)
+
+const tabs = computed(() =>
+  columns.map((c) => ({ value: c.value, label: c.label, icon: c.icon, count: totals.value[c.value] })),
+)
+
+const touchStartThreshold = Math.round(
+  HOLD_TOLERANCE_PX * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1),
+)
+
+const root = ref<HTMLElement | null>(null)
+
+/**
+ * Deslizar de lado troca de coluna. Aqui não há fita com `scroll-snap` (cada
+ * linha mostra só a célula da coluna ativa), então o gesto é medido: mais de
+ * 56px na horizontal, bem mais de lado do que de pé, em menos de 700ms.
+ */
+let swipe: { x: number; y: number; t: number } | null = null
+useEventListener(
+  root,
+  'touchstart',
+  (e: TouchEvent) => {
+    const t = e.touches[0]
+    swipe = paged.value && e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY, t: Date.now() } : null
+  },
+  { passive: true },
+)
+useEventListener(
+  root,
+  'touchend',
+  (e: TouchEvent) => {
+    const start = swipe
+    swipe = null
+    const t = e.changedTouches[0]
+    // Card pego (segurou): o gesto é do Sortable ou da folha, não troca coluna.
+    if (!start || !t || isDragging.value || root.value?.querySelector('.card--held')) return
+    const dx = t.clientX - start.x
+    const dy = t.clientY - start.y
+    if (Date.now() - start.t > 700 || Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.6) return
+    const next = activeCol.value + (dx < 0 ? 1 : -1)
+    if (next >= 0 && next < columns.length) activeCol.value = next
+  },
+  { passive: true },
+)
+
+// ── Segurar e soltar: folha "Mover para" ──
+const sheetOpen = ref(false)
+const sheet = ref<{ task: KanbanTask; status: ActivityStatus; card: HTMLElement } | null>(null)
+
+function findTask(id: string): { task: KanbanTask; status: ActivityStatus } | null {
+  for (const lane of Object.values(cells.value)) {
+    for (const col of columns) {
+      const task = lane[col.value]?.find((t) => t.id === id)
+      if (task) return { task, status: col.value }
+    }
+  }
+  return null
+}
+
+const longPress = useCardLongPress({
+  root,
+  enabled: () => !props.readonly,
+  canHold: (id) => !isPendingTaskId(id),
+  onHold: (id, card) => {
+    const found = findTask(id)
+    if (!found) return
+    sheet.value = { ...found, card }
+    sheetOpen.value = true
+  },
+})
+
+function onSheetSelect(status: ActivityStatus) {
+  const current = sheet.value
+  if (!current || status === current.status) return
+  onMenuMove(current.task, status)
+}
+</script>
+
+<template>
+  <div
+    ref="root"
+    class="swim"
+    :class="{ 'swim--dragging': isDragging, 'swim--paged': paged }"
+    :style="{ '--lane-cols': visibleColumns.length }"
+  >
+    <div class="swim__inner">
+      <!-- Celular: as abas no lugar dos cabeçalhos (presas no topo também). -->
+      <div v-if="paged" class="swim__tabs">
+        <BoardColumnTabs
+          :columns="tabs"
+          :active="activeCol"
+          label="Coluna mostrada em todas as linhas"
+          @select="activeCol = $event"
+        />
+      </div>
+      <!-- Cabeçalhos das colunas, presos no topo enquanto as linhas rolam. -->
+      <div v-else class="swim__heads">
+        <div class="swim__grid">
+          <div v-for="column in columns" :key="column.value" class="swim__head">
+            <component :is="column.icon" :size="14" />
+            <h2 class="swim__head-title">{{ column.label }}</h2>
+            <span class="swim__head-count">{{ totals[column.value] }}</span>
+          </div>
+        </div>
+      </div>
+
+      <section
+        v-for="(lane, index) in lanes"
+        :key="lane.key"
+        class="swim__lane"
+        :class="{ 'swim__lane--collapsed': isCollapsed(lane.key) }"
+        :data-lane-key="lane.key"
+      >
+        <div class="swim__lane-head">
+          <button
+            type="button"
+            class="swim__toggle"
+            :aria-expanded="!isCollapsed(lane.key)"
+            :aria-controls="`swim-body-${index}`"
+            :aria-label="`${laneSummary(lane)}. ${isCollapsed(lane.key) ? 'Expandir' : 'Recolher'} linha`"
+            @click="emit('toggle-lane', lane.key)"
+          >
+            <ChevronDown class="swim__chev" :size="16" :stroke-width="1.8" aria-hidden="true" />
+            <PersonAvatar
+              v-if="lane.name"
+              :id="lane.key"
+              class="swim__avatar"
+              :name="lane.name"
+              :size="24"
+              decorative
+            />
+            <span v-else class="swim__avatar swim__avatar--none" aria-hidden="true">
+              <UserRound :size="14" :stroke-width="1.8" />
+            </span>
+            <span class="swim__name">
+              {{ laneName(lane) }}<span v-if="lane.isMe" class="swim__me"> (você)</span>
+            </span>
+            <span class="swim__counts" aria-hidden="true">
+              <span
+                v-for="column in visibleColumns"
+                :key="column.value"
+                class="swim__count"
+                :title="`${column.label}: ${lane.counts[column.value]}`"
+              >
+                <component :is="column.icon" :size="12" />
+                {{ lane.counts[column.value] }}
+              </span>
+            </span>
+          </button>
+          <button
+            v-if="!readonly"
+            type="button"
+            class="swim__add"
+            :data-lane-create="lane.key"
+            :aria-label="lane.name ? `Criar tarefa para ${lane.name}` : 'Criar tarefa sem responsável'"
+            :title="lane.name ? `Criar tarefa para ${lane.name}` : 'Criar tarefa sem responsável'"
+            @click="emit('create-in', 'TODO', lane.key)"
+          >
+            <Plus :size="14" :stroke-width="1.8" />
+          </button>
+        </div>
+
+        <div
+          v-show="!isCollapsed(lane.key)"
+          :id="`swim-body-${index}`"
+          class="swim__body"
+          :data-nav-group="lane.key"
+        >
+          <div class="swim__grid">
+            <div
+              v-for="column in visibleColumns"
+              :key="column.value"
+              class="swim__cell"
+              :aria-label="`${laneName(lane)}, ${column.label}`"
+              role="group"
+            >
+              <VueDraggable
+                v-if="cells[lane.key]"
+                v-model="cells[lane.key]![column.value]"
+                class="swim__list"
+                :data-nav-col="column.value"
+                :group="`lane:${lane.key}`"
+                :animation="sortAnimation"
+                easing="cubic-bezier(0.2, 0.9, 0.3, 1.08)"
+                :disabled="readonly"
+                :sort="order !== 'due'"
+                filter=".no-drag"
+                :prevent-on-filter="false"
+                :delay="HOLD_DELAY_MS"
+                :delay-on-touch-only="true"
+                :touch-start-threshold="touchStartThreshold"
+                :fallback-tolerance="HOLD_TOLERANCE_PX"
+                ghost-class="drag-ghost"
+                chosen-class="drag-chosen"
+                drag-class="drag-moving"
+                @start="onStart"
+                @end="onEnd"
+                @add="(evt) => onMove(evt, lane.key, column.value)"
+                @update="(evt) => onReorder(evt, lane.key, column.value)"
+              >
+                <TaskCard
+                  v-for="task in cells[lane.key]![column.value]"
+                  :key="task.id"
+                  :task="task"
+                  :status="column.value"
+                  :task-key="keyOf(task)"
+                  :readonly="readonly"
+                  :pending="isPendingTaskId(task.id)"
+                  :omit-person="lane.name"
+                  @open="emit('open-details', task)"
+                  @rename="onRename(task, $event)"
+                  @delete="emit('delete-task', task)"
+                  @move="onMenuMove(task, $event)"
+                  @show-occurrences="emit('show-occurrences', task)"
+                  @signal="(view) => emit('test-signal', task.id, view)"
+                  @checks="(checks) => emit('test-checks', task.id, checks)"
+                />
+              </VueDraggable>
+              <TaskQuickCreate
+                v-if="!readonly && showComposer(lane.key, column.value)"
+                :label="`${column.label}, ${laneName(lane)}`"
+                :restore="composerRestore"
+                @submit="emit('quick-create', column.value, $event)"
+                @cancel="emit('composer-cancel', column.value, $event)"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <TaskMoveSheet
+      v-model:open="sheetOpen"
+      :task="sheet?.task ?? null"
+      :status="sheet?.status ?? null"
+      :task-key="sheet ? keyOf(sheet.task) : null"
+      :return-focus="sheet?.card ?? null"
+      @select="onSheetSelect"
+    />
+  </div>
+</template>
+
+<style scoped>
+/* Um scroll só para a matriz: as linhas crescem com os cards (sem rolagem
+   por célula) e os cabeçalhos das colunas ficam presos no topo. */
+.swim {
+  container: task-board / inline-size;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 16px;
+  scrollbar-width: thin;
+}
+
+.swim__inner {
+  width: max-content;
+  min-width: 100%;
+}
+
+/* Uma trilha por coluna do task-meta (`--lane-cols`, posto no template):
+   com cinco colunas, 220px é o que cabe na largura útil de 1440 com a
+   sidebar aberta (1144px), a mesma régua do board simples. */
+.swim__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--lane-cols, 5), 260px);
+  gap: 8px;
+}
+
+@container task-board (max-width: 1400px) {
+  .swim__grid {
+    grid-template-columns: repeat(var(--lane-cols, 5), 220px);
+  }
+}
+
+/* Celular: a célula da coluna ativa ocupa a linha inteira e nada rola de lado. */
+.swim--paged {
+  overflow-x: hidden;
+}
+
+.swim--paged .swim__inner {
+  width: auto;
+}
+
+.swim--paged .swim__grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* O alvo de 44px do "+" (::after de 6px) não pode passar da borda da tela. */
+.swim--paged .swim__lane-head {
+  padding-right: 6px;
+}
+
+.swim__tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg);
+}
+
+/* ── Cabeçalhos das colunas (presos) ── */
+.swim__heads {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg);
+  padding-bottom: 2px;
+}
+
+.swim__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+}
+
+.swim__head > svg {
+  flex: none;
+}
+
+.swim__head-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.swim__head-count {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Linha ── */
+.swim__lane {
+  border-top: 1px solid var(--border);
+}
+
+.swim__lane-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+}
+
+.swim__toggle {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.swim__toggle:hover {
+  background: var(--surface-2);
+}
+
+.swim__toggle:focus-visible,
+.swim__add:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.swim__chev {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 160ms var(--motion-ease);
+}
+
+.swim__lane--collapsed .swim__chev {
+  transform: rotate(-90deg);
+}
+
+/* O avatar da pessoa é o PersonAvatar (24px, iniciais em 12px: o mínimo de
+   texto da spec cabe no disco); a regra aqui desenha só o disco neutro da
+   linha "Sem responsável". */
+.swim__avatar--none {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-3);
+}
+
+.swim__name {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.swim__me {
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.swim__counts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.swim__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.swim__add {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  opacity: 0;
+}
+
+/* 44px de alvo no desenho de 32px. */
+.swim__add::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.swim__lane-head:hover .swim__add,
+.swim__add:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .swim__add {
+    opacity: 1;
+  }
+}
+
+.swim__add:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.swim__body {
+  padding-bottom: 10px;
+}
+
+/* ── Célula: o mesmo poço neutro da coluna ── */
+.swim__cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 48px;
+  padding: 6px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-md);
+}
+
+/* A célula inteira é alvo de soltura, mesmo vazia. */
+.swim__list {
+  flex: 1;
+  min-height: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.swim--dragging .swim__list {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swim__chev {
+    transition: none;
+  }
+}
+</style>

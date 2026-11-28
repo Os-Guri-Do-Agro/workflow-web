@@ -1,0 +1,371 @@
+<script setup lang="ts">
+/**
+ * Coluna do board (spec board-tarefas-redesign, D5 e D6), a mesma no board do
+ * mês e no `/board`: poço neutro de 280px (`--surface-sunken`, raio 8px) com
+ * cabeçalho de 36px (ícone de status, nome e contagem). "+" e "…" aparecem no
+ * hover. A cor do status mora SÓ no ícone de 14px: sem quadrado tintado, sem
+ * régua em gradiente, sem "well" colorido e sem máscara de fade.
+ *
+ * O conteúdo (lista arrastável ou não) vem pelo slot; a coluna não sabe como o
+ * board arrasta. Recolhida, vira uma faixa de 44px com o nome na vertical.
+ *
+ * Menu "…" (S4): "Criar tarefa aqui", "Recolher coluna" (só Concluído) e
+ * "Ordenar por prioridade", que só reordena a TELA e some ao recarregar: a
+ * ordem do board (Entrega ou Manual) não muda. Ordenada, a coluna mostra o
+ * ícone no cabeçalho para ninguém confundir com a ordem de verdade, e o menu
+ * oferece voltar à ordem do board pelo nome dela.
+ *
+ * Em "Revisados" o menu ganha "Mover todas para Concluído" (spec
+ * board-revisados-sinal-e-dialog, D7): o dia do deploy vira um clique. Quem
+ * confirma e grava é o board; a coluna só pede.
+ */
+import { computed } from 'vue'
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+} from 'reka-ui'
+import {
+  ArrowDownWideNarrow,
+  ChevronsLeft,
+  ListRestart,
+  MoreHorizontal,
+  Plus,
+  Rocket,
+} from 'lucide-vue-next'
+import { statusSpec } from '@/features/tasks/task-meta'
+import type { BoardOrder } from '@/features/tasks/board-order'
+import type { ActivityStatus } from '@/features/tasks/activity-types'
+
+const props = withDefaults(
+  defineProps<{
+    status: ActivityStatus
+    count: number
+    /** Mostra o "+" (e "Criar tarefa aqui" no menu). */
+    canCreate?: boolean
+    collapsible?: boolean
+    collapsed?: boolean
+    /** Arraste passando por cima: o poço sobe um degrau neutro. */
+    over?: boolean
+    /** Oferece "Ordenar por prioridade" no "…" (só visual, sem gravar). */
+    sortable?: boolean
+    /** A coluna está ordenada por prioridade agora. */
+    sorted?: boolean
+    /** A ordem do board, para onde "Voltar à ordem..." leva (`board-order.ts`). */
+    order?: BoardOrder
+    /** Oferece "Mover todas para Concluído" (só "Revisados", com cards e permissão). */
+    releasable?: boolean
+    /** Celular: uma coluna por vez, na largura inteira da fita (spec v2-celular, D1). */
+    paged?: boolean
+  }>(),
+  {
+    canCreate: false,
+    collapsible: false,
+    collapsed: false,
+    over: false,
+    sortable: false,
+    sorted: false,
+    order: 'manual',
+    releasable: false,
+    paged: false,
+  },
+)
+
+const emit = defineEmits<{
+  create: []
+  'toggle-collapse': []
+  'toggle-sort': []
+  'release-all': []
+}>()
+
+const spec = computed(() => statusSpec(props.status))
+const countLabel = computed(() => `${props.count} ${props.count === 1 ? 'tarefa' : 'tarefas'}`)
+const unsortLabel = computed(() =>
+  props.order === 'due' ? 'Voltar à ordem de entrega' : 'Voltar à ordem manual',
+)
+</script>
+
+<template>
+  <section
+    class="lane"
+    :class="{ 'lane--collapsed': collapsed, 'lane--over': over, 'lane--paged': paged }"
+    :aria-label="`${spec.label}, ${countLabel}`"
+  >
+    <button
+      v-if="collapsed"
+      type="button"
+      class="lane__rail"
+      :aria-label="`Expandir ${spec.label}, ${countLabel}`"
+      :aria-expanded="false"
+      :title="`Expandir ${spec.label}`"
+      @click="emit('toggle-collapse')"
+    >
+      <component :is="spec.icon" :size="14" />
+      <span class="lane__count">{{ count }}</span>
+      <span class="lane__rail-title">{{ spec.label }}</span>
+    </button>
+
+    <template v-else>
+      <header class="lane__head">
+        <component :is="spec.icon" :size="14" />
+        <h2 class="lane__title">{{ spec.label }}</h2>
+        <span class="lane__count">{{ count }}</span>
+        <span
+          v-if="sorted"
+          class="lane__sorted"
+          role="img"
+          aria-label="Ordenada por prioridade, só nesta tela"
+          title="Ordenada por prioridade, só nesta tela"
+        >
+          <ArrowDownWideNarrow :size="14" :stroke-width="1.8" />
+        </span>
+
+        <span v-if="canCreate || collapsible || sortable || releasable" class="lane__actions">
+          <button
+            v-if="canCreate"
+            type="button"
+            class="lane__btn"
+            :aria-label="`Criar tarefa em ${spec.label}`"
+            :title="`Criar tarefa em ${spec.label}`"
+            @click="emit('create')"
+          >
+            <Plus :size="14" :stroke-width="1.8" />
+          </button>
+          <!-- "…" com as ações da coluna: criar aqui, recolher (só Concluído
+               recolhe) e ordenar por prioridade (só na tela). -->
+          <DropdownMenuRoot>
+            <DropdownMenuTrigger as-child>
+              <button type="button" class="lane__btn" :aria-label="`Mais ações de ${spec.label}`">
+                <MoreHorizontal :size="14" :stroke-width="2" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuContent class="dd-menu task-lane-menu" :side-offset="4" align="end">
+                <DropdownMenuItem v-if="canCreate" class="dd-item" @select="emit('create')">
+                  <Plus :size="14" :stroke-width="1.8" />
+                  <span>Criar tarefa aqui</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem v-if="sortable" class="dd-item" @select="emit('toggle-sort')">
+                  <ListRestart v-if="sorted" :size="14" :stroke-width="1.8" />
+                  <ArrowDownWideNarrow v-else :size="14" :stroke-width="1.8" />
+                  <span>{{ sorted ? unsortLabel : 'Ordenar por prioridade' }}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem v-if="releasable" class="dd-item" @select="emit('release-all')">
+                  <Rocket :size="14" :stroke-width="1.8" />
+                  <span>Mover todas para Concluído</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem v-if="collapsible" class="dd-item" @select="emit('toggle-collapse')">
+                  <ChevronsLeft :size="14" :stroke-width="1.8" />
+                  <span>Recolher coluna</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
+        </span>
+      </header>
+
+      <slot />
+    </template>
+  </section>
+</template>
+
+<style scoped>
+.lane {
+  position: relative;
+  /*
+   * Cinco colunas desde "Revisados" (spec board-revisados-sinal-e-dialog, D6).
+   * Em 1440px, descontada a sidebar e o respiro, sobram 1144px: cinco colunas
+   * de 220px mais os quatro vãos de 8px ocupam 1132px, então nada rola de lado
+   * na tela comum. A base é 236px e as colunas CRESCEM até 360px quando sobra
+   * largura (com a medida travada, um monitor de 1870px deixava um vazio
+   * grande à direita e a tela parecia mal distribuída).
+   */
+  flex: 1 1 236px;
+  min-width: 220px;
+  max-width: 360px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-md);
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
+/* Destino do arraste: um degrau neutro acima do poço, nunca tinta de status. */
+.lane--over {
+  background: color-mix(in srgb, var(--surface-sunken), var(--text) 5%);
+}
+
+.lane__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 6px 0 10px;
+  flex: none;
+}
+
+.lane__head > svg {
+  flex: none;
+}
+
+.lane__title {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lane__count {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.lane__sorted {
+  display: inline-flex;
+  color: var(--text-3);
+}
+
+.lane__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+}
+
+.lane:hover .lane__actions,
+.lane__actions:focus-within,
+.lane__actions:has([data-state='open']) {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .lane__actions {
+    opacity: 1;
+  }
+}
+
+.lane__btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+.lane__btn:hover,
+.lane__btn[data-state='open'] {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.lane__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ── Recolhida: faixa de 44px, clicável inteira ── */
+.lane--collapsed {
+  /* Colapsada não cresce: é uma lombada, não uma coluna. */
+  flex: 0 0 44px;
+  min-width: 0;
+  max-width: 44px;
+}
+
+.lane__rail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.lane__rail:hover {
+  background: color-mix(in srgb, var(--surface-sunken), var(--text) 4%);
+}
+
+.lane__rail:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.lane__rail-title {
+  writing-mode: vertical-rl;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* Largura por CONTAINER, não por viewport: o mesmo board vive ao lado de uma
+   sidebar de 248px (Command) ou de 296px (Focus). Abaixo de 1132px úteis as
+   cinco colunas não cabem mais e o board rola de lado, com a coluna em 220px
+   (a medida mínima que ainda lê um título de três linhas). Os boards declaram
+   o container. */
+@container task-board (max-width: 1131px) {
+  .lane:not(.lane--collapsed) {
+    flex: 1 0 220px;
+    width: 220px;
+  }
+}
+
+/* Celular: uma coluna por tela, em fita com snap, com a ponta da próxima
+   aparecendo para dizer que tem mais ao lado. O `flex-shrink: 0` é o que faz
+   valer: com o `flex: 1 1` da base, a coluna encolhia até o `min-width` de
+   220px e a regra nunca tinha efeito (medido: base 298px, largura real 220px). */
+@container task-board (max-width: 640px) {
+  .lane:not(.lane--collapsed) {
+    flex: 0 0 min(84cqw, 320px);
+    width: min(84cqw, 320px);
+    scroll-snap-align: start;
+  }
+}
+
+/* Uma coluna por vez (spec v2-celular-roadmap-notas, D1): a coluna é a fita
+   inteira e as abas acima dizem que tem mais. `scroll-snap-stop` faz um
+   deslize rápido parar na vizinha em vez de pular duas, para a aba acompanhar. */
+.lane.lane--paged {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lane,
+  .lane__actions {
+    transition: none;
+  }
+}
+</style>
+
+<style>
+.task-lane-menu {
+  min-width: 190px;
+}
+</style>

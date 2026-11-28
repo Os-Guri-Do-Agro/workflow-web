@@ -4,6 +4,7 @@ import dashboardService from '@/service/dashboard/dashboard-service'
 import companiesServices from '@/service/companies/companies-services'
 import { useActiveCompanyId } from '@/stores/authStores'
 import { isOverdue } from '@/utils/date'
+import type { TestCheckView, TestSignalView } from '@/features/tasks/activity-types'
 
 export interface CompanySummary {
   id: string
@@ -19,6 +20,8 @@ export interface CompanyMetrics {
   completed: number
   inProgress: number
   inTesting: number
+  /** Revisados (aprovada, esperando subir). Opcional: API antiga não manda. */
+  reviewed?: number
   todo: number
   overdue: number
   progress: number
@@ -47,6 +50,10 @@ export interface ActivityItem {
   tags?: Array<{ id: string; name: string; slug: string; color: string | null }>
   docCount?: number
   attachmentCount?: number
+  /** Sinal do teste (só em "Em teste"; `null` = azul). API antiga não manda. */
+  testSignal?: TestSignalView | null
+  /** Teste por plataforma (só em "Em teste"; `null` = API sem o recurso). */
+  testChecks?: TestCheckView[] | null
 }
 
 export interface WorkspaceCompany {

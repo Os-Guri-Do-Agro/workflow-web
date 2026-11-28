@@ -113,8 +113,6 @@ const rows = computed(() => {
   color: var(--text);
   font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .fd-close {

@@ -8,6 +8,7 @@ import {
   KeyRound,
   Users,
   StickyNote,
+  CalendarClock,
   CalendarDays,
   Settings,
   ListTodo,
@@ -22,6 +23,7 @@ import {
   ScanText,
   Timer,
   Plug,
+  BookOpen,
 } from 'lucide-vue-next'
 import { useWorkspaceStore } from '@/stores/workspaceStores'
 import BrandMark from './shared/BrandMark.vue'
@@ -33,8 +35,10 @@ import XpToggle from './shared/XpToggle.vue'
 import InboxBell from './shared/InboxBell.vue'
 import TimerWidget from './shared/TimerWidget.vue'
 import HelpButton from './shared/HelpButton.vue'
+import StreakChip from './shared/StreakChip.vue'
 import { useNavQuarters } from '@/composables/useNavQuarters'
 import { CANVAS_ENABLED } from '@/config/feature-flags'
+import { isNavHidden } from '@/config/nav-visibility'
 import { useIsAdminAnywhere } from '@/composables/useIsAdminAnywhere'
 
 defineEmits<{
@@ -59,20 +63,24 @@ function userMeetsRole(required?: 'WORKER' | 'ADMIN'): boolean {
   return (ROLE_RANK[active] ?? -1) >= (ROLE_RANK[required] ?? -1)
 }
 
+type RailSectionName = 'Trabalho' | 'Empresa' | 'Pessoal' | 'Ferramentas'
+
 type RailItem = {
   to: string
   icon: Component
   label: string
   role?: 'WORKER' | 'ADMIN'
-  section: 'Trabalho' | 'Pessoal' | 'Ferramentas'
+  section: RailSectionName
 }
 
 /**
- * Espelha a navegação do CommandShell (shared/NavList.vue). Trocar de shell é
- * preferência visual, não deve esconder features: Bug reports, QR Codes e Meu
- * tempo existiam só lá e sumiam para quem usa o Focus.
+ * Espelha a navegação do CommandShell (shared/NavList.vue), com as mesmas
+ * seções na mesma ordem. Trocar de shell é preferência visual, não deve
+ * esconder features: Bug reports, QR Codes e Meu tempo existiam só lá e sumiam
+ * para quem usa o Focus.
  */
 const railItems = computed<RailItem[]>(() => {
+  // Trabalho: o dia a dia de execução.
   const items: RailItem[] = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', section: 'Trabalho' },
     { to: '/board', icon: Columns3, label: 'Board', section: 'Trabalho' },
@@ -80,9 +88,6 @@ const railItems = computed<RailItem[]>(() => {
     ...(CANVAS_ENABLED
       ? [{ to: '/boards', icon: Paintbrush, label: 'Canvas', section: 'Trabalho' as const }]
       : []),
-    { to: '/roadmap', icon: Milestone, label: 'Roadmap', section: 'Trabalho' },
-    { to: '/drive', icon: HardDrive, label: 'Drive', section: 'Trabalho' },
-    { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER', section: 'Trabalho' },
   ]
   if (firstMonth.value) {
     items.push({
@@ -93,15 +98,21 @@ const railItems = computed<RailItem[]>(() => {
     })
   }
   items.push(
-    { to: '/variables', icon: KeyRound, label: 'Variáveis', section: 'Trabalho' },
-    { to: '/company-users', icon: Users, label: 'Usuários', role: 'ADMIN', section: 'Trabalho' },
+    { to: '/roadmap', icon: Milestone, label: 'Roadmap', section: 'Trabalho' },
     { to: '/time', icon: Timer, label: 'Meu tempo', section: 'Pessoal' },
     { to: '/notes', icon: StickyNote, label: 'Notas', section: 'Pessoal' },
     { to: '/calendar', icon: CalendarDays, label: 'Calendário', section: 'Pessoal' },
+    { to: '/agendamentos', icon: CalendarClock, label: 'Agendamentos', section: 'Pessoal' },
+    // Empresa: recursos e administração da empresa.
+    { to: '/drive', icon: HardDrive, label: 'Drive', section: 'Empresa' },
+    { to: '/bug-reports', icon: Bug, label: 'Bug reports', role: 'WORKER', section: 'Empresa' },
+    { to: '/variables', icon: KeyRound, label: 'Variáveis', section: 'Empresa' },
+    { to: '/company-users', icon: Users, label: 'Usuários', role: 'ADMIN', section: 'Empresa' },
     // Ferramentas de integração por último, espelhando o NavList do CommandShell.
     { to: '/qr', icon: QrCode, label: 'QR Codes', section: 'Ferramentas' },
     { to: '/links', icon: Link2, label: 'Encurtador', section: 'Ferramentas' },
     { to: '/ocr', icon: ScanText, label: 'OCR Digital', section: 'Ferramentas' },
+    { to: '/recursos', icon: BookOpen, label: 'Biblioteca', section: 'Ferramentas' },
   )
   // Tokens das ferramentas: só ADMIN de alguma empresa (página agregada).
   if (isAdminAnywhere.value) {
@@ -112,11 +123,21 @@ const railItems = computed<RailItem[]>(() => {
       section: 'Ferramentas',
     })
   }
-  return items.filter((i) => userMeetsRole(i.role))
+  return items.filter((i) => userMeetsRole(i.role) && !isNavHidden(i.to))
 })
 
-const workItems = computed(() => railItems.value.filter((i) => i.section === 'Trabalho'))
-const personalItems = computed(() => railItems.value.filter((i) => i.section === 'Pessoal'))
+const SECTION_ORDER: RailSectionName[] = ['Trabalho', 'Pessoal', 'Empresa', 'Ferramentas']
+
+/**
+ * Rail e coluna de contexto desenham os MESMOS grupos, na ordem do NavList.
+ * Grupo sem item para o papel da pessoa não aparece (nem rótulo, nem divisória).
+ */
+const railSections = computed(() =>
+  SECTION_ORDER.map((name) => ({
+    name,
+    items: railItems.value.filter((i) => i.section === name),
+  })).filter((s) => s.items.length > 0),
+)
 
 const isActive = (to: string) => {
   if (to === '/dashboard') return route.path === '/' || route.path === '/dashboard'
@@ -124,9 +145,28 @@ const isActive = (to: string) => {
   return route.path === to || route.path.startsWith(to + '/')
 }
 
+/**
+ * Telas que existem mas não estão no rail. Sem isto o título da barra caía no
+ * fallback em Configurações, Proteção e Repositórios. Mesmos rótulos do
+ * breadcrumb do CommandShell. Tarefas entra aqui também porque o item do rail
+ * só existe depois que os trimestres carregam.
+ */
+const OFF_RAIL_LABELS: Array<{ prefix: string; label: string }> = [
+  { prefix: '/settings', label: 'Configurações' },
+  { prefix: '/protecao', label: 'Proteção do cronômetro' },
+  { prefix: '/repos', label: 'Repositórios' },
+  { prefix: '/tasks', label: 'Tarefas' },
+  { prefix: '/relatorio', label: 'Tarefas' },
+]
+
 const currentLabel = computed(() => {
   const active = railItems.value.find((i) => isActive(i.to))
-  return active?.label || 'Forge'
+  if (active) return active.label
+  const path = route.path
+  const offRail = OFF_RAIL_LABELS.find((i) => path === i.prefix || path.startsWith(i.prefix + '/'))
+  // Nome do produto (o mesmo do título da aba e do BrandMark) para rota sem
+  // rótulo próprio, como a página de "não encontrado".
+  return offRail?.label ?? 'Nevo'
 })
 
 const openQuarter = ref<string | null>(null)
@@ -158,18 +198,31 @@ const showTasks = computed(() =>
     <!-- Rail -->
     <aside class="rail">
       <BrandMark class="rail-brand" />
-      <nav class="rail-nav">
-        <button
-          v-for="item in railItems"
-          :key="item.to"
-          class="rail-btn"
-          :class="{ 'rail-btn--active': isActive(item.to) }"
-          :title="item.label"
-          @click="router.push(item.to)"
+      <!-- Um grupo por seção do menu, separados por um traço discreto: o rail
+           não tem espaço para rótulo, e a divisória é o que diz onde termina
+           Trabalho e começa Pessoal. -->
+      <nav class="rail-nav" aria-label="Navegação principal">
+        <div
+          v-for="section in railSections"
+          :key="section.name"
+          class="rail-group"
+          role="group"
+          :aria-label="section.name"
         >
-          <component :is="item.icon" :size="16" />
-          <span v-if="isActive(item.to)" class="rail-indicator" />
-        </button>
+          <button
+            v-for="item in section.items"
+            :key="item.to"
+            class="rail-btn"
+            :class="{ 'rail-btn--active': isActive(item.to) }"
+            :title="item.label"
+            :aria-label="item.label"
+            :aria-current="isActive(item.to) ? 'page' : undefined"
+            @click="router.push(item.to)"
+          >
+            <component :is="item.icon" :size="16" />
+            <span v-if="isActive(item.to)" class="rail-indicator" />
+          </button>
+        </div>
       </nav>
       <div class="rail-footer">
         <button class="rail-btn" title="Configurações" @click="router.push('/settings')">
@@ -226,35 +279,36 @@ const showTasks = computed(() =>
           </div>
         </template>
 
-        <!-- Default atalhos: mesma fonte do rail, para as duas listas nunca divergirem -->
+        <!-- Default atalhos: mesma fonte do rail, para as duas listas nunca
+             divergirem. Todas as seções, Ferramentas inclusive (antes só o rail
+             mostrava as ferramentas). -->
         <template v-else>
-          <div class="eyebrow">Trabalho</div>
-          <div class="quick-list">
-            <button
-              v-for="item in workItems"
-              :key="item.to"
-              class="quick-item"
-              :class="{ 'quick-item--active': isActive(item.to) }"
-              @click="router.push(item.to)"
+          <template v-for="(section, si) in railSections" :key="section.name">
+            <div
+              :id="`focus-eyebrow-${section.name}`"
+              class="eyebrow"
+              :class="{ 'eyebrow--spaced': si > 0 }"
             >
-              <component :is="item.icon" :size="12" class="quick-icon" />
-              <span class="quick-label">{{ item.label }}</span>
-            </button>
-          </div>
-
-          <div class="eyebrow eyebrow--spaced">Pessoal</div>
-          <div class="quick-list">
-            <button
-              v-for="item in personalItems"
-              :key="item.to"
-              class="quick-item"
-              :class="{ 'quick-item--active': isActive(item.to) }"
-              @click="router.push(item.to)"
+              {{ section.name }}
+            </div>
+            <div
+              class="quick-list"
+              role="group"
+              :aria-labelledby="`focus-eyebrow-${section.name}`"
             >
-              <component :is="item.icon" :size="12" class="quick-icon" />
-              <span class="quick-label">{{ item.label }}</span>
-            </button>
-          </div>
+              <button
+                v-for="item in section.items"
+                :key="item.to"
+                class="quick-item"
+                :class="{ 'quick-item--active': isActive(item.to) }"
+                :aria-current="isActive(item.to) ? 'page' : undefined"
+                @click="router.push(item.to)"
+              >
+                <component :is="item.icon" :size="12" class="quick-icon" />
+                <span class="quick-label">{{ item.label }}</span>
+              </button>
+            </div>
+          </template>
         </template>
       </div>
       <div class="context-footer">
@@ -268,6 +322,7 @@ const showTasks = computed(() =>
         <span class="slim-label">{{ currentLabel }}</span>
         <div class="spacer" />
         <HelpButton />
+        <StreakChip />
         <TimerWidget />
         <InboxBell />
         <XpToggle />
@@ -290,12 +345,16 @@ const showTasks = computed(() =>
   overflow: hidden;
 }
 
+/* `min-height: 0`: sem ele a linha do grid crescia até caber o rail inteiro, e
+   numa janela baixa a tela toda passava da altura da janela (rodapé do rail e
+   fim do conteúdo cortados). Com ele, quem rola é o `.rail-nav`. */
 .rail {
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-height: 0;
   padding: 12px 0;
   gap: 6px;
 }
@@ -304,12 +363,41 @@ const showTasks = computed(() =>
   margin-bottom: 6px;
 }
 
+/* Rola por dentro quando a janela é baixa (notebook de 768px): sem isso os
+   grupos empurravam Configurações e o avatar para fora da tela. Largura cheia
+   do rail para o indicador do item ativo, que fica 10px à esquerda do botão,
+   não ser cortado pelo recorte da rolagem. */
 .rail-nav {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  align-self: stretch;
   gap: 4px;
   flex: 1;
+  min-height: 0;
   margin-top: 4px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.rail-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Divisória entre seções: traço curto e neutro, só entre grupos. */
+.rail-group + .rail-group::before {
+  content: '';
+  width: 20px;
+  height: 1px;
+  margin: 3px 0;
+  background: var(--border);
 }
 
 .rail-btn {
@@ -380,11 +468,9 @@ const showTasks = computed(() =>
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-4);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   padding: 4px 8px 6px;
 }
 
@@ -494,12 +580,10 @@ const showTasks = computed(() =>
 }
 
 .tree-q-meta {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--text-4);
   margin-left: auto;
   font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .tree-children {

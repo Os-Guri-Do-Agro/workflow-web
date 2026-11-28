@@ -205,11 +205,9 @@ const close = () => {
 }
 
 .label-text {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-3);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .muted {

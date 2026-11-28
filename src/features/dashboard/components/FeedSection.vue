@@ -3,6 +3,7 @@ import { MessageSquare, RefreshCw, Sparkles } from 'lucide-vue-next'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { useCompanyFeed } from '@/composables/useCompanyFeed'
 import type { FeedEventPayload } from '@/service/realtime/realtime-service'
+import { feedEntityLabel } from '@/utils/event-labels'
 
 defineProps<{
   digestSummary: string
@@ -72,7 +73,7 @@ const feedActorName = (event: FeedEventPayload) =>
             <span>{{ formatFeedDate(event.createdAt) }}</span>
           </div>
           <p>{{ event.summary }}</p>
-          <small>{{ event.entityType }} · {{ event.verb }}</small>
+          <small>{{ feedEntityLabel(event.entityType) }}</small>
         </div>
       </article>
     </div>
@@ -185,7 +186,5 @@ const feedActorName = (event: FeedEventPayload) =>
 .feed-body small {
   color: var(--text-4);
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 </style>

@@ -213,9 +213,7 @@ function simular() {
 }
 
 .diag-label {
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
   color: var(--text-4);
 }
 

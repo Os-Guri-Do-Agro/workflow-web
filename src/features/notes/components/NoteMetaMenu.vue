@@ -492,6 +492,14 @@ function applyCover() {
   }
 }
 
+/* Celular: o mesmo alvo de 44px dos outros botões do topo da nota. */
+@media (max-width: 640px) {
+  .meta__trigger {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .spin {
     animation-duration: 2.4s;

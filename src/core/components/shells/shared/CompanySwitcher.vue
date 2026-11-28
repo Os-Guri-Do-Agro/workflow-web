@@ -213,11 +213,9 @@ onMounted(() => {
 }
 
 .switch-eyebrow {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-4);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .switch-name {

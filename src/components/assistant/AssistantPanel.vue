@@ -200,7 +200,7 @@ function isUser(m: AssistantMessage) {
               <span class="assist-hero-orb"><Sparkles :size="22" /></span>
               <h2 class="assist-hero-title">Como posso ajudar?</h2>
               <p class="assist-hero-desc">
-                Pergunto sobre tarefas, roadmap, eventos, bugs e boards da empresa —
+                Pergunto sobre tarefas, roadmap, eventos, bugs e boards da empresa,
                 com as fontes de onde tirei a resposta.
               </p>
             </div>
@@ -815,10 +815,8 @@ function isUser(m: AssistantMessage) {
 }
 .sources-label {
   display: block;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-4);
   margin-bottom: 7px;
 }

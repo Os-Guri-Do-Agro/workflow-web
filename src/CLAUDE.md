@@ -8,6 +8,7 @@ Guia interno para navegar e evoluir o código.
 - [shell-nav-unification.md](../docs/specs/shell-nav-unification.md) — Q1-Q4 em todos os shells + dead buttons + modais (entregue `0d1ea7c`)
 - [legacy-views-migration.md](../docs/specs/legacy-views-migration.md) — migração mdi→lucide + tokens das views legadas (L1-L4, planejada)
 - [overhaul-visual-premium.md](../docs/specs/2026/q3/q3-2/overhaul-visual-premium.md) — F0 fundações (gsap, `v-reveal`, `useCountUp`, `ProgressRing`, `echarts-theme`) + F1 Dashboard + F2 Roadmap (entregue ago/2026)
+- [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md): sequência diária com o Nevo (chip na topbar, módulo da home, comemoração, equipe, vitrine 3D). Contrato da API na spec irmã `workflow-api/docs/specs/2026/q3/q3-3/sequencia-diaria-api.md`
 
 ## Stack
 
@@ -15,8 +16,9 @@ Guia interno para navegar e evoluir o código.
 - @tanstack/vue-query para cache de fetch
 - TypeScript 5.9, Vite 7
 - Ícones: **lucide-vue-next** (padrão) + `mdi` via fonte (legado, em migração)
-- Fonte: **Geist** (Vercel, OFL 1.1; self-host VARIÁVEL 100–900 + itálico em `assets/fonts/geist/`, importada no `main.ts`; Inter fica de fallback). Trocar em `tokens.ts` (`--font-family`). Não ligar stylistic sets no reset: o corte padrão é o desenho do produto
+- Fonte: **Figtree** (OFL 1.1; self-host VARIÁVEL 300–900 + itálico via `@fontsource-variable/figtree`, importada no `main.ts`; Inter fica de fallback). Escolhida pelo time em set/2026 no lugar da Geist, que achou pouco confortável no board (a Geist segue em `assets/fonts/geist/`, sem import). Trocar em `tokens.ts` (`--font-family`). Não ligar stylistic sets no reset: o corte padrão é o desenho do produto
 - Motion: `motion-v` (springs de estado, ex.: anéis de progresso) + **gsap** (coreografia de entrada e count-up; spec overhaul-visual-premium). O gsap NUNCA entra no chunk de entrada: a diretiva `v-reveal` (`plugins/reveal.ts`, registrada no `main.ts`) importa a lib dinamicamente, e `useCountUp` só é importado por views lazy. Toda animação decorativa respeita `prefers-reduced-motion`
+- 3D: **three.js**, só na vitrine da home. Import de `three` **apenas** em `components/nevo/showcase/`, e a vitrine chega por `defineAsyncComponent` + `useLazyLoad` (`features/dashboard/components/ShowcaseSection.vue`). Nunca no chunk de entrada nem no da home (checar no build)
 - Toast: **vue-sonner** (consumido via `useToast()` bridge)
 - Charts: `vue-echarts` (line, bar, pie). **Proibido usar as cores default do ECharts**: todo gráfico resolve tokens via `plugins/echarts-theme.ts` (paleta de status, tooltip, textStyle) e monta o `option` num `computed` que depende de `uiStore.theme`/`accent` pra repintar na troca de tema. Ver `components/dashboard/OverviewChart.vue` como referência
 - Headless primitives: `reka-ui` — em uso em `components/ui/AppSelect.vue`. Preferir para menus/popovers/selects novos.
@@ -38,13 +40,19 @@ Camadas disponíveis como CSS custom properties em `:root` (atualizadas runtime 
 | **Text hierarchy** | `--text`, `--text-2` (70%), `--text-3` (48%), `--text-4` (32%)                        |
 | **Status**         | `--status-todo`, `--status-prog`, `--status-test`, `--status-done`, `--status-block`  |
 | **Semantic**       | `--success`, `--warn`, `--err`, `--info`                                              |
-| **Accent**         | `--accent`, `--accent-fg` (trocável em runtime via `uiStore.accent`)                  |
-| **Radius**         | `--radius-sm` (6px), `--radius` (10px), `--radius-lg` (14px), `--radius-xl` (20px)    |
+| **Accent**         | `--accent`, `--accent-fg` (trocável em runtime via `uiStore.accent`). Derivados para dar cor sem neon: `--accent-ink` (ícone/texto, passa AA sobre o `soft`), `--accent-soft` (fundo de item ativo), `--accent-wash` (moldura: sidebar e topo do CommandShell). Destaque de conteúdo nunca usa o `--accent` puro |
+| **Radius**         | `--radius-sm` (6px), `--radius` (10px), `--radius-lg` (14px), `--radius-xl` (20px); de trabalho (board): `--radius-xs` (4px, tag/badge) e `--radius-md` (8px, coluna/menu) |
 | **Shadow**         | `--shadow-sm`, `--shadow`, `--shadow-overlay`                                         |
 | **Motion**         | `--motion-fast` (120ms), `--motion` (180ms), `--motion-slow` (280ms), `--motion-ease` |
-| **Typography**     | `--font-family` (Geist), `--font-mono`                                                 |
+| **Typography**     | `--font-family` (Figtree), `--font-mono`                                               |
+| **Board de tarefas** | `--surface-sunken` (poço da coluna), `--shadow-raised` (card: fio de 1px no escuro, sombra `raised` do Atlassian no claro), `--task-status-todo/prog/test/done` (cor do ÍCONE de status: A fazer neutro, Em andamento azul; os gráficos seguem em `--status-*`), `--prio-urgent`, `--prio-high`, `--due-late`, `--due-soon` (texto de 12px com AA), `--task-status-review` (Revisados), `--test-signal-*` (bolinha do teste) e `--test-check-on`/`-on-bg`/`-on-border` (plataforma testada). Spec [board-tarefas-redesign.md](../docs/specs/2026/q3/q3-3/board-tarefas-redesign.md). No Modo XP valem os do tema claro |
+| **Sequência (Nevo)** | `--streak-flame`, `--streak-flame-soft`, `--streak-off`, `--streak-rest`, `--streak-perfect`, `--streak-missed`, `--streak-done`, `--nevo-floor` e os níveis `--tier-basico`, `--tier-progresso`, `--tier-determinado`, `--tier-especialista`, `--tier-lendario`. Cor como sinal chapado (número, anel, tinta), nunca brilho em volta. No Modo XP o `styles/xp.css` força os valores do tema claro no `<html>` (a paleta Luna é clara) e um laranja claro na barra azul do topo |
 
 **Nunca escreva hex em componentes.** Se precisar de uma cor que não existe, adicione o token em `tokens.ts` primeiro.
+
+**Sem rótulo em CAIXA ALTA com espaçamento largo** acima de título ou seção (o "eyebrow" de tela gerada por IA). Rótulo é caixa normal, peso 600-700, 12px no mínimo. Caixa alta só onde ela é dado: dia da semana em grade de calendário, código, hex, badge de status. A passada de nov/2026 está em `scripts/de-caps.mjs` (rodar de novo com `--dry` mostra o que escapou).
+
+**Fonte:** a Figtree é a padrão do token; a pessoa pode trocar em Aparência (`ui.font`: `figtree`, `plex`, `source`, `atkinson`, `system`). `applyFontFamily` (tokens.ts) grava `--font-family-user`, que o `--font-family` lê primeiro; a woff2 de cada opção só é baixada por quem escolhe (e pela prévia da Aparência). Para trocar a padrão do time, mude a pilha do token, não a lista de opções.
 
 Para Vuetify-compat, `plugins/tokens.ts` também exporta `vuetifyThemeColors` que alimenta o `createVuetify({ theme })`. Mantemos o padrão do projeto:
 
@@ -80,16 +88,32 @@ O layout principal é gerenciado por [`core/components/shells/AppShell.vue`](./c
 
 Trocar a variante é feito em `/settings` e é aplicada em runtime (sem reload).
 
-**Para rotas sem shell** (`login`, `download`, `public-file` e as públicas de board/roadmap/bug-report): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas. Rota nova sem shell precisa entrar em DOIS lugares: no `bare` do `AppShell` e no `PUBLIC_ROUTES` do router (senão o guard manda pro login).
+**Celular e tela pequena (spec `docs/specs/2026/q4/q4-2/v2-mobile-e-home.md`):** abaixo de 900px (`useCompactViewport`, um `matchMedia` compartilhado) o `AppShell` monta o [`MobileShell.vue`](./core/components/shells/MobileShell.vue) em QUALQUER variante: topo compacto (marca, empresa, busca, sequência, sino, avatar), conteúdo com rolagem própria e tab bar (Início, Tarefas do mês corrente, Tempo com o relógio quando roda, Notas, Mais). "Mais" abre a folha `MobileMoreSheet.vue` com o `NavList` inteiro, tema, assistente e configurações. Regras:
+- Enquanto o `MobileShell` existe, o `<html>` tem `--shell-bottom-inset` (altura da tab bar + área segura). Tudo que é `position: fixed` no rodapé soma essa variável (assistente, recados do Nevo, toasts). Componente fixo novo no rodapé precisa fazer o mesmo.
+- Área segura: topo e tab bar usam `env(safe-area-inset-*)` (o `index.html` tem `viewport-fit=cover`).
+- No celular saem: o botão flutuante do assistente (vai para a folha "Mais"), o recado de permissão de ociosidade e o chrome do Modo XP.
+- O `theme-color` da barra do sistema segue a cor do topo (sincronizado pelo `MobileShell` ao trocar tema/acento). O app é instalável (`public/manifest.webmanifest`).
+- Tela nova: teste em 375px no harness (`scripts/harness`) antes de fechar. Zero rolagem horizontal da página; alvo de toque de 44px.
+- Quem precisa da altura toda pede para a tab bar sair por `composables/useShellChrome.ts` (`hideTabbar(dono, inset)` / `showTabbar(dono)`; cada pedido tem dono e a barra só volta quando o último devolve). O `--shell-bottom-inset` passa a ser o `inset` informado (ou só a área segura) e o `<html>` ganha `shell-tabbar-hidden`. Hoje só o editor de nota usa (spec `docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md`, D3). Quem pediu devolve no `onBeforeUnmount`, senão a barra fica presa fora.
+- "Celular em retrato" é `composables/usePhoneViewport.ts` (`max-width: 640px`, um `matchMedia` só): é a régua do board de uma coluna por vez e da barra de formatação da nota. Não confundir com o `useCompactViewport` (899px, a troca da moldura).
+
+**Para rotas sem shell** (`login`, `reset-password` (`/redefinir-senha`), `download`, `public-file` e as públicas de board/roadmap/bug-report): `AppShell` renderiza `<slot />` raw quando `route.name` é uma dessas. Rota nova sem shell precisa entrar em DOIS lugares: no `BARE_ROUTES` do `AppShell` e no `PUBLIC_ROUTES` do router (senão o guard manda pro login).
+
+**Nada autenticado sai sem sessão (nov/2026).** Antes da 1ª navegação resolver, o `route` é o START_LOCATION (sem nome): o `AppShell` decide o `bare` pelo endereço da barra e, sem sessão, nunca monta a moldura logada (era nesse instante que sino, sequência, cronômetro largado e paleta levavam 401 no `/login`). O que mora no setup do `AppShell` e roda em toda rota (cronômetro do topo, push) olha `hasSession` (`composables/useSession.ts`, token presente e válido, relido no `afterEach` do router e no evento `storage`). Query nova que nasça fora da área logada precisa de `enabled: hasSession`. O harness confere: `ONLY=sessao node celular-e2e.cjs`.
 
 **Componentes shared dos shells** em [`core/components/shells/shared/`](./core/components/shells/shared/):
 
 - `BrandMark.vue` — logo do mascote (icone-rosto-detalhes.png) clicável, leva ao Dashboard; usado nos 3 shells
 - `CompanySwitcher.vue` — toggle de empresa (3 variantes: full / compact / inline); avatar é a logo do mascote (icone-cabeca-circulo.png)
-- `UserMenu.vue` — avatar + dropdown com Settings / Logout
+- `UserMenu.vue`: avatar (`PersonAvatar` de quem está logado) + dropdown com Trocar foto (`/settings#perfil`) / Configurações / Sair
 - `CmdKButton.vue` — disparador da Command Palette (full / compact / icon)
 - `ThemeToggle.vue` — botão sol/lua que usa `useUiPreferences`
-- `NavList.vue` — lista de navegação reutilizável (usada em CommandShell; quarters carregadas da API)
+- `NavList.vue` — lista de navegação reutilizável (usada em CommandShell; quarters carregadas da API). Quatro seções, nesta ordem: **Trabalho** (execução do dia: Dashboard, Board, Tarefas, Roadmap), **Pessoal** (Meu tempo, Notas, Calendário), **Empresa** (recursos e administração: Drive, Bug reports, Variáveis, Usuários só ADMIN; vem depois de Pessoal desde out/2026) e **Ferramentas** (QR Codes, Encurtador, OCR Digital, Acessos Públicos). Seção sem item para o papel da pessoa não aparece. **Desde out/2026, Roadmap, Calendário e Bug reports estão FORA do menu** (`config/nav-visibility.ts`, `isNavHidden`; Notas também saiu e voltou um dia depois, porque tinha gente usando): some só a entrada (menu dos três shells, Modo XP e Ctrl K); a rota continua; voltar = tirar da lista ou `VITE_SHOW_ALL_NAV=true`. As seções são **recolhíveis** pelo nome (preferência em `localStorage` `nav.collapsed`; na primeira vez Empresa e Ferramentas nascem recolhidas), e recolhida a seção ainda mostra o item da tela aberta
+- `StreakChip.vue`: chama + número da sequência antes do `TimerWidget` nos 3 shells (`compact` no Canvas). Popover reka-ui com portal (estilo global `streak-pop`, z 3000) com semana, missões, próximo marco e atalhos (`/#sequencia`, `/time?tab=team`). Corpo do popover em chunks sob demanda; some quando a API não tem a rota (404/403)
+
+Os rótulos do breadcrumb (CommandShell) e do título da barra (FocusShell) são os mesmos do `NavList`; rota sem rótulo cai em "Nevo".
+
+As quatro seções do `NavList` valem nos três shells, cada um no seu modelo: o **Focus** agrupa o rail com um traço entre seções e repete as seções com rótulo na coluna de contexto; o **Canvas** (atrás da flag) ordena a faixa de abas pelos mesmos grupos, com traço entre eles, e mantém Tarefas fixa ao lado da faixa (o menu dela seria recortado pela rolagem); o dock segue a mesma ordem. A regra de papel (`userMeetsRole`) é a mesma nos três.
 
 ## UI Primitives
 
@@ -107,7 +131,8 @@ Em [`components/ui/`](./components/ui/):
 | `ConfirmDialog.vue`    | Modal de confirmação pronto por cima do AppDialog. Para confirmar exclusão etc., use ele direto.                     |
 | `TipTapToolbar.vue`    | Toolbar tokenizada de editor. Prop `groups` escolhe o que aparece; `bare` para uso dentro de popover.                |
 | `FileViewer.vue`       | Visualizador de arquivo em tela cheia (Teleport, imagem/PDF/markdown/vídeo/áudio, setas, foco preso). Promovido do antigo `AttachmentViewer` das tarefas. `item.url` pronto OU `resolveUrl` assíncrono (Drive: URL assinada fresca). |
-| `AppSelect.vue`        | Select padrão (reka-ui Select). Single/multiple. Sem busca.                                                          |
+| `AppSelect.vue`        | Select padrão (reka-ui Select). Single/multiple. Sem busca. Com `chip-avatars` (itens = pessoas, `value` = id do usuário) desenha o `PersonAvatar` no chip e em cada opção. |
+| `LottiePlayer.vue`     | Animação Lottie (`lottie-web` light, import dinâmico). Arquivos em `public/lottie/`, GERADOS por `scripts/lottie/build.mjs` (desenhados em código, sem licença de terceiro). Cores são marcadores (azul puro = principal, vermelho puro = fundo suave, verde puro = acento) trocados por tokens na hora via prop `palette`; segue tema e acento. Reduced-motion mostra o último quadro. Falha de rede some sem quebrar. Animação nova: acrescente no `build.mjs` e rode `node scripts/lottie/build.mjs` |
 | `ProgressRing.vue`     | Anel de progresso genérico (linguagem do `SubtaskProgress`: 12h, spring motion-v, done = `--status-done`). Slot no centro p/ número/label. |
 | `CountUp.vue` + `useCountUp` | Número que conta até o valor (gsap, pt-BR, reduced-motion salta direto). O componente existe p/ uso em `v-for`. |
 | `ActivitySelect.vue`   | Select COM busca (reka-ui Combobox): trigger estilo select + campo de filtro no topo. Contrato `{label, value}[]` com "Sem tarefa" (value null) fixo. **Não é mais usado no time tracking** (ver `TaskPicker`); segue disponível para lista plana. |
@@ -115,6 +140,44 @@ Em [`components/ui/`](./components/ui/):
 | `MascotCard.vue`       | Aviso do Nevo no formato de mensagem recebida: carinha da marca como avatar à esquerda e balão com bico. Slots `meta` / `actions` / `dismiss`; prop `tone` (`warn` tinge de âmbar) e `live` (`assertive` para o que pede ação). Posicionamento é do container, não dele. |
 | `TagChip.vue` + `tag-palette.ts` | Chip de tag. Cor vem de `var(--tag-<chave>)` (definido em `tokens.ts`, por tema), nunca hex. Tag sem cor recebe uma determinística pelo slug. |
 | `TagInput.vue`         | Campo de tags estilo Azure Boards: chips na caixa, Enter cria a que não existe, Backspace remove a última. Combobox ARIA à mão (não reka) — ver o comentário no arquivo. |
+| `PersonAvatar.vue`     | **O componente único de pessoa.** Foto (`<img>` redondo, `object-fit: cover`, `loading="lazy"`, `decoding="async"`, fio neutro `--border` por cima) ou, sem foto ou com a imagem quebrada, as iniciais no tom de `utils/avatar.ts` (`avatarTone` + `initials`). Props: `id` (id do usuário, quando o payload tem), `name` (obrigatório: iniciais, tom e `alt`), `avatarUrl` (com valor sobrepõe o diretório; é a prévia do upload), `size` (px, padrão 24; iniciais em metade do disco abaixo de 24, nunca menos de 12px de 24 para cima), `ring` (anel na cor do fundo para pilhas; cor e espessura por `--pa-ring-color`/`--pa-ring-width` no CSS de quem empilha), `variant` (`solid` no board e menus, `soft` na equipe e no feed), `shape` (`circle` ou `rounded`, o quadro do XP), `decorative` (nome já escrito ao lado: some da árvore de acessibilidade e `alt=""`). `title` e `class` caem no elemento raiz. |
+
+## Pessoas e fotos de perfil
+
+**Pessoa na tela é sempre `components/ui/PersonAvatar.vue`.** Círculo de iniciais feito à mão (`avatarTone(` + `initials(` num `<span>`) é regressão: ele não mostra a foto e não atualiza quando a pessoa troca a dela. As únicas exceções são o que não é pessoa (empresa no Drive e no `CompanySwitcher`, o Nevo, o assistente) e o canvas da vitrine 3D (`nevo/showcase/phone-screen.ts`), que desenha as iniciais direto no canvas.
+
+- **Onde a foto mora:** `avatarUrl: string | null` em `GET /user/me`, `GET /user`, `GET /user/search` e `GET /company/:id/members` (dentro de `user`). Pode ser URL absoluta `https://` (upload no bucket público) ou, só na transição, caminho relativo `/avatars/<nome>.webp` (as quatro fotos iniciais em `public/avatars/`, servidas pelo próprio front). A migration grava as iniciais como caminho relativo e a API as leva para o bucket sozinha na primeira leitura (`AvatarSeedMigrationService`); depois disso tudo é `https://`. Os arquivos de `public/avatars/` só podem sair quando não houver mais linha com `storagePath` nulo. `resolveAvatarSrc` (`utils/avatar.ts`) normaliza e recusa esquema estranho. Os outros payloads (board, comentários, equipe, sequência) não trazem foto: trazem `user.id` e/ou o nome, e o `PersonAvatar` resolve pelo diretório.
+- **Diretório** (`composables/usePeopleDirectory.ts`): Vue Query com a chave `['people', 'directory']`, montado de `GET /user` + `GET /user/me` (o `/me` passa pelo cache `['me']`). Índice por id e por nome normalizado (sem acento, sem caixa; nome repetido não entra, porque foto errada é pior do que iniciais), calculado uma vez por resposta. `staleTime` de 10 min. Exporta `avatarFor({ id?, name? })` (URL pronta para o `<img>` ou `null`), `personFor`, `applyMyAvatar` e `invalidatePeopleDirectory`. A chave não leva a empresa ativa (`/user` já é "quem divide empresa comigo") e por isso é poupada na troca de empresa (`isPersonScoped` em `service/realtime/session-reset.ts`); o logout limpa tudo.
+- **Trocar e remover a foto:** Configurações > **Seu perfil** (`features/settings/components/ProfileAvatarCard.vue`, âncora `/settings#perfil`, que também é o item "Trocar foto" do menu do avatar na topbar). Escolher ou arrastar a imagem, validar no cliente (JPG, PNG ou WebP até 5 MB), ver a prévia e só então "Salvar foto" (`POST /user/me/avatar`, multipart, campo `file`). O servidor corta em quadrado de 512 px e converte para WebP. Remover passa pelo `ConfirmDialog` (`DELETE /user/me/avatar`). Nos dois casos `applyMyAvatar` grava a URL nova no cache na hora e invalida `['me']` e `['people']`: todo avatar da tela troca junto. Com a migration pendente o POST volta 503 com a mensagem em PT-BR, que aparece na tela; as leituras vêm com `avatarUrl: null` e tudo fica nas iniciais.
+- A âncora de seção das Configurações vale para qualquer seção (`/settings#cronometro` etc.): o hash abre a seção certa antes do router rolar até ela.
+
+## Nevo (sequência diária)
+
+Spec: [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md). A sequência é **derivada** na API (`GET /streak/me`, `GET /streak/team`), sem tabela nova. No front: `service/streak/streak-service.ts` (cliente tipado, sempre com `tzOffset`), `composables/useStreak.ts` (Vue Query, `streakKeys`; `available=false` em 404/403 esconde a UI) e `composables/useStreakCelebration.ts` (dispara a festa uma vez por dia e por pessoa: chaves `nevo.celebrated.<userId>.<data>` e `nevo.milestone.<userId>.<dias>.<data>`; só abre com a aba visível e sem dialog modal na frente, senão fica pendente e a chave só é gravada quando ela aparece). O `useRealtimeQuerySync` invalida `['streak']` com eventos de socket que já existem (tarefa entrando ou saindo de concluída, timer, comentário, feed) e rebusca a equipe de novo ~31 s depois, quando vence o cache de 30 s do `/streak/team`; nenhum evento novo no backend. Lançar, editar ou excluir tempo não gera evento: quem invalida é o `useTimeTracking`.
+
+Regras que moram no front e valem em toda tela:
+- A troca de empresa (`resetCompanyScopedState`) faz `resetQueries`, NUNCA `removeQueries`: remover destruía a Query sem avisar os observadores montados (chip, cronômetro do topo, a view na tela), que ficavam presos numa Query fora do cache e surdos a invalidação e `setQueryData`. `['streak', 'me']` e `['time', 'current']` são da pessoa e nem são resetados (a chave não muda e o dado vale em qualquer empresa).
+- A linha de quem está logado na equipe vem do `/me` (`withMyStreak`), para o painel não contradizer a home durante o cache do servidor.
+- O relógio de 60 s do `useStreak` cuida da virada do dia e da meta de foco batida com o timer AINDA rodando (nenhum evento marca o minuto 30).
+- Humor (`moodFor`), regra de pontos (`POINTS_RULES`) e cor de nível como texto (`tierToneText`) saem de `nevo-assets.ts`; "quebrou" só vale até 7 dias depois da quebra.
+- Próximo marco é sempre relativo à sequência ATUAL (o `nextMilestone` da API); a conquista dos marcos é pelo recorde.
+- Festa pendente é revista a cada `/me`: some se o dia deixou de estar garantido (ou o marco mudou), e "Dia perfeito!" vira "Dia garantido!" se o dia deixou de ser perfeito. "De volta ao marco" vale com `best > current` OU `previous >= dias` (empate com o recorde).
+- "Dialog modal na frente" é qualquer `[role=dialog][aria-modal=true]` à vista (a paleta Ctrl+K também tem). Com festa pendente, o `MutationObserver` olha a árvore inteira do `body` (`subtree`), no máximo uma checagem por quadro: há dialogs modais dentro das views, sem Teleport.
+
+Em [`components/nevo/`](./components/nevo/) (sprites WebP em `public/brand/nevo/`, pipeline de recorte em `scripts/sprites/`; manifesto, níveis, marcos, humores e regra de pontos em `nevo-assets.ts`):
+
+| Componente | Uso |
+| --- | --- |
+| `NevoSprite.vue` | O mascote a partir dos sprites, animação só em CSS (`idle`, `walk`/`run` flipbook, `bounce`, `sleep`, `still`). Decorativo por padrão; reduced-motion vira `still`. `hop()` (exposto) dá um pulinho por Web Animations, sem gsap |
+| `NevoFlame.vue` | Chama da sequência (`fogo-*`) ou chama-cristal de marco (`seq-*`); `lit=false` = apagada, `live` = tremula. Com `tier`, a chama ACESA segue o nível (`tierLitFlame`): sem nível e Básico usam a laranja animada; Em progresso, Determinado (azul), Especialista (roxo) e Lendário (dourado) usam o cristal `seq-*` com tremulação em CSS. O número ao lado usa `litTone` |
+| `StreakWeek.vue` | Semana seg..dom, um círculo por dia (garantido, perfeito, hoje pendente, descanso, perdido, futuro), com texto para leitor de tela |
+| `StreakMissions.vue` | "Sua jornada": as 3 missões do dia (`cards` na home, `compact` no popover) |
+| `TierTrack.vue` | Evolução do Nevo pelos 5 níveis |
+| `MilestoneTrack.vue` | Marcos de 7/14/30/60/100 dias (conquista pelo recorde; o destaque de "próximo" segue a sequência atual, o mesmo do palco e do chip) |
+| `StreakCelebration.vue` | Overlay da comemoração, montado UMA vez no AppShell (teleport, z 4000, `aria-live`, some sozinho em 7 s) |
+| `showcase/NevoShowcase.vue` | Vitrine 3D da home (three.js + GSAP). Único lugar do app que importa `three`; carregada por `defineAsyncComponent` quando o card entra na tela, pausa fora da tela e com reduced-motion vira quadro estático. Pede WebGL2 com `failIfMajorPerformanceCaveat` (renderização por software fica no pôster em CSS) e, se o contexto cair, remonta a cena num canvas novo quando o navegador devolve a GPU |
+
+Na home: `features/dashboard/components/StreakHero.vue` (primeiro módulo, âncora `#sequencia`), `TeamStreakPanel.vue` e `ShowcaseSection.vue`. O Nevo do palco é um botão: hover e foco fazem ele reagir, o clique mostra uma dica de `NEVO_TIPS`, e nos humores pendente e novo ele olha para os lados a cada 12 a 20 s (desligado com reduced-motion, aba oculta e à noite). `moodFor` tem a faixa `night`: das 22h às 23h59 avisa que o dia fecha à meia-noite; das 0h às 5h manda descansar. O Nevo também aparece na 404 (`confuso`) e no `ErrorBoundary` (`sad`). Na Equipe do `/time`: `TeamStreakCard.vue` e a ordenação Horas / Sequência / Pontos do `TeamView`.
 
 ## Colaboração
 
@@ -142,25 +205,125 @@ View Transitions API registrado via `::view-transition-*` no reset — ativo se 
 
 | Feature         | View principal                                                                                 | Rota               | Observações                                                           |
 | --------------- | ---------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------- |
-| Dashboard       | [`features/dashboard/DashboardView.vue`](./features/dashboard/DashboardView.vue)               | `/` e `/dashboard` | Vue Query. **Layout bento assimétrico** (grid por `grid-template-areas`, direção aprovada pelo dono): módulos em `features/dashboard/components/` (DashboardHeader, HeroSection=Progresso, MovementModule, StatsRow=tiles com `display: contents`, ActivityPanel=feed) — cada módulo declara a própria `grid-area`; célula base `.bento-cell` em `dashboard-shared.css` |
+| Dashboard       | [`features/dashboard/DashboardView.vue`](./features/dashboard/DashboardView.vue)               | `/` e `/dashboard` | **Três abas (nov/2026), só a aberta monta:** *Meu dia* (padrão: `MyDaySection` com as tarefas da pessoa de todas as empresas agrupadas por `my-day.ts`, derivadas do `/dashboard/workspace`; `StreakSummaryCard`; agenda), *Jornada* (palco completo do Nevo; `/#sequencia` abre aqui) e *Painel* (o bento abaixo). Aba lembrada em `dashboard.tab`. Painel: Vue Query. **Layout bento assimétrico** (grid por `grid-template-areas`, direção aprovada pelo dono): módulos em `features/dashboard/components/` (DashboardHeader, HeroSection=Progresso, MovementModule, StatsRow=tiles com `display: contents`, ActivityPanel=feed) — cada módulo declara a própria `grid-area`; célula base `.bento-cell` em `dashboard-shared.css` |
 | Board           | [`features/board/BoardView.vue`](./features/board/BoardView.vue)                               | `/board`           | Kanban                                                                |
 | Canvas          | [`features/boards/BoardsListView.vue`](./features/boards/BoardsListView.vue)                   | `/boards`          | **Desabilitado (feature flag)** — `CANVAS_ENABLED` (`config/feature-flags.ts`); reativar com `VITE_CANVAS_ENABLED=true`. Ver [docs/CANVAS_DEACTIVATION.md](../docs/CANVAS_DEACTIVATION.md). Arquivos preservados, nada deletado |
 | Público         | [`features/public/PublicBoardView.vue`](./features/public/PublicBoardView.vue)                 | `/public/board/:token` | Board read-only por token                                         |
 | Público         | [`features/public/PublicRoadmapView.vue`](./features/public/PublicRoadmapView.vue)             | `/public/roadmap/:token` | Roadmap read-only por token                                   |
-| Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Timeline anual + calendários mensais, **100% API real** (a nota antiga de "mockados" está obsoleta desde o contrato `GET /company/:id/roadmap`) |
+| Roadmap         | [`features/roadmap/RoadmapView.vue`](./features/roadmap/RoadmapView.vue)                       | `/roadmap`         | Visões **Mês** e **Ano** (nov/2026), 100% API real. Ver a seção **Roadmap** abaixo. Spec: [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md) |
 | Tarefas         | [`features/tasks/TasksView.vue`](./features/tasks/TasksView.vue)                               | `/tasks/:month`    | Por trimestre → mês. Abas **Board · Agenda · Backlog**. Tags, arquivos e documentos `.md` na tarefa (ver abaixo). Filtro por tag em `?tags=slug1,slug2`. **Repetição** é um campo da tarefa (estado local em `localStorage` por empresa, sem chamada de API): o board mostra UMA linha por regra (a corrente + as abertas), com contadores "+N no mês" e "N atrasadas" que levam à Agenda; o botão "Recorrentes" do header abre a gestão das regras — ver a seção abaixo |
 | Tickets         | [`features/tickets/TicketsView.vue`](./features/tickets/TicketsView.vue)                       | `/tickets`         | Rota registrada na navegação                                           |
 | **Variáveis** ★ | [`features/companies/CompanyVariablesView.vue`](./features/companies/CompanyVariablesView.vue) | `/variables`       | Refatorada em F3 — sub-components em `features/companies/components/` |
 | **Notas** ★     | [`features/notes/NotesView.vue`](./features/notes/NotesView.vue)                               | `/notes`           | Redesenhada na P1 do épico de notas colaborativas. Autosave, pastas com CRUD e aninhamento, bubble/slash menu, modo imersivo. Sub-components em `features/notes/` |
 | Calendário      | [`features/calendar/CalendarView.vue`](./features/calendar/CalendarView.vue)                   | `/calendar`        | Google Calendar integration                                           |
+| Agendamentos    | [`features/booking/BookingView.vue`](./features/booking/BookingView.vue)                       | `/agendamentos`    | Página pública estilo Calendly (pessoal). Públicas sem shell: `/agendar/:slug`, `/agendar/:slug/:eventSlug`, `/reuniao/:token`. Ver a seção abaixo. Spec: [agendamento-publico.md](../docs/specs/2026/q4/agendamento-publico.md) |
 | Time Tracking   | [`features/time/TimeTrackingView.vue`](./features/time/TimeTrackingView.vue)                   | `/time`            | Timer estilo Clockify. Widget global nos 3 shells + `useTimeTracking` (Vue Query + socket `time:*`). Período = **Hoje · Mês navegável · Tudo** (`useTimePeriod` + `PeriodPicker`, uma instância por aba); totais e ritmo vêm de `/time/summary`, não da lista paginada. **Aviso de ociosidade** (ver abaixo). Specs: [time-periodos-mes-e-lifetime.md](../docs/specs/2026/q3/q3-2/time-periodos-mes-e-lifetime.md) · [timer-ociosidade.md](../docs/specs/2026/q3/q3-2/timer-ociosidade.md) |
 | **Drive** ★     | [`features/drive/DriveView.vue`](./features/drive/DriveView.vue)                               | `/drive`           | Arquivos em bucket PRIVADO (signed URL, nunca URL pública). Sidebar **multi-empresa** (modelo QR): Pessoal + TODAS as empresas do usuário, seleção em `?scope=personal\|<companyId>` sem mexer na empresa ativa do topo. Capas derivadas no navegador (`useFileCover`: pdf.js p/ 1ª página, frame de vídeo, snippet de texto, capa tipográfica por extensão em `file-palette.ts`), menu de ações reka-ui, painel de detalhes, ordenação, upload com fila, viewer compartilhado (`components/ui/FileViewer.vue`). **Link público** de download (`/f/:token`, rota sem shell): token revogável, URL assinada de 60s gerada no acesso e nunca persistida. Permissão padrão QR: pessoal = dono; empresa = membro vê/sobe, uploader gerencia o próprio, ADMIN tudo. Spec: docs/specs/2026/q3/q3-2/drive-p1-nativo.md |
 | OCR Digital     | [`features/ocr/OcrDigitalView.vue`](./features/ocr/OcrDigitalView.vue)                         | `/ocr`             | Ferramenta de integração (seção Ferramentas): leitura inteligente sem configuração (template opcional por empresa), acervo de documentos lidos, webhook. Spec: docs/specs/ocr-digital.md |
+| Biblioteca      | [`features/library/ResourceLibraryView.vue`](./features/library/ResourceLibraryView.vue) | `/recursos`        | Catálogo curado de bancos de vídeo, foto, trilha, ícone, 3D, edição e IA (seção Ferramentas). **Só leitura e sem escopo de empresa.** O dado vive em `features/library/marketing-resources.ts`, não no banco: é conteúdo que muda poucas vezes por ano e precisa de revisão antes de entrar, porque licença errada aqui vira problema jurídico depois. O campo que organiza a tela é a LICENÇA, não o preço — quem está editando às onze da noite precisa saber de uma olhada se pode usar em anúncio pago e se tem que creditar alguém. |
 | Acessos Públicos | [`features/public-access/PublicAccessView.vue`](./features/public-access/PublicAccessView.vue) | `/public-access`   | Tokens de API das ferramentas (seção Ferramentas): listagem agregada de todas as empresas onde o usuário é ADMIN, escopo por ferramenta (QR/OCR/ambas), revogação só pelo criador. Gate `meta.anyCompanyAdmin`. Spec: docs/specs/acessos-publicos.md |
-| Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only                                                            |
-| Configurações   | [`features/settings/SettingsView.vue`](./features/settings/SettingsView.vue)                   | `/settings`        | Tema, acento, densidade, shell variant                                |
+| Usuários        | [`features/companies/CompanyUsersView.vue`](./features/companies/CompanyUsersView.vue)         | `/company-users`   | ADMIN only. "Pessoas e acessos" (`CompanyMembersDialog`) gera o link de primeiro acesso por membro; o `CreateUserModal` cria sem senha, põe a pessoa na empresa ativa e já oferece o link (`components/AccessLinkBox.vue`). A pessoa cria a senha em `/redefinir-senha` (rota pública), a mesma do "Esqueci minha senha" do login |
+| Configurações   | [`features/settings/SettingsView.vue`](./features/settings/SettingsView.vue)                   | `/settings`        | Seu perfil (foto, `#perfil`), tema, acento, densidade, shell variant, cronômetro, notificações, integrações, atalhos |
+| Sequência (Nevo) | [`features/dashboard/components/StreakHero.vue`](./features/dashboard/components/StreakHero.vue) | `/#sequencia` (home) + chip nos 3 shells | Sequência diária, missões, níveis, marcos, ranking de pontos da equipe e vitrine 3D. Ver a seção **Nevo (sequência diária)**. Spec: [sequencia-diaria-nevo.md](../docs/specs/2026/q3/q3-3/sequencia-diaria-nevo.md) |
+
+| **Marketing** | [`features/marketing/MarketingLayout.vue`](./features/marketing/MarketingLayout.vue) | `/marketing/*` | Ala de um GRUPO de empresas (cada empresa ligada é uma marca). Acesso pelo papel no grupo, não pela empresa ativa. Ver a seção **Ala Marketing** abaixo. Épico: [ala-marketing.md](../docs/specs/epicos/ala-marketing.md) |
 
 ★ = redesign completo entregue pelo design-system-evolution spec.
+
+### Ala Marketing (nov/2026)
+
+Specs: [00-fundacao.md](../docs/specs/2026/q4/q4-2/ala-marketing/00-fundacao.md) (leia as "Regras para quem implementa uma fase"), [m1](../docs/specs/2026/q4/q4-2/ala-marketing/m1-aprovacao-calendario.md), [m2](../docs/specs/2026/q4/q4-2/ala-marketing/m2-rastreio-estrategia.md), [m3](../docs/specs/2026/q4/q4-2/ala-marketing/m3-dinheiro-eventos.md).
+
+```
+features/marketing/
+  MarketingLayout.vue        moldura: grupo, filtro de marca (?marca=), abas e atalhos do cabeçalho; tempo real
+  marketing-nav.ts           FONTE ÚNICA das seções (abas, cabeçalho, breadcrumb, Ctrl+K); `placement: 'header'` tira da fita
+                             (Meus avisos, Lixeira, Configurações; a fita de 13 abas cabe em 1440 px); financeiro some sem permissions.seeFinance
+  routes.ts                  rotas filhas (não renomeie: avisos do sino apontam para elas)
+  marketing-labels.ts        tipo, rede e status do card, cor da marca, dinheiro em centavos
+  marketing-calendar.ts      contrato das fontes do calendário (card, campanha, ativação)
+  marketing.css              utilitários mk- (botão, campo, chip com data-tone, painel, tabela densa)
+  composables/useMarketing.ts  grupo ativo, papel, can(), marcas, permissões, membros, socket
+  approvals/ calendar/ links/ home/            M1 (aprovação com versões e pinos, calendário, cofre, painel)
+  utm/ print/ ideas/ campaigns/                M2 (UTM sobre o encurtador, QR, gráfica, ideias, campanhas)
+  finance/ activations/ partners/ quotes/ events/  M3 (financeiro, ativações, parceiros, orçamentos)
+  settings/                  Configurações (Dono e Admin) e "Criar grupo"
+service/marketing/           um cliente por área; mkt(groupId, '/rota') monta /marketing/g/<g>/...
+core/components/shells/MarketingOnlyShell.vue  moldura de quem só tem a ala (sem empresa)
+```
+
+Regras que não são óbvias:
+
+1. **O papel é do grupo** (`OWNER` Dono > `ADMIN` > `EDITOR` > `VIEWER`), lido de `GET /marketing/me`; a ala NÃO usa `x-company-id`. Conta sem empresa e com grupo (freelancer, diretoria) cai na `MarketingOnlyShell`, e o `AppShell` manda qualquer rota fora de `/marketing` e `/settings` para `/marketing` (só depois de a rota resolver: `route.matched`, senão engole o link do aviso).
+2. **Chave do Vue Query sempre `['marketing', groupId, '<área>', ...]`.** O socket `marketing:changed` invalida o grupo inteiro; chave fora disso não atualiza em tempo real nem na troca de grupo. `['marketing', 'me']` é a exceção.
+3. **Todo arquivo da ala sobe pela fila global** `useUploadQueue().enqueue(groupId, entries, target)` (`features/marketing/uploads/`, destinos prontos em `upload-targets.ts`), que mostra a bandeja "Envios" em qualquer tela da ala. O sha256 é calculado num worker; acima de 6 MB o envio vai em partes (TUS do Supabase, com o token assinado, retomável), e até 6 MB num PUT só. Fechar o diálogo não cancela o envio. O teto por arquivo é o `MARKETING_MAX_FILE_BYTES`, o do plano. Arte CMYK ganha prévia RGB à parte (`previewUrl`); o original nunca muda. O Acervo (`features/marketing/library/library-upload.ts`) põe o lote inteiro na mesma fila (o painel da tela só LÊ os itens `kind: 'library'`) e cria o item no `onUploaded`, que passa pelo `withRetry`: falhou, o arquivo fica com erro e o "Tentar de novo" refaz só esse passo. Repetido é pergunta da fila (`{ prompt }`, desenhada na bandeja, sem segurar vaga); ao sair da ala o pendente vira "Pular". Cada execução tem id e todo `await` corre contra o `signal` do cancelar (cancelar e tentar de novo não duplicam). Entrada de arquivo é uma só: `uploads/file-sources.ts` (arrastar, colar com "Colado <data hora>.png", seletor); com diálogo modal aberto, colar só cai na área dentro dele. Sair da conta pergunta se `hasPending()` (`composables/useLogout.ts`) e o `resetSessionState` limpa fila, miniaturas, rascunhos e teto pelo `service/session-hooks.ts`. Zip do Acervo: `POST library/zip/ticket` e download nativo num iframe escondido (`GET library/zip/:token`, uso único, 60 s). "Escolher do acervo" e "Mandar para o acervo" copiam o objeto no storage, com o mesmo sha256, e só entre a marca do arquivo (ou do card) e a Geral do grupo: um lado nunca quebra o outro.
+4. **Dinheiro só para quem vê o financeiro**: a API devolve `null` (custo de ativação, gasto de campanha, valor de orçamento); a tela trata `null` como "sem valor", não como zero.
+5. **Calendário:** fontes em `calendar/calendar-sources.ts`; item com `end` vira faixa (fim inclusivo), `draggable: false` não arrasta, dias em Brasília.
+6. **Avisos do sino** (`notify.link` na API) hoje saem de card (`/marketing/cards/<id>`, inclusive os da Gráfica e o aviso diário de prazo) e de campanha (`/marketing/campanhas?campanha=<id>`). Ativação e parceiro abrem o painel por `?ativacao=<id>` e `?parceiro=<id>`, mas não mandam aviso. Todo link de aviso da ala leva `?grupo=<groupId>` (a API acrescenta em `MarketingLogService.notify`); o `MarketingLayout` seleciona o grupo e tira o parâmetro. Clicar num aviso `MARKETING_*` no sino NÃO troca a empresa ativa (a marca do aviso pode ser uma empresa da qual a pessoa não é membro).
+7. **Tarefa do Nevo ligada ao card** (`features/marketing/tasks/`, API `src/marketing/tasks/`): o status do card anda a tarefa pelo mapa de `marketing-task-sync.ts` (Em produção e Ajustes vão para Em andamento, Aguardando para Em teste, Aprovado em diante para Concluído, e Revisados nunca). Quem move é o servidor, pelo `applyStatusFromMarketing`; o id do log começa com `mkt_` e o histórico mostra "pela ala Marketing". Essa conclusão não conta na Sequência.
+
+8. **Board da Aprovação cabe na tela** (`approvals/components/MarketingBoard.vue`): as colunas dividem a largura (232px a 320px) e só rolam de lado quando nem assim cabe. Coluna vazia e a final da trilha (Publicado, Impresso e entregue) viram faixa de 44px; abrir ou recolher coluna COM cards fica em `safeStorage` por pessoa e por trilha (`marketing.board.columns.<userId>`, regras em `approvals/board-columns.ts`), vazia aberta é só por agora. Durante o arraste nada muda de largura (toda faixa é alvo) e a fita rola sozinha a 80px da borda visível. "Mover para" no card (`MarketingMoveMenu.vue`, reka-ui) e a folha do celular usam o MESMO espelho `moveTargets` de `approvals-meta.ts`, cópia de `checkMove` mais as travas do `POST /move` (trilha da gráfica só pela tela Gráfica, Aguardando exige versão); a decisão segue o servidor regra por regra, e mudar a regra lá pede mudar aqui. O resumo não diz se a V1 tem arte ou legenda: nesse caso vale a recusa do servidor. A altura da fita é medida no JS (vai até o pé da tela): com "reduzir movimento" o `reset.css` dá transição a tudo, por isso a fita tem `transition-property: none`.
+
+9. **Nada de `<select>` nativo na ala: sempre `AppSelect`** (`density="compact"`), com os itens de `select-items.ts` (`selectItems`, `labelItems`, `asText`; "Nenhum" é o valor `''`). O `label` vira o `aria-label` do gatilho; o rótulo visível fica num `<span class="mk-label">` (não `<label for>`, o gatilho é um botão). Campo que SALVA SOZINHO ao escolher usa `useSavedSelect(() => valorGravado)`: mostra a escolha na hora, acompanha o tempo real e o `revert()` volta ao valor gravado quando a API recusa (no card, o `patch` leva o `onFail`). Nunca grave ao montar nem ao reabrir. Select de AÇÃO (Mudar status, Mencionar) fica sempre no texto da ação e executa a escolha. Atalho de teclado da tela ignora `[role="combobox"]` e `[role="listbox"]`, e o Enter da linha rápida do Financeiro não lança em cima de um select. Únicos nativos com motivo: o `<datalist>` de "Forma de pagamento" (texto livre com sugestões), as datas e os checkboxes de formulário. Roteiros pelo helper `scripts/harness/app-select.cjs`; prova em `marketing-selects-e2e.cjs`.
+
+10. **Publicação nas redes (R2, A)** (`features/marketing/social/`, API `src/marketing/social/`): conta de rede é por MARCA e só Dono e Admin conectam (OAuth no servidor, `state` HMAC de 10 min e uso único; callback público `GET /marketing/social/callback/:rede` NÃO grava conta: guarda o que a rede trouxe numa reserva de 10 min e uso único, em memória e presa à pessoa e ao grupo do `state`, e volta para `/marketing/configuracoes?aba=redes&escolher=<chave>`; a aba Redes abre o `SocialConnectPicker`, a pessoa logada escolhe a marca e marca as contas, e só então `POST .../social/pending/:chave/confirm` grava. Quem não é o dono da reserva recebe 404; conta já ligada a outra marca vem travada. Erro volta como `erro=` com o `motivo` limpo por `cleanMotivo`). Token NUNCA sai: o DTO da conta não tem o campo (só `autoRenew`), cifrado pelo `CryptoService`, frases de erro passam pelo `redact`. Sem `META_APP_ID`/`YOUTUBE_CLIENT_ID`/`LINKEDIN_CLIENT_ID`/`TIKTOK_CLIENT_KEY` a rede é inerte (passo a passo com a URL de callback) e o post sai À mão. `publishAt` do card é a fonte: o card chama `MARKETING_PUBLISH_HOOKS` (sair de Agendado cancela e avisa; mudar a data reagenda; TODO caminho que muda `publishAt` chama `onPublishAtChanged`, e card Agendado não aceita data no passado: `scheduledPublishAtProblem` de `core/marketing-status.ts`). As GUARDAS do mesmo contrato rodam ANTES de gravar e lançam 409: `assertNotPublishing` (com publicação saindo, o card não sai de Agendado, não vai para a lixeira e não ganha versão nova) e `hasLivePublication` (Agendado sem publicação viva é recusado: agendar é pelo diálogo; soltar em Agendado no board abre o card com `?agendar=1`) e a lixeira da parte C chama `MARKETING_CARD_TRASH` (`onCardTrashed`, `restoreForCard`, `onCardPurged`); fora do card, use `SocialPublicationsService.cancelForCard(cardId, motivo)`. O agendador pega por UPDATE CONDICIONAL (`status` + `lockedAt`) e toda gravação confere a mesma trava: nunca rode publicação fora dele. Teto de 3 envios por processo, e cada vaga solta é preenchida na hora (uma rodada longa não segura a fila). Logo antes do passo que não volta, o provedor chama `job.beforeFinal()` (o card ainda pode sair?). Nunca publica duas vezes: o Instagram grava o container (`externalId` com o prefixo `ctr:`) antes do `media_publish` e a nova tentativa consulta o `status_code`; Facebook, LinkedIn e o fim do YouTube viram FAILED "confira na rede" no erro ambíguo (`finalPost`), sem repetir. Token só vai para host conferido (`hostAllowed`). Uma `MarketingPublication` por card e rede (`@@unique`): rede já PUBLICADA não se agenda de novo no mesmo card. Foto sai como JPEG sRGB derivado (`marketing/<g>/publish/<id>/<n>.jpg`, apagado depois); vídeo é lido só no cabeçalho (mp4box.js por Range). Painel no card pelo slot `after-details` do `MarketingCardFields`; números e anúncios na aba Resultados da campanha (`CampaignSocialResults`). Chave do Vue Query `['marketing', g, 'social', ...]`. Harness: `fake-social.mjs` (54351) e as envs `*_API_URL`/`*_AUTH_URL` (README da API).
+
+11. **Avisos fora do sino e cadência (R2, C)** ("Meus avisos" em `/marketing/avisos`, `views/MarketingNotifyView.vue`; API `src/marketing/notify/`, `core/marketing-notify.ts` e `core/marketing-notify-delivery.service.ts`): todo aviso da ala continua saindo SÓ por `MarketingLogService.notify`, que grava o sino e chama `MarketingNotifyDeliveryService.dispatch` (push e e-mail imediato fora da transação; falha não derruba a ação). Preferência é por pessoa e grupo (`GET/PUT marketing/g/<g>/notify/prefs`, qualquer cargo); sem linha vale push ligado e e-mail no resumo diário (`DEFAULT_NOTIFY_PREF`). Tipo novo de aviso entra em `NOTIFY_KINDS` (rótulo e área), senão não aparece para silenciar (o `notify.spec.ts` varre o código e cobra), e ganha rótulo do sino em `utils/event-labels.ts`. Silenciar corta push e e-mail; o sino sempre recebe. Resumo diário: cron `marketing-notify-digest` às 8h05 de Brasília, pega a vez por UPDATE CONDICIONAL em `lastDigestAt` (duas instâncias não mandam dois) e junta os não lidos `MARKETING_*` cujo link tem `grupo=<g>`, só os que a pessoa AINDA vê (papel e marcas atuais, marca ligada na ala, card e campanha fora da lixeira; aviso de Admin só para quem ainda é Admin; `MEMBER_ADDED` é do grupo inteiro). Envio que falha ou erro no meio DEVOLVE a reserva (`lastDigestAt` volta ao começo da janela, só se ainda é a desta rodada) e uma pessoa com erro não para as outras; acima de 1.000 avisos a frase diz "mais de". `PUT notify/prefs` grava só o campo que veio; silenciar vai em delta (`mute`/`unmute`, só o tipo clicado, numa instrução no banco), e `muted` (a lista inteira) segue aceito. Sem VAPID o push é inerte e sem SendGrid o e-mail também (a tela diz). Push da ala leva `kind: 'marketing'`, `renotify` e `data.url`: o `public/idle-sw.js` só aceita caminho do próprio Nevo (uma barra, nunca `//`), e com o Nevo aberto manda `nevo-open-url` para a aba, que troca de tela pelo roteador (`composables/usePushNavigation.ts`, sem recarregar; aba de versão velha que não responde é navegada); sem aba, abre uma. Sair da conta desassina o push deste navegador antes de limpar a sessão (`unsubscribePushOnLogout`). Cadência (`src/marketing/cadence/`, aba Cadência das Configurações, só Admin grava): meta por marca e rede na semana ISO de Brasília, conta card Agendado ou Publicado com data na semana; o cron `marketing-cadence-alert` (9h) avisa de quarta a domingo UMA vez por meta e semana (`lastAlertWeek` por UPDATE condicional), para Editor em diante da marca. A meta é única por marca e rede: o upsert leva o `groupId` de agora (marca que mudou de grupo) e toda leitura filtra pelo grupo. Na tela, o número salva depois de uma pausa e "Tirar a meta" pede confirmação. A faixa "Cadência da semana" do painel vem dentro do `GET home` (sem pedido a mais); promessa que corre junto com as listas do painel tem `.catch` NA CRIAÇÃO (rejeição sem dono derruba o processo da API).
+
+12. **Lixeira (R2, C)** (`/marketing/lixeira`, `views/MarketingTrashView.vue`; API `src/marketing/trash/` e `core/marketing-trash.ts`): apagar card, campanha, ideia, link, UTM, ativação, parceiro, despesa, recorrente, orçamento, pasta e item do Acervo só carimba `deletedAt`/`deletedById` (`trashStamp`); os vínculos ficam como estão e quem LÊ esconde. Regra: TODA leitura desses 12 modelos (`find*`, `count`, `aggregate`, `groupBy` e SQL cru) filtra `deletedAt` DENTRO do `where`, e relação para um que pode estar na lixeira passa por `alive()`. O `trash-reads.spec.ts` lê o `src/` pela árvore do TypeScript e falha em: `where` sem `deletedAt` (no select ou num comentário não vale), relação de lista ou `_count` sem `where` com `deletedAt`, relação de um só com `select` sem o `deletedAt` (e sem filtro no `where` de fora), delegate em apelido ou por colchete, e SQL cru (template, `Prisma.sql`, `$queryRawUnsafe`, string concatenada) que cita uma das 12 tabelas sem `"deletedAt"`. Exceção só com motivo na lista dele (as leituras que olham a lixeira de propósito e pedem o `deletedAt` no select); as brechas que a auditoria achou ficam no próprio spec como teste. Na lixeira vale o efeito de apagar: UTM para de redirecionar e some do Encurtador e do QR, card cancela a publicação pendente (`MARKETING_CARD_TRASH`) e devolve a ideia para Aberta (religa ao restaurar), arquivo de dono na lixeira dá 404, despesa sai das somas, recorrente lançada na lixeira conta como lançada, orçamento escolhido na lixeira não trava os outros. Pasta leva subpastas e itens com o MESMO `deletedAt` (Editor com item de outra pessoa dentro recebe 403 e a tela oferece mover o conteúdo para cima); restaurar devolve o lote e renomeia se o nome já existe. Editor vê e restaura o que ELE apagou, Admin tudo, "Apagar de vez" só Admin, Leitor não vê, financeiro só para quem vê dinheiro. O cron `marketing-trash-purge` (3h) apaga de vez o que passou de 30 dias, com storage e miniatura. "Apagar de vez" (Admin e expurgo, `purgeOne`) roda o banco numa transação que começa com `SELECT ... FOR UPDATE` da linha (só se ainda na lixeira) e apaga o storage DEPOIS do commit: o "Restaurar" que chega junto espera e recusa com a frase ("foi apagado de vez agora há pouco"), e o que chega antes faz o apagar não pegar nada (409, nada some). Pedaço do lote de uma pasta (arquivo ou subpasta com o mesmo `deletedAt` da de cima) não volta nem sai sozinho; subpasta que foi para a lixeira por conta própria não vai na cascata da de cima (solta para a raiz). Restaurar em lote segue nos outros quando um falha e devolve `failed`. O expurgo conta só o que a trava pegou e grava um registro por grupo e dia (soma, sob advisory lock). No front, todo apagar devolve `trashed` e passa por `useTrashUndo().announce(...)` (toast com Desfazer; `undoNote` quando o Desfazer não devolve tudo); voltou ou saiu de vez, `refreshAfterTrash` invalida a ala e, para UTM, `['qr']` e `['short-links']`. A confirmação diz "Mandar para a lixeira" (`TRASH_CONFIRM_LABEL`). Visualizador que abre `/marketing/lixeira` vê "sem acesso". Modelo novo com lixeira entra em `TRASH_TYPES`, no `lockInTrash`, no `purgeOne` e no spec.
+
+13. **Booleano de query e de body, e Feed (R2, C):** com `enableImplicitConversion`, `?x=false` e o body `{"x":"false"}` viram `true`. Todo campo booleano de classe de `@Query()`, e todo booleano com `@IsBoolean()` de DTO da ala (body também), leva `@ToBoolean()` antes do `@IsBoolean()` (`src/common/to-boolean.ts`), parâmetro solto usa `queryFlag()`, e o `to-boolean.spec.ts` confere o `src/` inteiro. Lista grande da ala pagina no servidor: UTM por `GET utm/page` (cursor), ativações por `listPage`, Lançamentos mostra "2.000 de N". Feed do Instagram (Calendário, modo Feed, tecla F, `GET calendar/feed?companyId=`): grade de 3 colunas por marca com a capa da versão aprovada; trocar horário é UMA chamada, `POST calendar/feed/swap { a, b }`, cada lado com o `publishAt` que a grade mostrava: o servidor troca numa transação com o horário esperado no `where` (ordem fixa por id) e, se um já mudou, responde 409 com a frase, nada muda e o front recarrega a grade. Otimista na tela, volta se a API recusar. O reagendamento da publicação vem pelo `MARKETING_PUBLISH_HOOKS`, que o arrastar do calendário (`PATCH calendar/cards/:id`) também chama. A dica de arrastar não aparece no celular (lá é a do botão de trocar). Card Agendado não vai para o passado por nenhum caminho (`PATCH /cards`, arrastar e troca do feed: 400 com a frase de `scheduledPublishAtProblem`). Limite conhecido: o `PATCH /cards/:id` é "o último ganha" (sem horário esperado no `where`); duas pessoas mudando o mesmo campo juntas, fica a última gravação.
+
+14. **Dados do app (R2, B = M4)** (`/marketing/dados`, `views/MarketingAppDataView.vue` e `features/marketing/app-data/`; API `src/marketing/app-data/`; contrato em `docs/specs/2026/q4/q4-2/ala-marketing/m4-contrato-dados-do-app.md`, espelho em `petjourney-api/docs/integracoes/nevo-agregados-v1.md`).
+    - **Entrada:** a PetJourney manda só agregados por `POST /public/marketing/app-metrics` com `Bearer wfapp_...`. O token é por MARCA; o Dono cria e revoga em Configurações, aba "Conexão com o app", e o Admin só vê. O token aparece uma vez; o banco guarda o sha256 e a tela mostra o prefixo e o último uso.
+    - **Pipe fechado:** a rota usa o próprio pipe (`forbidNonWhitelisted`, sem conversão implícita) e o parâmetro é `unknown`, para o pipe global não apagar a chave a mais antes. O `payloadProblems` recusa célula de 1 a 4 com número, família fora da métrica e qualquer coisa que pareça id, e-mail, IP, token, CPF ou telefone. Nada entra pela metade.
+    - **Dia e semana (revisão de 07/11):** o corpo tem `days` e `weeks`. UTM e parceiro só vêm na semana FECHADA (`cadastros_semana`, `week` = a segunda-feira, o domingo antes de hoje), e o total dela soma só os dias que saíram exatos. Estoque (`assinaturas_ativas`, `pets`) vem só com o total, arredondado para CIMA de 5 em 5 e nunca nulo; sem canceladas, sem plano e tipo; os pets novos vêm por espécie.
+    - **Reenvio substitui:** para cada métrica que veio num dia (ou numa semana), as dimensões dela são apagadas e regravadas na mesma transação (chave marca, data, métrica e dimensão; a semana fica na mesma tabela, com `date` = a segunda-feira). Nunca duplica, e métrica que não veio fica.
+    - **Leitura:** toda soma de célula é `CellSum` (intervalo): `null` vale de 1 a 4, e a tela escreve "32 a 38" ou "menos de 5" (`app-data-format.ts`), nunca um número inventado. O total do período é a soma dos dias da série (mesmo cálculo, testado).
+    - **Funil por UTM:** casa a tupla fonte, mídia, campanha e conteúdo, normalizada dos DOIS lados (`utmKey`, a mesma regra do gerador), com a `MarketingUtm` da mesma marca. Tupla do app sem UTM no Nevo aparece como "sem UTM no Nevo". Lê a semana fechada: o período arredonda para semanas inteiras (`weekWindow`), os cliques e as leituras de QR contam no mesmo intervalo, e a resposta traz `weeks` (com a semana em curso em `open`). Embaixo, "Outras UTMs" e "Sem UTM" fecham a conta.
+    - **Parceiro:** soma o código de indicação (`parceiro:<codigo>|<rótulo>`, ligado ao parceiro do Nevo pela UTM que aponta para `/r/<codigo>` ou pelo nome) com as UTMs ligadas a ele. Não soma a UTM que leva ao próprio `/r/` quando o código trouxe cadastro (seria contar duas vezes). Por semana fechada, como o funil.
+    - **Visualizador vê** a área inteira. Depois de 36 h sem envio, a área e o painel avisam (`AppStatusLine`). Os indicadores do painel inicial vêm DENTRO do `GET home` (`app`, montado pelo `MarketingAppDataService.home`, com falha virando `null`). O painel continua com uma chamada só, e o `marketing-shot.cjs` confere isso. Sem app conectado, o bloco não aparece. O link do Looker Studio é `CompanyGroup.settings.lookerStudioUrl` (só https do Looker; o Admin edita).
+    - **CSV:** o nome do arquivo vem do período no cliente, porque o CORS não expõe o `Content-Disposition`.
+    - **Tempo real:** chave do Vue Query `['marketing', g, 'app-data', ...]`; a entrada dispara `marketing:changed`.
+    - **Ao mexer:** métrica, família ou regra nova muda os DOIS contratos e os dois `*-contrato.ts`, e sobe a `payloadVersion`.
+15. **Registrar o que já saiu e a volta pela origem (24/11, pedido da Leticia)** (spec `docs/specs/2026/q4/q4-2/ala-marketing/registro-do-que-ja-saiu.md`)
+    - **Registro:** o Admin põe no fim da trilha (Publicado, ou Impresso e entregue na peça) o que saiu fora do Nevo, sem versão e sem aprovação, pelo `POST /cards/:id/record-done` (`checkRecordDone` da API; `canRecordDone`, `wantsRecord` e `finalStatusOf` no `approvals-meta.ts`). NÃO é seta do `checkMove`: arrastar para o fim continua recusado, com a frase apontando para "Registrar como já publicado". O front decide no `wantsRecord`: o fim da trilha que o fluxo normal recusaria abre o `MarketingRecordDoneDialog` (board: soltar, "Mover para" e a folha do celular, pelo `onMove` do `MarketingApprovalsView`; página do card: o "Mudar status"). Post grava `publishedAt` E `publishAt` com a data de verdade (nunca no futuro: o que vai sair é "Agendar publicação") e o link opcional; vindo de Agendado, o `onCardStatus` cancela o que não saiu. Card publicado não recebe versão: o diálogo avisa para subir a V1 antes.
+    - **"Mudar status" da página do card** é o mesmo `MarketingMoveMenu` do board (`variant="button"`), com os status da trilha inteira e o motivo de quem não pode ir. Na página, `allowed` e `canRecord` vêm do servidor (`me.allowedMoves`, `me.canRecordDone`); no board, o espelho pelo papel. Pegadinha: prop booleana opcional que não foi passada chega `false` no Vue (não `undefined`), então `canRecord` só vale junto com `allowed`.
+    - **Origem do card:** `cardOrigin` em `marketing-nav.ts`, gravado pelo `router.afterEach(rememberCardOrigin)` do `MarketingLayout` (zera ao montar e ao desmontar a ala). A volta do card, a aba acesa e o breadcrumb seguem a aba de onde ele foi aberto (Calendário com `?vista=&dia=`, Painel, Ideias...); sem origem (link colado, sino de fora da ala), Aprovações. De card para card a origem fica.
+
+Provas no harness (`scripts/harness/`): `marketing-shot.cjs`, `marketing-settings-e2e.cjs`, `marketing-approvals-e2e.cjs`, `marketing-board-fit-e2e.cjs` (board que cabe, faixas, "Mover para", borda), `marketing-calendar-e2e.cjs`, `marketing-utm-e2e.cjs`, `marketing-print-e2e.cjs`, `marketing-strategy-e2e.cjs`, `marketing-finance-e2e.cjs`, `marketing-events-e2e.cjs`, e os da rodada R1: `marketing-library-e2e.cjs`, `marketing-uploads-e2e.cjs`, `marketing-tasks-e2e.cjs`, `marketing-r1-stitch-e2e.cjs`, `marketing-r1-audit-e2e.cjs` (achados da auditoria do front: repetido, cancelar e tentar de novo, falha do item, subpasta, logout, zip nativo, rodapé do convite, larguras) e `marketing-selects-e2e.cjs` (zero `<select>` nativo, teclado, valor que volta com a API recusando, celular); da R2: `marketing-publish-e2e.cjs` (com `fake-social.mjs`: sem chave, conectar, carrossel CMYK, mídia barrada, dois agendadores, rede fora do ar, reagendar e cancelar, TikTok e à mão, números e anúncios, acesso, token em lugar nenhum, 375px; sobe a própria API na 3651), `marketing-notify-e2e.cjs` (preferências, push respeitando o silêncio, e-mail imediato e resumo sem repetir, cadência uma vez por semana, link do aviso, 375px), `marketing-trash-e2e.cjs` (os 12 tipos com Desfazer, efeitos na lixeira, pasta em lote, permissões, apagar de vez, expurgo de 30 dias com storage, card agendado que cancela e volta a agendar a publicação, 375px) e `marketing-feed-e2e.cjs` (grade por marca, capa aprovada, trocar horário com e sem recusa da API e a publicação reagendada junto, 375px), `marketing-record-done-e2e.cjs` (registrar como já publicado pelo board, pelo menu, pela página e pela folha do celular, a peça entregue, as recusas da API e a volta pela origem) e `marketing-appdata-e2e.cjs`. Este último leva do clique no link curto do post ao cadastro no funil: o petjourney-web em dev grava o primeiro toque, o cadastro passa pelo `UsuarioService` de verdade num banco local da PetJourney (`pj_m4`) e o job de verdade manda o dia. Cobre também o recorte por semana (1 cadastro na semana vai para "Outras UTMs", 5 aparecem), o corpo fora do contrato, o reenvio sem duplicar o dia nem a semana, o parceiro pelo `/r/`, o token revogado (401 e "Revogado" na tela), o alerta de 36 h, a área sem dado, o CSV, o Looker e 375px. O roteiro nunca deixa o navegador seguir o 302 do link curto: o Playwright não intercepta navegação redirecionada e iria ao site de produção. Banco por roteiro: `bash marketing-db.sh <banco>`; API: `bash api-run.sh ../../../workflow-api <porta> <banco>`; storage falso: `node fake-storage.mjs`. Com outro Postgres na 55432 (ex.: contêiner Docker), suba o do harness noutra porta (`PGPORT=55442 node pg.mjs`) e passe o mesmo `PGPORT` ao `marketing-db.sh`, ao `api-run.sh` e aos roteiros (todos leem). No Windows, o Docker reserva faixas de porta (`netsh int ipv4 show excludedportrange protocol=tcp`): a API que dá `EACCES` no `listen` está numa delas.
+
+### Roadmap (nov/2026)
+
+Spec: [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md) (R1 a R3).
+
+```
+features/roadmap/
+  RoadmapView.vue              orquestra: Mês/Ano, navegação (← → T N), menus, dialogs, PDF
+  roadmap-meta.ts              FONTE ÚNICA: tipos de item (rótulo, ícone, cor), datas 'YYYY-MM-DD'
+                               em UTC, grade do mês, janela de teste, empilhamento da linha do tempo
+  roadmap-items.ts             item da agenda, entrega e marco numa forma só (calendário, ano, PDF)
+  composables/useRoadmap.ts    as duas cargas (`/roadmap/monthly` + `/company/:id/roadmap`) e todas
+                               as gravações; erro de carga nunca apaga a tela
+  components/RoadmapMonthView  calendário com o título no dia (até 3 + "+N"), faixas de teste por
+                               cima, painel (dia, próximos 14 dias, Em teste agora, foco, imagens,
+                               comentários); no celular vira calendário de pontos
+  components/RoadmapYearView   linha do tempo (objetivos, marcos e testes, entregas), zoom Q1 a Q4
+                               (abre no trimestre atual); no celular vira lista por mês
+  components/RoadmapItemDialog criar/editar item (tipos, Teste incluso) e marco (com janela de teste)
+  components/RoadmapAgendaList lista por dia, reusada no painel e no celular
+  components/RoadmapPrint      relatório de impressão (Teleport no body; esconde o resto da página)
+```
+
+Cinco regras que não são óbvias:
+
+1. **Três origens, nunca fundidas** (`roadmap-items.ts`): item da agenda (`RoadmapEntry`, abre o editor), entrega (tarefa com prazo, abre o painel do board em `/tasks/:mes?task=`) e marco (`RoadmapMilestone`, abre o marco). "Marco" como tipo de item é legado: o filtro junta os dois em "Marcos" e item novo não oferece esse tipo.
+2. **Janela de teste = `testStart` até a véspera do marco** (`testWindow`). Mudar só a data do marco também é validado contra a janela (400). Sem a coluna no banco, a API lê com `testStart: null`, grava o resto e responde 503 a quem pede janela; ela tenta a coluna de novo a cada minuto.
+3. **A categoria `test` precisa da migration `20261105220000_roadmap_teste`**. Sem ela, criar item de Teste dá 503 em PT-BR; as outras categorias seguem gravando.
+4. **Mudar a data de um item para outro mês move o item de mês no servidor** (`PATCH .../entries/:id` cria o mês de destino se precisar). O front só acompanha a lista local.
+5. **"Em teste agora" (`inTesting`) e o checklist das entregas vêm do `GET /roadmap/monthly`**, com o mesmo `withTestChecks` do board. O link público não leva nenhum dos dois.
+
+Prova: `scripts/harness/roadmap-e2e.cjs` (31 checagens, banco conferido, inclusive a API sem a coluna nova).
 
 ### Seleção de tarefa e som do Meu tempo
 
@@ -364,12 +527,15 @@ features/notes/
   types.ts                Note, NoteListItem, NoteFolder, NoteFolderNode
   note-palette.ts         cores e emojis (hex aqui é dado persistido, não tema)
   components/             NoteHeader, NoteMetaMenu, NoteBubbleMenu, NoteSlashMenu,
-                          NoteCard, NoteFolderTree (recursivo), NoteFolderDialog
+                          NoteCard, NoteFolderTree (recursivo), NoteFolderDialog,
+                          NoteKeyboardBar (celular: formatação acima do teclado)
   composables/            useNotes (Vue Query + buildFolderTree), useNote,
                           useNoteEditor, useNoteAutosave, useNoteImmersive
   extensions/             slash-command.ts (menu "/" via @tiptap/suggestion)
   styles/note-content.css tipografia e blocos do conteúdo, reusável na leitura
 ```
+
+**Celular (spec [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md), D3):** abaixo de 640px a toolbar do topo não existe; com o editor em foco aparece `components/NoteKeyboardBar.vue`, presa à borda de baixo do `visualViewport` (`offsetTop + height`: o teclado encolhe só o viewport visual, e um `fixed; bottom: 0` ficaria atrás dele), rolável de lado, com botões que não roubam o foco (`mousedown.prevent`) e "Fechar teclado". Enquanto ela está de pé a tab bar sai (`useShellChrome`, dono `note-editor`, inset de 52px). O bubble menu não abre quando a seleção veio do toque (`shouldShow` olha o último `pointerType`; no celular nunca abre): o menu nativo de seleção já ocupa aquele lugar. O topo é uma linha só em qualquer estado (`SaveStatus short`: "Salvo", "Salvando", "Erro" e o tentar de novo em ícone; "Só leitura"; Compartilhar em ícone). O harness simula o teclado trocando o `window.visualViewport` por um que encolhe (shim no `celular-e2e.cjs`); posição real no iOS e no Android só o aparelho prova.
 
 **Header fixo:** `NoteEditorView` é o container de scroll (`.note-page` height 100% + `.note-scroll` overflow interno); a região do topo (`.note-topbar` = NoteHeader + TipTapToolbar) fica fora do scroll. Não depende do scroll do shell. As opções de formatação existem em DOIS lugares: a toolbar fixa do header E o slash menu (`/`).
 
@@ -377,15 +543,215 @@ features/notes/
 
 Especificações: [épico](../docs/specs/epicos/notas-colaborativas-premium.md) · [P1](../docs/specs/notas-p1-editor-premium.md) · [P2](../docs/specs/notas-p2-compartilhamento.md) · [P3](../docs/specs/notas-p3-edicao-ao-vivo.md) · [P4](../docs/specs/notas-p4-rabisco.md)
 
+### Board de tarefas: card, coluna, status e prioridade
+
+Spec: [board-tarefas-redesign.md](../docs/specs/2026/q3/q3-3/board-tarefas-redesign.md) (fatias S0 a S6 entregues).
+
+```
+features/tasks/
+  task-meta.ts        FONTE ÚNICA de status e prioridade: rótulo, cor e ícone (SVG próprio,
+                      componente funcional com `size`). Prioridade D3, crescente:
+                      0 Sem, 1 Baixa, 2 Média, 3 Alta, 4 e 5 Urgente (`priorityLevel`).
+                      `dueSignal()` = regra de cor do prazo (vermelho vencido/hoje, laranja até 7d)
+  task-key.ts         chave de exibição `PJ-K7Q2XM` (iniciais da empresa + 6 últimos do id),
+                      sem migration; rotina virtual (`rec:*`) não tem chave
+  board-order.ts      a ordem das colunas: `sortByDue` (Entrega, o padrão), `dueInsertIndex`
+                      (o índice do `PATCH /move` em Entrega) e `resolveDropIndex` (Manual:
+                      traduz a soltura da lista FILTRADA para o índice absoluto da coluna
+                      pela âncora do vizinho visível). Testes: `scripts/harness/board-order.test.mjs`
+  board-lanes.ts      `groupByPerson` (S6): linhas por 1º responsável, "Sem responsável" no
+                      topo, depois "você", depois alfabética. Computado, nunca cópia
+  pending-task.ts     id `tmp:*` do card otimista da criação inline (sem chave, sem arrastar)
+  composables/useCollapsedColumns.ts   Concluído recolhido (safeStorage, vale nos dois boards)
+  composables/useBoardFilters.ts       filtros do board do mês (S2): estado, URL, memória,
+                      predicados e contagens. E entre grupos; pessoas e prioridades por OU,
+                      tags por E. Roda sobre as colunas COMPUTADAS do mesmo ref do arraste
+  composables/useTaskSelection.ts      seleção da Lista (S5): toggle, intervalo por Shift na
+                      ordem visível, poda do que o filtro esconde
+  composables/useTaskKeyboard.ts       teclado global do board (S4): C, /, ?, J/K e setas na
+                      ordem do DOM, ← →, Enter/O, E, Esc, O/U agrupado. Fora do Board só C, / e ?
+  composables/useQuickCreate.ts        criação inline (S4): campo aberto, otimistas FORA de
+                      `tasks`, fila de POST (com `status`) + `PATCH /move` para o fim, rollback
+  components/TaskShortcutsDialog.vue   a ajuda do "?" (documenta o que o useTaskKeyboard faz)
+  components/TaskBoardToolbar.vue      a toolbar sempre à vista (busca `/`, rostos, 4 filtros
+                      rápidos com contagem, menus Tags e Prioridade, Limpar, Lembrar filtro)
+  components/TaskDetailPanel.vue       o painel sobre o board (S3), no mês e no `/board`
+  components/TaskListView.vue          a vista Lista (S5): as mesmas colunas filtradas em grupos
+                      por status, linhas de 36px, seleção e teclado próprios, e a massa
+                      com otimismo pelo `applyPanelPatch` do TasksView
+  components/TaskBulkBar.vue           a barra de massa (Status, Responsável, Prioridade, Mês,
+                      Excluir): só apresenta e emite a intenção; quem grava é a Lista
+components/tasks/
+  TaskCard.vue        o card único do board do mês e do `/board` (`pending`, `omitPerson` e a
+                      tecla E pelo evento `task-card-rename`)
+  TaskColumn.vue      a coluna única (poço de 280px, cabeçalho de 36px, "+" e "…" no hover;
+                      "Ordenar por prioridade" só na tela)
+  KanbanBoard.vue     o board simples do mês ("Criar" depois do último card, campo inline)
+  TaskLanes.vue       o "Agrupar: Pessoa" (S6): linhas recolhíveis, cabeçalhos presos,
+                      arraste só dentro da linha
+  TaskQuickCreate.vue o campo da criação inline (Enter cria e continua aberto, Esc cancela)
+  BoardColumnTabs.vue as abas do celular (nome e contagem por coluna, a ativa com o acento)
+  TaskMoveSheet.vue   a folha "Mover para" do celular (Teleport, alvos de 48px, Esc e fundo fecham)
+features/tasks/composables/
+  useBoardPager.ts    a fita de colunas com snap ligada às abas (rolagem acende a aba, aba rola)
+  useCardLongPress.ts segurar 300ms e soltar sem mexer = `onHold`; mexer antes = rolagem
+```
+
+**URL do board do mês:** `?q=&pessoa=u2,u3&prioridade=3,4&tags=app&minhas=1&atrasadas=1&recentes=1&sem-responsavel=1&agrupar=pessoa&ordem=manual`
+(filtro, agrupamento e ordem, sempre por `replace`; `ordem` só aparece como `manual`, Entrega é o padrão) e `?task=<id>` (painel aberto; abrir é `push`, então o voltar do
+navegador fecha; J/K e setas trocam por `replace`). A página cheia `/tasks/:month/:taskId` continua
+existindo ("Abrir em página"). O breadcrumb do `CommandShell` monta `Tarefas / Q3 / Setembro / PJ-XXXXXX`
+a partir do `useNavQuarters` e da chave. Teclado do board (`useTaskKeyboard`, ajuda no `?`): C cria
+inline em "A fazer", `/` busca, J/K e setas movem o foco (com o painel, trocam a tarefa), Enter/O
+abrem, E renomeia, Esc tira o foco; agrupado, O e U expandem e recolhem as linhas (o card abre com
+Enter). Tudo ignorado em campo de texto, com menu ou diálogo aberto e com modificador. A vista também vai na URL:
+`?vista=lista` (ou `agenda`, `historico`; o Board não aparece), por `replace`, e o `‹ ›` leva junto.
+Na Lista, o teclado é dela (J/K, ↓/↑, Enter/O, X, Shift+X, Esc), e com o painel aberto sobre ela
+J/K trocam a tarefa na ordem da LISTA.
+
+**Celular, abaixo de 640px (spec [v2-celular-roadmap-notas.md](../docs/specs/2026/q4/q4-2/v2-celular-roadmap-notas.md), D1 e D2):** o board do mês, o agrupado por pessoa e o `/board` mostram UMA coluna por vez, com `BoardColumnTabs` no topo. Deslizar é a rolagem do navegador (`scroll-snap-stop: always`, a aba acompanha pelo `useBoardPager`); o Sortable só pega o card depois de segurar (`delay` 300 + `delayOnTouchOnly`, então o mouse não muda) e no celular só reordena DENTRO da coluna (grupo por coluna; no agrupado, a célula da coluna ativa), e só na ordem Manual: em Entrega, o padrão, nem isso (trocar de coluna é a folha). O controle "Ordem" sai no celular como o "Agrupar"; vale o que veio pela URL ou pelo "Lembrar filtro". Segurar e soltar sem mexer abre a `TaskMoveSheet`, que NÃO tem caminho próprio de gravação: emite o status e o board chama o mesmo `onMenuMove` (mês e agrupado) ou `updateTaskStatus` (`/board`) do "Mover para" do menu "…"; a regra de Revisados (`reviewBlockReason`) vale ali e a folha só adianta a frase embaixo da opção. O `/board` no celular não arrasta nada (HTML5 não funciona com o dedo; `draggable` sai). O engolir do clique fantasma depois do segurar vale só para o mesmo card e por 400ms: mais largo que isso engolia o toque seguinte (o "…" do reka abre no `click`). Roteiro: `scripts/harness/celular-e2e.cjs` (toque de verdade pelo CDP).
+
+Quatro regras que não são óbvias:
+
+1. **Nenhuma tela declara escala própria.** Rótulo "P0..P5", `Record` de prioridade ou mapa
+   de status local é regressão: foi assim que a mesma tarefa virou "Baixíssima" verde numa
+   tela e "Crítica" vermelha na outra. Filtro de prioridade compara `priorityLevel`, não o
+   número (Urgente pega 4 e 5).
+2. **O índice do Sortable é o da lista visível.** O `KanbanBoard` emite `visibleIds` e o
+   `TasksView` resolve a posição absoluta; aplicar o índice cru na lista completa grava a
+   ordem errada com qualquer filtro ligado.
+3. **Clique no título espera o duplo clique.** O primeiro clique de um duplo clique abria o
+   detalhe e a página saía antes de renomear; no título o card espera ~220ms, no resto abre
+   na hora.
+4. **Cor só no ícone de status, no prazo, em Alta/Urgente e no avatar.** Nada de borda
+   (esquerda ou não), fundo de coluna, régua ou pill tintada de tag.
+5. **O `data` do Vue Query é `readonly` profundo.** Escrever num card vindo direto do cache
+   falha em silêncio (só um aviso no console). O `TasksView` copia cada card (`{ ...toRaw(t) }`)
+   ao sincronizar `tasks`; é o que deixa o renomear no card e o patch do painel (prop
+   `applyPatch`) mudarem o card na hora, antes do refetch.
+   **Desfazer é `refreshTasks()`, que refaz `tasks` do cache DEPOIS do refetch** (`syncFromQuery`).
+   O `watch(tasksData)` sozinho não desfaz: com o structural sharing do Vue Query, um refetch
+   igual ao cache devolve a mesma referência e o watch não roda (a escrita recusada ficava na
+   tela). Vale também com o refetch falhando (o cache é o último estado confirmado). A Lista usa
+   o mesmo caminho pela prop `refresh`. `structuralSharing: false` não resolveria: não cobre o
+   refetch que falha e faria todo refetch de fundo (socket, foco) apagar otimismo em voo.
+   O painel recebe `applyPatch` como PROP função, não evento: com `key` por tarefa, o J/K
+   desmonta o painel com a gravação no ar, e o `emit` de instância desmontada é descartado
+   (o rollback nunca chegava ao card). Troca de coluna ou de mês pelo `applyPanelPatch` guarda
+   de onde o card saiu (`patchOrigin`): o rollback volta ao MESMO lugar, e o card que foi para
+   outro mês volta ao board.
+6. **O lozenge do painel no board do mês grava por `PATCH /move`** (fim da coluna nova em Manual,
+   lugar da data em Entrega), injetado por `writeStatus`. `PATCH /status` não renumera: o card ia
+   para o fim e pulava de volta para a posição antiga no refetch. O `/board` (várias empresas)
+   continua no `PATCH /status`.
+7. **Alvo de 44px sem empurrar o board:** os botões da toolbar têm 32px de desenho e um `::after`
+   que fecha 44px, medido pela caixa de padding (com borda de 1px são 7px). Cabeçalho e toolbar
+   ocupam faixas de 44px que se tocam sem se sobrepor; por isso o 1º card fica em 124px do topo da
+   área de conteúdo (44 + 44 + 36 do cabeçalho da coluna).
+8. **Status em massa vai em SÉRIE; o resto da massa, em paralelo.** Na API, o `move` renumera a
+   coluna de origem e a de destino numa transação; dois `PATCH /move` em paralelo saindo da mesma
+   coluna travam as mesmas linhas em ordem cruzada e o Postgres aborta um por deadlock. A Lista
+   manda um `/move` por vez (fim da coluna, na ordem da tela). Prioridade, responsável, mês e
+   exclusão só tocam a própria linha e vão com `Promise.allSettled`, com rollback por item.
+   `responsibleUserIds` SUBSTITUI a lista: a massa manda a lista completa de cada tarefa.
+9. **Criação inline é POST com `status` MAIS `PATCH /move` para o fim.** A tarefa nasce com
+   `position` 0 e a API ordena por `(position, createdAt)`: numa coluna já renumerada ela cairia
+   em 2º lugar. As criações vão numa fila (a ordem digitada é a ordem gravada). Os cards
+   otimistas (`tmp:*`) moram fora de `tasks`, porque o refetch substitui aquele ref inteiro.
+10. **O "+" e o "Criar" do Board abrem o campo inline (`openComposer`); o `openCreateIn` é o
+    formulário completo** e é o que o "+" da Lista usa. Não troque um pelo outro.
+11. **Agrupado, a ordem de arraste é da coluna do mês inteiro:** cada linha é um grupo do Sortable
+    (entre linhas não solta) e o `move-task` leva a ordem visível da CÉLULA, que o
+    `resolveDropIndex` traduz pela âncora do vizinho, como no filtro (na ordem Manual).
+12. **"Ordem: Entrega" é só apresentação, e é o padrão** (`board-order.ts`, `displayTasks` no
+    TasksView). Chave: o dia do prazo pela MESMA leitura do card (`dateOnlyDiffDays`, o que escreve
+    "Hoje" e "Atrasada"), crescente, sem data no fim; no empate a prioridade mais alta
+    (`priorityLevel`); depois a ordem manual, que é o ÍNDICE na lista (a API manda por
+    `position, createdAt`), nunca o campo `position` do card, que fica velho no otimismo. Rotina
+    virtual e otimista entram pela data como qualquer card. `tasks` continua na ordem manual do
+    servidor; a tela é sempre a mesma conta sobre ele, então eco e refetch não mexem em nada.
+    Regras que seguem disso:
+    - em Entrega nenhuma lista reordena (`sort: false`); soltar na mesma coluna não grava;
+    - todo `PATCH /move` em Entrega (arraste entre colunas, menu e folha "Mover para", lozenge,
+      massa da Lista, "Mover todas para Concluído", criação pelo formulário) leva o
+      `dueInsertIndex` da coluna INTEIRA, e o card entra no MESMO índice em `tasks`: tela e
+      servidor ficam iguais, e quem abre "Manual" encontra o card no lugar da data;
+    - na massa, os cards que a Lista já empurrou para a coluna e o servidor ainda não gravou (têm
+      `patchOrigin` de outra coluna) ficam fora da conta: num empate eles contariam como "antes"
+      e o índice iria um a mais (o roteiro prova com um par empatado);
+    - a criação inline continua indo para o fim: ela nasce sem prazo e sem prioridade, e aí o fim
+      É o lugar da data. Quem gravar no fim por fora (a ala Marketing) aparece no lugar da data
+      na tela; só a ordem manual fica no fim;
+    - trocar prazo ou prioridade no painel reordena a tela na hora e NÃO regrava a posição.
+    - Roteiro: `scripts/harness/board-entrega-e2e.cjs`.
+
+### Em teste, Revisados e o teste por plataforma
+
+Specs: [board-revisados-sinal-e-dialog.md](../docs/specs/2026/q4/q4-1/board-revisados-sinal-e-dialog.md) (coluna Revisados, bolinha do sinal) e [teste-por-plataforma.md](../docs/specs/2026/q4/q4-1/teste-por-plataforma.md) (checklist Web, iOS, Android).
+
+**Os componentes:**
+- `components/tasks/TestSignalDot.vue`: a bolinha do card em Em teste.
+- `components/tasks/TestPlatformChecks.vue`: o checklist.
+  - variante `card`: a faixa no rodapé do card de Em teste;
+  - variante `field`: a linha "Testes" do dialog.
+- `features/tasks/test-platforms.ts`: fonte única das três plataformas (ordem, nome e o ícone de `@mdi/js`) e da regra `reviewBlockReason`.
+
+Os dois controles gravam sozinhos e avisam por evento (`signal`, `checks`); `TasksView`, `BoardView` e o dialog guardam o valor novo.
+
+Cinco regras que não são óbvias:
+
+1. **Revisados só com as três plataformas.**
+   - A API recusa com 409 no `move` e no `status`.
+   - O front recusa ANTES, sem request, quando o card sai de Em teste com o checklist carregado. Isso vale no board do mês, no agrupado por pessoa, no "Mover para", no `/board`, no dialog e na massa da Lista.
+   - Vindo de outra coluna, quem decide é a API.
+   - A recusa no `handleMove` é síncrona: o `onEnd` do `KanbanBoard`/`TaskLanes` ressincroniza pela prop e o card volta sozinho.
+2. **`testChecks: null` = recurso indisponível** (API sem a migration `20261026120000_activity_test_check`, ou card virtual `rec:`). Nesse caso o checklist some e nada é bloqueado. `[]` = nada marcado. A API manda os checks válidos de TODA tarefa real, em qualquer coluna: o card que entra em Em teste já chega com o checklist.
+3. **Retrabalho apaga o teste.** Voltar para A fazer ou Em andamento apaga os checks, e o front limpa SÓ depois da troca confirmada (`checksAfterMove`), para um rollback não sumir com check válido. Revisados e Concluído mantêm os checks como registro.
+4. **Ícone de marca vem de `@mdi/js`** (SVG por constante, tree-shaken), desenhado por `PlatformIcon.vue`. O Lucide não tem logo; o `@mdi/font` (classes `mdi-*`) continua proibido em código novo.
+5. **`container-type: inline-size` exige largura explícita** em item que não é esticado pelo pai. Sem `width: 100%`, o `.tpf` media 0px dentro do `<dd>` do dialog e cortava o nome de quem testou.
+
+### Agendamento público (estilo Calendly)
+
+Spec: [agendamento-publico.md](../docs/specs/2026/q4/agendamento-publico.md).
+
+```
+features/booking/
+  BookingView.vue                 /agendamentos (anfitrião): Reuniões · Tipos · Horários · Página
+  booking-time.ts                 fuso só com Intl: instante ↔ data civil, rótulos, lista de fusos
+  availability.ts                 validação dos intervalos (mesma regra do servidor)
+  components/SlotPicker.vue       calendário do mês + horários do dia, no fuso escolhido
+  components/TimezoneSelect.vue   combobox de fuso com busca (reka)
+  components/host/*               painéis do anfitrião (usam styles/booking-host.css, prefixo bk-)
+  public/*                        as três páginas sem login
+service/booking/booking-service.ts   bookingService (api) + publicBookingService (publicApi)
+```
+
+Quatro coisas que não são óbvias:
+
+1. **O servidor fala em instantes UTC; a tela escolhe o fuso.** O convidado vê
+   no fuso do navegador dele (trocável e lembrado), o anfitrião configura no
+   fuso da página. Nunca `getHours()` de `Date` aqui: é a hora da máquina, o erro
+   que faz alguém em Lisboa entrar três horas atrasado.
+2. **O mês do calendário é pedido como janela de instantes no fuso do
+   CONVIDADO** (`zonedMidnight`). Horário 23:30 de SP aparece no dia seguinte
+   para Lisboa, e precisa estar nesse dia.
+3. **409 volta ao calendário recarregado; 429 e 503 ficam no formulário.** São
+   ações diferentes: horário tomado pede outro horário; limite por e-mail e
+   Google fora do ar pedem outra coisa, sem redigitar os dados.
+4. **As páginas públicas usam `publicApi`**, sem token: o anfitrião logado que
+   testa o próprio link vê exatamente o que o convidado vê, e um 401 nunca o
+   manda para o login.
+
 ### Memória do filtro do board
 
 [`features/tasks/composables/useTaskFilterMemory.ts`](./features/tasks/composables/useTaskFilterMemory.ts) —
-o botão **Lembrar filtro** da barra de filtros de `/tasks/:month`. Guarda
-responsável + prioridade + tags em `localStorage` **por empresa**
-(`workflow:tasks-filter:v1:<companyId>`; tag de uma empresa aplicada em outra
-filtraria para o vazio sem explicação).
+o botão **Lembrar filtro** (marcador no fim da toolbar) de `/tasks/:month`. Guarda
+pessoas, prioridades, tags, os quatro filtros rápidos, o agrupamento (S6) e a ordem (Entrega ou Manual) em `localStorage` **por
+empresa** (`workflow:tasks-filter:v1:<companyId>`; tag de uma empresa aplicada em
+outra filtraria para o vazio sem explicação). A busca por texto não é guardada. O
+registro antigo (`user` por nome, `priority` único) ainda é lido e convertido.
 
-Quatro regras que não são óbvias:
+Cinco regras que não são óbvias:
 
 1. **A presença do registro É o estado ligado.** Não existe um `enabled`
    separado para os dois saírem de sincronia; desligar apaga a chave.
@@ -393,12 +759,17 @@ Quatro regras que não são óbvias:
    gravar, a pessoa continuaria olhando um board filtrado depois de dizer que
    não quer mais filtro guardado, e a ação pareceria não ter feito nada.
 3. **Link compartilhado ganha do que está guardado.** Quem abre `?tags=cms`
-   quer ver o CMS, não o recorte que deixou ligado semana passada. O filtro de
-   tag continua sendo o único que mora na URL.
-4. **Filtro restaurado abre o painel de filtros** (uma vez, e só quando de fato
-   esconde algo). Recorte guardado agindo em silêncio é a receita do "o board
-   está vazio, o time parou de trabalhar" — a causa precisa estar na tela ao
-   lado do efeito.
+   quer ver o CMS, não o recorte que deixou ligado semana passada. Qualquer
+   filtro na URL desliga a restauração naquela visita.
+4. **Filtro restaurado fica à vista.** A toolbar não se esconde mais: os chips
+   marcados e o "Limpar filtros" mostram o recorte que voltou, e ele também vai
+   para a URL. Recorte guardado agindo em silêncio é a receita do "o board está
+   vazio, o time parou de trabalhar".
+5. **A view é reaproveitada entre `/tasks/:month`.** Trocar de mês por um link sem
+   filtro (o menu lateral) com a memória ligada abre o mês com o recorte guardado e
+   o leva para a URL; sem isso a URL nova zerava os filtros e a memória gravava o
+   zerado. E saindo do board, a URL de outra tela é ignorada (a view ainda está
+   montada quando a rota nova chega).
 
 ### Tarefas recorrentes — modo API (flag `VITE_RECURRING_API_ENABLED`)
 
@@ -582,11 +953,13 @@ Em [`features/companies/components/`](./features/companies/components/):
 - `VariablesToolbar.vue` — busca + filtro por tipo + sort + view toggle + export dropdown
 - `VariablesList.vue` + `VariableRow.vue` — tabela densa (view default)
 - `VariablesGrid.vue` — view em cards (opcional via toggle)
-- `VariableDrawer.vue` — drawer 480px com edit inline + tabs (Campos / Histórico)
-- `VariableCreateDialog.vue` — modal rápido de criação
-- `VariableFieldInput.vue` — linha key/value/type com copy, reveal SECRET (30s auto-hide), open URL
-- `VariableTypeChip.vue` — chip colorido por tipo (TEXT/URL/SECRET)
-- `useEnvExport.ts` — composable que gera `.env` a partir de variáveis (`KEY=value` com prefixo automático)
+- `VariableDrawer.vue`: painel lateral 480px (Teleport para o body, z 4500; dentro do `main` ele ficava atrás da topbar e da tab bar) com edit inline + tabs (Campos / Histórico, de `GET /company-variable/:id/history`)
+- `VariableCreateDialog.vue`: modal rápido de criação
+- `VariableFieldInput.vue`: linha key/value/type com copy, Revelar SECRET (30s auto-hide), open URL
+- `VariableTypeChip.vue`: chip colorido por tipo (TEXT/URL/SECRET)
+- `useEnvExport.ts`: composable que gera `.env` a partir de variáveis (`KEY=value` com prefixo automático)
+
+**Cofre (nov/2026):** a API devolve todo SECRET mascarado (`value: null`, `masked: true`, `hint` com os 2 últimos quando o valor tem 10+ caracteres). O valor só vem por `POST /company-variable/:id/reveal` (e `POST /company-variable/reveal` em lote, que o `.env` usa), e cada revelação vira um `FeedEvent` `secret_revealed` antes da resposta. Três regras: o valor revelado mora só na memória do drawer e some em 30 s ou ao fechar; o PATCH manda só o que mudou, e SECRET que ninguém digitou vai SEM `value` (com `originalKey`), para a API manter o guardado; copiar um segredo mascarado usa `utils/clipboard.ts` (`ClipboardItem` com Promise, senão o Safari recusa o `writeText` depois do `await`). Quem pode revelar: `SECRET_REVEAL_MIN_ROLE` em `workflow-api/src/company-variable/secret-policy.ts`.
 
 Atalhos globais na página Variables: `/` (foca busca), `N` (abre criação), `Esc` (fecha drawer).
 
@@ -618,7 +991,7 @@ Atalhos globais na página Variables: `/` (foca busca), `N` (abre criação), `E
 
 1. Crie `features/<nome>/<Nome>View.vue`.
 2. Registre a rota em [`router/index.ts`](./router/index.ts).
-3. Adicione entrada em `NavList.vue` (`mainItems` ou `personalItems`) e nos shells `FocusShell` / `CanvasShell` (railItems / tabs / dockItems) se deve aparecer lá.
+3. Adicione entrada em `NavList.vue` na seção certa (`mainItems` = Trabalho, `companyItems` = Empresa, `personalItems` = Pessoal, `toolsItems` = Ferramentas) e nos shells `FocusShell` (`railItems`, com o mesmo `section`) / `CanvasShell` (`tabGroups`, e `dockGroups` se for atalho frequente). O rótulo do breadcrumb vai no mapa `routes` do `CommandShell`, com o mesmo texto do menu (sem ele a topbar mostra o fallback "Nevo").
 4. Use tokens e lucide icons desde o início.
 5. Atualize a tabela de features nesta doc.
 

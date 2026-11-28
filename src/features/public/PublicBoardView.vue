@@ -192,10 +192,8 @@ function diamondPoints(element: BoardElement) {
 
 .eyebrow {
   color: var(--text-4);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .board-header h1 {

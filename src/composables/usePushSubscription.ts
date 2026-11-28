@@ -44,6 +44,32 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 
 let inFlight: Promise<boolean> | null = null
 
+/**
+ * Sair da conta tira a assinatura DESTE navegador (auditoria da parte C): sem
+ * isso, quem entrasse depois no mesmo navegador recebia os avisos da conta
+ * anterior. Roda ANTES de a sessão acabar (a API precisa do token para apagar)
+ * e nunca segura o logout: no máximo `timeoutMs`. Usa `getRegistration`, não o
+ * `ready`, que nunca resolve quando não há worker.
+ */
+export async function unsubscribePushOnLogout(timeoutMs = 2500): Promise<void> {
+  if (!supported) return
+  const work = (async () => {
+    const registration = await navigator.serviceWorker.getRegistration('/')
+    const subscription = await registration?.pushManager.getSubscription()
+    if (!subscription) return
+    const { endpoint } = subscription
+    try {
+      await pushService.unsubscribe(endpoint)
+    } catch {
+      // A API pode estar fora: o navegador sai do mesmo jeito (o servidor
+      // descarta a assinatura morta no próximo envio).
+    }
+    await subscription.unsubscribe()
+  })()
+  await Promise.race([work.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, timeoutMs))])
+  pushSubscribed.value = false
+}
+
 export function usePushSubscription() {
   /**
    * Garante que este navegador está assinado. Idempotente e barata de repetir:

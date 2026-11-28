@@ -54,7 +54,7 @@ const hiddenCount = computed(() => Math.max(0, props.projects.length - PAGE))
           <p v-if="project.cnpj" class="project-cnpj">{{ project.cnpj }}</p>
           <div class="project-pct-row">
             <span class="project-pct">{{ project.progress }}%</span>
-            <span class="project-status">{{ statusMeta[project.status]?.label || '—' }}</span>
+            <span class="project-status">{{ statusMeta[project.status]?.label || '-' }}</span>
           </div>
           <div class="project-bar">
             <div class="project-bar-fill" :style="{ width: project.progress + '%' }" />

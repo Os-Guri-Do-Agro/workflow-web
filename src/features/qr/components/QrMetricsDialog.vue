@@ -168,10 +168,8 @@ function deviceLabel(ua: string | null): string {
 .qmd-eyebrow {
   margin: 0 0 2px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .qmd-title {
@@ -252,8 +250,6 @@ function deviceLabel(ua: string | null): string {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .qmd-chart {

@@ -272,10 +272,8 @@ function toggle(id: string) {
 .ds-eyebrow {
   margin: 4px 0 -4px 10px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
 }
 
 /* Avatar tonal por empresa: dá identidade e faz a lista virar reconhecível. */

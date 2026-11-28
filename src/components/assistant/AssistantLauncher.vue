@@ -30,7 +30,7 @@ const shortcutHint = navigator.platform.toLowerCase().includes('mac') ? '⌘ I' 
 .launcher {
   position: fixed;
   right: 22px;
-  bottom: 22px;
+  bottom: calc(22px + var(--shell-bottom-inset, 0px));
   z-index: 9996;
   display: flex;
   align-items: center;
@@ -183,7 +183,8 @@ const shortcutHint = navigator.platform.toLowerCase().includes('mac') ? '⌘ I' 
 @media (max-width: 640px) {
   .launcher {
     right: 16px;
-    bottom: 16px;
+    /* Acima da tab bar da moldura de celular (MobileShell define a variável). */
+    bottom: calc(16px + var(--shell-bottom-inset, 0px));
   }
 }
 

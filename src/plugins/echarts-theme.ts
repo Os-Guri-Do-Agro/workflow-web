@@ -53,7 +53,7 @@ export function withAlpha(input: string, alpha: number): string {
 
 /** Fonte do produto para textos desenhados em canvas. */
 export function chartFontFamily(): string {
-  return readToken('--font-family', 'Geist, Inter, sans-serif')
+  return readToken('--font-family', '"Figtree Variable", Inter, sans-serif')
 }
 
 /**
@@ -78,7 +78,7 @@ export function chartStatusColors(): {
   }
 }
 
-/** Tooltip com a cara do design system (surface, borda, sombra, Geist). */
+/** Tooltip com a cara do design system (surface, borda, sombra, Figtree). */
 export function chartTooltip(): Record<string, unknown> {
   return {
     backgroundColor: resolveCssColor('var(--surface)'),
@@ -91,6 +91,36 @@ export function chartTooltip(): Record<string, unknown> {
       fontSize: 12,
     },
     extraCssText: `border-radius: ${readToken('--radius', '10px')}; box-shadow: ${readToken('--shadow', '0 10px 30px rgba(0,0,0,0.5)')};`,
+  }
+}
+
+/**
+ * Cores do banco de horas no canvas: crédito, dívida e o neutro.
+ *
+ * O verde aqui NÃO é o `--success` do produto, e isso é medido, não gosto. O
+ * validador de paleta (skill dataviz) reprova `#12B76A` como marca de gráfico:
+ * no tema ESCURO ele tem L 0,686 contra um teto de 0,67, e no claro fica em
+ * 2,55:1 de contraste com a superfície. O step vizinho da mesma rampa
+ * (`#039855`) passa em todas as checagens nos dois temas e ainda melhora a
+ * separação para daltonismo (ΔE 8,3 contra 6,4).
+ *
+ * `--success` continua sendo a cor de TEXTO e chip de saldo — o que muda é só a
+ * tinta do canvas, onde a exigência é outra.
+ *
+ * ΔE 8,3 passa raspando no piso de 8, então a cor NUNCA é o único canal: quem
+ * usa estas cores precisa dar direção (sobe/desce), sinal (+/−) e palavra.
+ */
+export function chartBalanceColors(): {
+  credito: string
+  divida: string
+  neutro: string
+} {
+  return {
+    credito: '#039855',
+    divida: resolveCssColor('var(--err)'),
+    // O "nada aconteceu" do eixo: cinza de superfície, nunca um matiz — num
+    // gráfico divergente, cor no meio vira polaridade que não existe.
+    neutro: resolveCssColor('var(--text-4)'),
   }
 }
 

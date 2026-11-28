@@ -2,6 +2,7 @@
 import { RouterView } from 'vue-router'
 import AppShell from '@/core/components/shells/AppShell.vue'
 import AppToast from '@/components/AppToast.vue'
+import LogoutGuard from '@/components/LogoutGuard.vue'
 </script>
 
 <template>
@@ -10,6 +11,8 @@ import AppToast from '@/components/AppToast.vue'
       <RouterView />
     </AppShell>
     <AppToast />
+    <!-- "Sair" com envio da ala subindo pergunta antes (composables/useLogout.ts) -->
+    <LogoutGuard />
   </v-app>
 </template>
 

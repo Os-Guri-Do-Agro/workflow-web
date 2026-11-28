@@ -329,10 +329,8 @@ async function revoke(link: DriveShareLink) {
 
 .sf-label {
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .sf-row {

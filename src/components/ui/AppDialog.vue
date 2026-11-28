@@ -102,8 +102,10 @@ watch(
   display: grid;
   place-items: center;
   padding: 20px;
+  /* Sem blur de vidro (spec board-tarefas-redesign, D7): o scrim escurece e
+     basta. O desfoque era movimento e profundidade gratuitos atrás de todo
+     diálogo, e custava GPU em cada abertura. */
   background: var(--scrim);
-  backdrop-filter: blur(10px);
 }
 
 .dlg {

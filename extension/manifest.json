@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Nevo — detector de atividade",
+  "name": "Nevo: detector de atividade",
   "version": "1.0.0",
   "description": "Deixa o cronômetro do Nevo saber quando você está trabalhando fora do navegador, sem pedir permissão a cada acesso.",
   "permissions": ["idle", "storage", "alarms"],
@@ -19,7 +19,7 @@
     "128": "icon128.png"
   },
   "action": {
-    "default_title": "Nevo — detector de atividade",
+    "default_title": "Nevo: detector de atividade",
     "default_popup": "popup.html"
   }
 }

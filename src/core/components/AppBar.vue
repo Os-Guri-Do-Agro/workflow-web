@@ -3,6 +3,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { computed, ref } from 'vue'
 import { Menu, ChevronRight, Search, Moon, Sun, Settings, LogOut, Sparkles } from 'lucide-vue-next'
 import { getUserToken } from '@/utils/authContent'
+import PersonAvatar from '@/components/ui/PersonAvatar.vue'
 import { useUiPreferences } from '@/composables/useUiPreferences'
 import { useAssistant } from '@/composables/useAssistant'
 
@@ -22,10 +23,7 @@ const user = getUserToken()
 const { theme, toggleTheme } = useUiPreferences()
 const assistant = useAssistant()
 
-const userInitials = computed(() => {
-  const name = user?.name || ''
-  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-})
+const userName = computed(() => user?.name?.trim() || 'Você')
 
 const firstName = computed(() => user?.name?.split(' ')[0] || '')
 
@@ -109,7 +107,7 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
     <v-menu v-model="userMenu" :close-on-content-click="true" location="bottom end">
       <template #activator="{ props }">
         <button v-bind="props" class="user-btn mr-3">
-          <div class="user-avatar">{{ userInitials }}</div>
+          <PersonAvatar :id="user?.sub" :name="userName" :size="26" decorative />
           <span class="user-name">{{ firstName }}</span>
         </button>
       </template>
@@ -240,19 +238,6 @@ const shortcutLabel = isMac ? '⌘ K' : 'Ctrl K'
 
 .user-btn:hover {
   background: var(--surface-2);
-}
-
-.user-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--text);
-  color: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
 }
 
 .user-name {

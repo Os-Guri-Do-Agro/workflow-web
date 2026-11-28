@@ -37,13 +37,25 @@ function pick<T extends object>(source: T, keys: readonly (keyof T)[]): Partial<
  * - A resposta do servidor também é aplicada só nas chaves tocadas, pelo mesmo
  *   motivo: mesclar o objeto inteiro sobrescreveria o que o usuário digitou
  *   enquanto a request voltava.
- * - O card do board vive na store do workspace (Pinia), não no cache do Vue
+ * - O card do `/board` vive na store do workspace (Pinia), não no cache do Vue
  *   Query. Por isso cada gravação espelha o resultado lá: é o que faz o card
  *   refletir a mudança na hora, sem refetch.
+ * - O board do mês tem a própria cópia das colunas (o ref que o arraste
+ *   otimista muta). Ele recebe o mesmo espelho por `onPatch`: otimista, depois o
+ *   confirmado e, se falhar, o rollback. Sem isso o card só mudava no refetch.
  */
 export function useActivityDetail(
   taskId: Ref<string | null>,
   companyId: Ref<string | null>,
+  options: {
+    /** Cada patch aplicado ao detalhe (otimista, confirmado ou rollback). */
+    onPatch?: (id: string, patch: Partial<ActivityDetail>) => void
+    /**
+     * Quem grava o status. Padrão: `PATCH /activity/:id/status`. O board do mês
+     * troca por `PATCH /move` no fim da coluna (ver o TasksView).
+     */
+    writeStatus?: (id: string, status: string) => Promise<ActivityDetail>
+  } = {},
 ) {
   const queryClient = useQueryClient()
   const workspace = useWorkspaceStore()
@@ -85,6 +97,7 @@ export function useActivityDetail(
 
   /** Espelha a mudança no card do board (store do workspace) sem refetch. */
   function syncBoardCard(patch: Partial<ActivityDetail>) {
+    if (taskId.value && Object.keys(patch).length) options.onPatch?.(taskId.value, patch)
     const card = workspace.workspaceData?.activities.find((a) => a.id === taskId.value)
     if (!card) return
     if (patch.title !== undefined) card.title = patch.title
@@ -182,14 +195,18 @@ export function useActivityDetail(
   /**
    * Status tem rota própria (`PATCH /activity/:id/status`), que grava o backlog
    * e emite `activity:moved` no realtime. Passar por `patchActivity` perderia os dois.
+   * `PATCH /move` também grava e emite, e ainda renumera a coluna: é o que o
+   * board do mês injeta por `writeStatus`.
    */
   function saveStatus(status: string): Promise<void> {
     return runSave('status', { status }, () =>
-      activityService.patchActivityStatus(
-        taskId.value!,
-        status,
-        companyId.value ?? undefined,
-      ),
+      options.writeStatus
+        ? options.writeStatus(taskId.value!, status)
+        : activityService.patchActivityStatus(
+            taskId.value!,
+            status,
+            companyId.value ?? undefined,
+          ),
     )
   }
 

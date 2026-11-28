@@ -7,7 +7,36 @@
  * `responsibles: [{ userId, user }]`, `status: 'TODO'` e `monthId` escalar.
  * Tipar o painel pelo tipo errado seria refatorar no escuro.
  */
-export type ActivityStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'DONE'
+export type ActivityStatus = 'TODO' | 'IN_PROGRESS' | 'IN_TESTING' | 'REVIEWED' | 'DONE'
+
+/**
+ * Sinal do teste (spec board-revisados-sinal-e-dialog, D2 a D5): a bolinha do
+ * card em "Em teste". Azul = em teste (também quando não há sinal), amarelo =
+ * precisa de ajuste, vermelho = reprovada (continua em "Em teste").
+ */
+export type TestSignal = 'TESTING' | 'NEEDS_ADJUSTMENT' | 'REJECTED'
+
+/** Como a API devolve o sinal: `null` = nunca marcado (azul). */
+export interface TestSignalView {
+  signal: TestSignal
+  setBy: { id: string; name: string } | null
+  /** ISO 8601. */
+  updatedAt: string
+}
+
+/**
+ * Teste por plataforma (spec teste-por-plataforma). A ordem da tela é Web,
+ * iOS, Android; a tarefa só entra em Revisados com as três.
+ */
+export type TestPlatform = 'WEB' | 'IOS' | 'ANDROID'
+
+/** Uma plataforma testada: qual, por quem e quando. */
+export interface TestCheckView {
+  platform: TestPlatform
+  checkedBy: { id: string; name: string } | null
+  /** ISO 8601. */
+  checkedAt: string
+}
 
 export interface ActivityUser {
   id: string
@@ -103,6 +132,10 @@ export interface ActivityDetail {
   /** Nem toda resposta traz o mês expandido; o escalar `monthId` sempre vem. */
   month?: { id: string; name: string } | null
   parentId?: string | null
+  /** Regra que gerou a tarefa (rotina materializada). `null` na tarefa avulsa. */
+  recurrenceId?: string | null
+  /** Data da rotina que virou esta tarefa (`YYYY-MM-DD` ou ISO). */
+  occurrenceDate?: string | null
   responsibles?: ActivityResponsible[]
   attachments?: ActivityAttachment[]
   subtasks?: ActivitySubtask[]
@@ -113,6 +146,13 @@ export interface ActivityDetail {
    * vazio quando a atividade não tem pai. Somente leitura: editar é na origem.
    */
   inheritedDocs?: ActivityDocMeta[]
+  /** Sinal do teste. Só vem preenchido em "Em teste"; `null` = azul. */
+  testSignal?: TestSignalView | null
+  /**
+   * Plataformas testadas (Em teste, e como registro em Revisados e Concluído).
+   * `null` ou ausente = recurso indisponível (API sem a migration).
+   */
+  testChecks?: TestCheckView[] | null
 }
 
 /** Corpo aceito por `PATCH /activity/:id`. Tudo opcional: o backend é parcial. */

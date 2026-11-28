@@ -28,8 +28,14 @@ const props = withDefaults(
     readonly?: boolean
     /** Teto do servidor, para o contador avisar antes de o salvamento falhar. */
     maxLength?: number
+    /**
+     * Modo de abertura que vence a preferência guardada (o "Ver" das Specs
+     * abre sempre na leitura). Não grava: trocar de modo depois grava como
+     * sempre.
+     */
+    initialMode?: 'edit' | 'split' | 'preview' | null
   }>(),
-  { savedAt: null, errorMessage: '', readonly: false, maxLength: 512_000 },
+  { savedAt: null, errorMessage: '', readonly: false, maxLength: 512_000, initialMode: null },
 )
 
 const emit = defineEmits<{
@@ -41,7 +47,9 @@ const emit = defineEmits<{
 
 type Mode = 'edit' | 'split' | 'preview'
 const MODE_KEY = 'tasks.docs.mode'
-const mode = ref<Mode>((localStorage.getItem(MODE_KEY) as Mode | null) ?? 'split')
+const mode = ref<Mode>(
+  props.initialMode ?? (localStorage.getItem(MODE_KEY) as Mode | null) ?? 'split',
+)
 
 function setMode(next: Mode): void {
   mode.value = next

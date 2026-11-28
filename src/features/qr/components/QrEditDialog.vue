@@ -413,16 +413,22 @@ function requestClose() {
   close()
 }
 
-// Envia só os campos preenchidos: cores/formatos sempre têm valor; logo é opcional.
+/**
+ * O estilo que vai no corpo.
+ *
+ * `logoUrl` vai SEMPRE, e vira `null` quando não há logo. O backend mescla o
+ * estilo (campo ausente é preservado), então omitir o campo ao remover deixaria
+ * a logo antiga no QR — o usuário clicaria em "Remover", salvaria, e a logo
+ * continuaria lá.
+ */
 function buildStyle(): QrStyle {
-  const style: QrStyle = {
+  return {
     colorDark: form.colorDark,
     colorLight: form.colorLight,
     dotStyle: form.dotStyle,
     cornerStyle: form.cornerStyle,
+    logoUrl: form.logoUrl || null,
   }
-  if (form.logoUrl) style.logoUrl = form.logoUrl
-  return style
 }
 
 function submit() {
@@ -498,7 +504,7 @@ function submit() {
                 </div>
                 <span v-if="targetError" class="qed-hint qed-hint--err">{{ targetError }}</span>
                 <span v-else-if="isEdit" class="qed-hint">
-                  O mesmo QR impresso passa a apontar para este link — sem reimprimir.
+                  O mesmo QR impresso passa a apontar para este link, sem reimprimir.
                 </span>
               </label>
 
@@ -738,10 +744,8 @@ function submit() {
 .qed-eyebrow {
   margin: 0 0 2px;
   color: var(--text-4);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .qed-title {
@@ -959,8 +963,6 @@ function submit() {
   font-size: 12px;
   font-weight: 750;
   color: var(--text);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .qed-presets {

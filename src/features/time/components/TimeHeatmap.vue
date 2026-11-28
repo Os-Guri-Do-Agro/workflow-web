@@ -217,6 +217,11 @@ const summary = computed(() => {
   flex: none;
   width: var(--hm-cell);
   color: var(--text-4);
+  /* Ainda abaixo do piso de 12px, de propósito: quando a janela começa no fim
+     de um mês, o rótulo da 1ª coluna e o do mês seguinte ficam a uma coluna de
+     distância e já se sobrepõem (5px em 9px, 11px em 12px). Subir exige antes
+     omitir o rótulo que não cabe em `monthMarks` e travar a altura da linha
+     (os dias da semana ao lado se alinham por ela). */
   font-size: 9px;
   font-weight: 700;
   white-space: nowrap;
@@ -242,7 +247,9 @@ const summary = computed(() => {
   height: var(--hm-cell);
   width: 13px;
   color: var(--text-4);
-  font-size: 8.5px;
+  /* Piso de 12px (acessibilidade 50+). A caixa continua com a altura da célula
+     (line-height), então a letra segue centrada na linha dela. */
+  font-size: 0.75rem;
   line-height: var(--hm-cell);
 }
 
@@ -303,7 +310,9 @@ const summary = computed(() => {
 
 .hm-legend-text {
   color: var(--text-4);
-  font-size: 10px;
+  /* Piso de 12px (acessibilidade 50+). Na escala máxima de fonte a legenda
+     quebra linha em vez de vazar do card. */
+  font-size: 0.75rem;
   font-weight: 650;
 }
 
@@ -315,7 +324,7 @@ const summary = computed(() => {
 
 .hm-legend-label {
   color: var(--text-4);
-  font-size: 9px;
+  font-size: 0.75rem;
 }
 
 .hm--bare .hm-grid {

@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import {
+  applyFontFamily,
   applyFontScale,
   applyThemeTokens,
   applyXpMode,
   type AccentName,
   type Density,
+  type FontFamilyName,
   type FontScale,
   type ShellVariant,
   type ThemeName,
@@ -18,6 +20,7 @@ const STORAGE = {
   density: 'ui.density',
   shell: 'ui.shell',
   fontScale: 'ui.fontScale',
+  font: 'ui.font',
   xp: 'ui.xp',
   notesViewMode: 'ui.notesViewMode',
   driveViewMode: 'ui.driveViewMode',
@@ -62,6 +65,12 @@ const readFontScale = (): FontScale => {
   const v = Number(localStorage.getItem(STORAGE.fontScale))
   const allowed: FontScale[] = [1, 1.1, 1.2, 1.3]
   return (allowed as number[]).includes(v) ? (v as FontScale) : 1
+}
+
+const readFont = (): FontFamilyName => {
+  const v = localStorage.getItem(STORAGE.font) as FontFamilyName | null
+  const allowed: FontFamilyName[] = ['figtree', 'plex', 'source', 'atkinson', 'system']
+  return v && allowed.includes(v) ? v : 'figtree'
 }
 
 const readXp = (): boolean => localStorage.getItem(STORAGE.xp) === 'true'
@@ -121,6 +130,7 @@ export const useUiStore = defineStore('ui', () => {
   const density = ref<Density>(readDensity())
   const shell = ref<ShellVariant>(readShell())
   const fontScale = ref<FontScale>(readFontScale())
+  const font = ref<FontFamilyName>(readFont())
   const xp = ref<boolean>(readXp())
   const notesViewMode = ref<NotesViewMode>(readNotesViewMode())
   const driveViewMode = ref<DriveViewMode>(readDriveViewMode())
@@ -154,6 +164,11 @@ export const useUiStore = defineStore('ui', () => {
   watch(fontScale, (v) => {
     localStorage.setItem(STORAGE.fontScale, String(v))
     applyFontScale(v)
+  })
+
+  watch(font, (v) => {
+    localStorage.setItem(STORAGE.font, v)
+    void applyFontFamily(v)
   })
 
   watch(xp, (v) => {
@@ -199,6 +214,7 @@ export const useUiStore = defineStore('ui', () => {
 
   // Aplica a escala salva já no boot (antes de qualquer watch disparar).
   applyFontScale(fontScale.value)
+  void applyFontFamily(font.value)
   applyXpMode(xp.value)
 
   return {
@@ -207,6 +223,7 @@ export const useUiStore = defineStore('ui', () => {
     density,
     shell,
     fontScale,
+    font,
     xp,
     notesViewMode,
     driveViewMode,

@@ -330,3 +330,77 @@ html[data-xp='true'] .app-select__trigger {
     animation: xp-dialog-open 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 }
+
+/* ─── Sequência do Nevo: tons da sequência e dos níveis ─────────────────────── */
+/* A paleta Luna é CLARA mesmo com o tema escuro ligado (superfícies brancas e
+   bege). Só que os tons --streak-* e --tier-* não eram redefinidos pelo XP: com
+   o tema escuro continuavam os do escuro (laranja claro, azul claro), feitos
+   para fundo escuro, e sobre o branco do XP davam ~2:1 no popover do chip, na
+   home, na comemoração e na Equipe do /time. Aqui voltam aos do tema claro, no
+   <html>, para valer em todo lugar (inclusive no que vai por portal para o
+   <body>). Os valores são os de `lightTokens` em plugins/tokens.ts (mudou lá,
+   muda aqui). !important pelo mesmo motivo do topo do arquivo: os tokens do
+   tema são inline style no <html>. */
+html[data-xp='true'] {
+  --streak-flame: #af3a0a !important;
+  --streak-flame-soft: rgba(234, 88, 12, 0.1) !important;
+  --streak-off: #878d97 !important;
+  --streak-rest: #4f6485 !important;
+  --streak-perfect: #8c5205 !important;
+  --streak-missed: #a86a70 !important;
+  --streak-done: #067647 !important;
+  --tier-basico: #af3a0a !important;
+  --tier-progresso: #9f4807 !important;
+  --tier-determinado: #3b5b9a !important;
+  --tier-especialista: #6d28d9 !important;
+  --tier-lendario: #8c5205 !important;
+  --nevo-floor: rgba(11, 11, 12, 0.16) !important;
+}
+
+/* Exceção: a barra azul Luna do topo. Lá a chama do tema claro some no azul
+   (1,2:1 contra #0050ee) e o ponto de "sequência em risco" do chip usa essa
+   cor. Um laranja claro dá 3,1:1 contra o azul da faixa onde o ponto fica. O
+   número aceso, o hover e o foco do chip já têm override próprio no
+   StreakChip.vue (texto branco da barra). Mesmo escopo por shell das regras da
+   title bar acima; sem !important porque declarar no elemento já vence o valor
+   herdado do <html>. */
+html[data-xp='true'] .command-shell > .topbar,
+html[data-xp='true'] .focus-shell .slim-top,
+html[data-xp='true'] .canvas-shell > .topnav {
+  --streak-flame: #ffa24d;
+}
+
+/* ─── Board de tarefas (spec board-tarefas-redesign) ────────────────────────
+   Mesmo motivo da sequência acima: a paleta Luna é clara, então no Modo XP os
+   tokens do board valem o tema claro mesmo com o tema escuro ligado. Sem isto
+   o poço da coluna ficava quase preto dentro da janela bege e o ícone de "A
+   fazer" (branco translúcido) sumia no card branco. Os avatares entram junto:
+   o card desenha as iniciais na cor da superfície, que aqui é sempre branca. */
+html[data-xp='true'] {
+  --surface-sunken: #e3e0ce !important;
+  --shadow-raised: 1px 1px 0 rgba(0, 0, 0, 0.18), 0 0 0 1px #aca899 !important;
+  --radius-xs: 2px !important;
+  --radius-md: 4px !important;
+  --task-status-todo: rgba(26, 26, 26, 0.5) !important;
+  --task-status-prog: #2563eb !important;
+  --task-status-test: #7c3aed !important;
+  --task-status-review: #0e9384 !important;
+  --task-status-done: #15803d !important;
+  --test-signal-testing: #1570ef !important;
+  --test-signal-adjust: #fdb022 !important;
+  --test-signal-rejected: #d92d20 !important;
+  --test-signal-ring: rgba(16, 24, 40, 0.32) !important;
+  --test-check-on: #15803d !important;
+  --test-check-on-bg: rgba(21, 128, 61, 0.09) !important;
+  --test-check-on-border: rgba(21, 128, 61, 0.38) !important;
+  --prio-urgent: #d92d20 !important;
+  --prio-high: #b54708 !important;
+  --due-late: #d92d20 !important;
+  --due-soon: #b54708 !important;
+  --avatar-1: #3e63b8 !important;
+  --avatar-2: #0f8177 !important;
+  --avatar-3: #6d4fc1 !important;
+  --avatar-4: #b34a6e !important;
+  --avatar-5: #96690f !important;
+  --avatar-6: #35793f !important;
+}

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import type { LucideIcon } from 'lucide-vue-next'
+import LottiePlayer from './LottiePlayer.vue'
 
 defineProps<{
   icon?: LucideIcon
+  /** O Nevo animado procurando (Lottie) no lugar do ícone: para vazio de lista. */
+  nevo?: boolean
   title: string
   description?: string
 }>()
@@ -14,7 +17,8 @@ defineSlots<{
 
 <template>
   <div class="empty-state">
-    <div v-if="icon" class="empty-icon">
+    <LottiePlayer v-if="nevo" src="/lottie/nevo-vazio.json" :size="112" loop class="empty-nevo" />
+    <div v-else-if="icon" class="empty-icon">
       <component :is="icon" :size="32" />
     </div>
     <p class="empty-title">{{ title }}</p>
@@ -34,6 +38,10 @@ defineSlots<{
   padding: 64px 24px;
   gap: 6px;
   text-align: center;
+}
+
+.empty-nevo {
+  margin-bottom: 4px;
 }
 
 .empty-icon {

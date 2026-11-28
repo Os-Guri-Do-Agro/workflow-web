@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MascotCard from '@/components/ui/MascotCard.vue'
 import { useIdleAlerts } from '@/composables/useIdleAlerts'
+import { useCompactViewport } from '@/composables/useCompactViewport'
 
 /**
  * Convite de permissão do aviso de ociosidade (spec timer-ociosidade).
@@ -13,11 +14,14 @@ import { useIdleAlerts } from '@/composables/useIdleAlerts'
  * muda conforme o passo que falta.
  */
 const alerts = useIdleAlerts()
+// No celular o pedido não faz sentido ("trabalhando em outro programa") e o
+// cartão cobria metade da tela logo ao abrir o app.
+const compact = useCompactViewport()
 </script>
 
 <template>
   <Transition name="nevo-card">
-    <MascotCard v-if="alerts.shouldShowPrompt.value" from="Nevo">
+    <MascotCard v-if="alerts.shouldShowPrompt.value && !compact" from="Nevo">
       <p class="prompt-title">
         {{
           alerts.nextStep.value === 'detection'

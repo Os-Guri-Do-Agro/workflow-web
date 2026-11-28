@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   AlertTriangle,
   DollarSign,
@@ -82,10 +82,36 @@ type Tab = 'me' | 'team' | 'report'
  * a tela em branco.
  */
 const rota = useRoute()
-const tabDaUrl = String(rota.query.tab ?? '')
-const activeTab = ref<Tab>(
-  tabDaUrl === 'team' || tabDaUrl === 'report' ? tabDaUrl : 'me',
+function abaDaUrl(valor: unknown): Tab {
+  const aba = String(valor ?? '')
+  return aba === 'team' || aba === 'report' ? aba : 'me'
+}
+const activeTab = ref<Tab>(abaDaUrl(rota.query.tab))
+// A view não remonta quando só a query muda: quem já está no /time e clica em
+// "Ver o time" (popover da sequência na topbar) ganhava a URL nova e a mesma
+// aba. O guarda de rota evita trocar a aba da tela que está saindo.
+watch(
+  () => rota.query.tab,
+  (tab) => {
+    if (rota.name !== 'time') return
+    activeTab.value = abaDaUrl(tab)
+  },
 )
+const router = useRouter()
+/**
+ * Trocar de aba aqui também escreve na URL: ela é a fonte da aba. Sem isso,
+ * quem chegava por "Ver o time" (URL `?tab=team`), ia para "Meu tempo" e pedia
+ * o time de novo fazia uma navegação duplicada: a URL não mudava, o watch acima
+ * não disparava e a aba ficava onde estava.
+ */
+function irParaAba(tab: Tab) {
+  activeTab.value = tab
+  const query = { ...rota.query }
+  // "Meu tempo" é a aba padrão: sai da URL em vez de virar `?tab=me`.
+  if (tab === 'me') delete query.tab
+  else query.tab = tab
+  void router.replace({ query })
+}
 const hasCompany = computed(() => !!workspace.activeCompanyId)
 
 const headEyebrow = computed(() =>
@@ -688,7 +714,7 @@ async function submitManual() {
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'me' }"
           type="button"
-          @click="activeTab = 'me'"
+          @click="irParaAba('me')"
         >
           Meu tempo
         </button>
@@ -698,7 +724,7 @@ async function submitManual() {
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'report' }"
           type="button"
-          @click="activeTab = 'report'"
+          @click="irParaAba('report')"
         >
           <Scale :size="14" />
           Fechamento
@@ -708,7 +734,7 @@ async function submitManual() {
           class="tv-tab"
           :class="{ 'tv-tab--on': activeTab === 'team' }"
           type="button"
-          @click="activeTab = 'team'"
+          @click="irParaAba('team')"
         >
           <Users :size="14" />
           Equipe
@@ -1324,10 +1350,8 @@ async function submitManual() {
 .tv-eyebrow {
   margin: 0 0 2px;
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .tv-title {
@@ -1374,6 +1398,29 @@ async function submitManual() {
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-sm);
+}
+
+/* Celular: as três abas dividem a largura e nunca quebram linha. Com a altura
+   fixa de 34px, "Meu tempo" quebrava em duas linhas em 360px e estourava a
+   pílula. Abaixo de 375px os ícones saem para caber. */
+@media (max-width: 640px) {
+  .tv-tabs {
+    display: flex;
+    width: 100%;
+  }
+
+  .tv-tab {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 374px) {
+  .tv-tab svg {
+    display: none;
+  }
 }
 
 /* ── Barra do timer ── */
@@ -1612,10 +1659,8 @@ async function submitManual() {
 
 .tv-total-label {
   color: var(--text-4);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .tv-total-value {
