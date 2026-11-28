@@ -1,13 +1,19 @@
 <script setup lang="ts">
+/**
+ * Tipos de reunião da página. Cada um é um cartão com o que a outra pessoa vê
+ * (nome, duração, link) em cima e as regras de agenda em chips, para comparar
+ * os tipos de relance sem abrir nenhum.
+ */
 import { ref } from 'vue'
-import { Check, Clock3, Copy, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-vue-next'
+import { CalendarPlus, Check, Copy, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
 import type { BookingEventType, BookingPage } from '@/service/booking/booking-service'
 import EventTypeDialog from './EventTypeDialog.vue'
 import { useBookingSettings } from '../../composables/useBookingSettings'
-import { formatDuration } from '../../booking-time'
+import { durationBadge as badge, formatDuration } from '../../booking-time'
 
 defineProps<{ page: BookingPage }>()
 
@@ -62,87 +68,129 @@ async function confirmArchive() {
   }
 }
 
-function rulesSummary(type: BookingEventType) {
-  const parts: string[] = []
+/** Regras de agenda em frases curtas, só as que fogem do "sem restrição". */
+function rules(type: BookingEventType): string[] {
+  const list: string[] = []
   if (type.minNoticeMin) {
-    parts.push(
+    list.push(
       type.minNoticeMin < 1440
         ? `${type.minNoticeMin / 60} h de antecedência`
-        : `${type.minNoticeMin / 1440} d de antecedência`,
+        : `${type.minNoticeMin / 1440} ${type.minNoticeMin === 1440 ? 'dia' : 'dias'} de antecedência`,
     )
   }
-  if (type.bufferBeforeMin || type.bufferAfterMin) parts.push('com folga')
-  if (type.dailyLimit) parts.push(`máx. ${type.dailyLimit}/dia`)
-  parts.push(`até ${type.maxDaysAhead} dias`)
-  return parts.join(' · ')
+  list.push(`Até ${type.maxDaysAhead} dias à frente`)
+  if (type.slotStepMin !== type.durationMin) list.push(`Horários a cada ${formatDuration(type.slotStepMin)}`)
+  const buffer = Math.max(type.bufferBeforeMin, type.bufferAfterMin)
+  if (buffer) list.push(`Folga de ${formatDuration(buffer)}`)
+  if (type.dailyLimit) list.push(`Máx. ${type.dailyLimit} por dia`)
+  return list
 }
+
+const linkPath = (url: string) => url.replace(/^https?:\/\/[^/]+/, '')
 
 defineExpose({ openNew })
 </script>
 
 <template>
   <div class="etp">
-    <ul class="etp__list">
+    <div class="etp__bar">
+      <p class="etp__intro">Cada tipo tem o próprio link. Desligado, ele some da sua página, mas as reuniões já marcadas continuam.</p>
+      <button type="button" class="bk-btn bk-btn--primary" @click="openNew">
+        <Plus :size="15" />
+        Novo tipo
+      </button>
+    </div>
+
+    <div v-if="!page.eventTypes.length" class="etp__empty bk-card">
+      <EmptyState
+        :icon="CalendarPlus"
+        title="Nenhum tipo de reunião"
+        description="Crie um tipo (ex.: conversa de 30 minutos) para a sua página aceitar agendamentos."
+      >
+        <template #action>
+          <button type="button" class="bk-btn bk-btn--primary" @click="openNew">
+            <Plus :size="15" />
+            Criar tipo de reunião
+          </button>
+        </template>
+      </EmptyState>
+    </div>
+
+    <ul v-else class="etp__list">
       <li v-for="type in page.eventTypes" :key="type.id" class="etp__item bk-card" :class="{ 'is-off': !type.active }">
-        <span class="etp__bar" aria-hidden="true" />
         <div class="etp__main">
           <div class="etp__top">
-            <h3>{{ type.title }}</h3>
-            <label class="bk-switch" :title="type.active ? 'Desativar' : 'Ativar'">
+            <span class="etp__dur" aria-hidden="true">
+              <strong>{{ badge(type.durationMin).value }}</strong>
+              <small v-if="badge(type.durationMin).unit">{{ badge(type.durationMin).unit }}</small>
+            </span>
+            <div class="etp__heading">
+              <h3>{{ type.title }}</h3>
+              <a class="etp__path" :href="type.publicUrl" target="_blank" rel="noopener" :title="type.publicUrl">
+                {{ linkPath(type.publicUrl) }}
+              </a>
+            </div>
+            <label class="bk-switch" :title="type.active ? 'Desligar' : 'Ligar'">
               <input
                 type="checkbox"
                 :checked="type.active"
                 :disabled="togglingId === type.id"
-                :aria-label="type.active ? `Desativar ${type.title}` : `Ativar ${type.title}`"
+                :aria-label="type.active ? `Desligar ${type.title}` : `Ligar ${type.title}`"
                 @change="toggle(type)"
               />
               <span />
             </label>
           </div>
-          <p class="etp__meta">
-            <Clock3 :size="13" />
-            {{ formatDuration(type.durationMin) }} · {{ rulesSummary(type) }}
-          </p>
-          <p v-if="type.upcomingCount" class="etp__count">
-            {{ type.upcomingCount }} {{ type.upcomingCount === 1 ? 'reunião marcada' : 'reuniões marcadas' }}
-          </p>
-          <p v-if="!type.active" class="etp__off">Desativado: não aparece na sua página.</p>
-        </div>
-        <footer class="etp__foot">
-          <button type="button" class="bk-btn bk-btn--sm etp__copy" :disabled="!type.active" @click="copy(type)">
-            <component :is="copiedId === type.id ? Check : Copy" :size="13" />
-            {{ copiedId === type.id ? 'Copiado' : 'Copiar link' }}
-          </button>
-          <a
-            class="bk-icon-btn"
-            :href="type.publicUrl"
-            target="_blank"
-            rel="noopener"
-            :aria-label="`Abrir a página de ${type.title}`"
-            title="Ver como o convidado vê"
-          >
-            <ExternalLink :size="15" />
-          </a>
-          <button type="button" class="bk-icon-btn" :aria-label="`Editar ${type.title}`" title="Editar" @click="openEdit(type)">
-            <Pencil :size="15" />
-          </button>
-          <button
-            type="button"
-            class="bk-icon-btn"
-            :aria-label="`Remover ${type.title}`"
-            title="Remover"
-            @click="archiving = type"
-          >
-            <Trash2 :size="15" />
-          </button>
-        </footer>
-      </li>
 
-      <li>
-        <button type="button" class="etp__new" @click="openNew">
-          <Plus :size="18" />
-          Novo tipo de reunião
-        </button>
+          <p v-if="type.description" class="etp__desc">{{ type.description }}</p>
+
+          <ul class="etp__rules" aria-label="Regras de agenda">
+            <li v-for="rule in rules(type)" :key="rule" class="bk-chip">{{ rule }}</li>
+          </ul>
+        </div>
+
+        <footer class="etp__foot">
+          <span v-if="!type.active" class="etp__state etp__state--off">Desligado, fora da sua página</span>
+          <span v-else-if="type.upcomingCount" class="etp__state etp__state--count">
+            {{ type.upcomingCount }} {{ type.upcomingCount === 1 ? 'reunião marcada' : 'reuniões marcadas' }}
+          </span>
+          <span v-else class="etp__state">Nenhuma reunião marcada</span>
+
+          <div class="etp__actions">
+            <button
+              type="button"
+              class="bk-icon-btn"
+              :disabled="!type.active"
+              :aria-label="copiedId === type.id ? 'Link copiado' : `Copiar o link de ${type.title}`"
+              :title="copiedId === type.id ? 'Copiado' : 'Copiar link'"
+              @click="copy(type)"
+            >
+              <component :is="copiedId === type.id ? Check : Copy" :size="15" />
+            </button>
+            <a
+              class="bk-icon-btn"
+              :href="type.publicUrl"
+              target="_blank"
+              rel="noopener"
+              :aria-label="`Abrir a página de ${type.title}`"
+              title="Ver como o convidado vê"
+            >
+              <ExternalLink :size="15" />
+            </a>
+            <button type="button" class="bk-icon-btn" :aria-label="`Editar ${type.title}`" title="Editar" @click="openEdit(type)">
+              <Pencil :size="15" />
+            </button>
+            <button
+              type="button"
+              class="bk-icon-btn bk-icon-btn--danger"
+              :aria-label="`Remover ${type.title}`"
+              title="Remover"
+              @click="archiving = type"
+            >
+              <Trash2 :size="15" />
+            </button>
+          </div>
+        </footer>
       </li>
     </ul>
 
@@ -166,9 +214,35 @@ defineExpose({ openNew })
 </template>
 
 <style scoped>
+.etp {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.etp__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.etp__intro {
+  max-width: 560px;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.etp__empty {
+  border-style: dashed;
+}
+
 .etp__list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 14px;
   margin: 0;
   padding: 0;
@@ -176,108 +250,160 @@ defineExpose({ openNew })
 }
 
 .etp__item {
-  position: relative;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-width: 0;
   overflow: hidden;
-  transition: opacity var(--motion-fast) var(--motion-ease);
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 
-.etp__item.is-off {
-  opacity: 0.72;
-}
-
-.etp__bar {
-  height: 4px;
-  background: var(--accent);
-}
-
-.is-off .etp__bar {
-  background: var(--surface-3);
+.etp__item:hover {
+  border-color: var(--border-strong);
 }
 
 .etp__main {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px 10px;
+  gap: 12px;
+  padding: 16px;
 }
 
 .etp__top {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
-.etp__top h3 {
-  margin: 0;
+.etp__dur {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  line-height: 1;
+}
+
+.etp__dur strong {
+  font-size: 15px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.etp__dur small {
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.is-off .etp__dur {
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+
+.etp__heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.etp__heading h3 {
+  margin: 1px 0 0;
   color: var(--text);
   font-size: 14.5px;
   font-weight: 650;
   line-height: 1.35;
 }
 
-.etp__meta {
+.is-off .etp__heading h3 {
+  color: var(--text-2);
+}
+
+.etp__path {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.etp__path:hover {
+  color: var(--text-2);
+  text-decoration: underline;
+}
+
+.etp__desc {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.etp__rules {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin: 0;
-  color: var(--text-3);
-  font-size: 12px;
-}
-
-.etp__count {
-  margin: 0;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.etp__off {
-  margin: 0;
-  color: var(--text-3);
-  font-size: 11.5px;
+  padding: 0;
+  list-style: none;
 }
 
 .etp__foot {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--border);
-}
-
-.etp__copy {
-  margin-right: auto;
-}
-
-.etp__new {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 8px;
-  width: 100%;
-  height: 100%;
-  min-height: 150px;
-  border: 1.5px dashed var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: transparent;
-  color: var(--text-3);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
+  padding: 8px 10px 8px 16px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 35%, var(--surface));
 }
 
-.etp__new:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+.etp__state {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.etp__state--count {
+  color: var(--accent-ink);
+  font-weight: 650;
+}
+
+.etp__state--off {
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.etp__actions {
+  display: flex;
+  gap: 2px;
+}
+
+@media (max-width: 640px) {
+  .etp__bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .etp__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

@@ -141,6 +141,11 @@ export interface PublicEventType {
 export interface PublicHost {
   name: string
   headline: string | null
+  /**
+   * Foto do perfil no Nevo. Opcional porque a API pode ir ao ar depois do
+   * front (deploys separados): sem o campo, a página mostra as iniciais.
+   */
+  avatarUrl?: string | null
 }
 
 export interface PublicPage {
@@ -174,7 +179,7 @@ export interface PublicBooking {
   canceledBy: BookingActor | null
   cancelReason: string | null
   canModify: boolean
-  host: { name: string; timezone: string }
+  host: PublicHost & { timezone: string }
   page: { slug: string }
   eventType: PublicEventType
 }

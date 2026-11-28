@@ -716,12 +716,19 @@ Spec: [agendamento-publico.md](../docs/specs/2026/q4/agendamento-publico.md).
 
 ```
 features/booking/
-  BookingView.vue                 /agendamentos (anfitrião): Reuniões · Tipos · Horários · Página
+  BookingView.vue                 /agendamentos (anfitrião): resumo (link, estado, próxima reunião,
+                                  números) + abas Reuniões · Tipos · Horários · Página
   booking-time.ts                 fuso só com Intl: instante ↔ data civil, rótulos, lista de fusos
   availability.ts                 validação dos intervalos (mesma regra do servidor)
-  components/SlotPicker.vue       calendário do mês + horários do dia, no fuso escolhido
+  styles/booking.css              folha GLOBAL da feature (prefixo bk-): botões, campos, chips,
+                                  avisos, fatos da reunião. Painel e páginas públicas usam a mesma
+  components/PublicBookingFrame   moldura pública: anfitrião + fatos à esquerda, passo à direita
+  components/SlotPicker.vue       calendário do mês + horários do dia (manhã/tarde/noite), no fuso
+                                  escolhido; no celular, grade de 3 colunas e "Próximo" fixo no pé
+  components/BookingSteps.vue     Horário → Seus dados → Confirmação
+  components/BookingAvatar.vue    foto/iniciais de quem está na reunião (NÃO o PersonAvatar)
   components/TimezoneSelect.vue   combobox de fuso com busca (reka)
-  components/host/*               painéis do anfitrião (usam styles/booking-host.css, prefixo bk-)
+  components/host/*               painéis do anfitrião
   public/*                        as três páginas sem login
 service/booking/booking-service.ts   bookingService (api) + publicBookingService (publicApi)
 ```
@@ -741,6 +748,22 @@ Quatro coisas que não são óbvias:
 4. **As páginas públicas usam `publicApi`**, sem token: o anfitrião logado que
    testa o próprio link vê exatamente o que o convidado vê, e um 401 nunca o
    manda para o login.
+5. **A foto do anfitrião vem da API (`host.avatarUrl`, a do perfil), e o avatar
+   é o `BookingAvatar`, não o `PersonAvatar`.** O `PersonAvatar` sem foto
+   procura a pessoa no diretório da sessão pelo NOME: um convidado de fora (ou um
+   visitante logado no Nevo) sairia com a foto de um homônimo da empresa.
+6. **Tema da página pública:** quem nunca escolheu tema no Nevo vê no tema do
+   sistema (`prefers-color-scheme`), sem gravar nada; quem escolheu, vê o dele
+   (`PublicBookingFrame`).
+7. **Cor:** `--accent` puro só no que é ação (botão primário, dia escolhido,
+   interruptor). Destaque de conteúdo (dia com horário, horário, selo de duração)
+   usa `--accent-soft` e `--accent-ink`.
+
+Provas no harness: `booking-shot.mjs` (todas as telas com a API de agendamento
+simulada no navegador: reunião acontecendo agora, Google recusando, pausada,
+horário tomado, remarcar e cancelar; `VP=d1440,m375`, `TALL=1`) e
+`booking-real-e2e.mjs` (painel inteiro contra a API real do harness, conferido
+no banco; apaga a página no fim). Banco: `wf_bk`.
 
 ### Memória do filtro do board
 

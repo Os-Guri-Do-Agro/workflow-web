@@ -2,28 +2,48 @@
 /**
  * Reuniões marcadas pela página, agrupadas por dia. A hora aparece no fuso do
  * NAVEGADOR do anfitrião (onde ele está agora, igual ao /calendar), e o fuso
- * do convidado aparece ao lado quando é outro: "10:00 · ela está em Lisboa
- * (14:00)" é o lembrete que evita cumprimentar com "bom dia" às 18h dela.
+ * do convidado aparece ao lado quando é outro: "10:00 · 14:00 em Lisboa" é o
+ * lembrete que evita cumprimentar com "bom dia" às 18h dela.
+ *
+ * Cada dia é UM cartão com as reuniões em linhas (hora, quem, o quê, ações),
+ * e não um cartão por reunião: a lista lê como agenda, e a hora fica sempre
+ * na mesma coluna para o olho descer por ela.
  */
 import { computed, ref } from 'vue'
-import { CalendarCheck2, CalendarX2, Globe, History, Loader2, MessageSquareText, Video, X } from 'lucide-vue-next'
+import {
+  CalendarCheck2,
+  CalendarX2,
+  Check,
+  Copy,
+  Globe,
+  History,
+  Loader2,
+  MessageSquareText,
+  Video,
+  X,
+} from 'lucide-vue-next'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
-import Skeleton from '@/components/ui/Skeleton.vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
 import { bookingService, type BookingScope, type HostBooking } from '@/service/booking/booking-service'
+import BookingAvatar from '../BookingAvatar.vue'
 import { bookingKeys, useHostBookings } from '../../composables/useBookingSettings'
 import {
+  addDays,
   browserTimeZone,
   dateKeyInZone,
   formatDateKey,
+  formatDuration,
   formatTime,
   gmtOffset,
   todayKey,
   zoneCity,
+  zoneLabel,
 } from '../../booking-time'
+
+const props = defineProps<{ publicUrl: string }>()
 
 const scope = ref<BookingScope>('upcoming')
 const { data, isLoading, isError, refetch } = useHostBookings(scope)
@@ -32,6 +52,7 @@ const { success: showSuccess, error: showError } = useToast()
 
 const tz = browserTimeZone()
 const today = todayKey(tz)
+const tzName = zoneLabel(tz)
 
 const SCOPES: Array<{ key: BookingScope; label: string }> = [
   { key: 'upcoming', label: 'Próximas' },
@@ -50,20 +71,50 @@ const groups = computed(() => {
   return [...map.entries()]
 })
 
-function dayLabel(key: string) {
+function dayTitle(key: string) {
   if (key === today) return 'Hoje'
-  const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
-  if (key === tomorrow) return 'Amanhã'
-  return formatDateKey(key, { weekday: 'long', day: 'numeric', month: 'long' })
+  if (key === addDays(today, 1)) return 'Amanhã'
+  if (key === addDays(today, -1)) return 'Ontem'
+  const weekday = formatDateKey(key, { weekday: 'long' })
+  return weekday.charAt(0).toUpperCase() + weekday.slice(1)
+}
+
+function dayDate(key: string) {
+  const sameYear = key.slice(0, 4) === today.slice(0, 4)
+  const date = formatDateKey(key, { day: 'numeric', month: 'long', ...(sameYear ? {} : { year: 'numeric' }) })
+  // "Hoje" e "Amanhã" pedem o dia da semana junto; os outros já são o dia da semana.
+  const near = key === today || key === addDays(today, 1) || key === addDays(today, -1)
+  return near ? `${formatDateKey(key, { weekday: 'long' })}, ${date}` : date
 }
 
 function otherZone(booking: HostBooking) {
   return gmtOffset(booking.inviteeTimezone, Date.parse(booking.startAt)) !== gmtOffset(tz, Date.parse(booking.startAt))
 }
 
-const isLive = (b: HostBooking) => Date.parse(b.startAt) <= Date.now() && Date.parse(b.endAt) > Date.now()
+const isLive = (b: HostBooking) =>
+  b.status === 'CONFIRMED' && Date.parse(b.startAt) <= Date.now() && Date.parse(b.endAt) > Date.now()
 
 const expanded = ref<string | null>(null)
+
+const emptyTitle = computed(() =>
+  scope.value === 'upcoming'
+    ? 'Nenhuma reunião marcada'
+    : scope.value === 'past'
+      ? 'Nenhuma reunião passada'
+      : 'Nenhuma reunião cancelada',
+)
+
+// ─── Link (estado vazio) ────────────────────────────────────────────────────
+const copied = ref(false)
+async function copyLink() {
+  try {
+    await navigator.clipboard.writeText(props.publicUrl)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 1600)
+  } catch {
+    showError('Não foi possível copiar. Selecione o link e copie manualmente.')
+  }
+}
 
 // ─── Cancelar ───────────────────────────────────────────────────────────────
 
@@ -94,23 +145,34 @@ async function confirmCancel() {
 
 <template>
   <div class="bp">
-    <div class="bp__scopes" role="tablist" aria-label="Filtrar reuniões">
-      <button
-        v-for="s in SCOPES"
-        :key="s.key"
-        type="button"
-        role="tab"
-        class="bp__scope"
-        :class="{ 'is-active': scope === s.key }"
-        :aria-selected="scope === s.key"
-        @click="scope = s.key"
-      >
-        {{ s.label }}
-      </button>
+    <div class="bp__bar">
+      <div class="bk-seg" role="tablist" aria-label="Filtrar reuniões">
+        <button
+          v-for="s in SCOPES"
+          :key="s.key"
+          type="button"
+          role="tab"
+          class="bk-seg__btn"
+          :class="{ 'is-active': scope === s.key }"
+          :aria-selected="scope === s.key"
+          @click="scope = s.key"
+        >
+          {{ s.label }}
+        </button>
+      </div>
+      <p class="bp__tz" :title="`Horários mostrados no fuso do seu navegador: ${tzName}`">
+        <Globe :size="13" />
+        {{ tzName }}
+      </p>
     </div>
 
-    <div v-if="isLoading" class="bp__loading">
-      <Skeleton v-for="n in 4" :key="n" height="72px" />
+    <div v-if="isLoading" class="bp__loading" aria-busy="true">
+      <div v-for="n in 2" :key="n" class="bp__group">
+        <span class="bk-skel" style="width: 160px; height: 14px; margin-bottom: 12px" />
+        <div class="bk-card bp__skel-card">
+          <span v-for="r in 3 - n + 1" :key="r" class="bk-skel bp__skel-row" />
+        </div>
+      </div>
     </div>
 
     <EmptyState
@@ -124,62 +186,66 @@ async function confirmCancel() {
       </template>
     </EmptyState>
 
-    <EmptyState
-      v-else-if="!groups.length"
-      :icon="scope === 'upcoming' ? CalendarCheck2 : scope === 'past' ? History : CalendarX2"
-      :title="
-        scope === 'upcoming'
-          ? 'Nenhuma reunião marcada'
-          : scope === 'past'
-            ? 'Nenhuma reunião passada'
-            : 'Nenhuma reunião cancelada'
-      "
-      :description="scope === 'upcoming' ? 'Divulgue o link da sua página: as reuniões marcadas aparecem aqui na hora.' : undefined"
-    />
+    <div v-else-if="!groups.length" class="bp__empty bk-card">
+      <EmptyState
+        :icon="scope === 'upcoming' ? CalendarCheck2 : scope === 'past' ? History : CalendarX2"
+        :title="emptyTitle"
+        :description="
+          scope === 'upcoming'
+            ? 'Divulgue o link da sua página: as reuniões marcadas aparecem aqui na hora, sem recarregar.'
+            : undefined
+        "
+      >
+        <template v-if="scope === 'upcoming'" #action>
+          <button type="button" class="bk-btn bk-btn--primary" @click="copyLink">
+            <component :is="copied ? Check : Copy" :size="14" />
+            {{ copied ? 'Copiado' : 'Copiar link da página' }}
+          </button>
+        </template>
+      </EmptyState>
+    </div>
 
     <div v-else class="bp__groups">
-      <section v-for="[key, items] in groups" :key="key" class="bp__group">
-        <h3 class="bp__day">{{ dayLabel(key) }}</h3>
-        <ul class="bp__list">
+      <section v-for="[key, items] in groups" :key="key" class="bp__group" :aria-label="`${dayTitle(key)}, ${dayDate(key)}`">
+        <header class="bp__day">
+          <h3>{{ dayTitle(key) }}</h3>
+          <span class="bp__day-date">{{ dayDate(key) }}</span>
+          <span class="bp__day-count">{{ items.length }} {{ items.length === 1 ? 'reunião' : 'reuniões' }}</span>
+        </header>
+
+        <ul class="bp__list bk-card">
           <li
             v-for="b in items"
             :key="b.id"
-            class="bp__item bk-card"
-            :class="{ 'is-canceled': b.status === 'CANCELED', 'is-live': isLive(b) }"
+            class="bp__row"
+            :class="{ 'is-canceled': b.status === 'CANCELED', 'is-live': isLive(b), 'is-past': scope === 'past' }"
           >
             <div class="bp__time">
               <span class="bp__start">{{ formatTime(b.startAt, tz) }}</span>
               <span class="bp__end">{{ formatTime(b.endAt, tz) }}</span>
             </div>
 
-            <div class="bp__body">
-              <p class="bp__who">
-                {{ b.inviteeName }}
-                <span v-if="isLive(b)" class="bp__live">Agora</span>
-              </p>
+            <div class="bp__who">
+              <BookingAvatar :name="b.inviteeName" :size="34" />
+              <div class="bp__who-text">
+                <p class="bp__name">
+                  <span class="bp__name-text">{{ b.inviteeName }}</span>
+                  <span v-if="isLive(b)" class="bk-chip bk-chip--accent bp__live"><span class="bk-dot" /> Agora</span>
+                  <span v-else-if="b.rescheduleCount && b.status === 'CONFIRMED'" class="bk-chip">Remarcada</span>
+                </p>
+                <a class="bp__email" :href="`mailto:${b.inviteeEmail}`">{{ b.inviteeEmail }}</a>
+              </div>
+            </div>
+
+            <div class="bp__what">
+              <p class="bp__type">{{ b.eventType.title }}</p>
               <p class="bp__meta">
-                <a :href="`mailto:${b.inviteeEmail}`">{{ b.inviteeEmail }}</a>
-                · {{ b.eventType.title }}
-                <span v-if="b.rescheduleCount" class="bp__tag">remarcada</span>
+                {{ formatDuration(b.eventType.durationMin) }}
+                <span v-if="otherZone(b)" class="bp__zone" :title="`Fuso do convidado: ${zoneLabel(b.inviteeTimezone, Date.parse(b.startAt))}`">
+                  <Globe :size="12" />
+                  {{ formatTime(b.startAt, b.inviteeTimezone) }} em {{ zoneCity(b.inviteeTimezone) }}
+                </span>
               </p>
-              <p v-if="otherZone(b)" class="bp__zone">
-                <Globe :size="12" />
-                {{ formatTime(b.startAt, b.inviteeTimezone) }} para o convidado ({{ zoneCity(b.inviteeTimezone) }}, {{ gmtOffset(b.inviteeTimezone, Date.parse(b.startAt)) }})
-              </p>
-              <p v-if="b.status === 'CANCELED'" class="bp__canceled">
-                Cancelada {{ b.canceledBy === 'INVITEE' ? 'pelo convidado' : 'por você' }}{{ b.cancelReason ? `: ${b.cancelReason}` : '' }}
-              </p>
-              <button
-                v-if="b.notes"
-                type="button"
-                class="bp__notes-toggle"
-                :aria-expanded="expanded === b.id"
-                @click="expanded = expanded === b.id ? null : b.id"
-              >
-                <MessageSquareText :size="12" />
-                {{ expanded === b.id ? 'Ocultar assunto' : 'Ver assunto' }}
-              </button>
-              <p v-if="b.notes && expanded === b.id" class="bp__notes">{{ b.notes }}</p>
             </div>
 
             <div class="bp__actions">
@@ -191,20 +257,39 @@ async function confirmCancel() {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <Video :size="13" />
-                Meet
+                <Video :size="14" />
+                {{ isLive(b) ? 'Entrar' : 'Meet' }}
               </a>
               <button
                 v-if="scope === 'upcoming' && !isLive(b)"
                 type="button"
-                class="bk-icon-btn"
+                class="bk-icon-btn bk-icon-btn--danger bp__cancel"
+                data-cancel
                 :aria-label="`Cancelar reunião com ${b.inviteeName}`"
-                title="Cancelar"
+                title="Cancelar reunião"
                 @click="askCancel(b)"
               >
-                <X :size="15" />
+                <X :size="16" />
+                <span class="bp__cancel-text">Cancelar</span>
               </button>
             </div>
+
+            <button
+              v-if="b.notes"
+              type="button"
+              class="bp__notes"
+              :class="{ 'is-open': expanded === b.id }"
+              :aria-expanded="expanded === b.id"
+              :title="expanded === b.id ? 'Recolher assunto' : 'Ver o assunto inteiro'"
+              @click="expanded = expanded === b.id ? null : b.id"
+            >
+              <MessageSquareText :size="13" />
+              <span>{{ b.notes }}</span>
+            </button>
+
+            <p v-if="b.status === 'CANCELED'" class="bp__canceled">
+              Cancelada {{ b.canceledBy === 'INVITEE' ? 'pelo convidado' : 'por você' }}{{ b.cancelReason ? `: “${b.cancelReason}”` : '' }}
+            </p>
           </li>
         </ul>
       </section>
@@ -219,19 +304,27 @@ async function confirmCancel() {
     >
       <div v-if="canceling" class="bk-dialog">
         <header class="bk-dialog__head">
-          <h2>Cancelar a reunião?</h2>
+          <div>
+            <h2>Cancelar a reunião?</h2>
+            <p>O Google manda o cancelamento para {{ canceling.inviteeEmail }} e o evento sai das duas agendas.</p>
+          </div>
           <button type="button" class="bk-icon-btn" aria-label="Fechar" :disabled="cancelBusy" @click="canceling = null">
             <X :size="16" />
           </button>
         </header>
         <div class="bk-dialog__body">
-          <p class="bp__dialog-text">
-            {{ canceling.inviteeName }} · {{ dayLabel(dateKeyInZone(canceling.startAt, tz)).toLowerCase() }} às
-            {{ formatTime(canceling.startAt, tz) }}. O Google manda o cancelamento para
-            {{ canceling.inviteeEmail }} e o evento sai das duas agendas.
-          </p>
+          <div class="bp__dialog-who">
+            <BookingAvatar :name="canceling.inviteeName" :size="36" />
+            <div>
+              <p class="bp__dialog-name">{{ canceling.inviteeName }}</p>
+              <p class="bp__dialog-when">
+                {{ dayTitle(dateKeyInZone(canceling.startAt, tz)) }}, {{ dayDate(dateKeyInZone(canceling.startAt, tz)) }} ·
+                {{ formatTime(canceling.startAt, tz) }} – {{ formatTime(canceling.endAt, tz) }}
+              </p>
+            </div>
+          </div>
           <label class="bk-field">
-            <span class="bk-label">Motivo (opcional)</span>
+            <span class="bk-label">Motivo <span class="bk-label__opt">(opcional, vai junto no aviso)</span></span>
             <textarea v-model="reason" class="bk-input" rows="3" maxlength="500" :disabled="cancelBusy" />
           </label>
         </div>
@@ -251,221 +344,403 @@ async function confirmCancel() {
 .bp {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
+  padding-top: 4px;
 }
 
-.bp__scopes {
-  display: inline-flex;
-  align-self: flex-start;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-}
-
-.bp__scope {
-  padding: 6px 14px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-3);
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.bp__scope.is-active {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
-}
-
-.bp__loading {
+.bp__bar {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
 }
 
+.bp__tz {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.bp__loading,
 .bp__groups {
   display: flex;
   flex-direction: column;
   gap: 22px;
 }
 
+.bp__skel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px;
+}
+
+.bp__skel-row {
+  height: 56px;
+  margin: 4px;
+}
+
+.bp__empty {
+  border-style: dashed;
+}
+
+/* ─── Dia ─────────────────────────────────────────────────────────────────── */
+
 .bp__day {
-  margin: 0 0 10px;
-  color: var(--text-3);
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.bp__list {
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
   gap: 8px;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.bp__day h3 {
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.bp__item {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: start;
-  padding: 14px 16px;
-}
-
-.bp__item.is-live {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-.bp__item.is-canceled {
-  opacity: 0.75;
-}
-
-.bp__time {
-  display: flex;
-  flex-direction: column;
-  padding-left: 10px;
-  border-left: 3px solid var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-
-.is-canceled .bp__time {
-  border-left-color: var(--surface-3);
-}
-
-.bp__start {
   color: var(--text);
   font-size: 14px;
   font-weight: 700;
 }
 
-.is-canceled .bp__start {
-  text-decoration: line-through;
+.bp__day-date {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.bp__day-count {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.bp__list {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  list-style: none;
+}
+
+/* ─── Linha ───────────────────────────────────────────────────────────────── */
+
+.bp__row {
+  position: relative;
+  display: grid;
+  /* Ações com largura fixa: com "Entrar" numa linha e "Meet + X" na outra, a
+     coluna do meio andaria e a lista perderia o alinhamento. */
+  grid-template-columns: 58px minmax(0, 1.35fr) minmax(0, 1fr) 112px;
+  grid-template-areas:
+    'time who what actions'
+    '.    notes notes notes'
+    '.    canceled canceled canceled';
+  align-items: center;
+  gap: 4px 16px;
+  padding: 14px 16px;
+  transition: background var(--motion-fast) var(--motion-ease);
+}
+
+.bp__row + .bp__row {
+  border-top: 1px solid var(--border);
+}
+
+.bp__row:hover {
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+}
+
+/* Acontecendo agora: faixa do acento na borda e fundo levemente tingido. */
+.bp__row.is-live {
+  background: var(--accent-wash);
+}
+
+.bp__row.is-live::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--accent);
+}
+
+.bp__time {
+  grid-area: time;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bp__start {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .bp__end {
   color: var(--text-3);
-  font-size: 11.5px;
-}
-
-.bp__body {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
+  font-size: 12px;
 }
 
 .bp__who {
+  grid-area: who;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.bp__who-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.bp__name {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   margin: 0;
+}
+
+.bp__name-text {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bp__live .bk-dot {
+  animation: bp-blink 1.6s ease-in-out infinite;
+}
+
+.bp__email {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12.5px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bp__email:hover {
+  color: var(--text-2);
+  text-decoration: underline;
+}
+
+.bp__what {
+  grid-area: what;
+  min-width: 0;
+}
+
+.bp__what p {
+  margin: 0;
+}
+
+.bp__type {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bp__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 2px !important;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.bp__zone {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+}
+
+.bp__actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 32px;
+}
+
+.bp__cancel-text {
+  display: none;
+}
+
+.bp__notes {
+  grid-area: notes;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  max-width: 100%;
+  margin: 6px 0 0;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bp__notes > svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--text-3);
+}
+
+.bp__notes span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.bp__notes.is-open span {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.bp__notes:hover {
+  color: var(--text);
+}
+
+.bp__notes:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.bp__canceled {
+  grid-area: canceled;
+  margin: 4px 0 0;
+  color: var(--err);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.is-canceled .bp__start {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.is-canceled .bp__who,
+.is-canceled .bp__what,
+.is-past .bp__who,
+.is-past .bp__what {
+  opacity: 0.8;
+}
+
+/* ─── Diálogo ─────────────────────────────────────────────────────────────── */
+
+.bp__dialog-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.bp__dialog-who p {
+  margin: 0;
+}
+
+.bp__dialog-name {
   color: var(--text);
   font-size: 13.5px;
   font-weight: 650;
 }
 
-.bp__live {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: 10.5px;
-  font-weight: 700;
-}
-
-.bp__meta,
-.bp__zone,
-.bp__canceled {
-  margin: 0;
+.bp__dialog-when {
+  margin-top: 2px !important;
   color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.bp__meta a {
-  color: var(--text-2);
-  text-decoration: none;
-}
-
-.bp__meta a:hover {
-  text-decoration: underline;
-}
-
-.bp__tag {
-  margin-left: 4px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--text-3);
-  font-size: 10.5px;
-}
-
-.bp__zone {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.bp__canceled {
-  color: var(--err);
-}
-
-.bp__notes-toggle {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 5px;
-  margin-top: 2px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.bp__notes {
-  margin: 4px 0 0;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  color: var(--text-2);
   font-size: 12.5px;
-  line-height: 1.5;
-  white-space: pre-wrap;
 }
 
-.bp__actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+@keyframes bp-blink {
+  50% {
+    opacity: 0.35;
+  }
 }
 
-.bp__dialog-text {
-  margin: 0;
-  color: var(--text-2);
-  font-size: 13px;
-  line-height: 1.55;
-}
+/* ─── Telas menores ───────────────────────────────────────────────────────── */
 
-@media (max-width: 560px) {
-  .bp__item {
-    grid-template-columns: 56px minmax(0, 1fr);
+@media (max-width: 720px) {
+  .bp__row {
+    grid-template-columns: 50px minmax(0, 1fr);
+    grid-template-areas:
+      'time who'
+      'time what'
+      '.    notes'
+      '.    canceled'
+      '.    actions';
+    align-items: start;
+    gap: 8px 12px;
+    padding: 14px;
   }
 
+  .bp__what {
+    padding-left: 45px;
+  }
+
+  .bp__notes {
+    margin-top: 0;
+  }
+
+  /* Sem ação nenhuma (passadas, canceladas, ao vivo sem Meet), a linha some. */
   .bp__actions {
-    grid-column: 2;
+    justify-content: flex-start;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .bp__actions:empty {
+    display: none;
+  }
+
+  .bp__cancel {
+    gap: 6px;
+    width: auto;
+    padding: 0 10px;
+    border-color: var(--border);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .bp__cancel-text {
+    display: inline;
+  }
+
+  .bp__day-count {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .bp__what {
+    padding-left: 0;
   }
 }
 </style>

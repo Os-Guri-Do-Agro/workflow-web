@@ -1,0 +1,782 @@
+/*
+ * Estilos compartilhados do agendamento: o painel (/agendamentos) e as páginas
+ * públicas (/agendar, /reuniao). Prefixo `bk-` porque é folha global da
+ * feature (mesmo molde de features/notes/styles/note-content.css): botões,
+ * campos, cartões, avisos e chips são os mesmos nas duas pontas, e repetir
+ * isso scoped em cada componente era garantia de divergirem no primeiro ajuste.
+ *
+ * Cor: o `--accent` puro só pinta o que é AÇÃO (botão primário, dia escolhido,
+ * interruptor ligado). Destaque de conteúdo usa os derivados `--accent-soft`
+ * (fundo) e `--accent-ink` (texto e ícone), como pede o design system.
+ */
+
+/* ─── Superfícies ─────────────────────────────────────────────────────────── */
+
+.bk-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.bk-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bk-card__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.bk-card__sub {
+  margin: 3px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* ─── Botões ──────────────────────────────────────────────────────────────── */
+
+.bk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    filter var(--motion-fast) var(--motion-ease);
+}
+
+.bk-btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.bk-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.bk-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bk-btn--primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.bk-btn--primary:hover:not(:disabled) {
+  border-color: transparent;
+  filter: brightness(1.06);
+}
+
+.bk-btn--danger {
+  border-color: transparent;
+  background: var(--err);
+  /* Mesmo contraste do botão de perigo do ConfirmDialog. */
+  color: white;
+}
+
+.bk-btn--danger:hover:not(:disabled) {
+  border-color: transparent;
+  filter: brightness(1.06);
+}
+
+/* Ação destrutiva secundária: texto vermelho, sem gritar. */
+.bk-btn--danger-quiet {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--err);
+}
+
+.bk-btn--danger-quiet:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--err) 45%, var(--border));
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+}
+
+.bk-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.bk-btn--ghost:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.bk-btn--sm {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+/* Páginas públicas: alvo de toque confortável e texto de leitura. */
+.bk-btn--lg {
+  min-height: 46px;
+  padding: 0 22px;
+  font-size: 14px;
+}
+
+.bk-btn--block {
+  width: 100%;
+}
+
+.bk-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.bk-icon-btn:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.bk-icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.bk-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bk-icon-btn--danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--err) 40%, var(--border));
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+  color: var(--err);
+}
+
+/* Botão com cara de link (ações dentro de frase). */
+.bk-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.bk-link:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.bk-link:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Voltar: discreto, no topo do passo. */
+.bk-back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  margin: 0 0 14px -6px;
+  padding: 5px 8px 5px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.bk-back:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.bk-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ─── Campos ──────────────────────────────────────────────────────────────── */
+
+.bk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bk-label {
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.bk-label__opt {
+  color: var(--text-4);
+  font-weight: 500;
+}
+
+.bk-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.bk-hint--err {
+  color: var(--err);
+}
+
+.bk-hint--ok {
+  color: var(--success);
+}
+
+.bk-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.bk-input::placeholder {
+  color: var(--text-4);
+}
+
+textarea.bk-input {
+  min-height: 84px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.bk-input:hover:not(:disabled):not(:focus) {
+  border-color: var(--border-strong);
+}
+
+.bk-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.bk-input[aria-invalid='true'] {
+  border-color: var(--err);
+}
+
+.bk-input:disabled {
+  opacity: 0.6;
+}
+
+/* Páginas públicas: 16px no celular evita o zoom automático do iOS. */
+.bk-input--lg {
+  min-height: 46px;
+  font-size: 14px;
+}
+
+textarea.bk-input--lg {
+  padding: 12px;
+}
+
+@media (max-width: 640px) {
+  .bk-input--lg {
+    font-size: 16px;
+  }
+}
+
+/* Campo com prefixo fixo (ex.: o domínio antes do endereço). */
+.bk-affix {
+  display: flex;
+  align-items: stretch;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.bk-affix:hover:not(:focus-within) {
+  border-color: var(--border-strong);
+}
+
+.bk-affix:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.bk-affix[aria-invalid='true'] {
+  border-color: var(--err);
+}
+
+.bk-affix__prefix {
+  display: inline-flex;
+  align-items: center;
+  max-width: 58%;
+  padding: 0 2px 0 12px;
+  color: var(--text-3);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bk-affix input {
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px 0 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+}
+
+/* Interruptor (checkbox estilizado). */
+.bk-switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+}
+
+.bk-switch input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.bk-switch span {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: background var(--motion-fast) var(--motion-ease);
+  pointer-events: none;
+}
+
+.bk-switch span::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow:
+    0 0 0 1px var(--border-strong),
+    var(--shadow-sm);
+  transition:
+    transform var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease);
+}
+
+.bk-switch input:checked + span {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.bk-switch input:checked + span::after {
+  background: var(--accent-fg);
+  box-shadow: none;
+  transform: translateX(14px);
+}
+
+.bk-switch input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.bk-switch input:disabled {
+  cursor: not-allowed;
+}
+
+.bk-switch input:disabled + span {
+  opacity: 0.5;
+}
+
+/* Controle segmentado (filtros e escolhas de 2 a 4 opções). */
+.bk-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.bk-seg__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.bk-seg__btn:hover:not(.is-active) {
+  color: var(--text);
+}
+
+.bk-seg__btn.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.bk-seg__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.bk-seg__count {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Chips e status ──────────────────────────────────────────────────────── */
+
+.bk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.bk-chip--accent {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.bk-chip--success {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+}
+
+.bk-chip--warn {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  color: var(--warn);
+}
+
+.bk-chip--err {
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  color: var(--err);
+}
+
+/* Bolinha de estado (no ar, pausada, fora do ar). */
+.bk-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ─── Fatos da reunião (lateral das páginas públicas) ─────────────────────── */
+
+.bk-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bk-fact {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.bk-fact > svg {
+  margin-top: 1px;
+  color: var(--text-3);
+}
+
+.bk-fact__sub {
+  display: block;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* O fato que importa no passo (o horário escolhido). */
+.bk-fact--key {
+  color: var(--text);
+}
+
+.bk-fact--key > svg {
+  color: var(--accent-ink);
+}
+
+.bk-fact__line {
+  display: block;
+}
+
+.bk-fact__time {
+  font-variant-numeric: tabular-nums;
+}
+
+.bk-fact__was {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+
+.bk-fact__was + .bk-fact__sub {
+  margin-top: 2px;
+}
+
+.bk-first-up::first-letter {
+  text-transform: uppercase;
+}
+
+/* ─── Avisos ──────────────────────────────────────────────────────────────── */
+
+.bk-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.bk-alert > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.bk-alert--warn {
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
+}
+
+.bk-alert--warn > svg {
+  color: var(--warn);
+}
+
+.bk-alert--err {
+  border-color: color-mix(in srgb, var(--err) 40%, transparent);
+  background: color-mix(in srgb, var(--err) 9%, transparent);
+}
+
+.bk-alert--err > svg {
+  color: var(--err);
+}
+
+.bk-alert--info {
+  border-color: color-mix(in srgb, var(--info) 35%, transparent);
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+}
+
+.bk-alert--info > svg {
+  color: var(--info);
+}
+
+.bk-alert--success {
+  border-color: color-mix(in srgb, var(--success) 38%, transparent);
+  background: color-mix(in srgb, var(--success) 9%, transparent);
+}
+
+.bk-alert--success > svg {
+  color: var(--success);
+}
+
+/* ─── Diálogos (dentro do AppDialog) ──────────────────────────────────────── */
+
+.bk-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: min(86vh, 760px);
+}
+
+.bk-dialog__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 12px;
+}
+
+.bk-dialog__head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.bk-dialog__head p {
+  margin: 4px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.bk-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 20px 18px;
+  overflow-y: auto;
+}
+
+.bk-dialog__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Estados ─────────────────────────────────────────────────────────────── */
+
+.bk-skel {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  animation: bk-pulse 1.3s ease-in-out infinite;
+}
+
+.bk-spin {
+  animation: bk-spin 0.8s linear infinite;
+}
+
+.bk-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes bk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes bk-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-spin {
+    animation-duration: 2s;
+  }
+
+  .bk-skel {
+    animation: none;
+  }
+}

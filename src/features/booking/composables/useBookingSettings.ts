@@ -83,10 +83,16 @@ export function useBookingRealtime() {
   onBeforeUnmount(unsubscribe)
 }
 
-export function useHostBookings(scope: Ref<BookingScope>) {
+/**
+ * Reuniões do anfitrião por escopo. A chave é a mesma para quem pede o mesmo
+ * escopo: o resumo do topo e a aba Reuniões dividem a lista de "próximas".
+ * `enabled` segura a busca enquanto não existe página (primeiro acesso).
+ */
+export function useHostBookings(scope: Ref<BookingScope>, enabled: Ref<boolean> | boolean = true) {
   return useQuery({
     queryKey: [...bookingKeys.all, 'bookings', scope] as const,
     queryFn: () => bookingService.listBookings(scope.value),
     staleTime: 15_000,
+    enabled,
   })
 }

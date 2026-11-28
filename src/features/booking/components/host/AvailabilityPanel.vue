@@ -8,7 +8,7 @@
  * caminho tiraria horários do ar para quem estiver olhando a página.
  */
 import { computed, reactive, ref, watch } from 'vue'
-import { CalendarPlus, Copy, Loader2, Plane, Trash2 } from 'lucide-vue-next'
+import { CalendarPlus, CopyCheck, Loader2, Plane, Trash2 } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import { getApiErrorMessage } from '@/service/api'
 import type { BookingPage, ClockInterval, DateOverride } from '@/service/booking/booking-service'
@@ -19,6 +19,7 @@ import {
   DISPLAY_DAYS,
   availabilitySignature,
   intervalsProblem,
+  toMinutes,
   weeklyByDay,
   weeklyFromDays,
 } from '../../availability'
@@ -69,6 +70,22 @@ const hasProblem = computed(
     overrides.value.some((o) => intervalsProblem(o.intervals)),
 )
 
+/** "40 h por semana · 5 dias": o tamanho da agenda num número. */
+const weeklySummary = computed(() => {
+  let minutes = 0
+  let open = 0
+  for (const d of DISPLAY_DAYS) {
+    const list = days[d]!
+    if (list.length) open += 1
+    for (const i of list) minutes += Math.max(0, toMinutes(i.end) - toMinutes(i.start))
+  }
+  if (!open) return 'Nenhum dia aberto'
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  const hours = m ? `${h} h ${m} min` : `${h} h`
+  return `${hours} por semana · ${open} ${open === 1 ? 'dia' : 'dias'}`
+})
+
 const browserTz = browserTimeZone()
 const tzMismatch = computed(() => timezone.value !== browserTz)
 
@@ -83,8 +100,11 @@ function toggleDay(day: number, enabled: boolean) {
   days[day] = template ? copyIntervals(template) : [{ start: '09:00', end: '17:00' }]
 }
 
+const copiedFrom = ref<number | null>(null)
 function copyToWeekdays(day: number) {
   for (const d of [1, 2, 3, 4, 5]) if (d !== day) days[d] = copyIntervals(days[day]!)
+  copiedFrom.value = day
+  setTimeout(() => (copiedFrom.value = null), 1600)
 }
 
 // ─── Datas específicas ──────────────────────────────────────────────────────
@@ -111,6 +131,11 @@ function removeOverride(date: string) {
   overrides.value = overrides.value.filter((o) => o.date !== date)
 }
 
+function overrideLabel(date: string) {
+  const text = formatDateKey(date, { weekday: 'long', day: 'numeric', month: 'long' })
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 async function save() {
   if (hasProblem.value) return
   try {
@@ -133,16 +158,17 @@ async function save() {
 
 <template>
   <div class="av">
-    <section class="av__section bk-card">
-      <header class="av__head">
+    <section class="av__section av__week bk-card">
+      <header class="bk-card__head">
         <div>
-          <h3>Horário semanal</h3>
-          <p>Quando você aceita reuniões. Fora disso, nada aparece na página.</p>
+          <h3 class="bk-card__title">Horário semanal</h3>
+          <p class="bk-card__sub">Quando você aceita reuniões. Fora disso, nada aparece na página.</p>
         </div>
+        <span class="bk-chip av__total">{{ weeklySummary }}</span>
       </header>
 
       <ul class="av__days">
-        <li v-for="day in DISPLAY_DAYS" :key="day" class="av__day">
+        <li v-for="day in DISPLAY_DAYS" :key="day" class="av__day" :class="{ 'is-off': !days[day]!.length }">
           <label class="av__day-name">
             <span class="bk-switch">
               <input
@@ -168,11 +194,12 @@ async function save() {
             v-if="days[day]!.length && day >= 1 && day <= 5"
             type="button"
             class="bk-icon-btn av__copy"
-            title="Copiar para os outros dias úteis"
+            :class="{ 'is-done': copiedFrom === day }"
+            :title="copiedFrom === day ? 'Copiado para os dias úteis' : 'Copiar para os outros dias úteis'"
             :aria-label="`Copiar o horário de ${WEEKDAY_LONG[day]} para os outros dias úteis`"
             @click="copyToWeekdays(day)"
           >
-            <Copy :size="14" />
+            <CopyCheck :size="15" />
           </button>
         </li>
       </ul>
@@ -180,38 +207,52 @@ async function save() {
 
     <div class="av__side">
       <section class="av__section bk-card">
-        <header class="av__head">
-          <div>
-            <h3>Fuso horário</h3>
-            <p>Os horários acima são lidos neste fuso.</p>
-          </div>
+        <header>
+          <h3 class="bk-card__title">Fuso horário</h3>
+          <p class="bk-card__sub">Os horários ao lado são lidos neste fuso. Quem marca vê tudo convertido para o fuso dela.</p>
         </header>
         <TimezoneSelect v-model="timezone" />
-        <div v-if="tzMismatch" class="bk-alert bk-alert--info av__tz-hint">
+        <div v-if="tzMismatch" class="bk-alert bk-alert--info">
           <Plane :size="15" />
           <span>
             Seu navegador está em {{ zoneLabel(browserTz) }}. Se você está viajando e vai atender
             daqui,
-            <button type="button" class="av__link" @click="timezone = browserTz">use este fuso</button>.
+            <button type="button" class="bk-link" @click="timezone = browserTz">use este fuso</button>.
           </span>
         </div>
       </section>
 
       <section class="av__section bk-card">
-        <header class="av__head">
-          <div>
-            <h3>Datas específicas</h3>
-            <p>Folga, viagem ou um horário diferente num dia só. Vale mais que a regra semanal.</p>
-          </div>
+        <header>
+          <h3 class="bk-card__title">Datas específicas</h3>
+          <p class="bk-card__sub">Folga, viagem ou um horário diferente num dia só. Vale mais que a regra semanal.</p>
         </header>
 
         <div class="av__add">
           <input v-model="newDate" class="bk-input av__date" type="date" :min="today" aria-label="Data" />
-          <select v-model="newMode" class="bk-input av__mode" aria-label="Tipo">
-            <option value="off">Indisponível</option>
-            <option value="custom">Outro horário</option>
-          </select>
-          <button type="button" class="bk-btn" :disabled="!newDate" @click="addOverride">
+          <div class="bk-seg av__mode" role="radiogroup" aria-label="O que muda nesse dia">
+            <button
+              type="button"
+              role="radio"
+              class="bk-seg__btn"
+              :class="{ 'is-active': newMode === 'off' }"
+              :aria-checked="newMode === 'off'"
+              @click="newMode = 'off'"
+            >
+              Dia livre
+            </button>
+            <button
+              type="button"
+              role="radio"
+              class="bk-seg__btn"
+              :class="{ 'is-active': newMode === 'custom' }"
+              :aria-checked="newMode === 'custom'"
+              @click="newMode = 'custom'"
+            >
+              Outro horário
+            </button>
+          </div>
+          <button type="button" class="bk-btn av__add-btn" :disabled="!newDate" @click="addOverride">
             <CalendarPlus :size="14" />
             Adicionar
           </button>
@@ -220,27 +261,31 @@ async function save() {
         <ul v-if="upcomingOverrides.length" class="av__overrides">
           <li v-for="o in upcomingOverrides" :key="o.date" class="av__override">
             <div class="av__override-top">
-              <span class="av__override-date">{{ formatDateKey(o.date, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) }}</span>
-              <span v-if="!o.intervals.length" class="av__off-pill">Indisponível</span>
+              <span class="av__override-date">{{ overrideLabel(o.date) }}</span>
+              <span v-if="!o.intervals.length" class="bk-chip bk-chip--warn">Dia livre</span>
+              <span v-else class="bk-chip">Outro horário</span>
               <button
                 type="button"
-                class="bk-icon-btn"
-                :aria-label="`Remover a exceção de ${o.date}`"
+                class="bk-icon-btn bk-icon-btn--danger"
+                :aria-label="`Remover a exceção de ${overrideLabel(o.date)}`"
+                title="Remover"
                 @click="removeOverride(o.date)"
               >
                 <Trash2 :size="14" />
               </button>
             </div>
-            <IntervalsEditor v-if="o.intervals.length" v-model="o.intervals" :day-label="o.date" />
+            <IntervalsEditor v-if="o.intervals.length" v-model="o.intervals" :day-label="overrideLabel(o.date)" />
           </li>
         </ul>
-        <p v-else class="bk-hint">Nenhuma data específica.</p>
+        <p v-else class="av__none">Nenhuma data específica. A regra semanal vale todos os dias.</p>
       </section>
     </div>
 
     <Transition name="av-bar">
       <div v-if="dirty" class="av__bar" role="region" aria-label="Alterações não salvas">
-        <span>{{ hasProblem ? 'Corrija os horários marcados em vermelho.' : 'Alterações não salvas' }}</span>
+        <span class="av__bar-text" :class="{ 'is-err': hasProblem }">
+          {{ hasProblem ? 'Corrija os horários marcados em vermelho.' : 'Alterações não salvas' }}
+        </span>
         <button type="button" class="bk-btn bk-btn--ghost" :disabled="savePage.isPending.value" @click="reset()">
           Descartar
         </button>
@@ -261,9 +306,10 @@ async function save() {
 <style scoped>
 .av {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+  padding-top: 4px;
   padding-bottom: 72px;
 }
 
@@ -280,40 +326,36 @@ async function save() {
   padding: 18px;
 }
 
-.av__head h3 {
-  margin: 0;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 650;
-}
-
-.av__head p {
-  margin: 3px 0 0;
-  color: var(--text-3);
-  font-size: 12px;
-  line-height: 1.45;
+.av__total {
+  flex-shrink: 0;
 }
 
 .av__days {
   display: flex;
   flex-direction: column;
-  margin: 0;
+  margin: 0 -8px;
   padding: 0;
   list-style: none;
 }
 
 .av__day {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 32px;
+  grid-template-columns: 148px minmax(0, 1fr) 32px;
   align-items: start;
   gap: 12px;
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
+  padding: 10px 8px;
+  border-radius: var(--radius);
+  transition: background var(--motion-fast) var(--motion-ease);
 }
 
-.av__day:first-child {
-  border-top: none;
-  padding-top: 0;
+.av__day + .av__day {
+  border-top: 1px solid var(--border);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.av__day:hover {
+  background: color-mix(in srgb, var(--surface-2) 50%, transparent);
 }
 
 .av__day-name {
@@ -325,6 +367,10 @@ async function save() {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.av__day.is-off .av__day-name {
+  color: var(--text-3);
 }
 
 .av__day-body {
@@ -343,25 +389,8 @@ async function save() {
   margin-top: 2px;
 }
 
-.av__tz-hint {
-  align-items: flex-start;
-}
-
-.av__tz-hint :deep(svg) {
-  flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--info);
-}
-
-.av__link {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  cursor: pointer;
+.av__copy.is-done {
+  color: var(--success);
 }
 
 .av__add {
@@ -376,14 +405,18 @@ async function save() {
 }
 
 .av__mode {
-  flex: 1 1 140px;
-  width: auto;
+  flex: 0 0 auto;
+}
+
+.av__add-btn {
+  flex: 1 0 auto;
+  min-height: 40px;
 }
 
 .av__overrides {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -392,11 +425,11 @@ async function save() {
 .av__override {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2) 50%, var(--surface));
 }
 
 .av__override-top {
@@ -407,31 +440,31 @@ async function save() {
 
 .av__override-date {
   flex: 1;
+  min-width: 0;
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: capitalize;
 }
 
-.av__off-pill {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--err) 12%, transparent);
-  color: var(--err);
-  font-size: 11px;
-  font-weight: 600;
+.av__none {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 12.5px;
 }
+
+/* ─── Barra de salvar ─────────────────────────────────────────────────────── */
 
 .av__bar {
   position: sticky;
   bottom: 16px;
+  z-index: 3;
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   justify-self: center;
-  padding: 8px 8px 8px 16px;
-  border: 1px solid var(--border);
+  padding: 8px 8px 8px 18px;
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: var(--surface);
   box-shadow: var(--shadow-overlay);
@@ -439,8 +472,17 @@ async function save() {
   font-size: 12.5px;
 }
 
-.av__bar span {
+.av__bar .bk-btn {
+  border-radius: 999px;
+}
+
+.av__bar-text {
   margin-right: 6px;
+  font-weight: 600;
+}
+
+.av__bar-text.is-err {
+  color: var(--err);
 }
 
 .av-bar-enter-active,
@@ -458,11 +500,19 @@ async function save() {
 
 @media (max-width: 980px) {
   .av {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 560px) {
+  .av__section {
+    padding: 16px 14px;
+  }
+
+  .av__week .bk-card__head {
+    flex-direction: column;
+  }
+
   .av__day {
     grid-template-columns: minmax(0, 1fr) 32px;
   }
@@ -471,7 +521,20 @@ async function save() {
     grid-column: 1 / -1;
   }
 
+  .av__day-body {
+    grid-column: 1;
+  }
+
+  .av__mode {
+    flex: 1 1 100%;
+  }
+
+  .av__mode .bk-seg__btn {
+    flex: 1;
+  }
+
   .av__bar {
+    left: 0;
     flex-wrap: wrap;
     justify-content: center;
     border-radius: var(--radius-lg);

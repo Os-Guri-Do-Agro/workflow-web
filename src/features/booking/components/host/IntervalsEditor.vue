@@ -52,7 +52,8 @@ function remove(index: number) {
       />
       <button
         type="button"
-        class="bk-icon-btn"
+        class="bk-icon-btn bk-icon-btn--danger"
+        title="Remover intervalo"
         :aria-label="`Remover intervalo ${index + 1} de ${dayLabel}`"
         @click="remove(index)"
       >
@@ -88,10 +89,20 @@ function remove(index: number) {
 }
 
 .ie__time {
-  width: 112px;
+  width: 108px;
   min-height: 36px;
-  padding: 0 8px;
+  padding: 0 8px 0 10px;
   font-variant-numeric: tabular-nums;
+}
+
+/* O relógio nativo do campo some no meio do texto: discreto até o hover. */
+.ie__time::-webkit-calendar-picker-indicator {
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.ie__time:hover::-webkit-calendar-picker-indicator {
+  opacity: 0.8;
 }
 
 .ie__dash {

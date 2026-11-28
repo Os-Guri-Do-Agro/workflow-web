@@ -138,15 +138,32 @@ export function formatDateKey(
   )
 }
 
-/** "sexta-feira, 20 de novembro de 2026 · 09:30 – 10:00". */
-export function formatRange(start: string, end: string, timeZone: string): string {
-  const day = formatDateKey(dateKeyInZone(start, timeZone), {
+/** "sexta-feira, 20 de novembro de 2026" do instante, no fuso. */
+export function formatDayOf(instant: string, timeZone: string): string {
+  return formatDateKey(dateKeyInZone(instant, timeZone), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   })
-  return `${day} · ${formatTime(start, timeZone)} – ${formatTime(end, timeZone)}`
+}
+
+/** "09:30 – 10:00" no fuso. */
+export function formatTimeRange(start: string, end: string, timeZone: string): string {
+  return `${formatTime(start, timeZone)} – ${formatTime(end, timeZone)}`
+}
+
+/**
+ * Dia do instante relativo a hoje, no fuso: "hoje", "amanhã", "ontem" ou
+ * "sex., 20 de nov.". Minúsculo: quem usa no começo da frase capitaliza.
+ */
+export function relativeDayLabel(instant: string, timeZone: string): string {
+  const key = dateKeyInZone(instant, timeZone)
+  const today = todayKey(timeZone)
+  if (key === today) return 'hoje'
+  if (key === addDays(today, 1)) return 'amanhã'
+  if (key === addDays(today, -1)) return 'ontem'
+  return formatDateKey(key, { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 /** "Mês de ano" para o cabeçalho do calendário. */
@@ -307,6 +324,15 @@ export const WEEKDAY_LONG = [
   'Sexta-feira',
   'Sábado',
 ]
+
+/** Selo de duração em dois andares ("30" sobre "min", "1" sobre "hora", "1h30"). */
+export function durationBadge(minutes: number): { value: string; unit: string } {
+  if (minutes < 60) return { value: String(minutes), unit: 'min' }
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (!m) return { value: String(h), unit: h === 1 ? 'hora' : 'horas' }
+  return { value: `${h}h${String(m).padStart(2, '0')}`, unit: '' }
+}
 
 /** "30 min", "1 h", "1 h 30 min". */
 export function formatDuration(minutes: number): string {

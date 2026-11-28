@@ -54,7 +54,10 @@ const form = reactive({
   maxDaysAhead: 60,
   dailyLimit: '' as string,
 })
-const durationItems = computed(() => options(DURATIONS, form.durationMin, formatDuration))
+/** Durações em botões (a escolha mais comum do diálogo, a um clique). */
+const durationChoices = computed(() =>
+  DURATIONS.includes(form.durationMin) ? DURATIONS : [...DURATIONS, form.durationMin].sort((a, b) => a - b),
+)
 const stepItems = computed(() =>
   options(STEPS, form.slotStepMin, (m) => `A cada ${formatDuration(m)}`),
 )
@@ -166,28 +169,40 @@ async function save() {
           <input v-model="form.title" class="bk-input" maxlength="80" placeholder="Ex.: Reunião de alinhamento" />
         </label>
 
-        <div class="et-grid">
-          <div class="bk-field">
-            <span class="bk-label">Duração</span>
-            <AppSelect v-model="form.durationMin" :items="durationItems" label="Duração" />
+        <div class="bk-field">
+          <span id="et-duration" class="bk-label">Duração</span>
+          <div class="et-durations" role="radiogroup" aria-labelledby="et-duration">
+            <button
+              v-for="d in durationChoices"
+              :key="d"
+              type="button"
+              role="radio"
+              class="et-duration"
+              :class="{ 'is-active': form.durationMin === d }"
+              :aria-checked="form.durationMin === d"
+              @click="form.durationMin = d"
+            >
+              {{ formatDuration(d) }}
+            </button>
           </div>
-          <label class="bk-field">
-            <span class="bk-label">Link</span>
-            <span class="bk-affix">
-              <span class="bk-affix__prefix">…/{{ pageSlug }}/</span>
-              <input
-                v-model="form.slug"
-                type="text"
-                spellcheck="false"
-                maxlength="60"
-                @input="slugTouched = true"
-              />
-            </span>
-          </label>
         </div>
 
         <label class="bk-field">
-          <span class="bk-label">Descrição <span class="et-optional">(aparece para quem vai marcar)</span></span>
+          <span class="bk-label">Link</span>
+          <span class="bk-affix">
+            <span class="bk-affix__prefix">…/{{ pageSlug }}/</span>
+            <input
+              v-model="form.slug"
+              type="text"
+              spellcheck="false"
+              maxlength="60"
+              @input="slugTouched = true"
+            />
+          </span>
+        </label>
+
+        <label class="bk-field">
+          <span class="bk-label">Descrição <span class="bk-label__opt">(aparece para quem vai marcar)</span></span>
           <textarea
             v-model="form.description"
             class="bk-input"
@@ -268,9 +283,44 @@ async function save() {
   gap: 14px;
 }
 
-.et-optional {
-  color: var(--text-4);
-  font-weight: 500;
+.et-durations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.et-duration {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.et-duration:hover:not(.is-active) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.et-duration.is-active {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.et-duration:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .et-toggle {

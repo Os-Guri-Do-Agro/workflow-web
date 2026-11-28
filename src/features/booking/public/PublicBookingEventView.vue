@@ -11,10 +11,20 @@
  * - 429 (limite por e-mail): fica no formulário; a saída é o link do convite.
  * - 503 (Google fora): fica no formulário para tentar de novo sem redigitar.
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
-import { ArrowLeft, CalendarCheck2, CalendarOff, Loader2, MailCheck } from 'lucide-vue-next'
+import {
+  ArrowLeft,
+  CalendarCheck2,
+  CalendarOff,
+  Check,
+  Globe,
+  Loader2,
+  Lock,
+  TriangleAlert,
+  Video,
+} from 'lucide-vue-next'
 import { bookingErrorMessage } from '../booking-errors'
 import {
   publicBookingService,
@@ -22,10 +32,11 @@ import {
   type PublicEventTypeView,
 } from '@/service/booking/booking-service'
 import PublicBookingFrame from '../components/PublicBookingFrame.vue'
+import BookingSteps from '../components/BookingSteps.vue'
 import SlotPicker from '../components/SlotPicker.vue'
 import BookingSummary from '../components/BookingSummary.vue'
 import { useInviteeTimezone } from '../composables/useInviteeTimezone'
-import { formatRange, zoneLabel } from '../booking-time'
+import { formatDayOf, formatTimeRange, zoneLabel } from '../booking-time'
 
 const route = useRoute()
 const slug = String(route.params.slug ?? '')
@@ -45,6 +56,16 @@ const form = reactive({ name: '', email: '', notes: '' })
 const submitting = ref(false)
 const formError = ref<string | null>(null)
 const booking = ref<PublicBooking | null>(null)
+const nameInput = ref<HTMLInputElement | null>(null)
+
+/**
+ * "Outros tipos de reunião" só aparece para quem veio da lista. Quem chegou
+ * pelo link direto do tipo (o caso comum) não tem lista para onde voltar, e
+ * numa página de um tipo só a lista devolveria para cá mesmo.
+ */
+const backState = window.history.state as { back?: unknown } | null
+const cameFromList =
+  typeof backState?.back === 'string' && /^\/agendar\/[^/]+\/?$/.test(backState.back.split('?')[0]!)
 
 const endOfChosen = computed(() =>
   chosen.value && info.value
@@ -53,6 +74,7 @@ const endOfChosen = computed(() =>
 )
 
 const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
+const showEmailError = ref(false)
 const canSubmit = computed(
   () => form.name.trim().length >= 2 && emailValid.value && !submitting.value,
 )
@@ -72,11 +94,14 @@ function loadSlots(range: { start: string; end: string }) {
   return publicBookingService.slots(slug, eventSlug, range)
 }
 
-function onPick(startAt: string) {
+async function onPick(startAt: string) {
   chosen.value = startAt
   notice.value = null
   formError.value = null
   step.value = 'form'
+  await nextTick()
+  window.scrollTo({ top: 0 })
+  nameInput.value?.focus({ preventScroll: true })
 }
 
 function backToPick() {
@@ -85,6 +110,7 @@ function backToPick() {
 }
 
 async function submit() {
+  showEmailError.value = form.email.length > 0 && !emailValid.value
   if (!chosen.value || !canSubmit.value) return
   submitting.value = true
   formError.value = null
@@ -97,6 +123,7 @@ async function submit() {
       notes: form.notes.trim() || undefined,
     })
     step.value = 'done'
+    window.scrollTo({ top: 0 })
   } catch (e) {
     const status = axios.isAxiosError(e) ? e.response?.status : undefined
     const message = bookingErrorMessage(e, 'Não foi possível confirmar agora. Tente de novo.')
@@ -115,14 +142,13 @@ async function submit() {
 </script>
 
 <template>
-  <PublicBookingFrame v-if="loading || loadError || !info" compact>
+  <PublicBookingFrame v-if="loading" loading />
+
+  <PublicBookingFrame v-else-if="loadError || !info" compact>
     <div class="ev-state">
-      <p v-if="loading" class="ev-muted">Carregando agenda...</p>
-      <template v-else>
-        <CalendarOff :size="28" class="ev-state__icon" />
-        <h1>Agenda indisponível</h1>
-        <p class="ev-muted">{{ loadError }}</p>
-      </template>
+      <span class="ev-state__icon"><CalendarOff :size="22" /></span>
+      <h1>Agenda indisponível</h1>
+      <p>{{ loadError }}</p>
     </div>
   </PublicBookingFrame>
 
@@ -130,38 +156,49 @@ async function submit() {
     v-else
     :host-name="info.host.name"
     :headline="info.host.headline"
+    :avatar-url="info.host.avatarUrl"
     :title="info.eventType.title"
     :duration-min="info.eventType.durationMin"
     :description="step === 'pick' ? info.eventType.description : null"
   >
-    <template #aside>
-      <RouterLink
-        v-if="step === 'pick'"
-        class="ev-all"
-        :to="{ name: 'public-booking', params: { slug: info.slug } }"
-      >
-        <ArrowLeft :size="13" />
+    <template v-if="step !== 'pick' && chosen" #facts>
+      <li class="bk-fact bk-fact--key">
+        <CalendarCheck2 :size="16" />
+        <span>
+          <span class="bk-fact__line bk-first-up">{{ formatDayOf(chosen, timezone) }}</span>
+          <span class="bk-fact__line bk-fact__time">{{ formatTimeRange(chosen, endOfChosen, timezone) }}</span>
+        </span>
+      </li>
+      <li class="bk-fact">
+        <Globe :size="16" />
+        <span>{{ zoneLabel(timezone, Date.parse(chosen)) }}</span>
+      </li>
+    </template>
+
+    <template v-if="step === 'pick' && cameFromList" #aside-foot>
+      <RouterLink class="bk-back" :to="{ name: 'public-booking', params: { slug: info.slug } }">
+        <ArrowLeft :size="14" />
         Outros tipos de reunião
       </RouterLink>
-      <p v-if="step === 'form' && chosen" class="ev-chosen">
-        <CalendarCheck2 :size="15" />
-        <span>{{ formatRange(chosen, endOfChosen, timezone) }}</span>
-      </p>
     </template>
 
     <!-- Indisponível (anfitrião sem Google) -->
     <div v-if="!info.accepting" class="ev-state">
-      <CalendarOff :size="28" class="ev-state__icon" />
+      <span class="ev-state__icon"><CalendarOff :size="22" /></span>
       <h2>Agenda temporariamente indisponível</h2>
-      <p class="ev-muted">
-        {{ info.host.name }} não está recebendo agendamentos por aqui no momento.
-      </p>
+      <p>{{ info.host.name }} não está recebendo agendamentos por aqui no momento.</p>
     </div>
 
     <!-- 1. Escolher -->
     <template v-else-if="step === 'pick'">
-      <h2 class="ev-h2">Escolha dia e horário</h2>
-      <p v-if="notice" class="ev-notice" role="alert">{{ notice }}</p>
+      <header class="ev-head">
+        <BookingSteps :current="1" />
+        <h2>Escolha dia e horário</h2>
+      </header>
+      <p v-if="notice" class="bk-alert bk-alert--warn ev-notice" role="alert">
+        <TriangleAlert :size="15" />
+        <span>{{ notice }}</span>
+      </p>
       <SlotPicker
         ref="picker"
         v-model:timezone="timezone"
@@ -173,20 +210,22 @@ async function submit() {
 
     <!-- 2. Identificar -->
     <form v-else-if="step === 'form'" class="ev-form" novalidate @submit.prevent="submit">
-      <button type="button" class="ev-back" @click="backToPick">
-        <ArrowLeft :size="14" />
-        Trocar horário
-      </button>
-      <h2 class="ev-h2">Seus dados</h2>
-      <p class="ev-muted ev-muted--left">
-        O convite com o link do Google Meet vai para este e-mail. Horário em
-        {{ zoneLabel(timezone, chosen ? Date.parse(chosen) : Date.now()) }}.
-      </p>
+      <header class="ev-head">
+        <BookingSteps :current="2" />
+        <button type="button" class="bk-back ev-back" :disabled="submitting" @click="backToPick">
+          <ArrowLeft :size="14" />
+          Trocar horário
+        </button>
+        <h2>Seus dados</h2>
+        <p class="ev-sub">O convite com o link do Google Meet vai para o e-mail que você informar.</p>
+      </header>
 
-      <label class="ev-field">
-        <span>Nome</span>
+      <label class="bk-field">
+        <span class="bk-label">Nome</span>
         <input
+          ref="nameInput"
           v-model="form.name"
+          class="bk-input bk-input--lg"
           type="text"
           autocomplete="name"
           maxlength="120"
@@ -194,26 +233,29 @@ async function submit() {
           :disabled="submitting"
         />
       </label>
-      <label class="ev-field">
-        <span>E-mail</span>
+      <label class="bk-field">
+        <span class="bk-label">E-mail</span>
         <input
           v-model="form.email"
+          class="bk-input bk-input--lg"
           type="email"
           autocomplete="email"
           inputmode="email"
           maxlength="254"
           required
-          :aria-invalid="form.email.length > 3 && !emailValid"
+          :aria-invalid="showEmailError && !emailValid"
           :disabled="submitting"
+          @blur="showEmailError = form.email.length > 0 && !emailValid"
         />
-        <small v-if="form.email.length > 3 && !emailValid" class="ev-hint ev-hint--err">
+        <small v-if="showEmailError && !emailValid" class="bk-hint bk-hint--err">
           Confira o e-mail: é para ele que o convite vai.
         </small>
       </label>
-      <label class="ev-field">
-        <span>O que você quer tratar? <em>(opcional)</em></span>
+      <label class="bk-field">
+        <span class="bk-label">O que você quer tratar? <span class="bk-label__opt">(opcional)</span></span>
         <textarea
           v-model="form.notes"
+          class="bk-input bk-input--lg"
           rows="4"
           maxlength="2000"
           placeholder="Contexto que ajude a preparar a reunião"
@@ -221,20 +263,27 @@ async function submit() {
         />
       </label>
 
-      <p v-if="formError" class="ev-error" role="alert">{{ formError }}</p>
+      <p v-if="formError" class="bk-alert bk-alert--err" role="alert">
+        <TriangleAlert :size="15" />
+        <span>{{ formError }}</span>
+      </p>
 
-      <button type="submit" class="ev-submit press" :disabled="!canSubmit">
-        <Loader2 v-if="submitting" :size="16" class="spin" />
+      <button type="submit" class="bk-btn bk-btn--primary bk-btn--lg bk-btn--block press" :disabled="!canSubmit">
+        <Loader2 v-if="submitting" :size="16" class="bk-spin" />
         {{ submitting ? 'Confirmando...' : 'Confirmar reunião' }}
       </button>
+      <p class="ev-privacy">
+        <Lock :size="12" />
+        Seus dados vão só para {{ info.host.name }} e para o convite do Google Calendar.
+      </p>
     </form>
 
     <!-- 3. Confirmado -->
     <div v-else-if="booking" class="ev-done">
-      <span class="ev-done__icon"><MailCheck :size="26" /></span>
-      <h2 class="ev-h2 ev-h2--center">Reunião confirmada</h2>
-      <p class="ev-muted">
-        Enviamos o convite para <strong>{{ booking.inviteeEmail }}</strong>. Ele já está na
+      <span class="ev-done__icon"><Check :size="26" :stroke-width="2.6" /></span>
+      <h2>Reunião confirmada</h2>
+      <p class="ev-done__lead">
+        Enviamos o convite para <strong>{{ booking.inviteeEmail }}</strong>. A reunião já está na
         agenda de {{ booking.host.name }}, com o link do Google Meet.
       </p>
       <BookingSummary
@@ -252,272 +301,175 @@ async function submit() {
           :href="booking.meetLink"
           target="_blank"
           rel="noopener noreferrer"
-          class="ev-submit ev-submit--inline press"
+          class="bk-btn bk-btn--primary bk-btn--lg press"
         >
+          <Video :size="16" />
           Abrir o Google Meet
         </a>
         <RouterLink
-          class="ev-link"
+          class="bk-btn bk-btn--lg"
           :to="{ name: 'public-booking-manage', params: { token: booking.manageToken } }"
         >
           Remarcar ou cancelar
         </RouterLink>
       </div>
+      <p class="ev-done__tip">O convite que chegou no seu e-mail também traz o link para remarcar ou cancelar.</p>
     </div>
   </PublicBookingFrame>
 </template>
 
 <style scoped>
-.ev-h2 {
-  margin: 0 0 18px;
+.ev-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.ev-head h2 {
+  margin: 16px 0 0;
   color: var(--text);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
-.ev-h2--center {
-  margin-bottom: 6px;
-  text-align: center;
+.ev-back {
+  margin: 14px 0 -6px -6px;
 }
 
-.ev-muted {
-  margin: 0;
+.ev-sub {
+  margin: 4px 0 0;
   color: var(--text-3);
   font-size: 13px;
   line-height: 1.55;
-  text-align: center;
-}
-
-.ev-muted--left {
-  margin: -10px 0 18px;
-  text-align: left;
-}
-
-.ev-all {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: auto;
-  color: var(--text-3);
-  font-size: 12px;
-  text-decoration: none;
-}
-
-.ev-all:hover {
-  color: var(--text);
-}
-
-.ev-chosen {
-  display: flex;
-  gap: 9px;
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.45;
-}
-
-.ev-chosen :deep(svg) {
-  flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--accent);
-}
-
-.ev-chosen span::first-letter {
-  text-transform: uppercase;
-}
-
-.ev-notice,
-.ev-error {
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12.5px;
-  line-height: 1.5;
 }
 
 .ev-notice {
-  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
-  color: var(--text);
-}
-
-.ev-error {
-  border: 1px solid color-mix(in srgb, var(--err) 40%, transparent);
-  background: color-mix(in srgb, var(--err) 10%, transparent);
-  color: var(--text);
+  margin-bottom: 16px;
 }
 
 .ev-form {
   display: flex;
   flex-direction: column;
-  max-width: 440px;
+  gap: 16px;
+  max-width: 460px;
 }
 
-.ev-back {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 6px;
-  margin: -4px 0 14px;
-  padding: 4px 0;
-  border: none;
-  background: none;
-  color: var(--text-3);
-  font-family: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
+.ev-form .ev-head {
+  margin-bottom: 4px;
 }
 
-.ev-back:hover {
-  color: var(--text);
-}
-
-.ev-field {
+.ev-privacy {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.ev-field > span {
-  color: var(--text-2);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.ev-field em {
-  color: var(--text-4);
-  font-style: normal;
-  font-weight: 500;
-}
-
-.ev-field input,
-.ev-field textarea {
-  width: 100%;
-  padding: 11px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 14px;
-  outline: none;
-  transition:
-    border-color var(--motion-fast) var(--motion-ease),
-    box-shadow var(--motion-fast) var(--motion-ease);
-}
-
-.ev-field textarea {
-  resize: vertical;
-  min-height: 92px;
-  line-height: 1.5;
-}
-
-.ev-field input:focus,
-.ev-field textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.ev-field input[aria-invalid='true'] {
-  border-color: var(--err);
-}
-
-.ev-hint {
-  font-size: 11.5px;
-}
-
-.ev-hint--err {
-  color: var(--err);
-}
-
-.ev-submit {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 46px;
-  margin-top: 4px;
-  padding: 0 22px;
-  border: none;
-  border-radius: var(--radius);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 650;
-  text-decoration: none;
-  cursor: pointer;
+  gap: 6px;
+  margin: -4px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
 }
 
-.ev-submit:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.ev-privacy :deep(svg) {
+  flex-shrink: 0;
 }
 
-.ev-submit--inline {
-  margin-top: 0;
-}
+/* ─── Confirmado ──────────────────────────────────────────────────────────── */
 
 .ev-done {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  max-width: 520px;
+  justify-content: center;
+  width: 100%;
+  max-width: 540px;
   margin: 0 auto;
-  padding: 8px 0;
+  padding: 12px 0;
+  text-align: center;
 }
 
 .ev-done__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  margin-bottom: 6px;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 16px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--success) 14%, transparent);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--success) 6%, transparent);
   color: var(--success);
+  animation: ev-pop var(--motion-slow) var(--motion-ease);
+}
+
+.ev-done h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.ev-done__lead {
+  max-width: 440px;
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.ev-done__lead strong {
+  color: var(--text);
+  font-weight: 650;
+  overflow-wrap: anywhere;
 }
 
 .ev-done__summary {
   align-self: stretch;
-  margin-top: 14px;
+  margin-top: 22px;
 }
 
 .ev-done__actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   justify-content: center;
-  gap: 18px;
-  margin-top: 18px;
+  gap: 10px;
+  margin-top: 22px;
 }
 
-.ev-link {
-  color: var(--text-2);
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.ev-done__tip {
+  margin: 16px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
-.ev-link:hover {
-  color: var(--text);
-}
+/* ─── Estados ─────────────────────────────────────────────────────────────── */
 
 .ev-state {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 28px 8px;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 8px;
   text-align: center;
+}
+
+.ev-state__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-3);
 }
 
 .ev-state h1,
@@ -528,17 +480,25 @@ async function submit() {
   font-weight: 700;
 }
 
-.ev-state__icon {
+.ev-state p {
+  max-width: 380px;
+  margin: 0;
   color: var(--text-3);
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 
-.spin {
-  animation: ev-spin 0.9s linear infinite;
+@keyframes ev-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
 }
 
-@keyframes ev-spin {
-  to {
-    transform: rotate(360deg);
+@media (max-width: 520px) {
+  .ev-done__actions {
+    flex-direction: column;
+    align-self: stretch;
   }
 }
 </style>

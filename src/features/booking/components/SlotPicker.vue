@@ -10,9 +10,14 @@
  *
  * Trocar o fuso refaz o agrupamento e mantém a escolha se ela ainda existir
  * (o instante é o mesmo, só muda o dia/hora exibidos).
+ *
+ * Layout: no computador, a lista do dia ao lado do calendário, e escolher um
+ * horário abre o "Próximo" na própria linha (o gesto do Calendly). No celular,
+ * os horários viram grade de três colunas e o "Próximo" é um botão largo
+ * embaixo, com o dia e a hora escritos, longe do dedo que acabou de tocar.
  */
-import { computed, onMounted, ref, watch } from 'vue'
-import { ArrowRight, CalendarX2, ChevronLeft, ChevronRight, RotateCw } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { ArrowRight, CalendarX2, ChevronLeft, ChevronRight, Globe, RotateCw } from 'lucide-vue-next'
 import { bookingErrorMessage } from '../booking-errors'
 import TimezoneSelect from './TimezoneSelect.vue'
 import {
@@ -71,8 +76,64 @@ const byDay = computed(() => {
   return map
 })
 
-const weeks = computed(() => monthWeeks(view.value.year, view.value.month))
+/** Sempre seis linhas: o cartão não muda de altura de um mês para o outro. */
+const weeks = computed(() => {
+  const list = monthWeeks(view.value.year, view.value.month)
+  while (list.length < 6) list.push(Array.from({ length: 7 }, () => null))
+  return list
+})
+
 const daySlots = computed(() => (selectedDay.value ? (byDay.value.get(selectedDay.value) ?? []) : []))
+
+/** Hora do dia no fuso do convidado, para separar manhã, tarde e noite. */
+function hourOf(slot: string) {
+  return Number(formatTime(slot, timezone.value).slice(0, 2))
+}
+
+const PERIODS = [
+  { key: 'madrugada', label: 'Madrugada', from: 0 },
+  { key: 'manha', label: 'Manhã', from: 6 },
+  { key: 'tarde', label: 'Tarde', from: 12 },
+  { key: 'noite', label: 'Noite', from: 18 },
+] as const
+
+const periods = computed(() => {
+  const groups = PERIODS.map((p) => ({ ...p, slots: [] as string[] }))
+  for (const slot of daySlots.value) {
+    const hour = hourOf(slot)
+    let index = 0
+    for (let i = 0; i < groups.length; i += 1) if (hour >= groups[i]!.from) index = i
+    groups[index]!.slots.push(slot)
+  }
+  return groups.filter((g) => g.slots.length)
+})
+
+const dayWeekday = computed(() =>
+  selectedDay.value ? formatDateKey(selectedDay.value, { weekday: 'long' }) : '',
+)
+const dayDate = computed(() =>
+  selectedDay.value ? formatDateKey(selectedDay.value, { day: 'numeric', month: 'long' }) : '',
+)
+const chosenLabel = computed(() =>
+  selectedSlot.value && selectedDay.value
+    ? `${formatDateKey(selectedDay.value, { weekday: 'short', day: 'numeric', month: 'short' })} às ${formatTime(selectedSlot.value, timezone.value)}`
+    : '',
+)
+
+// ─── Rolagem da lista (sombra embaixo quando há mais horários) ──────────────
+const list = ref<HTMLElement | null>(null)
+const moreBelow = ref(false)
+
+function measure() {
+  const el = list.value
+  moreBelow.value = !!el && el.scrollHeight - el.scrollTop - el.clientHeight > 4
+}
+
+watch(selectedDay, async () => {
+  await nextTick()
+  if (list.value) list.value.scrollTop = 0
+  measure()
+})
 
 async function load() {
   const seq = ++requestSeq
@@ -106,6 +167,8 @@ async function load() {
     error.value = bookingErrorMessage(e, 'Não foi possível carregar os horários agora.')
   } finally {
     if (seq === requestSeq) loading.value = false
+    await nextTick()
+    measure()
   }
 }
 
@@ -120,6 +183,13 @@ function pickDay(day: string) {
   if (!byDay.value.has(day)) return
   selectedDay.value = day
   selectedSlot.value = null
+}
+
+function dayLabel(day: string) {
+  const count = byDay.value.get(day)?.length ?? 0
+  const base = formatDateKey(day)
+  if (!count) return `${base}, sem horários`
+  return `${base}, ${count} ${count === 1 ? 'horário livre' : 'horários livres'}`
 }
 
 watch(monthKey, load)
@@ -144,108 +214,139 @@ onMounted(load)
   <div class="sp">
     <section class="sp__cal" aria-label="Escolha o dia">
       <header class="sp__month">
-        <button
-          type="button"
-          class="sp__nav"
-          :disabled="!canPrev || loading"
-          aria-label="Mês anterior"
-          @click="shiftMonth(-1)"
-        >
-          <ChevronLeft :size="16" />
-        </button>
-        <h3>{{ formatMonth(view.year, view.month) }}</h3>
-        <button
-          type="button"
-          class="sp__nav"
-          :disabled="!canNext || loading"
-          aria-label="Próximo mês"
-          @click="shiftMonth(1)"
-        >
-          <ChevronRight :size="16" />
-        </button>
+        <h3 aria-live="polite">{{ formatMonth(view.year, view.month) }}</h3>
+        <div class="sp__navs">
+          <button
+            type="button"
+            class="sp__nav"
+            :disabled="!canPrev || loading"
+            aria-label="Mês anterior"
+            @click="shiftMonth(-1)"
+          >
+            <ChevronLeft :size="17" />
+          </button>
+          <button
+            type="button"
+            class="sp__nav"
+            :disabled="!canNext || loading"
+            aria-label="Próximo mês"
+            @click="shiftMonth(1)"
+          >
+            <ChevronRight :size="17" />
+          </button>
+        </div>
       </header>
 
       <div class="sp__grid" role="grid" :aria-busy="loading">
-        <span v-for="label in WEEKDAY_SHORT" :key="label" class="sp__wd" role="columnheader">{{ label }}</span>
-        <template v-for="(week, wi) in weeks" :key="wi">
+        <div class="sp__row" role="row">
+          <span v-for="label in WEEKDAY_SHORT" :key="label" class="sp__wd" role="columnheader">{{ label }}</span>
+        </div>
+        <div v-for="(week, wi) in weeks" :key="wi" class="sp__row" role="row">
           <template v-for="(day, di) in week" :key="`${wi}-${di}`">
-            <span v-if="!day" class="sp__cell sp__cell--blank" />
-            <button
-              v-else
-              type="button"
-              class="sp__cell"
-              :class="{
-                'is-available': byDay.has(day),
-                'is-selected': day === selectedDay,
-                'is-today': day === today,
-              }"
-              :disabled="!byDay.has(day)"
-              :aria-pressed="day === selectedDay"
-              :aria-label="`${formatDateKey(day)}${byDay.has(day) ? `, ${byDay.get(day)!.length} horários` : ', sem horários'}`"
-              @click="pickDay(day)"
-            >
-              {{ Number(day.slice(8)) }}
-            </button>
+            <span v-if="!day" class="sp__cell sp__cell--blank" role="gridcell" />
+            <span v-else role="gridcell" class="sp__gridcell">
+              <button
+                type="button"
+                class="sp__cell"
+                :class="{
+                  'is-available': byDay.has(day),
+                  'is-selected': day === selectedDay,
+                  'is-today': day === today,
+                }"
+                :disabled="!byDay.has(day)"
+                :aria-pressed="day === selectedDay"
+                :aria-label="dayLabel(day)"
+                :aria-current="day === today ? 'date' : undefined"
+                @click="pickDay(day)"
+              >
+                {{ Number(day.slice(8)) }}
+              </button>
+            </span>
           </template>
-        </template>
+        </div>
         <div v-if="loading" class="sp__veil" aria-hidden="true" />
       </div>
 
       <div class="sp__tz">
-        <span class="sp__tz-label">Horários em</span>
+        <span class="sp__tz-label"><Globe :size="13" /> Fuso horário</span>
         <TimezoneSelect v-model="timezone" variant="inline" />
       </div>
     </section>
 
     <section class="sp__times" aria-live="polite">
       <div v-if="error" class="sp__state">
-        <CalendarX2 :size="22" />
+        <span class="sp__state-icon"><CalendarX2 :size="20" /></span>
         <p>{{ error }}</p>
-        <button type="button" class="sp__retry" @click="load">
+        <button type="button" class="bk-btn bk-btn--sm" @click="load">
           <RotateCw :size="13" />
           Tentar de novo
         </button>
       </div>
 
-      <template v-else-if="loading && !daySlots.length">
-        <p class="sp__day-title sp__day-title--ghost" />
-        <span v-for="n in 6" :key="n" class="sp__skeleton" />
-      </template>
+      <div v-else-if="loading && !daySlots.length" class="sp__skeleton" aria-hidden="true">
+        <span class="bk-skel" style="width: 60%; height: 15px" />
+        <span class="bk-skel" style="width: 40%; height: 12px; margin-bottom: 10px" />
+        <span v-for="n in 6" :key="n" class="bk-skel sp__skel-slot" />
+      </div>
 
       <div v-else-if="!byDay.size" class="sp__state">
-        <CalendarX2 :size="22" />
+        <span class="sp__state-icon"><CalendarX2 :size="20" /></span>
         <p>Nenhum horário livre em {{ formatMonth(view.year, view.month).toLowerCase() }}.</p>
-        <button v-if="canNext" type="button" class="sp__retry" @click="shiftMonth(1)">
+        <button v-if="canNext" type="button" class="bk-btn bk-btn--sm" @click="shiftMonth(1)">
           Ver o próximo mês
           <ArrowRight :size="13" />
         </button>
       </div>
 
       <template v-else-if="selectedDay">
-        <p class="sp__day-title">{{ formatDateKey(selectedDay) }}</p>
-        <ul class="sp__list">
-          <li v-for="slot in daySlots" :key="slot">
-            <div class="sp__slot-row" :class="{ 'is-picked': slot === selectedSlot }">
-              <button
-                type="button"
-                class="sp__slot"
-                :aria-pressed="slot === selectedSlot"
-                @click="selectedSlot = slot"
-              >
-                {{ formatTime(slot, timezone) }}
-              </button>
-              <button
-                v-if="slot === selectedSlot"
-                type="button"
-                class="sp__confirm press"
-                :disabled="busy"
-                @click="emit('confirm', slot)"
-              >
-                {{ confirmLabel }}
-              </button>
-            </div>
-          </li>
-        </ul>
+        <header class="sp__day">
+          <p class="sp__day-weekday bk-first-up">{{ dayWeekday }}</p>
+          <p class="sp__day-date">
+            {{ dayDate }} · {{ daySlots.length }} {{ daySlots.length === 1 ? 'horário' : 'horários' }}
+          </p>
+        </header>
+
+        <div class="sp__scroll" :class="{ 'has-more': moreBelow }">
+          <div ref="list" class="sp__list" @scroll.passive="measure">
+            <section v-for="group in periods" :key="group.key" class="sp__period">
+              <h4 v-if="periods.length > 1" class="sp__period-label">{{ group.label }}</h4>
+              <ul class="sp__slots">
+                <li v-for="slot in group.slots" :key="slot" class="sp__slot-row" :class="{ 'is-picked': slot === selectedSlot }">
+                  <button
+                    type="button"
+                    class="sp__slot"
+                    :aria-pressed="slot === selectedSlot"
+                    @click="selectedSlot = slot"
+                  >
+                    {{ formatTime(slot, timezone) }}
+                  </button>
+                  <button
+                    v-if="slot === selectedSlot"
+                    type="button"
+                    class="sp__confirm press"
+                    :disabled="busy"
+                    @click="emit('confirm', slot)"
+                  >
+                    {{ confirmLabel }}
+                  </button>
+                </li>
+              </ul>
+            </section>
+          </div>
+        </div>
+
+        <!-- Celular: confirmação larga, com o que foi escolhido escrito. -->
+        <button
+          v-if="selectedSlot"
+          type="button"
+          class="bk-btn bk-btn--primary bk-btn--lg bk-btn--block sp__mobile-confirm press"
+          :disabled="busy"
+          @click="emit('confirm', selectedSlot)"
+        >
+          {{ confirmLabel }}
+          <span class="sp__mobile-chosen">{{ chosenLabel }}</span>
+          <ArrowRight :size="16" />
+        </button>
       </template>
     </section>
   </div>
@@ -254,16 +355,22 @@ onMounted(load)
 <style scoped>
 .sp {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
-  gap: 28px;
-  min-height: 380px;
+  grid-template-columns: minmax(0, 1fr) 232px;
+  gap: 32px;
+}
+
+/* ─── Calendário ──────────────────────────────────────────────────────────── */
+
+.sp__cal {
+  min-width: 0;
 }
 
 .sp__month {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .sp__month h3 {
@@ -273,23 +380,30 @@ onMounted(load)
   font-weight: 650;
 }
 
+.sp__navs {
+  display: flex;
+  gap: 4px;
+}
+
 .sp__nav {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--border);
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text-2);
   cursor: pointer;
   transition:
     background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease);
 }
 
 .sp__nav:hover:not(:disabled) {
+  border-color: var(--border-strong);
   background: var(--surface-2);
   color: var(--text);
 }
@@ -301,19 +415,30 @@ onMounted(load)
 
 .sp__grid {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sp__row {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
 }
 
 .sp__wd {
-  padding-bottom: 6px;
+  padding: 2px 0 6px;
   color: var(--text-3);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
   text-align: center;
   text-transform: uppercase;
+}
+
+.sp__gridcell {
+  display: flex;
+  justify-content: center;
 }
 
 .sp__cell {
@@ -321,35 +446,41 @@ onMounted(load)
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  max-width: 46px;
   aspect-ratio: 1;
-  max-height: 46px;
   border: none;
   border-radius: 50%;
   background: transparent;
   color: var(--text-4);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 13.5px;
   font-variant-numeric: tabular-nums;
   cursor: default;
 }
 
 .sp__cell--blank {
+  aspect-ratio: auto;
+  min-height: 0;
   pointer-events: none;
 }
 
 .sp__cell.is-available {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-  font-weight: 650;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 700;
   cursor: pointer;
-  transition: background var(--motion-fast) var(--motion-ease);
+  transition:
+    background var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
 }
 
 .sp__cell.is-available:hover {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
-.sp__cell.is-selected {
+.sp__cell.is-selected,
+.sp__cell.is-selected:hover {
   background: var(--accent);
   color: var(--accent-fg);
 }
@@ -357,7 +488,7 @@ onMounted(load)
 .sp__cell.is-today::after {
   content: '';
   position: absolute;
-  bottom: 5px;
+  bottom: 6px;
   width: 4px;
   height: 4px;
   border-radius: 50%;
@@ -366,30 +497,46 @@ onMounted(load)
 
 .sp__cell:focus-visible,
 .sp__slot:focus-visible,
-.sp__confirm:focus-visible {
+.sp__confirm:focus-visible,
+.sp__nav:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .sp__veil {
   position: absolute;
-  inset: 22px 0 0;
+  inset: 26px 0 0;
+  border-radius: var(--radius);
   background: color-mix(in srgb, var(--surface) 55%, transparent);
   animation: sp-pulse 1.2s ease-in-out infinite;
 }
 
 .sp__tz {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 18px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Alinha o texto do fuso com o rótulo (o gatilho tem respiro interno). */
+.sp__tz :deep(.tzs) {
+  max-width: calc(100% + 8px);
+  margin-left: -8px;
 }
 
 .sp__tz-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-3);
   font-size: 12px;
+  font-weight: 600;
 }
+
+/* ─── Horários ────────────────────────────────────────────────────────────── */
 
 .sp__times {
   display: flex;
@@ -397,50 +544,88 @@ onMounted(load)
   min-width: 0;
 }
 
-.sp__day-title {
-  margin: 6px 0 14px;
+.sp__day {
+  margin: 2px 0 12px;
+}
+
+.sp__day p {
+  margin: 0;
+}
+
+.sp__day-weekday {
   color: var(--text);
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 650;
 }
 
-.sp__day-title::first-letter {
-  text-transform: uppercase;
+.sp__day-date {
+  margin-top: 2px !important;
+  color: var(--text-3);
+  font-size: 12.5px;
 }
 
-.sp__day-title--ghost {
-  width: 70%;
-  height: 16px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
+.sp__scroll {
+  position: relative;
+  min-height: 0;
+}
+
+/* Sombra no pé quando ainda há horário para baixo: a lista não parece cortada. */
+.sp__scroll::after {
+  content: '';
+  position: absolute;
+  right: 6px;
+  bottom: 0;
+  left: 0;
+  height: 44px;
+  background: linear-gradient(to bottom, transparent, var(--surface));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion) var(--motion-ease);
+}
+
+.sp__scroll.has-more::after {
+  opacity: 1;
 }
 
 .sp__list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 340px;
-  margin: 0;
-  padding: 0 4px 0 0;
+  gap: 14px;
+  max-height: 382px;
+  padding: 2px 6px 2px 2px;
   overflow-y: auto;
-  list-style: none;
   scrollbar-width: thin;
+}
+
+.sp__period-label {
+  margin: 0 0 7px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sp__slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .sp__slot-row {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
-  transition: grid-template-columns var(--motion) var(--motion-ease);
 }
 
 .sp__slot-row.is-picked {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .sp__slot,
 .sp__confirm {
-  min-height: 46px;
+  min-height: 44px;
   border-radius: var(--radius);
   font-family: inherit;
   font-size: 14px;
@@ -450,28 +635,31 @@ onMounted(load)
 }
 
 .sp__slot {
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
   background: var(--surface);
-  color: var(--accent);
+  color: var(--accent-ink);
   transition:
     border-color var(--motion-fast) var(--motion-ease),
-    background var(--motion-fast) var(--motion-ease);
+    background var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .sp__slot:hover {
   border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .is-picked .sp__slot {
-  border-color: var(--text-3);
-  background: var(--text-2);
-  color: var(--surface);
+  border-color: transparent;
+  background: var(--surface-3);
+  color: var(--text);
 }
 
 .sp__confirm {
   border: none;
   background: var(--accent);
   color: var(--accent-fg);
+  animation: sp-in var(--motion) var(--motion-ease);
 }
 
 .sp__confirm:disabled {
@@ -479,51 +667,63 @@ onMounted(load)
   cursor: progress;
 }
 
+.sp__mobile-confirm {
+  display: none;
+}
+
+.sp__mobile-chosen {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.sp__mobile-chosen::before {
+  content: '·';
+  margin-right: 6px;
+}
+
+/* ─── Estados ─────────────────────────────────────────────────────────────── */
+
 .sp__skeleton {
-  display: block;
-  height: 46px;
-  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.sp__skel-slot {
+  height: 44px;
   border-radius: var(--radius);
-  background: var(--surface-2);
-  animation: sp-pulse 1.2s ease-in-out infinite;
 }
 
 .sp__state {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  flex: 1;
-  padding: 24px 8px;
+  min-height: 240px;
+  padding: 16px 8px;
   color: var(--text-3);
   text-align: center;
 }
 
-.sp__state p {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.sp__retry {
+.sp__state-icon {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-2);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-3);
 }
 
-.sp__retry:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
+.sp__state p {
+  max-width: 220px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 @keyframes sp-pulse {
@@ -532,22 +732,69 @@ onMounted(load)
   }
 }
 
+@keyframes sp-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sp__veil,
-  .sp__skeleton {
+  .sp__confirm {
     animation: none;
   }
 }
 
-@media (max-width: 720px) {
+/* ─── Celular ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
   .sp {
-    grid-template-columns: 1fr;
-    gap: 24px;
-    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+
+  .sp__times {
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
   }
 
   .sp__list {
     max-height: none;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .sp__scroll::after {
+    display: none;
+  }
+
+  .sp__slots {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .sp__slot-row.is-picked {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .is-picked .sp__slot {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+
+  .sp__confirm {
+    display: none;
+  }
+
+  /* Gruda no pé da tela: depois de rolar a grade, o botão continua à mão. */
+  .sp__mobile-confirm {
+    position: sticky;
+    bottom: 12px;
+    z-index: 2;
+    display: inline-flex;
+    margin-top: 16px;
+    box-shadow: var(--shadow-overlay);
   }
 }
 </style>

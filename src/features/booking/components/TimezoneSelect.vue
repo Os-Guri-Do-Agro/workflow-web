@@ -54,7 +54,7 @@ watch(open, () => {
   <ComboboxRoot v-model:open="open" :ignore-filter="true" class="tzs">
     <ComboboxAnchor class="tzs__anchor">
       <ComboboxTrigger class="tzs__trigger" :class="`tzs__trigger--${variant}`" :aria-label="label">
-        <Globe :size="14" class="tzs__globe" />
+        <Globe v-if="variant === 'field'" :size="14" class="tzs__globe" />
         <span class="tzs__value">{{ currentLabel }}</span>
         <ChevronDown :size="14" class="tzs__chev" />
       </ComboboxTrigger>
@@ -131,13 +131,18 @@ watch(open, () => {
   border-color: var(--border-strong);
 }
 
+/* Sem margem negativa aqui: ela encolhia o próprio contêiner e o
+   `max-width: 100%` cortava o "(GMT-3)". Quem quer alinhar o texto pela
+   borda puxa o contêiner (ver .sp__tz no SlotPicker). */
 .tzs__trigger--inline {
-  padding: 4px 6px;
-  margin: -4px -6px;
+  padding: 5px 8px;
+  margin: 0;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  font-size: 12.5px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .tzs__trigger--inline:hover,
@@ -161,11 +166,17 @@ watch(open, () => {
   flex: 1;
 }
 
-/* Na página pública o fuso é informação, não campo: quebra linha em vez de
-   cortar justamente o "(GMT-3)", que é a parte que tira a dúvida. */
+/* Na página pública o fuso é informação, não campo: cabe numa linha e, na
+   tela bem estreita, quebra em vez de cortar justamente o "(GMT-3)", que é a
+   parte que tira a dúvida. */
 .tzs__trigger--inline .tzs__value {
-  white-space: normal;
   line-height: 1.35;
+}
+
+@media (max-width: 400px) {
+  .tzs__trigger--inline .tzs__value {
+    white-space: normal;
+  }
 }
 
 .tzs__globe,

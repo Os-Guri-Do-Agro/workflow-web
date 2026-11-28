@@ -7,7 +7,7 @@
  */
 import { computed, ref } from 'vue'
 import { CalendarDays, Check, Copy, Globe, User, Video } from 'lucide-vue-next'
-import { formatRange, formatTime, gmtOffset, zoneLabel } from '../booking-time'
+import { formatDayOf, formatTime, formatTimeRange, gmtOffset, zoneLabel } from '../booking-time'
 
 const props = defineProps<{
   startAt: string
@@ -44,27 +44,28 @@ async function copyMeet() {
 <template>
   <dl class="bs" :class="{ 'bs--canceled': canceled }">
     <div class="bs__row">
-      <dt><CalendarDays :size="15" /><span class="sr-only">Quando</span></dt>
+      <dt><CalendarDays :size="15" /><span class="bk-sr">Quando</span></dt>
       <dd>
-        <span class="bs__when">{{ formatRange(startAt, endAt, timezone) }}</span>
+        <span class="bs__when">{{ formatDayOf(startAt, timezone) }}</span>
+        <span class="bs__time">{{ formatTimeRange(startAt, endAt, timezone) }}</span>
         <span v-if="otherZone" class="bs__note">
           {{ formatTime(startAt, hostTimezone) }} para {{ hostName }} ({{ gmtOffset(hostTimezone, Date.parse(startAt)) }})
         </span>
       </dd>
     </div>
     <div class="bs__row">
-      <dt><Globe :size="15" /><span class="sr-only">Fuso</span></dt>
+      <dt><Globe :size="15" /><span class="bk-sr">Fuso</span></dt>
       <dd>{{ zoneLabel(timezone, Date.parse(startAt)) }}</dd>
     </div>
     <div v-if="inviteeName" class="bs__row">
-      <dt><User :size="15" /><span class="sr-only">Convidado</span></dt>
+      <dt><User :size="15" /><span class="bk-sr">Convidado</span></dt>
       <dd>
         {{ inviteeName }}
         <span v-if="inviteeEmail" class="bs__note">{{ inviteeEmail }}</span>
       </dd>
     </div>
     <div v-if="meetLink && !canceled" class="bs__row">
-      <dt><Video :size="15" /><span class="sr-only">Google Meet</span></dt>
+      <dt><Video :size="15" /><span class="bk-sr">Google Meet</span></dt>
       <dd class="bs__meet">
         <a :href="meetLink" target="_blank" rel="noopener noreferrer">{{ meetLink.replace(/^https?:\/\//, '') }}</a>
         <button type="button" class="bs__copy" :aria-label="copied ? 'Copiado' : 'Copiar link do Meet'" @click="copyMeet">
@@ -79,12 +80,12 @@ async function copyMeet() {
 .bs {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   margin: 0;
-  padding: 16px 18px;
+  padding: 4px 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
+  text-align: left;
 }
 
 .bs__row {
@@ -92,6 +93,11 @@ async function copyMeet() {
   grid-template-columns: 18px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
+  padding: 12px 0;
+}
+
+.bs__row + .bs__row {
+  border-top: 1px solid var(--border);
 }
 
 .bs dt {
@@ -110,10 +116,20 @@ async function copyMeet() {
   line-height: 1.45;
 }
 
+.bs__when {
+  font-weight: 650;
+}
+
 .bs__when::first-letter {
   text-transform: uppercase;
 }
 
+.bs__time {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.bs--canceled .bs__time,
 .bs--canceled .bs__when {
   text-decoration: line-through;
   color: var(--text-3);
@@ -133,7 +149,7 @@ async function copyMeet() {
 .bs__meet a {
   min-width: 0;
   overflow: hidden;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
   text-decoration: none;
   text-overflow: ellipsis;
@@ -159,15 +175,13 @@ async function copyMeet() {
 }
 
 .bs__copy:hover {
+  border-color: var(--border-strong);
   color: var(--text);
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+.bs__copy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
+
 </style>
